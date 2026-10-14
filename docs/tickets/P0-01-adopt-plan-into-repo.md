@@ -21,6 +21,7 @@ repo must see the current rules ([00_REVIEW.md H2](../REVIEW-2026-10.md#h2--docu
 **This ticket goes first, before any other P0 ticket.** `/frame-ticket`, `/implement-ticket` and the other
 commands read `docs/tickets/` and `CLAUDE.md`, which only exist after this PR merges. It is Tier 3 and about
 an hour of work; do it without the loop (there are no commands yet), and have the other dev review it.
+(Solo since 2026-10-13: self-review plus the CI `docs` job.)
 
 ## Scope
 

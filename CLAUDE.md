@@ -4,7 +4,8 @@
      remove the marker when that ticket merges. -->
 
 Multi-building condo operations app: FastAPI + PostgreSQL backend replacing a Base44-exported React
-frontend. Two developers. AI agents implement tickets, and humans frame, review and learn.
+frontend. One developer (James, solo since 2026-10-13). AI agents implement tickets; the human frames,
+reviews and learns.
 
 ## Where things are
 

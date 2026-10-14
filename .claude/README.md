@@ -1,7 +1,6 @@
 # Claude Code project commands for the build → review → explain loop
 
-These are drafts. In P0-01, copy them into the repo's `.claude/commands/` so both developers run the loop the
-same way. Each file becomes a slash command named after the file (`/frame-ticket P2-03`). `$ARGUMENTS`
+The files in `.claude/commands/` (added in P0-01) let every session run the loop the same way. Each file becomes a slash command named after the file (`/frame-ticket P2-03`). `$ARGUMENTS`
 is replaced with what you type after the command.
 
 | Command | Loop step | Who drives |

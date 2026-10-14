@@ -1,7 +1,8 @@
 # Condo Management App — Project Docs
 
-Condo / building management app (FastAPI + PostgreSQL + React), built by James and Khoi with AI agents
-implementing tickets and humans framing, reviewing and learning.
+Condo / building management app (FastAPI + PostgreSQL + React), built by James with AI agents
+implementing tickets and the human framing, reviewing and learning. Since 2026-10-13 James works solo: where
+these docs mention a second developer or lane B, see the note in the [roadmap change log](./ROADMAP.md#change-log).
 
 **This folder is the single source of truth** for scope, architecture, decisions, tickets and process.
 It was created on 2026-10-13 from a senior-engineer review ([REVIEW-2026-10.md](./REVIEW-2026-10.md)) and
@@ -44,7 +45,7 @@ history in [archive/2026-10-legacy/](./archive/2026-10-legacy/README.md), along 
   after the week-8 demo). It ships those already-tested artifacts to an HTTPS staging URL.
 - **Packages is the reference slice** (week 6). Notices, maintenance and dashboard follow its recipe
   (week 7). Hardening and the demo come in week 8.
-- **One ticket = one agent session = one PR.** A fresh AI session reviews it, the other dev reviews it, and a
+- **One ticket = one agent session = one PR.** A fresh AI session reviews it, James reviews it, and a
   fresh session explains it. After the merge, the dev who drove the agent learns actively (quiz, explain-back
   note, a hand-written change); every ticket must be "learned ✓" before its phase gate passes.
 - **Model owner vs tenant now** ([ADR-0010](./adr/0010-unit-occupancy-relationship.md)), and host in
@@ -52,11 +53,13 @@ history in [archive/2026-10-legacy/](./archive/2026-10-legacy/README.md), along 
 
 ## Your first three days
 
-| Day | James (lane A) | Khoi (lane B) | Together |
-|---|---|---|---|
-| 1 | Read REVIEW-2026-10 and PRODUCT_SCOPE … AI_AGENT_PLAYBOOK. **P0-01 first** (adopt docs, `CLAUDE.md`, commands; ~1 hour, no loop yet). Then frame and implement **P0-02** (backend gates) | Read REVIEW-2026-10 and PRODUCT_SCOPE … AI_AGENT_PLAYBOOK. Review P0-01. Then frame and implement **P0-03** (frontend gates) | 30 min: agree on the plan; note disagreements as ADR proposals |
-| 2 | **P0-05** (DB tests) | **P0-04** (Makefile, compose, branch protection, delete stale branches) | Try the loop on one ticket each, end to end |
-| 3 | **P1-01** (finish the old M2-T03 branch's work under the new ticket) | **P1-04** (API conventions) | Friday-style demo + retro (even on day 3) |
+Solo, both lanes run in sequence: lane A first, then lane B, unless a dependency says otherwise.
+
+| Day | Lane A | Lane B |
+|---|---|---|
+| 1 | Read REVIEW-2026-10 and PRODUCT_SCOPE … AI_AGENT_PLAYBOOK. **P0-01 first** (adopt docs, `CLAUDE.md`, commands; ~1 hour, no loop yet). Then frame and implement **P0-02** (backend gates) | **P0-03** (frontend gates) |
+| 2 | **P0-05** (DB tests) | **P0-04** (Makefile, compose, branch protection, delete stale branches) |
+| 3 | **P1-01** (finish the old M2-T03 branch's work under the new ticket) | **P1-04** (API conventions); then a demo + retro note |
 
 No AWS account, domain or cloud setup is needed in these days, or at all until milestone D. You need GitHub
 (for CI and branch protection) and Docker on each laptop.
