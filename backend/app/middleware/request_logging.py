@@ -1,0 +1,78 @@
+import logging
+import time
+import uuid
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+from app.logging_config import request_id_ctx
+
+
+logger = logging.getLogger("app.request")
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        token = request_id_ctx.set(request_id)
+        start = time.perf_counter()
+
+        method = request.method
+        path = request.url.path
+        client_ip = _get_client_ip(request)
+        user_agent = request.headers.get("user-agent")
+
+        try:
+            response = await call_next(request)
+            latency_ms = round((time.perf_counter() - start) * 1000, 2)
+
+            response.headers["X-Request-ID"] = request_id
+
+            logger.info(
+                "request_completed",
+                extra={
+                    "request_id": request_id,
+                    "method": method,
+                    "path": path,
+                    "status_code": response.status_code,
+                    "latency_ms": latency_ms,
+                    "client_ip": client_ip,
+                    "user_agent": user_agent,
+                },
+            )
+
+            return response
+
+        except Exception as exc:
+            latency_ms = round((time.perf_counter() - start) * 1000, 2)
+
+            logger.exception(
+                "request_failed",
+                extra={
+                    "request_id": request_id,
+                    "method": method,
+                    "path": path,
+                    "status_code": 500,
+                    "latency_ms": latency_ms,
+                    "client_ip": client_ip,
+                    "user_agent": user_agent,
+                    "error_type": exc.__class__.__name__,
+                    "error_message": str(exc),
+                },
+            )
+            raise
+
+        finally:
+            request_id_ctx.reset(token)
+
+
+def _get_client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+
+    if request.client:
+        return request.client.host
+
+    return None

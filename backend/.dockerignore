@@ -1,0 +1,69 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+
+# AWS credentials and local cloud config
+.aws/
+**/.aws/
+aws/
+**/credentials
+**/config
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# Python caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build outputs
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+
+# Local databases and temp files
+*.sqlite
+*.sqlite3
+*.db
+tmp/
+temp/
+
+# Editor and OS junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Docker and compose files not needed inside the image
+docker-compose.yml
+docker-compose.*.yml

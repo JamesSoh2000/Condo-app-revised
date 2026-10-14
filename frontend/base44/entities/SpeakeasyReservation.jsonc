@@ -1,0 +1,109 @@
+{
+  "name": "SpeakeasyReservation",
+  "type": "object",
+  "properties": {
+    "room_type": {
+      "type": "string",
+      "enum": [
+        "Speakeasy",
+        "TV Room (2nd floor)",
+        "Dining room with TV (2nd floor)",
+        "Living and Dining Room (3rd floor)"
+      ]
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "start_time": {
+      "type": "string"
+    },
+    "end_time": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "declined",
+        "paid",
+        "active",
+        "completed",
+        "force_closed"
+      ],
+      "default": "pending"
+    },
+    "payment_status": {
+      "type": "string",
+      "enum": [
+        "unpaid",
+        "paid",
+        "overtime_paid"
+      ],
+      "default": "unpaid"
+    },
+    "pre_photos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "post_photos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "session_start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "session_end": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resident_user_id": {
+      "type": "string",
+      "description": "Foreign key to User - stable identifier for resident"
+    },
+    "resident_name": {
+      "type": "string",
+      "description": "Deprecated - use join with Profile for current name"
+    },
+    "resident_unit": {
+      "type": "string",
+      "description": "Deprecated - use join with Profile for current unit"
+    },
+    "archived": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the reservation is archived by the resident"
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "User ID of manager who approved"
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "declined_by": {
+      "type": "string",
+      "description": "User ID of manager who declined"
+    },
+    "declined_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "decline_reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "room_type",
+    "date",
+    "start_time",
+    "end_time"
+  ]
+}

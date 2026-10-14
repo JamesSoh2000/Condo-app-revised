@@ -1,0 +1,94 @@
+{
+  "name": "MaintenanceTicket",
+  "type": "object",
+  "properties": {
+    "resident_user_id": {
+      "type": "string",
+      "description": "Foreign key to User - stable identifier for resident"
+    },
+    "unit_number": {
+      "type": "string",
+      "description": "Display field - source of truth is Profile join"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "unit",
+        "common_area",
+        "building"
+      ]
+    },
+    "category": {
+      "type": "string",
+      "description": "Optional categorization"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "emergency"
+      ],
+      "default": "medium"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "in_review",
+        "scheduled",
+        "in_progress",
+        "completed",
+        "closed",
+        "cancelled"
+      ],
+      "default": "submitted"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Staff member assigned to this ticket"
+    },
+    "scheduled_for": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When maintenance is scheduled"
+    },
+    "resolution_notes": {
+      "type": "string",
+      "description": "Notes about how the issue was resolved"
+    },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "internal_notes": {
+      "type": "string"
+    },
+    "is_archived": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the ticket has been archived by management"
+    },
+    "archived_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the ticket was archived"
+    }
+  },
+  "required": [
+    "title",
+    "type"
+  ]
+}

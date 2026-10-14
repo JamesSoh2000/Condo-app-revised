@@ -1,0 +1,32 @@
+import pytest
+from pydantic import ValidationError
+
+from app.core.config import Settings
+
+
+def test_dev_settings_parse_json_allowed_origins(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "dev")
+    monkeypatch.setenv(
+        "ALLOWED_ORIGINS",
+        '["http://localhost:5173","http://127.0.0.1:5173"]',
+    )
+
+    settings = Settings(_env_file=None)
+
+    assert settings.app_env == "dev"
+    assert settings.allowed_origins == [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
+
+def test_prod_rejects_localhost_allowed_origins():
+    with pytest.raises(ValidationError, match="localhost origins"):
+        Settings(
+            _env_file=None,
+            app_env="prod",
+            allowed_origins=["http://localhost:5173"],
+            secret_key="not-the-default-secret",
+            s3_bucket_name="condo-app-prod-files",
+            ses_from_email="noreply@example.org",
+        )

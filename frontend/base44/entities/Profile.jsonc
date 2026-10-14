@@ -1,0 +1,155 @@
+{
+  "name": "Profile",
+  "type": "object",
+  "properties": {
+    "userId": {
+      "type": "string",
+      "description": "Links to User entity"
+    },
+    "unit_id": {
+      "type": "string",
+      "description": "Foreign key to Unit entity"
+    },
+    "full_name": {
+      "type": "string"
+    },
+    "additional_occupants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "relationship": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Additional residents (roommate, spouse, etc) - max 2"
+    },
+    "preferred_name": {
+      "type": "string"
+    },
+    "primary_phone": {
+      "type": "string"
+    },
+    "secondary_phone": {
+      "type": "string"
+    },
+    "emergency_contact_name": {
+      "type": "string"
+    },
+    "emergency_contact_phone": {
+      "type": "string"
+    },
+    "language_preference": {
+      "type": "string",
+      "enum": [
+        "English",
+        "French",
+        "Spanish",
+        "Mandarin",
+        "Other"
+      ],
+      "default": "English"
+    },
+    "preferred_language": {
+      "type": "string",
+      "enum": [
+        "en",
+        "fr",
+        "zh"
+      ],
+      "default": "en",
+      "description": "UI language code for the resident portal"
+    },
+    "unit_number": {
+      "type": "string",
+      "description": "Legacy field - kept for migration"
+    },
+    "residency_type": {
+      "type": "string",
+      "enum": [
+        "owner",
+        "tenant",
+        "staff"
+      ],
+      "default": "owner"
+    },
+    "move_in_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "lease_end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "vehicles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "plate_number": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "type": "string"
+          },
+          "parking_spot": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "notification_settings": {
+      "type": "object",
+      "properties": {
+        "maintenance": {
+          "type": "boolean",
+          "default": true
+        },
+        "packages": {
+          "type": "boolean",
+          "default": true
+        },
+        "announcements": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "preferred_contact_method": {
+      "type": "string",
+      "enum": [
+        "email",
+        "phone",
+        "sms"
+      ],
+      "default": "email"
+    },
+    "lease_document_url": {
+      "type": "string"
+    },
+    "insurance_info_url": {
+      "type": "string"
+    },
+    "is_deleted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Soft-deleted by management"
+    },
+    "deleted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the record was soft-deleted"
+    }
+  },
+  "required": [
+    "userId",
+    "full_name"
+  ]
+}

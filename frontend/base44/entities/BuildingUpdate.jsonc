@@ -1,0 +1,107 @@
+{
+  "name": "BuildingUpdate",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Update title"
+    },
+    "message": {
+      "type": "string",
+      "description": "Full update message"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "general",
+        "maintenance",
+        "security",
+        "amenity",
+        "emergency",
+        "update"
+      ],
+      "default": "general",
+      "description": "Category of update"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "important"
+      ],
+      "default": "normal",
+      "description": "Priority level"
+    },
+    "postedByUserId": {
+      "type": "string",
+      "description": "User ID who posted"
+    },
+    "postedByName": {
+      "type": "string",
+      "description": "Name of poster"
+    },
+    "postedByRole": {
+      "type": "string",
+      "enum": [
+        "management",
+        "board",
+        "security"
+      ],
+      "description": "Role of poster"
+    },
+    "location": {
+      "type": "string",
+      "description": "Location (e.g., Lobby, Tower E)"
+    },
+    "startTime": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start time for maintenance/events"
+    },
+    "endTime": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End time for maintenance/events"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When update should stop showing"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether update is currently active"
+    },
+    "is_resolved": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the notice has been resolved (shown with strikethrough)"
+    },
+    "attachment_url": {
+      "type": "string",
+      "description": "URL of attached file"
+    },
+    "attachment_type": {
+      "type": "string",
+      "enum": [
+        "pdf",
+        "image",
+        "docx"
+      ],
+      "description": "Type of attachment"
+    },
+    "attachment_name": {
+      "type": "string",
+      "description": "Original file name of attachment"
+    },
+    "attachment_size": {
+      "type": "number",
+      "description": "File size in bytes"
+    }
+  },
+  "required": [
+    "title",
+    "message"
+  ]
+}

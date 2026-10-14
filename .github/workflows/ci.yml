@@ -1,0 +1,112 @@
+name: Baseline CI Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-24.04
+
+    env:
+      APP_ENV: test
+      READINESS_CHECK_DATABASE: "false"
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      # Downloads the repository onto the GitHub-hosted runner.
+      # Without this step, the runner has no project files to test.
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      # Installs the same Python version pinned by the project.
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.13"
+
+      # Installs uv and enables uv's dependency cache.
+      # The cache uses backend/pyproject.toml and backend/uv.lock so dependency
+      # installs are faster when the backend dependency graph has not changed.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          version: "0.11.17"
+          enable-cache: true
+          cache-dependency-glob: |
+            backend/pyproject.toml
+            backend/uv.lock
+
+      # Installs backend dependencies into the fresh CI runner.
+      # CI cannot use your local .venv, so this must happen every run.
+      - name: Install backend dependencies
+        run: uv sync --locked
+
+      # Runs the backend test suite.
+      # uv run ensures pytest runs from the uv-managed backend environment.
+      - name: Run backend tests
+        run: uv run pytest
+
+  frontend-checks:
+    name: Frontend build and lint baseline
+    runs-on: ubuntu-24.04
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      # Downloads the repository onto the GitHub-hosted runner.
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      # Installs the same Node.js version pinned by the project.
+      # The npm cache uses frontend/package-lock.json as the dependency key.
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.16.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Installs frontend dependencies exactly from package-lock.json.
+      # npm ci is preferred in CI because it is repeatable and fails if the
+      # lockfile and package.json are out of sync.
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # Proves the exported frontend can still produce a production Vite build.
+      - name: Build frontend
+        run: npm run build
+
+      # Runs lint but does not fail the whole workflow yet.
+      # M1-T03 recorded the current exported-code lint baseline:
+      # 68 unused-import errors. Keep this advisory until the lint cleanup
+      # follow-up ticket is completed.
+      - name: Run frontend lint baseline
+        id: frontend-lint
+        continue-on-error: true
+        run: npm run lint
+
+      # Writes a visible note into the GitHub Actions step summary if lint fails.
+      # Because the previous step uses continue-on-error, the frontend job can
+      # still pass while preserving the lint output for review.
+      - name: Record known lint baseline
+        if: steps.frontend-lint.outcome == 'failure'
+        run: |
+          {
+            echo "### Frontend lint baseline"
+            echo ""
+            echo "The lint command failed, but this is currently advisory for M1-T05."
+            echo "M1-T03 recorded 68 unused-import errors from the exported frontend."
+            echo "Keep this non-blocking until the lint cleanup ticket is completed."
+          } >> "$GITHUB_STEP_SUMMARY"
