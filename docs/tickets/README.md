@@ -31,7 +31,7 @@ code it builds on will have changed. Every ticket follows
 <!-- generated -->
 | ID | Title | Lane | Tier | Depends on | Status | Learned |
 |---|---|---|---|---|---|---|
-| [P0-01](./P0-01-adopt-plan-into-repo.md) | Adopt the new plan into the repo | A | 3 | — | todo | — |
+| [P0-01](./P0-01-adopt-plan-into-repo.md) | Adopt the new plan into the repo | A | 3 | — | in review | — |
 | [P0-02](./P0-02-backend-quality-gates.md) | Backend quality gates | A | 3 | P0-01 | todo | — |
 | [P0-03](./P0-03-frontend-quality-gates.md) | Frontend quality gates | B | 3 | P0-01 | todo | — |
 | [P0-04](./P0-04-repo-workflow-and-local-stack.md) | Repo workflow and local stack | B | 2 | P0-02, P0-03 | todo | — |
