@@ -75,3 +75,6 @@ key.pem
 # === Database & Containers (Future-proofing) ===
 postgres_data/
 .docker-temp/
+
+# Codex review proof tests are scratch (see AGENTS.md)
+codex_proofs/
