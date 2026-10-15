@@ -39,8 +39,8 @@ everyday commands.
 1. (P0-04 AC1) **Given** a clone with nothing running, **when** `make up && make migrate`, **then** `make ps`
    shows `app`, `db`, `mailpit` and `s3` as `healthy`, no `redis` service exists, and
    `curl -fsS http://localhost:8025/` returns the Mailpit UI (HTTP 200).
-2. (P0-04 AC2, sharpened) **Given** the stack, **when** `uv run scripts/s3-smoke.py` runs against the
-   emulator's bucket, **then**: a presigned POST limited to 1 KiB rejects a 2 KiB upload; the same policy
+2. (P0-04 AC2, sharpened) **Given** the stack, **when** `make s3-smoke` runs `scripts/s3-smoke.py` against
+   the emulator's bucket, **then**: a presigned POST limited to 1 KiB rejects a 2 KiB upload; the same policy
    accepts 512 B; a `Content-Type` that differs from the policy is rejected; `head_object` on the accepted
    object returns a `VersionId`; bucket versioning is `Enabled`; a CORS preflight from
    `http://localhost:5173` is allowed and one from another origin is not. The script exits non-zero if any
@@ -61,7 +61,7 @@ everyday commands.
 
 ## Likely files
 
-`Makefile`, `docker-compose.yml`, `docker/s3-init/*.sh`, `backend/app/core/config.py`,
+`Makefile`, `docker-compose.yml`, `docker/s3-init/create-bucket.sh`, `backend/app/core/config.py`,
 `backend/tests/test_config.py`, `backend/.env.example`, `backend/.env.dev`, `scripts/s3-smoke.py`,
 `README.md`, `docs/adr/0007-private-s3-presigned-uploads.md`, `CLAUDE.md` (Commands block).
 
@@ -78,10 +78,11 @@ everyday commands.
   endpoints. AC5: `make check` must fail on any failure, and a stub must not pass as a test run.
 - Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-  - **S3 emulator: LocalStack 4.4.0** (autonomous, measured on 2026-10-15). MinIO images can't be pulled
+  - **S3 emulator: LocalStack 4.14.0** (autonomous, measured on 2026-10-15). MinIO images can't be pulled
     any more (Docker Hub "repository does not exist", Quay 401). moto 5.1.4 and moto 5.2.4.dev0 accept a
     2 KiB upload against a 1 KiB policy and a wrong `Content-Type`, so they can't test the ADR-0007 policy.
-    SeaweedFS failed the presigned POST entirely. LocalStack 4.4.0 and RustFS passed every AC2 check;
+    SeaweedFS failed the presigned POST entirely. LocalStack (4.4.0 and 4.14.0; 4.14.0 is the newest tag
+    checked that runs without an account token) and RustFS passed every AC2 check;
     LocalStack is chosen because its failures match AWS (403 `AccessDenied`, "Invalid according to
     Policy"), where RustFS returns 400 `InvalidPolicyDocument`. Port 4566, not the ticket's example 9000
     ("use the actual port of the chosen emulator").
@@ -90,6 +91,13 @@ everyday commands.
     (`condo-app-dev-files`) stay (code is the truth for what exists).
   - **CORS origins:** `http://localhost:5173` and `http://localhost:8080` (P3-06 says P0-04 and P1-08 set
     them; adding `:8080` now costs one line).
+  - **`DB_PORT`** (default 5432) sets the host port compose publishes `db` on, and the Makefile's database
+    URL follows it. Found while building: another local Postgres already held 127.0.0.1:5432, Docker
+    published nothing, and `make migrate` silently migrated the other server. The override makes that
+    recoverable without editing files, and a `db-guard` prerequisite of `migrate`, `revision` and `check`
+    fails unless compose's `db` is the server on that port.
+  - `make s3-smoke` runs the script with `uv run --python 3.12`: plain `uv run` at the repo root demands the
+    exact `.python-version` (3.12.13), which a host may not have.
   - Migrations and `revision` run on the host with `uv` against the published `db` port, so new revision
     files are owned by the developer and the ruff post-write hooks (dev dependencies) run.
 - Split: part a of [P0-04](./P0-04-repo-workflow-and-local-stack.md).

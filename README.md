@@ -14,6 +14,21 @@ The app is organized as a small monorepo:
 └── .claude/   # Claude Code slash commands for the ticket loop
 ```
 
+## Quickstart
+
+Needs Docker (with WSL integration), [uv](https://docs.astral.sh/uv/) and Node 24 (versions below).
+
+```bash
+make up                     # api :8000, Postgres, Mailpit (UI :8025), S3 emulator :4566; waits until healthy
+make migrate                # alembic upgrade head
+make seed                   # demo data (a stub until P1-06)
+cd frontend && npm ci && npm run dev   # http://localhost:5173, /api proxied to :8000
+```
+
+`make help` lists every target; `make check` runs what CI runs (with the stack up). Port 5432 already taken?
+Pass the same free port to every target: `make up DB_PORT=55432`, `make migrate DB_PORT=55432`.
+More: [docs/README.md](docs/README.md), [ADR-0007](docs/adr/0007-private-s3-presigned-uploads.md) (the S3 emulator).
+
 ## Current State
 
 - The project follows the plan adopted on 2026-10-13: [docs/README.md](docs/README.md) is the single source of
@@ -45,9 +60,8 @@ Both developers should use the same toolchain in WSL2 Ubuntu:
 | npm | 11.x | Use npm, not yarn/pnpm, because `frontend/package-lock.json` is the lockfile. |
 | Backend framework | FastAPI | Version range lives in `backend/pyproject.toml`. |
 | Frontend framework | React 18 + Vite 6 | Version ranges live in `frontend/package.json`. |
-| Database, when added | PostgreSQL 16 | Added later through the database milestone. |
-| Redis, when added | Redis 7 | Future live chat only; not needed for MVP notifications. |
-| Containers, when added | Docker Desktop with WSL integration | Docker files are added by infra tickets. |
+| Database | PostgreSQL 16 | Runs in Docker Compose (`make up`). |
+| Containers | Docker Desktop with WSL integration | `docker-compose.yml`: api, db, mailpit, s3 (LocalStack). |
 
 Recommended WSL version managers:
 
@@ -150,48 +164,3 @@ In short, with Claude Code:
 
 `CLAUDE.md` holds the rules every session follows; [`.claude/README.md`](.claude/README.md) lists all the
 commands.
-
-## Running Alembic migration
-From the project root:
-
-Start PostgreSQL:
-
-```bash
-docker compose up -d db
-```
-
-Rebuild app image so it has current dependencies:
-
-```bash
-docker compose build app
-```
-
-Check Alembic exists inside the app container:
-
-```bash
-docker compose run --rm app alembic --version
-```
-
-Run Alembic migrations inside Docker(not from your localhost):
-
-```bash
-docker compose run --rm app alembic upgrade head
-```
-
-Check current Alembic revision:
-
-```bash
-docker compose run --rm app alembic current
-```
-
-Verify directly in PostgreSQL:
-
-```bash
-docker compose exec db psql -U postgres -d condo_dev -c "select * from alembic_version;"
-```
-
-Inside Docker Compose, keep `.env` as:
-
-```bash
-DATABASE_URL=postgresql+asyncpg://postgres:devpassword@db:5432/condo_dev
-```
