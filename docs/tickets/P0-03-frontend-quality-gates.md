@@ -1,4 +1,33 @@
-# P0-03 — Frontend quality gates
+# P0-03 — Frontend quality gates (split)
+
+| Field | Value |
+|---|---|
+| Phase / lane | P0 / B |
+| Risk tier | 3 |
+| Depends on | P0-01 |
+| Status | split into [P0-03a](./P0-03a-frontend-lint-and-type-gates.md), [P0-03b](./P0-03b-same-origin-proxy-and-route-scope.md), [P0-03c](./P0-03c-frontend-whitespace-and-pre-commit.md) |
+
+Split while framing (2026-10-14). "P0-03" in other tickets' "Depends on" means all three parts; the
+[ticket index](./README.md) lists which part each dependent actually needs.
+
+| Part | Scope | Acceptance criteria (original numbers) |
+|---|---|---|
+| [P0-03a](./P0-03a-frontend-lint-and-type-gates.md) | lint fix, blocking lint in CI, `tsconfig.json` + `typecheck`, the Base44 ratchet, `no-restricted-imports` | 1, 4, 5 |
+| [P0-03b](./P0-03b-same-origin-proxy-and-route-scope.md) | Vite `/api` proxy, demo route allowlist, Base44 runtime-call investigation (incl. `VisualEditAgent.jsx`) | 2, 3 |
+| [P0-03c](./P0-03c-frontend-whitespace-and-pre-commit.md) | extend the pre-commit whitespace/EOF hooks to `frontend/` and normalise the files they flag | (scope item added in P0-02, no criterion) |
+
+## Why split
+
+- Measured while framing: extending the pre-commit hooks to `frontend/` rewrites 99 files (≈860 changed
+  lines, whitespace only). Together with the lint fix (68 removed imports), the gates and the routing
+  changes, one PR would be far over the ~400 non-test line limit and hard to review.
+- The gates (03a) are mechanical config; the proxy and the route scope (03b) change behaviour a user can
+  reach; the whitespace normalisation (03c) is purely mechanical and is checked with `git diff -w`. Each
+  gets the review it needs.
+- No criterion was dropped or loosened: AC1, AC4 and AC5 are in 03a; AC2 and AC3 in 03b.
+
+## Original ticket (for reference)
+
 
 | Field | Value |
 |---|---|
@@ -86,7 +115,7 @@ The same-origin proxy removes CORS and makes local development behave like produ
 2. What is a ratchet in CI, and why is it better than "fix everything first"?
 3. Why hide out-of-scope routes instead of deleting the pages?
 
-## Frame notes (filled by the agent in step 1)
+## Frame notes (original; see the parts)
 
 - Criteria added or sharpened:
 - Criteria loosened (with reason; also listed in the inbox):
