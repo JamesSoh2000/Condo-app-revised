@@ -114,3 +114,6 @@ if it didn't.
 
 <!-- Append one line per promoted lesson, e.g.:
 - Unit-addressed queries must also check the occupancy window (P5-02a, 2026-11-xx). -->
+- When fixing a review finding, also test the fix on its neighbours: error paths, malformed input, and the
+  same check one notch weaker (warn vs error). A fix that only covers the reported case gets reopened
+  (P0-05 round 3, P0-03a round 2, 2026-10-14).
