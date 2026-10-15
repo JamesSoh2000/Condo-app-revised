@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P0-02, P0-03a, P0-03b |
 | Replaces old | M1-T02 (compose follow-ups), M1-T04 (dev docs) |
-| Status | in progress |
+| Status | done |
 
 Split from [P0-04](./P0-04-repo-workflow-and-local-stack.md) (see there why). The GitHub side (branch
 protection, PR template, Dependabot, stale branches) is [P0-04b](./P0-04b-github-workflow.md).

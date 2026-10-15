@@ -36,7 +36,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P0-03a](./P0-03a-frontend-lint-and-type-gates.md) | Frontend lint and type gates (split from [P0-03](./P0-03-frontend-quality-gates.md)) | B | 3 | P0-01 | done | — |
 | [P0-03b](./P0-03b-same-origin-proxy-and-route-scope.md) | Same-origin dev proxy and demo route scope | B | 2 | P0-03a | done | — |
 | [P0-03c](./P0-03c-frontend-whitespace-and-pre-commit.md) | Frontend whitespace normalisation and pre-commit scope | B | 3 | P0-03a, P0-03b | done | — |
-| [P0-04a](./P0-04a-local-stack-and-makefile.md) | Local stack and Makefile (split from [P0-04](./P0-04-repo-workflow-and-local-stack.md)) | B | 2 | P0-02, P0-03a, P0-03b | in progress | — |
+| [P0-04a](./P0-04a-local-stack-and-makefile.md) | Local stack and Makefile (split from [P0-04](./P0-04-repo-workflow-and-local-stack.md)) | B | 2 | P0-02, P0-03a, P0-03b | done | — |
 | [P0-04b](./P0-04b-github-workflow.md) | GitHub workflow: branch protection, PR template, Dependabot, branches | B | 2 | P0-02, P0-03a, P0-03b | todo | — |
 | [P0-05](./P0-05-database-test-infrastructure.md) | Database test infrastructure | A | 2 | P0-02 | blocked | — |
 | [P1-01](./P1-01-buildings-features-units-schema.md) | Buildings, features and units schema | A | 2 | P0-05 | todo | — |

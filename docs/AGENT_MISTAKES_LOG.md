@@ -28,6 +28,10 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | 2026-10-15 | P0-03b | Proxy key `/api` also matched `/apifoo`; `VITE_API_PROXY_TARGET` was ignored in `.env`; a hidden `mainPage` gave a blank `/`; `/Contacts` was routed unconditionally | review round 1 (Claude), Low ×4 | prefix match and `process.env` assumed, not tried | key `^/api(/\|\?\|$)`, `loadEnv`, fallbacks; journey boundary cases |
 | 2026-10-15 | P0-03b | The round-1 fix looked `?role=`/localStorage values up in an object literal, so `constructor` or `__proto__` crashed the app for board users | review round 2 (Claude), Medium | fixed the reported value, not malformed input: pattern "fix not tested on adjacent cases" again, **after** its `CLAUDE.md` lesson landed in this PR | `Map` lookup + 30 journey checks. The lesson alone did not stop it: consider a lint rule against indexing object literals with untrusted strings |
 
+| 2026-10-15 | P0-04a | Wrote an s3 healthcheck ("healthy only after the bucket exists") from LocalStack's `"completed": true` without trying a failing init script; LocalStack reports completed on ERROR too | review round 1 (Claude), Medium | trusted a health signal's name instead of proving its failure case | the check also fails on `"state": "ERROR"`, proven on a failing script (e257048) |
+| 2026-10-15 | P0-04a | The Makefile's DB URL used `localhost` while its own `db-guard` checked `127.0.0.1`, so an IPv6-only stray server could still be migrated | review round 1 (Claude), Low | guard and guarded value written separately | one address in both (e878bb4) |
+| 2026-10-15 | P0-04a | Split P0-04 and dropped the named stale branches from P0-04b's scope while the split note said nothing was dropped | review round 1 (Claude), Low | summarised scope while splitting | restored (bd77038) |
+
 ## Promoted to rules / tests
 
 | Pattern | Promoted to | Date |
