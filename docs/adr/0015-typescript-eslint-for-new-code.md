@@ -15,8 +15,13 @@ code will live. `tsc --noEmit` checks types, not lint rules such as import restr
 
 - Add the `typescript-eslint` dev dependency.
 - `.ts`/`.tsx` files under `src/` are linted with `typescript-eslint`'s `recommended` config (its parser plus
-  its non-type-aware rules).
-- `src/features/**` and `src/app/**` (JS or TS) use its parser and the Base44 `no-restricted-imports` rule.
+  its non-type-aware rules) and `react-hooks/rules-of-hooks`, as legacy JSX is.
+- `src/features/**` and `src/app/**` (JS or TS) use its parser and the Base44 fence:
+  - `no-restricted-imports`, with one regex covering `@base44/*`, the legacy `api/base44Client`, `entities` and
+    `integrations` modules (any prefix, any extension)
+  - `no-restricted-syntax` for `import()` and `require()`
+  - `scripts/check-eslint-fence.sh` self-tests the fence in CI, because `eslint .` passes vacuously while those
+    folders are empty
 - Legacy JSX keeps its existing config. Type-aware rules (`recommendedTypeChecked`) are not enabled yet.
 
 ## Consequences

@@ -1,7 +1,7 @@
 # Install once per clone: `cd backend && uv run pre-commit install` (the hook runs from the repo root).
 # CI runs ruff directly (.github/workflows/ci.yml); these hooks catch the same problems before a commit.
 # The merged baseline migration is never edited (CLAUDE.md rule 11), so every hook skips it.
-# Formatting hooks cover backend/ only for now; P0-03 extends them to frontend/ with its own gates.
+# Formatting hooks cover backend/ only for now; P0-03c extends them to frontend/.
 exclude: ^backend/migrations/versions/989e5bd83064_initial_empty_database_baseline\.py$
 
 repos:

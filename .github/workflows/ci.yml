@@ -102,6 +102,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Self-test of the Base44 import fence: lint passes vacuously while src/features and src/app are empty.
+      - name: ESLint fence self-test
+        run: bash ../scripts/check-eslint-fence.sh
+
       # Type check (tsconfig.json: strict, allowJs, checkJs off, so only .ts/.tsx are checked).
       - name: Type check
         run: npm run typecheck

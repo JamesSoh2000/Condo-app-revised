@@ -10,8 +10,13 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 src_dir="$repo_root/frontend/src"
 baseline_file="$repo_root/frontend/base44-baseline.txt"
 
-count="$( (grep -rhoE 'base44\.|@base44/' "$src_dir" || true) | wc -l | tr -d ' ')"
+# -R follows symlinks, so references can't hide behind one.
+count="$( (grep -RhoE 'base44\.|@base44/' "$src_dir" || true) | wc -l | tr -d ' ')"
 baseline="$(tr -d '[:space:]' < "$baseline_file")"
+if [[ ! $baseline =~ ^[0-9]+$ ]]; then
+  echo "::error::frontend/base44-baseline.txt must hold one plain number, got '$baseline'." >&2
+  exit 1
+fi
 
 echo "Base44 references under frontend/src: $count (baseline: $baseline)"
 
