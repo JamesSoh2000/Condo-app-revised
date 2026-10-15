@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 
 from app.core.config import settings
 
 router = APIRouter(tags=["version"])
+
 
 @router.get("/version")
 async def version() -> dict[str, str]:
@@ -14,5 +15,5 @@ async def version() -> dict[str, str]:
         "git_sha": settings.git_sha,
         "image_tag": settings.image_tag,
         "build_time": settings.build_time,
-        "server_time": datetime.now(timezone.utc).isoformat(),
+        "server_time": datetime.now(UTC).isoformat(),
     }

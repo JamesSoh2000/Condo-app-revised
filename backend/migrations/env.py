@@ -1,5 +1,5 @@
-from logging.config import fileConfig
 import asyncio
+from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
@@ -7,11 +7,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import settings
-
 from app.models.base import Base
-from app.buildings.models import Building, BuildingFeature
-from app.units.models import Unit
-
 
 config = context.config
 
@@ -55,8 +51,8 @@ async def run_async_migrations() -> None:
     )
 
     async with connectable.connect() as connection:
-        # Since alembic is synchronous while SQLalchemy is ansync, 
-        # SQLalchemy need to use a bridge function (run_sync) for Alembic to do the migration process.
+        # Since alembic is synchronous while SQLalchemy is async,
+        # SQLalchemy needs a bridge function (run_sync) for Alembic to run the migration.
         await connection.run_sync(do_run_migrations)
 
     await connectable.dispose()

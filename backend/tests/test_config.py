@@ -26,7 +26,7 @@ def test_prod_rejects_localhost_allowed_origins():
             _env_file=None,
             app_env="prod",
             allowed_origins=["http://localhost:5173"],
-            secret_key="not-the-default-secret",
+            secret_key="not-the-default-secret",  # noqa: S106 (test fixture, not a real secret)
             s3_bucket_name="condo-app-prod-files",
             ses_from_email="noreply@example.org",
         )
