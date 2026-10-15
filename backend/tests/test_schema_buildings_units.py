@@ -28,6 +28,8 @@ from tests.conftest import BACKEND_DIR, _recreate_test_schema, assert_safe_test_
 pytestmark = pytest.mark.anyio
 
 TABLES = {"buildings", "building_features", "units"}
+P1_01_REVISION = "891dd631e5a1"
+P1_01_DOWN_REVISION = "989e5bd83064"
 
 
 async def _building(db: AsyncSession, slug: str, **overrides: object) -> Building:
@@ -337,10 +339,12 @@ def _imported_modules(path: Path) -> set[str]:
 
 def test_every_models_module_is_imported_by_the_registry():
     app_dir = BACKEND_DIR / "app"
+    # A feature's tables live in models.py, or in a models/ package (its __init__ imports them).
+    paths = [*app_dir.rglob("models.py"), *app_dir.rglob("models/__init__.py")]
     model_modules = {
-        ".".join(path.relative_to(BACKEND_DIR).with_suffix("").parts)
-        for path in app_dir.rglob("models.py")
-    }
+        ".".join(path.relative_to(BACKEND_DIR).with_suffix("").parts).removesuffix(".__init__")
+        for path in paths
+    } - {"app.models"}  # the shared base/mixins/types package, not a feature
     registered = _imported_modules(app_dir / "models" / "registry.py")
 
     assert {"app.buildings.models", "app.units.models"} <= model_modules
@@ -375,10 +379,11 @@ def test_migration_upgrades_downgrades_and_upgrades_again():
     cfg.attributes["database_url"] = scratch
     cfg.attributes["configure_logger"] = False
 
-    command.upgrade(cfg, "head")
+    # Pinned revisions, not `-1`: later migrations stack on top and must not change what this tests.
+    command.upgrade(cfg, P1_01_REVISION)
     assert asyncio.run(_table_names(scratch)) >= TABLES
 
-    command.downgrade(cfg, "-1")
+    command.downgrade(cfg, P1_01_DOWN_REVISION)
     assert asyncio.run(_table_names(scratch)) & TABLES == set()
 
     command.upgrade(cfg, "head")
