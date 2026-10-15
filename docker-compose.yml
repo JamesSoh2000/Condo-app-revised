@@ -44,7 +44,9 @@ services:
       - local_net
 
   db:
-    image: postgres:16
+    # Bump together with the CI service in .github/workflows/ci.yml. A new major can't open an older
+    # major's data directory, so a major bump also gets a new volume name (README "Database upgrades").
+    image: postgres:18
     environment:
       POSTGRES_DB: condo_dev
       POSTGRES_USER: postgres
@@ -52,7 +54,9 @@ services:
     ports:
       - "127.0.0.1:${DB_PORT:-5432}:5432" # DB_PORT: see Makefile
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Postgres 18+ images keep the data in a versioned subdirectory (/var/lib/postgresql/18/docker), so
+      # the volume is mounted one level up.
+      - postgres18_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d condo_dev"]
       interval: 5s
@@ -105,7 +109,7 @@ services:
       - local_net
 
 volumes:
-  postgres_data:
+  postgres18_data:
 
 networks:
   local_net:
