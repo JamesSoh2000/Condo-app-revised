@@ -48,3 +48,54 @@ def test_aws_region_defaults_to_ca_central_1(monkeypatch):
     settings = Settings(_env_file=None)
 
     assert settings.aws_region == "ca-central-1"
+
+
+def test_local_service_endpoints_load_from_env(monkeypatch):
+    monkeypatch.setenv("SMTP_HOST", "mailpit")
+    monkeypatch.setenv("SMTP_PORT", "1025")
+    monkeypatch.setenv("S3_ENDPOINT_URL", "http://s3:4566")
+    monkeypatch.setenv("S3_PUBLIC_ENDPOINT_URL", "http://localhost:4566")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.smtp_host == "mailpit"
+    assert settings.smtp_port == 1025
+    assert settings.s3_endpoint_url == "http://s3:4566"
+    assert settings.s3_public_endpoint_url == "http://localhost:4566"
+
+
+def test_s3_endpoints_default_to_real_aws(monkeypatch):
+    monkeypatch.delenv("S3_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("S3_PUBLIC_ENDPOINT_URL", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.s3_endpoint_url is None
+    assert settings.s3_public_endpoint_url is None
+
+
+@pytest.mark.parametrize("field", ["s3_endpoint_url", "s3_public_endpoint_url"])
+def test_prod_rejects_s3_emulator_endpoints(field):
+    with pytest.raises(ValidationError, match="must not be set in production"):
+        Settings(
+            _env_file=None,
+            app_env="prod",
+            allowed_origins=["https://condo.example.org"],
+            secret_key="not-the-default-secret",  # noqa: S106 (test fixture, not a real secret)
+            s3_bucket_name="condo-app-prod-files",
+            ses_from_email="noreply@example.org",
+            **{field: "http://localhost:4566"},
+        )
+
+
+def test_prod_accepts_settings_without_s3_endpoints():
+    settings = Settings(
+        _env_file=None,
+        app_env="prod",
+        allowed_origins=["https://condo.example.org"],
+        secret_key="not-the-default-secret",  # noqa: S106 (test fixture, not a real secret)
+        s3_bucket_name="condo-app-prod-files",
+        ses_from_email="noreply@example.org",
+    )
+
+    assert settings.s3_endpoint_url is None
