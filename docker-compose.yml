@@ -88,8 +88,14 @@ services:
     volumes:
       - ./docker/s3-init/create-bucket.sh:/etc/localstack/init/ready.d/create-bucket.sh:ro
     healthcheck:
-      # Healthy only after the init script has created the bucket.
-      test: ["CMD-SHELL", "curl -fsS http://localhost:4566/_localstack/init/ready | grep -q '\"completed\": true'"]
+      # Healthy only after the init script has run without an error. LocalStack reports "completed" even
+      # when a script fails, so a script in state ERROR must fail the check too.
+      test:
+        - CMD-SHELL
+        - >-
+          r=$$(curl -fsS http://localhost:4566/_localstack/init/ready)
+          && echo "$$r" | grep -q '"completed": true'
+          && ! echo "$$r" | grep -q '"state": "ERROR"'
       interval: 5s
       timeout: 5s
       retries: 20
