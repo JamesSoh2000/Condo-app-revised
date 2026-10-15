@@ -37,3 +37,4 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | Pattern | Promoted to | Date |
 |---|---|---|
 | Fix not tested on adjacent cases (P0-05 round 3, P0-03a round 2) | `CLAUDE.md` lesson "When fixing a review finding, also test the fix on its neighbours" (P0-03b) | 2026-10-14 |
+| Claim before evidence (fix PR #3, P0-02) | `CLAUDE.md` lesson "Don't claim an effect … until you have run the thing" (P0-05) | 2026-10-14 |
