@@ -78,7 +78,8 @@ if it didn't.
 - Python 3.14, full type hints, ruff + mypy clean. Pydantic `XCreate`/`XOut` schemas with `max_length` on
   strings. Never return ORM objects.
 - Reuse: `app/models/base.py` (Base, naming convention), `app/models/mixins.py` (uuid7 PK, timestamps),
-  `app/models/types.py` (`database_enum`), `app/core/dependencies.py` (`get_db_session`).
+  `app/models/types.py` (`database_enum`), `app/core/dependencies.py` (`get_db_session`),
+  `app/core/time.py` (`validate_timezone`). Register every new `models.py` in `app/models/registry.py`.
 - Names: tables plural snake_case; enum values lowercase; audit actions `<domain>.<past_verb>`; job kinds
   `<domain>.<verb>`; operation IDs `<domain>_<verb>`.
 - Tests: behaviour names (`test_resident_cannot_see_other_residents_package`). Use the world fixtures in
