@@ -182,7 +182,11 @@ def test_feature_enum_values_are_the_lowercase_ticket_list():
 # --- 6: timezone validation ---------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("tz", ["Mars/Base", "", "america/toronto", "EST5EDT "])
+@pytest.mark.parametrize(
+    "tz",
+    # localtime follows the host's /etc/localtime; Factory and posixrules aren't real zones.
+    ["Mars/Base", "", "america/toronto", "EST5EDT ", "localtime", "Factory", "posixrules"],
+)
 def test_validate_timezone_rejects_unknown_zones(tz: str):
     with pytest.raises(ValueError, match="timezone"):
         validate_timezone(tz)
@@ -190,6 +194,12 @@ def test_validate_timezone_rejects_unknown_zones(tz: str):
 
 def test_validate_timezone_returns_a_known_zone_unchanged():
     assert validate_timezone("America/Toronto") == "America/Toronto"
+
+
+@pytest.mark.parametrize("tz", ["localtime", "Factory"])
+def test_building_rejects_a_host_dependent_or_placeholder_zone(tz: str):
+    with pytest.raises(ValueError, match="timezone"):
+        Building(slug="a", name="A", address="1 Main St", timezone=tz)
 
 
 def test_building_rejects_an_invalid_timezone_before_any_sql():
