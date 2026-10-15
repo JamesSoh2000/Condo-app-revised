@@ -197,7 +197,7 @@ async def test_request_writes_without_commit_are_discarded_like_in_production(
     client, db: AsyncSession
 ):
     await db.execute(text("CREATE TABLE _request_probe (note text)"))
-    await db.commit()  # test setup is committed before calling the client
+    await db.commit()
 
     _add_probe_route("/__test__/write-no-commit", commit=False)
     try:
@@ -289,9 +289,11 @@ async def test_request_writes_are_discarded_when_the_handler_raises_an_unhandled
         await _insert(session, "uncommitted")
         raise RuntimeError("boom")
 
-    with _route("/__test__/write-then-crash", write_then_crash):
-        with pytest.raises(RuntimeError, match="boom"):
-            await client.post("/__test__/write-then-crash")
+    with (
+        _route("/__test__/write-then-crash", write_then_crash),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        await client.post("/__test__/write-then-crash")
 
     assert await _count_request_probe(db) == 0
 
@@ -392,9 +394,7 @@ async def _get_orm_probe_count(client) -> int:
 
 
 @pytest.mark.anyio
-async def test_orm_objects_loaded_by_the_test_stay_usable_after_a_request(
-    client, db: AsyncSession
-):
+async def test_orm_objects_loaded_by_the_test_stay_usable_after_a_request(client, db: AsyncSession):
     await _create_orm_probe(db)
     db.expunge_all()
     probe = (await db.execute(select(_OrmProbe))).scalar_one()

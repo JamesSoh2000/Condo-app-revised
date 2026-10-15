@@ -1,9 +1,10 @@
 """Shared test fixtures.
 
 The test database (`TEST_DATABASE_URL`) is rebuilt once per session with `alembic upgrade head`.
-Each test then runs inside one outer transaction that is rolled back at the end; the app's session
-joins it with `join_transaction_mode="create_savepoint"`, so `commit()` in code under test only
-releases a savepoint (docs/ARCHITECTURE.md §14).
+Each test then runs on one connection inside an outer transaction that is rolled back at the end.
+The test's session and each request's session join it with
+`join_transaction_mode="create_savepoint"`, so `commit()` in code under test only releases a
+savepoint (docs/ARCHITECTURE.md §14).
 """
 
 import asyncio
@@ -16,7 +17,7 @@ from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, create_async_engine
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -111,32 +112,47 @@ async def engine(migrated_test_database: str) -> AsyncIterator[AsyncEngine]:
 
 
 @pytest.fixture
-async def db(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
-    """A session inside a transaction that is always rolled back, even after commit()."""
+async def db_connection(engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
+    """One connection per test, inside an outer transaction that is always rolled back."""
     async with engine.connect() as conn:
         trans = await conn.begin()
-        # The app's own session factory, so flush/expire behaviour matches production code.
-        session = AsyncSessionLocal(bind=conn, join_transaction_mode="create_savepoint")
         try:
-            yield session
+            yield conn
         finally:
-            await session.close()
             await trans.rollback()
 
 
 @pytest.fixture
-async def client(db: AsyncSession) -> AsyncIterator[AsyncClient]:
-    """Async test client that hits the FastAPI app directly, using the test's `db` session.
+async def db(db_connection: AsyncConnection) -> AsyncIterator[AsyncSession]:
+    """The test's session: commit() releases a savepoint; everything is rolled back at the end."""
+    # The app's own session factory, so flush/expire behaviour matches production code.
+    session = AsyncSessionLocal(bind=db_connection, join_transaction_mode="create_savepoint")
+    try:
+        yield session
+    finally:
+        await session.close()
 
-    Like production, work a request didn't commit is discarded when the request ends, so a
-    missing `commit()` fails tests. Test setup must therefore `commit()` before calling the client.
+
+@pytest.fixture
+async def client(db_connection: AsyncConnection) -> AsyncIterator[AsyncClient]:
+    """Async test client that hits the FastAPI app directly, on the test's connection.
+
+    Each request gets its own session, like production (`get_db_session`), on a savepoint of the
+    test's connection. It sees the test's setup, committed or only flushed. What the request
+    commits stays visible to the test; what it doesn't commit is discarded when the request ends,
+    on every path (success, `HTTPException`, unhandled error), as in production. The test's own
+    session is never rolled back or expired by a request. Requests share one connection, so they
+    must not run concurrently.
     """
 
     async def override_get_db_session() -> AsyncIterator[AsyncSession]:
-        yield db
-        # Production closes its session without committing; here that means back to the last
-        # savepoint, which keeps the test's committed setup and the request's committed work.
-        await db.rollback()
+        session = AsyncSessionLocal(bind=db_connection, join_transaction_mode="create_savepoint")
+        try:
+            yield session
+        finally:
+            # Like production's `async with AsyncSessionLocal()`: closing rolls back to the
+            # request's savepoint, discarding uncommitted work, even when the endpoint raised.
+            await session.close()
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     try:
