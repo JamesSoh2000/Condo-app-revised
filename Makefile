@@ -5,7 +5,7 @@ COMPOSE := docker compose
 # The dev database as seen from the host. docker-compose.yml publishes db on 127.0.0.1:$(DB_PORT); if
 # something else already listens on 5432, run every target with the same free port: `make up DB_PORT=55432`.
 export DB_PORT ?= 5432
-DEV_DATABASE_URL := postgresql+asyncpg://postgres:devpassword@localhost:$(DB_PORT)/condo_dev
+DEV_DATABASE_URL := postgresql+asyncpg://postgres:devpassword@127.0.0.1:$(DB_PORT)/condo_dev
 BACKEND := cd backend &&
 FRONTEND := cd frontend &&
 
