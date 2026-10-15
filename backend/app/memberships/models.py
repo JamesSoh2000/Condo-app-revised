@@ -44,8 +44,12 @@ class BuildingMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status_changed_by: Mapped[User | None] = relationship(
         foreign_keys=[status_changed_by_user_id], lazy="raise"
     )
-    # passive_deletes: deleting a membership leaves its unloaded roles to the database's cascade.
-    roles: Mapped[list[MembershipRole]] = relationship(passive_deletes=True, lazy="raise")
+    # A role exists only as part of its membership: the ORM deletes loaded roles with it, and one
+    # removed from `roles` (delete-orphan). passive_deletes leaves unloaded ones to the database's
+    # cascade instead of loading them first.
+    roles: Mapped[list[MembershipRole]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True, lazy="raise"
+    )
 
 
 class MembershipRole(TimestampMixin, Base):

@@ -17,6 +17,7 @@ from sqlalchemy import delete, func, inspect, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import selectinload
 
 from app.buildings.models import Building
 from app.core.config import settings
@@ -468,6 +469,66 @@ async def test_orm_delete_of_a_membership_leaves_unloaded_roles_to_the_cascade(d
     await db.flush()
 
     assert await _roles_of(db, m.id) == set()
+
+
+# --- review round 2 (Codex M1): the ORM path must not depend on whether roles are loaded --------
+
+
+async def _membership_with_roles_loaded(
+    db: AsyncSession, membership_id: UUID
+) -> BuildingMembership:
+    db.expunge_all()
+    query = (
+        select(BuildingMembership)
+        .where(BuildingMembership.id == membership_id)
+        .options(selectinload(BuildingMembership.roles))
+    )
+    return (await db.scalars(query)).one()
+
+
+async def test_orm_delete_of_a_membership_with_loaded_roles_deletes_them(db: AsyncSession):
+    a = await _building(db, "a")
+    alice = await _user(db, "alice@example.com")
+    m = await _membership(db, a, alice)
+    await _role(db, m, Role.RESIDENT)
+    await _role(db, m, Role.COUNCIL)
+    membership = await _membership_with_roles_loaded(db, m.id)
+    assert len(membership.roles) == 2
+
+    await db.delete(membership)
+    await db.flush()
+
+    assert await db.get(BuildingMembership, m.id) is None
+    assert await _roles_of(db, m.id) == set()
+    assert await db.get(User, alice.id) is not None
+
+
+async def test_removing_a_role_from_a_loaded_membership_deletes_the_row(db: AsyncSession):
+    a = await _building(db, "a")
+    m = await _membership(db, a, await _user(db, "alice@example.com"))
+    await _role(db, m, Role.RESIDENT)
+    await _role(db, m, Role.COUNCIL)
+    membership = await _membership_with_roles_loaded(db, m.id)
+
+    (council,) = (r for r in membership.roles if r.role is Role.COUNCIL)
+    membership.roles.remove(council)
+    await db.flush()
+
+    assert await _roles_of(db, m.id) == {Role.RESIDENT}
+
+
+async def test_role_appended_to_a_membership_takes_the_memberships_building(db: AsyncSession):
+    a = await _building(db, "a")
+    m = await _membership(db, a, await _user(db, "alice@example.com"))
+    membership = await _membership_with_roles_loaded(db, m.id)
+
+    membership.roles.append(MembershipRole(role=Role.SECURITY))
+    await db.flush()
+
+    stored = await db.scalar(
+        text("SELECT building_id FROM membership_roles WHERE membership_id = :m"), {"m": m.id}
+    )
+    assert stored == a.id
 
 
 # --- 13: enum values ---------------------------------------------------------------------------
