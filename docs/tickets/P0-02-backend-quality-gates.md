@@ -6,7 +6,7 @@
 | Risk tier | 3 |
 | Depends on | P0-01 (the loop commands and `CLAUDE.md` come from it) |
 | Replaces old | M1-T05 (remaining lint/format part) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
