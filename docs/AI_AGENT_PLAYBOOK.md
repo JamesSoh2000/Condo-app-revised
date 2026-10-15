@@ -115,9 +115,10 @@ Command: [`/review-ticket`](../.claude/commands/review-ticket.md), run as a **su
 **Fix loop.** The implementer reproduces each finding (a failing test first) before fixing it, and records
 dismissed findings with a reason in the PR. For each fix, the PR's "Independent review" section keeps the
 concrete failure that motivated it and the evidence for the final approach (the test that failed and now
-passes); a fix that chose between approaches also gets a decision record. Then a **new** fresh reviewer re-reviews the whole diff, not just
-the fixes. At most **3 rounds**: an open Critical or High after round 3 blocks the ticket. Medium and Low
-findings that are not fixed go to the PR's follow-ups and the explanation's "Not verified" section.
+passes); a fix that chose between approaches also gets a decision record. Then a **new** fresh reviewer
+re-reviews the whole diff, not just the fixes. At most **3 rounds**: an open Critical or High after round 3
+blocks the ticket. Medium and Low findings that are not fixed go to the PR's follow-ups and the
+explanation's "Not verified" section.
 
 ### Step 6 — Explain (fresh session)
 
