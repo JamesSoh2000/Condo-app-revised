@@ -29,16 +29,16 @@ Deno.serve(async (req) => {
     const profiles = await base44.asServiceRole.entities.Profile.list('-created_date', 500);
     for (const profile of profiles) {
       if (profile.unit_id) continue; // Already migrated
-      
+
       if (profile.unit_number) {
         // Parse unit_number like "1314 E" or "1314"
         const parts = profile.unit_number.toString().trim().split(/\s+/);
         const unitNum = parts[0];
         const tower = parts[1] || (unitNum.startsWith('1') ? 'E' : 'W');
-        
+
         const key = `${unitNum}_${tower}`;
         const unit = unitMap.get(key);
-        
+
         if (unit) {
           await base44.asServiceRole.entities.Profile.update(profile.id, {
             unit_id: unit.id
@@ -54,15 +54,15 @@ Deno.serve(async (req) => {
     const residentProfiles = await base44.asServiceRole.entities.ResidentProfile.list('-created_date', 500);
     for (const residentProfile of residentProfiles) {
       if (residentProfile.unit_id) continue;
-      
+
       if (residentProfile.unit_number) {
         const parts = residentProfile.unit_number.toString().trim().split(/\s+/);
         const unitNum = parts[0];
         const tower = parts[1] || (unitNum.startsWith('1') ? 'E' : 'W');
-        
+
         const key = `${unitNum}_${tower}`;
         const unit = unitMap.get(key);
-        
+
         if (unit) {
           await base44.asServiceRole.entities.ResidentProfile.update(residentProfile.id, {
             unit_id: unit.id
@@ -78,11 +78,11 @@ Deno.serve(async (req) => {
     const packages = await base44.asServiceRole.entities.Package.list('-created_date', 1000);
     for (const pkg of packages) {
       if (pkg.unit_id) continue;
-      
+
       if (pkg.unit_number && pkg.tower) {
         const key = `${pkg.unit_number}_${pkg.tower}`;
         const unit = unitMap.get(key);
-        
+
         if (unit) {
           await base44.asServiceRole.entities.Package.update(pkg.id, {
             unit_id: unit.id
@@ -94,8 +94,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    return Response.json({ 
-      success: true, 
+    return Response.json({
+      success: true,
       ...results
     });
   } catch (error) {

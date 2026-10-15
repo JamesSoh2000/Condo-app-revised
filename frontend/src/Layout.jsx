@@ -3,15 +3,15 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import BottomTabs from '@/components/BottomTabs';
 import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-              LayoutDashboard, 
-              Package, 
-              ShieldAlert, 
-              Wrench, 
-              Gamepad2, 
-              Wine, 
-              CalendarDays, 
-              LogOut, 
+import {
+              LayoutDashboard,
+              Package,
+              ShieldAlert,
+              Wrench,
+              Gamepad2,
+              Wine,
+              CalendarDays,
+              LogOut,
               User,
               MessageSquare,
               Menu,
@@ -117,17 +117,17 @@ export default function Layout({ children }) {
     const checkUser = async () => {
       try {
         const currentUser = await base44.auth.me();
-        
+
         // Set isAdmin for board members
         if (currentUser.management_role === 'board' || currentUser.app_role === 'board') {
           currentUser.isAdmin = true;
         }
-        
+
         // Define protected paths
         const onboardingPath = '/Onboarding';
         const setupPath = '/ResidentSetup';
         const currentPath = location.pathname;
-        
+
         // Skip redirects if on onboarding or setup pages
         if (currentPath === onboardingPath || currentPath === setupPath) {
           setUser(currentUser);
@@ -135,28 +135,28 @@ export default function Layout({ children }) {
           setAuthReady(true);
           return;
         }
-        
+
         // Redirect to onboarding if account_type is not set
         if (!currentUser.account_type) {
           navigate(createPageUrl('Onboarding'));
           return;
         }
-        
+
         // Fetch profile data and check approval status - ONLY FOR RESIDENTS
         let profiles = [];
         let residentProfiles = [];
-        
+
         if (currentUser.account_type === 'resident') {
           profiles = await base44.entities.Profile.filter({ userId: currentUser.id });
           residentProfiles = await base44.entities.ResidentProfile.filter({ user_id: currentUser.id });
-          
+
           // Redirect residents without any profile to setup
           if (profiles.length === 0 && residentProfiles.length === 0) {
             navigate(createPageUrl('ResidentSetup'));
             return;
           }
         }
-        
+
         if (profiles.length > 0) {
           // If Profile exists, user is already approved (existing resident)
           const profile = profiles[0];
@@ -182,10 +182,10 @@ export default function Layout({ children }) {
           currentUser.residentApprovalStatus = 'pending_approval';
           setDisplayUser(currentUser);
         }
-        
+
         setUser(currentUser);
         setAuthReady(true);
-        
+
         // Load saved view role for board members and property management (for financials switcher)
         const isPropertyMgmt = currentUser.management_role === 'property_management' || currentUser.app_role === 'property_management';
         if (currentUser.isAdmin || isPropertyMgmt) {
@@ -205,10 +205,10 @@ export default function Layout({ children }) {
   // Fetch initial counts and poll for updates - only after auth is ready
   useEffect(() => {
     if (!authReady || !user) return;
-    
+
     const effectiveRole = user.isAdmin ? activeViewRole : (user.management_role || user.app_role);
     const effectiveAccountType = user.isAdmin ? (activeViewRole === 'resident' ? 'resident' : 'management') : accountType;
-    
+
     // Initial fetch for security users
     if (effectiveRole === 'security') {
       fetchUnreadGameroomNotifications(user.id);
@@ -249,7 +249,7 @@ export default function Layout({ children }) {
         fetchPackageBadgeCount(user.id);
       }
     }, 5000);
-    
+
     return () => clearInterval(interval);
   }, [authReady, user, activeViewRole]);
 
@@ -327,7 +327,7 @@ export default function Layout({ children }) {
       // Get user's profile to find their unit
       const profiles = await base44.entities.Profile.filter({ userId });
       let profile = profiles.length > 0 ? profiles[0] : null;
-      
+
       // Fallback to ResidentProfile if no Profile
       if (!profile) {
         const residentProfiles = await base44.entities.ResidentProfile.filter({ user_id: userId });
@@ -338,21 +338,21 @@ export default function Layout({ children }) {
           };
         }
       }
-      
+
       if (!profile || !profile.unit_id) {
         setPackageBadgeCount(0);
         return;
       }
-      
+
       // Fetch packages for this unit
       const allPackages = await base44.entities.Package.filter({ unit_id: profile.unit_id });
-      
+
       // Count ready packages for this resident
-      const readyPackages = allPackages.filter(pkg => 
-        pkg.status === 'ready_for_pickup' && 
+      const readyPackages = allPackages.filter(pkg =>
+        pkg.status === 'ready_for_pickup' &&
         (pkg.recipient_profile_id === profile.id || !pkg.recipient_profile_id)
       );
-      
+
       setPackageBadgeCount(readyPackages.length);
     } catch (error) {
       console.error('Failed to fetch package badge count:', error);
@@ -461,7 +461,7 @@ export default function Layout({ children }) {
     // Resident navigation (for actual residents or board viewing as resident)
     if (effectiveAccountType === 'resident') {
       const isPending = user?.residentApprovalStatus === 'pending_approval';
-      
+
       items.push({ name: t('My Profile'), icon: User, path: '/Profile' });
       items.push({ name: t('Move In/Out'), icon: Truck, path: '/MoveRequest' });
 
@@ -564,10 +564,10 @@ export default function Layout({ children }) {
               <ChevronLeft className="w-5 h-5" />
             </Button>
           ) : null}
-          <img 
-            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/9780cdd25_logo-footer-estwest-r.png" 
-            alt="EstWest Condominiums" 
-            className="h-8 w-auto object-contain" 
+          <img
+            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/9780cdd25_logo-footer-estwest-r.png"
+            alt="EstWest Condominiums"
+            className="h-8 w-auto object-contain"
           />
         </div>
         <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
@@ -579,11 +579,11 @@ export default function Layout({ children }) {
         {/* Mobile Menu Overlay - Must be before sidebar for proper stacking */}
         <AnimatePresence>
           {isMobileMenuOpen && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ 
+              transition={{
                 duration: 0.26,
                 ease: [0.34, 1.45, 0.64, 1]
               }}
@@ -595,9 +595,9 @@ export default function Layout({ children }) {
         </AnimatePresence>
 
         {/* Sidebar - Desktop & Mobile */}
-        <aside 
+        <aside
           className={`
-            fixed inset-y-0 left-0 z-40 w-[80%] max-w-[320px] lg:w-56 
+            fixed inset-y-0 left-0 z-40 w-[80%] max-w-[320px] lg:w-56
             bg-white dark:bg-zinc-900 border-r border-zinc-100 dark:border-zinc-800 shadow-xl
             lg:static lg:inset-0 lg:max-w-none lg:shadow-none
             motion-reduce:transition-none
@@ -606,8 +606,8 @@ export default function Layout({ children }) {
             willChange: isMobileMenuOpen ? 'transform' : 'auto',
             transition: window.matchMedia('(prefers-reduced-motion: reduce)').matches
               ? 'none'
-              : isMobileMenuOpen 
-                ? 'transform 260ms cubic-bezier(0.34, 1.45, 0.64, 1)' 
+              : isMobileMenuOpen
+                ? 'transform 260ms cubic-bezier(0.34, 1.45, 0.64, 1)'
                 : 'transform 200ms cubic-bezier(0.4, 0, 0.2, 1)',
             transform: isMobileMenuOpen ? 'translate3d(0, 0, 0)' : 'translate3d(-100%, 0, 0)',
           }}
@@ -627,14 +627,14 @@ export default function Layout({ children }) {
           <div className="flex flex-col h-full">
             {/* Mobile Close Button */}
             <div className="lg:hidden flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800">
-              <img 
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/9780cdd25_logo-footer-estwest-r.png" 
-                alt="EstWest Condominiums" 
-                className="h-8 w-auto object-contain [filter:brightness(0)] dark:[filter:brightness(0)_invert(1)]" 
+              <img
+                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/9780cdd25_logo-footer-estwest-r.png"
+                alt="EstWest Condominiums"
+                className="h-8 w-auto object-contain [filter:brightness(0)] dark:[filter:brightness(0)_invert(1)]"
               />
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="text-zinc-500"
               >
@@ -644,9 +644,9 @@ export default function Layout({ children }) {
 
             {/* Desktop Header */}
             <div className="p-6 hidden lg:block">
-              <img 
-                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/9780cdd25_logo-footer-estwest-r.png" 
-                alt="EstWest Condominiums" 
+              <img
+                src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/9780cdd25_logo-footer-estwest-r.png"
+                alt="EstWest Condominiums"
                 className="h-12 w-auto object-contain mb-2 [filter:brightness(0)] dark:[filter:brightness(0)_invert(1)]"
               />
               {user && accountType && (
@@ -666,15 +666,15 @@ export default function Layout({ children }) {
               {navItems.map((item) => {
                 const isActive = location.pathname === item.path;
                 return (
-                  <Link 
-                    key={item.path} 
+                  <Link
+                    key={item.path}
                     to={createPageUrl(item.path.substring(1) || 'Dashboard')}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     <div className={`
                       flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all duration-200 group relative
-                      ${isActive 
-                        ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-lg shadow-zinc-200 dark:shadow-zinc-800' 
+                      ${isActive
+                        ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-lg shadow-zinc-200 dark:shadow-zinc-800'
                         : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100'}
                     `}>
                       <item.icon className={`w-5 h-5 ${isActive ? 'text-white dark:text-zinc-900' : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-900 dark:group-hover:text-zinc-100'}`} />
@@ -723,8 +723,8 @@ export default function Layout({ children }) {
                   </div>
                 </div>
               </div>
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 className="w-full justify-start text-zinc-500 hover:text-red-500 hover:bg-red-50"
                 onClick={handleLogout}
               >
@@ -740,9 +740,9 @@ export default function Layout({ children }) {
            {/* Cinematic background elements */}
            {bgImage ? (
              <div className="fixed inset-0 z-0 overflow-hidden">
-                <img 
-                  src={bgImage} 
-                  alt="Background" 
+                <img
+                  src={bgImage}
+                  alt="Background"
                   className="w-full h-full object-cover opacity-100 scale-110"
                 />
                 <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px]" />
@@ -750,7 +750,7 @@ export default function Layout({ children }) {
            ) : (
              <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-zinc-100 to-transparent -z-10" />
            )}
-          
+
           <div className="max-w-5xl mx-auto p-4 lg:p-8 min-h-full relative z-10 pb-[calc(env(safe-area-inset-bottom)+5rem)] lg:pb-8">
              <AnimatePresence mode="wait">
                 <motion.div

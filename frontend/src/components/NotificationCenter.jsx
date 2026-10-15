@@ -19,26 +19,26 @@ export default function NotificationCenter({ user }) {
         queryKey: ['notifications', user?.id],
         queryFn: async () => {
             if (!user) return [];
-            
+
             // Fetch notifications targeted to this specific user
             // 1. Announcements (global - type: 'announcement')
             // 2. Notifications with target_user_id matching this user
             // 3. Notifications with target_role matching user's role
-            
+
             const allNotifications = await base44.entities.Notification.list('-created_date', 100);
-            
+
             const userRole = user.management_role || user.app_role;
-            
+
             return allNotifications.filter(n => {
                 // Global announcements
                 if (n.type === 'announcement') return true;
-                
+
                 // Directly targeted to this user
                 if (n.target_user_id && n.target_user_id === user.id) return true;
-                
+
                 // Targeted to user's role (for management/security workers)
                 if (n.target_role && n.target_role === userRole) return true;
-                
+
                 return false;
             });
         },
@@ -89,8 +89,8 @@ export default function NotificationCenter({ user }) {
                     ) : (
                         <div className="divide-y divide-zinc-100">
                             {notifications.map(n => (
-                                <div 
-                                    key={n.id} 
+                                <div
+                                    key={n.id}
                                     className={`p-4 cursor-pointer hover:bg-zinc-50 transition-colors ${!n.is_read ? 'bg-blue-50/50' : ''}`}
                                     onClick={() => handleNotificationClick(n)}
                                 >

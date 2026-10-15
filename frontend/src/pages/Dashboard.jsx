@@ -50,7 +50,7 @@ export default function Dashboard() {
       console.log('[Dashboard] Logged in userId:', u.id, '| email:', u.email);
       setUser(u);
       setLoading(false);
-      
+
       // Always pull from Profile/ResidentProfile as source of truth
       // Sequential (not parallel) to avoid rate limiting when many components load at once
       setProfileLoading(true);
@@ -62,7 +62,7 @@ export default function Dashboard() {
       try {
         residentProfiles = await base44.entities.ResidentProfile.filter({ user_id: u.id });
       } catch (_) {}
-      
+
       // Source of truth priority: Profile (approved) > ResidentProfile (approved)
       let unitNumber = null;
       let parkingSpot = null;
@@ -106,7 +106,7 @@ export default function Dashboard() {
       console.log('[Dashboard] Resolved display — userId:', u.id, '| name:', resolvedDisplay.full_name, '| unit:', resolvedDisplay.unit_number);
       setDisplayUser(resolvedDisplay);
       setProfileLoading(false);
-      
+
       // Debug: Check unread notifications for board members
       if (u.isAdmin || u.management_role === 'board' || u.app_role === 'board') {
         const debugNotifications = await base44.entities.Notification.filter({
@@ -162,7 +162,7 @@ export default function Dashboard() {
   const requestedViewRole = isAdmin ? (urlParams.get('role') || localStorage.getItem('boardActiveViewRole') || 'resident') : null;
   // Views outside the demo scope (financials) fall back to the resident view.
   const activeViewRole = requestedViewRole && !isDemoViewRole(requestedViewRole) ? 'resident' : requestedViewRole;
-  
+
   // Determine effective account type and role based on active view
   const effectiveAccountType = (isAdmin || user?.management_role === 'property_management' || user?.app_role === 'property_management') && activeViewRole
     ? (activeViewRole === 'resident' ? 'resident' : 'management')
@@ -609,7 +609,7 @@ export default function Dashboard() {
               <BuildingUpdatesFeed />
             </div>
           </div>
-          
+
           <div className="hidden lg:block w-80 flex-shrink-0">
             <BuildingUpdatesFeed />
           </div>

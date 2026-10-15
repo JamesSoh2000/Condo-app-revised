@@ -55,11 +55,11 @@ export default function ResidentsPage() {
       console.log('[APPROVAL] Starting approval for ResidentProfile ID:', residentId);
       const user = await base44.auth.me();
       const residentProfile = await base44.entities.ResidentProfile.filter({ id: residentId });
-      
+
       if (residentProfile.length === 0) {
         throw new Error('ResidentProfile not found');
       }
-      
+
       const resident = residentProfile[0];
       console.log('[APPROVAL] ResidentProfile found:', {
         id: resident.id,
@@ -68,7 +68,7 @@ export default function ResidentsPage() {
         full_name: resident.full_name,
         unit_number: resident.unit_number
       });
-      
+
       // Update ResidentProfile to approved
       await base44.entities.ResidentProfile.update(residentId, {
         status: 'approved',
@@ -76,14 +76,14 @@ export default function ResidentsPage() {
         approved_at: new Date().toISOString()
       });
       console.log('[APPROVAL] ResidentProfile updated to approved');
-      
+
       // Check if Profile already exists
       const existingProfiles = await base44.entities.Profile.filter({ userId: resident.user_id });
       if (existingProfiles.length > 0) {
         console.log('[APPROVAL] Profile already exists, skipping creation');
         return { success: true, profileExists: true };
       }
-      
+
       // Create Profile record (this is what My Packages looks for)
       const newProfile = await base44.entities.Profile.create({
         userId: resident.user_id,
@@ -96,14 +96,14 @@ export default function ResidentsPage() {
         lease_document_url: resident.lease_document_url || '',
         insurance_info_url: resident.insurance_document_url || ''
       });
-      
+
       console.log('[APPROVAL] Profile created:', {
         id: newProfile.id,
         userId: newProfile.userId,
         unit_id: newProfile.unit_id,
         full_name: newProfile.full_name
       });
-      
+
       return { success: true, profileCreated: true };
     },
     onSuccess: (result) => {
@@ -186,9 +186,9 @@ export default function ResidentsPage() {
 
   const submitRejection = () => {
     if (pendingActionResident) {
-      rejectMutation.mutate({ 
-        residentId: pendingActionResident.id, 
-        reason: rejectReason 
+      rejectMutation.mutate({
+        residentId: pendingActionResident.id,
+        reason: rejectReason
       });
     }
   };
@@ -291,21 +291,21 @@ export default function ResidentsPage() {
           <p className="text-zinc-500 mt-1">View and manage resident information</p>
         </div>
         <div className="flex gap-2">
-          <Button 
+          <Button
             variant={viewMode === 'all' ? 'default' : 'outline'}
             onClick={() => setViewMode('all')}
           >
             All
             <Badge className="ml-2 bg-zinc-500">{allApprovedMapped.filter(r => !r.is_deleted).length + allPendingMapped.filter(r => !r.is_deleted).length}</Badge>
           </Button>
-          <Button 
+          <Button
             variant={viewMode === 'approved' ? 'default' : 'outline'}
             onClick={() => setViewMode('approved')}
           >
             Approved
             <Badge className="ml-2 bg-green-600">{approvedProfiles.length}</Badge>
           </Button>
-          <Button 
+          <Button
             variant={viewMode === 'pending' ? 'default' : 'outline'}
             onClick={() => setViewMode('pending')}
           >
@@ -372,8 +372,8 @@ export default function ResidentsPage() {
                   </TableRow>
                 ) : (
                   filteredResidents.map((resident) => (
-                    <TableRow 
-                      key={resident.id} 
+                    <TableRow
+                      key={resident.id}
                       className="cursor-pointer hover:bg-zinc-50"
                       onClick={() => openDetails(resident)}
                     >
@@ -500,16 +500,16 @@ export default function ResidentsPage() {
                           <span className="font-semibold text-amber-900">Pending Approval</span>
                         </div>
                         <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             className="bg-green-600 hover:bg-green-700"
                             onClick={() => handleApprove(selectedResident)}
                           >
                             <CheckCircle className="w-4 h-4 mr-1" />
                             Approve
                           </Button>
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="destructive"
                             onClick={() => handleReject(selectedResident)}
                           >
@@ -668,8 +668,8 @@ export default function ResidentsPage() {
             <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>
               Cancel
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={submitRejection}
               disabled={!rejectReason.trim()}
             >

@@ -28,15 +28,15 @@ export default function VisitorVerification() {
       return allPasses.filter(pass => {
         const validFrom = new Date(pass.validFrom);
         const validUntil = pass.validUntil ? new Date(pass.validUntil) : null;
-        
+
         if (pass.type === 'one_time') {
           return isToday(validFrom);
         }
-        
+
         if (pass.type === 'time_limited' && validUntil) {
           return isWithinInterval(today, { start: validFrom, end: validUntil });
         }
-        
+
         return false;
       });
     },
@@ -60,7 +60,7 @@ export default function VisitorVerification() {
   const verifyMutation = useMutation({
     mutationFn: async (code) => {
       const passes = await base44.entities.VisitorAccessPass.filter({ code6: code });
-      
+
       if (passes.length === 0) {
         throw new Error('Invalid code.');
       }

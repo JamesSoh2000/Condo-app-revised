@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 export default function PhotoViewer({ photos, initialIndex = 0, onClose }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isZoomed, setIsZoomed] = useState(false);
-  
+
   const currentPhoto = photos[currentIndex];
   const hasMultiple = photos.length > 1;
 

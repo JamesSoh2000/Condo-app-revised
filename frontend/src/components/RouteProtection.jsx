@@ -29,13 +29,13 @@ export function useRouteProtection(user, activeViewRole) {
 
     const currentPath = location.pathname.toLowerCase();
     const isAdmin = user.isAdmin || user.management_role === 'board' || user.app_role === 'board';
-    
+
     // For board members, determine effective access based on activeViewRole
-    const effectiveAccountType = isAdmin && activeViewRole 
+    const effectiveAccountType = isAdmin && activeViewRole
       ? (activeViewRole === 'resident' ? 'resident' : 'management')
       : user.account_type;
     const effectiveRole = isAdmin && activeViewRole ? activeViewRole : (user.management_role || user.app_role);
-    
+
     const accountType = effectiveAccountType;
     const role = effectiveRole;
 
@@ -56,13 +56,13 @@ export function useRouteProtection(user, activeViewRole) {
     // Residents trying to access management routes (except board members accessing board routes)
     if (accountType === 'resident') {
       const isAccessingBoardRoute = boardRoutes.some(route => currentPath.includes(route.toLowerCase()));
-      
+
       // Allow board members to access board routes even in resident view
       if (isAccessingBoardRoute && isAdmin) {
         return;
       }
-      
-      const isAccessingManagement = 
+
+      const isAccessingManagement =
         securityRoutes.some(route => currentPath.includes(route.toLowerCase())) ||
         managementRoutes.some(route => currentPath.includes(route.toLowerCase())) ||
         isAccessingBoardRoute;
@@ -76,7 +76,7 @@ export function useRouteProtection(user, activeViewRole) {
 
     // Management users trying to access resident-specific routes (unless they're board members)
     if (accountType === 'management' && !isAdmin) {
-      const isAccessingResidentOnly = residentOnlyRoutes.some(route => 
+      const isAccessingResidentOnly = residentOnlyRoutes.some(route =>
         currentPath.includes(route.toLowerCase())
       );
 
@@ -89,10 +89,10 @@ export function useRouteProtection(user, activeViewRole) {
       // Role-specific restrictions within management (skip for admins)
       if (!isAdmin) {
         if (role === 'security') {
-          const isAccessingUnauthorized = 
+          const isAccessingUnauthorized =
             managementRoutes.some(route => currentPath.includes(route.toLowerCase()) && route !== '/managementnotices') ||
             boardRoutes.some(route => currentPath.includes(route.toLowerCase()));
-          
+
           if (isAccessingUnauthorized) {
             console.log('[ROUTE GUARD] REDIRECTED_TO_DASHBOARD reason=security_accessing_unauthorized from=' + currentPath + ' role=' + role);
             navigate(createPageUrl('Dashboard'));
@@ -101,10 +101,10 @@ export function useRouteProtection(user, activeViewRole) {
         }
 
         if (role === 'property_management') {
-          const isAccessingUnauthorized = 
+          const isAccessingUnauthorized =
             securityRoutes.some(route => currentPath.includes(route.toLowerCase()) && route !== '/managementnotices') ||
             boardRoutes.some(route => currentPath.includes(route.toLowerCase()));
-          
+
           if (isAccessingUnauthorized) {
             console.log('[ROUTE GUARD] REDIRECTED_TO_DASHBOARD reason=property_management_accessing_unauthorized from=' + currentPath + ' role=' + role);
             navigate(createPageUrl('Dashboard'));

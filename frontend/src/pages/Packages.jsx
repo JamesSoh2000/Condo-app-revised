@@ -26,7 +26,7 @@ export default function Packages() {
     mutationFn: async (packageId) => {
       const currentUser = await base44.auth.me();
       if (!currentUser?.id) throw new Error('Not authenticated');
-      
+
       return base44.entities.Package.update(packageId, {
         status: 'picked_up',
         picked_up_at: new Date().toISOString(),
@@ -37,7 +37,7 @@ export default function Packages() {
     onSuccess: () => {
       queryClient.invalidateQueries(['resident-packages']);
       setSelectedPackage(null);
-      
+
       // Show success animation
       setShowSuccessAnimation(true);
       setTimeout(() => setShowSuccessAnimation(false), 2000);
@@ -60,15 +60,15 @@ export default function Packages() {
     queryKey: ['resident-profile', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      
+
       console.log('[Packages] Fetching profile for userId:', user.id);
-      
+
       const profiles = await base44.entities.Profile.filter({ userId: user.id });
       if (profiles.length > 0) {
         console.log('[Packages] Profile found:', profiles[0].id, '| unit_id:', profiles[0].unit_id);
         return profiles[0];
       }
-      
+
       const residentProfiles = await base44.entities.ResidentProfile.filter({ user_id: user.id });
       if (residentProfiles.length > 0 && residentProfiles[0].status === 'approved') {
         const rp = residentProfiles[0];
@@ -82,7 +82,7 @@ export default function Packages() {
           _isResidentProfile: true
         };
       }
-      
+
       console.warn('[Packages] No profile found for userId:', user.id);
       return null;
     },
@@ -97,7 +97,7 @@ export default function Packages() {
     queryKey: ['resident-unit', user?.id, profile?.unit_id, profile?.unit_number],
     queryFn: async () => {
       if (!profile) return null;
-      
+
       if (profile.unit_id) {
         const units = await base44.entities.Unit.filter({ id: profile.unit_id });
         if (units.length > 0) {
@@ -105,13 +105,13 @@ export default function Packages() {
           return units[0];
         }
       }
-      
+
       if (profile.unit_number) {
         const parts = profile.unit_number.toString().trim().split(/\s+/);
         const unitNum = parts[0];
         const tower = parts[1] || (unitNum.startsWith('1') ? 'E' : 'W');
         const units = await base44.entities.Unit.filter({ unit_number: unitNum, tower });
-        
+
         if (units.length > 0) {
           try {
             if (profile._isResidentProfile) {
@@ -124,7 +124,7 @@ export default function Packages() {
           return units[0];
         }
       }
-      
+
       console.warn('[Packages] No unit found for profile:', profile.id, '| unit_id:', profile.unit_id, '| unit_number:', profile.unit_number);
       return null;
     },
@@ -143,7 +143,7 @@ export default function Packages() {
         '-created_date',
         50
       );
-      return allPackages.filter(pkg => 
+      return allPackages.filter(pkg =>
         pkg.recipient_profile_id === profile.id || !pkg.recipient_profile_id
       );
     },
@@ -247,7 +247,7 @@ export default function Packages() {
   }
 
   const activePackages = packages?.filter(p => p.status === 'ready_for_pickup') || [];
-  
+
   // Filter history to only include packages from last 30 days (client-side safety check)
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -257,12 +257,12 @@ export default function Packages() {
     const referenceDate = new Date(p.picked_up_at || p.created_date);
     return referenceDate >= thirtyDaysAgo;
   }) || []).sort((a, b) => new Date(b.picked_up_at || b.created_date) - new Date(a.picked_up_at || a.created_date));
-  
+
   // Group history by date
   const groupedHistory = historyPackages.reduce((groups, pkg) => {
     const date = new Date(pkg.picked_up_at || pkg.created_date);
     const dateKey = format(date, 'yyyy-MM-dd');
-    
+
     if (!groups[dateKey]) {
       groups[dateKey] = {
         date: date,
@@ -272,21 +272,21 @@ export default function Packages() {
     groups[dateKey].packages.push(pkg);
     return groups;
   }, {});
-  
+
   const sortedDateKeys = Object.keys(groupedHistory).sort((a, b) => new Date(b) - new Date(a));
-  
+
   const getDateLabel = (date) => {
     if (isToday(date)) return 'Today';
     if (isYesterday(date)) return 'Yesterday';
     return format(date, 'MMM d, yyyy');
   };
-  
+
   // Get first 5 packages for collapsed view
   const first5Packages = historyPackages.slice(0, 5);
   const displayPackages = historyExpanded ? historyPackages : first5Packages;
 
   const PackageCard = ({ pkg }) => (
-    <div 
+    <div
       className="bg-white dark:bg-zinc-800 rounded-xl border border-zinc-100 dark:border-zinc-700 p-4 flex items-center justify-between hover:bg-zinc-50 dark:hover:bg-zinc-750 transition-colors cursor-pointer"
       onClick={() => setSelectedPackage(pkg)}
     >
@@ -300,9 +300,9 @@ export default function Packages() {
                     }}
                     className="relative group"
                 >
-                    <img 
-                        src={pkg.packagePhotoUrls[0]} 
-                        alt="Package" 
+                    <img
+                        src={pkg.packagePhotoUrls[0]}
+                        alt="Package"
                         loading="lazy"
                         className="w-16 h-16 rounded-lg object-cover border-2 border-zinc-200 group-hover:border-blue-400 transition-colors"
                     />
@@ -336,8 +336,8 @@ export default function Packages() {
             </div>
         </div>
         {pkg.status === 'ready_for_pickup' && (
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
               onClick={(e) => {
@@ -356,7 +356,7 @@ export default function Packages() {
     <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        whileHover={{ 
+        whileHover={{
             scale: 1.02,
         }}
         transition={{ type: "spring", stiffness: 300, damping: 20, delay }}
@@ -416,9 +416,9 @@ export default function Packages() {
                 groups[dateKey].packages.push(pkg);
                 return groups;
               }, {});
-              
+
               const dateKeys = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
-              
+
               return dateKeys.map((dateKey) => {
                 const group = grouped[dateKey];
                 return (
@@ -431,7 +431,7 @@ export default function Packages() {
                 );
               });
             })()}
-            
+
             {/* Expand/Collapse Button */}
             {historyPackages.length > 5 && (
               <Button
@@ -491,7 +491,7 @@ export default function Packages() {
                   </div>
                 )}
               </div>
-              
+
               <div>
                 <p className="text-zinc-500 mb-2">Package Photo{selectedPackage.packagePhotoUrls?.length > 1 ? 's' : ''}</p>
                 {selectedPackage.packagePhotoUrls && selectedPackage.packagePhotoUrls.length > 0 ? (
@@ -505,8 +505,8 @@ export default function Packages() {
                         }}
                         className="relative group block"
                       >
-                        <img 
-                          src={url} 
+                        <img
+                          src={url}
                           alt={`Package photo ${idx + 1}`}
                           loading="lazy"
                           className="w-full h-48 object-cover rounded-lg border border-zinc-200 group-hover:border-blue-400 transition-colors"
@@ -541,9 +541,9 @@ export default function Packages() {
           <div className="fixed inset-0 z-50 flex items-start justify-center pt-32 md:pt-40 pointer-events-none">
             <motion.div
               initial={{ y: -100, opacity: 0, scale: 0.8 }}
-              animate={{ 
-                y: 0, 
-                opacity: 1, 
+              animate={{
+                y: 0,
+                opacity: 1,
                 scale: 1,
               }}
               exit={{ y: 100, opacity: 0, scale: 0.8 }}
@@ -556,7 +556,7 @@ export default function Packages() {
               className="bg-white dark:bg-zinc-800 rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4"
             >
               <motion.div
-                animate={{ 
+                animate={{
                   rotate: [0, -10, 10, -5, 5, 0],
                 }}
                 transition={{
@@ -571,7 +571,7 @@ export default function Packages() {
               <motion.p
                 initial={{ opacity: 0, y: 10, scale: 0.9 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ 
+                transition={{
                   delay: 0.4,
                   type: "spring",
                   damping: 10,

@@ -20,7 +20,7 @@ export default function Gameroom() {
   const [activeRental, setActiveRental] = useState(null);
   const [showRentalDialog, setShowRentalDialog] = useState(false);
   const queryClient = useQueryClient();
-  
+
   const { data: user } = useQuery({
     queryKey: ['me'],
     queryFn: () => base44.auth.me()
@@ -30,8 +30,8 @@ export default function Gameroom() {
       queryKey: ['my-rentals', user?.email],
       queryFn: async () => {
           const all = await base44.entities.GameroomRental.list('-created_date', 50);
-          return all.filter(r => 
-              ['requested', 'approved', 'active'].includes(r.status) && 
+          return all.filter(r =>
+              ['requested', 'approved', 'active'].includes(r.status) &&
               r.created_by === user?.email
           );
       },
@@ -67,7 +67,7 @@ export default function Gameroom() {
           // Backend validation: check if item is available
           const activeRentals = await base44.entities.GameroomRental.list('-created_date', 100);
           const conflicts = activeRentals.filter(r => ['requested', 'accepted', 'active'].includes(r.status));
-          
+
           // Check availability based on dependency rules
           if (itemName === 'Pool Cues') {
               const blocked = conflicts.some(r => r.item_name === 'Pool Cues' || r.item_name === 'Ping Pong & Pool Cues');
@@ -76,9 +76,9 @@ export default function Gameroom() {
               const blocked = conflicts.some(r => r.item_name === 'Ping Pong' || r.item_name === 'Ping Pong & Pool Cues');
               if (blocked) throw new Error('Ping Pong is currently rented');
           } else if (itemName === 'Ping Pong & Pool Cues') {
-              const blocked = conflicts.some(r => 
-                r.item_name === 'Pool Cues' || 
-                r.item_name === 'Ping Pong' || 
+              const blocked = conflicts.some(r =>
+                r.item_name === 'Pool Cues' ||
+                r.item_name === 'Ping Pong' ||
                 r.item_name === 'Ping Pong & Pool Cues'
               );
               if (blocked) throw new Error('Equipment is currently rented');
@@ -101,7 +101,7 @@ export default function Gameroom() {
 
           // Notify ALL security staff
           const users = await base44.entities.User.list();
-          const securityStaff = users.filter(u => 
+          const securityStaff = users.filter(u =>
             (u.management_role === 'security' || u.app_role === 'security') && u.email
           );
 
@@ -158,7 +158,7 @@ export default function Gameroom() {
         toast.success("Request cancelled");
         setActiveRental(null);
         setShowRentalDialog(false);
-        queryClient.setQueryData(['my-rentals', user?.email], (old) => 
+        queryClient.setQueryData(['my-rentals', user?.email], (old) =>
             old ? old.filter(r => r.id !== activeRental?.id) : []
         );
         refetch();
@@ -173,15 +173,15 @@ export default function Gameroom() {
   // Check item availability based on dependency rules
   const checkAvailability = (itemName) => {
     if (!allActiveRentals) return true;
-    
+
     if (itemName === 'Pool Cues') {
       return !allActiveRentals.some(r => r.item_name === 'Pool Cues' || r.item_name === 'Ping Pong & Pool Cues');
     } else if (itemName === 'Ping Pong') {
       return !allActiveRentals.some(r => r.item_name === 'Ping Pong' || r.item_name === 'Ping Pong & Pool Cues');
     } else if (itemName === 'Ping Pong & Pool Cues') {
-      return !allActiveRentals.some(r => 
-        r.item_name === 'Pool Cues' || 
-        r.item_name === 'Ping Pong' || 
+      return !allActiveRentals.some(r =>
+        r.item_name === 'Pool Cues' ||
+        r.item_name === 'Ping Pong' ||
         r.item_name === 'Ping Pong & Pool Cues'
       );
     }
@@ -191,13 +191,13 @@ export default function Gameroom() {
   // Check if current user is renting this item
   const isCurrentUserRenting = (itemName) => {
     if (!allActiveRentals || !user?.email) return false;
-    
+
     return allActiveRentals.some(r => {
-      const matchesItem = 
+      const matchesItem =
         (itemName === 'Pool Cues' && (r.item_name === 'Pool Cues' || r.item_name === 'Ping Pong & Pool Cues')) ||
         (itemName === 'Ping Pong' && (r.item_name === 'Ping Pong' || r.item_name === 'Ping Pong & Pool Cues')) ||
         (itemName === 'Ping Pong & Pool Cues' && (r.item_name === 'Pool Cues' || r.item_name === 'Ping Pong' || r.item_name === 'Ping Pong & Pool Cues'));
-      
+
       return matchesItem && r.created_by === user.email;
     });
   };
@@ -208,12 +208,12 @@ export default function Gameroom() {
           setShowRentalDialog(true);
           return;
       }
-      
+
       if (!checkAvailability(item.name)) {
           toast.error("Not available — item is currently rented");
           return;
       }
-      
+
       setSelectedItem(item);
   };
 
@@ -262,7 +262,7 @@ export default function Gameroom() {
             const isAvailable = checkAvailability(item.name);
             const isMyRental = isCurrentUserRenting(item.name);
             return (
-            <motion.div 
+            <motion.div
                 key={item.id}
                 layoutId={item.id}
                 onClick={() => handleBorrowClick(item)}
@@ -279,7 +279,7 @@ export default function Gameroom() {
                 ) : (
                     <img src={item.image} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={item.name} />
                 )}
-                
+
                 {!isAvailable && !isMyRental && (
                     <div className="absolute top-6 left-6 z-30">
                         <div className="bg-red-500 text-white px-4 py-2 rounded-full font-bold text-sm shadow-lg">
@@ -295,7 +295,7 @@ export default function Gameroom() {
                         </div>
                     </div>
                 )}
-                
+
                 <div className="absolute bottom-0 left-0 right-0 p-8 z-20 bg-gradient-to-t from-black/80 to-transparent">
                     <h3 className="text-3xl font-bold text-white">{item.name}</h3>
                     {isAvailable ? (
@@ -319,11 +319,11 @@ export default function Gameroom() {
 
       <AnimatePresence>
         {selectedItem && (
-            <div 
+            <div
                 className="fixed inset-0 z-50 flex items-center justify-center p-4"
                 onClick={() => setSelectedItem(null)}
             >
-                <motion.div 
+                <motion.div
                     layoutId={selectedItem.id}
                     className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
                     onClick={(e) => e.stopPropagation()}
@@ -337,9 +337,9 @@ export default function Gameroom() {
                         ) : (
                             <img src={selectedItem.image} className="w-full h-full object-cover" alt={selectedItem.name} />
                             )}
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
+                            <Button
+                                variant="ghost"
+                                size="icon"
                                 className="absolute top-4 right-4 bg-white hover:bg-zinc-100 text-zinc-900 rounded-full shadow-lg z-10"
                                 onClick={() => setSelectedItem(null)}
                             >
@@ -368,14 +368,14 @@ export default function Gameroom() {
                         </div>
 
                         <div className="flex gap-3">
-                            <Button 
+                            <Button
                                 variant="outline"
                                 className="flex-1 h-12 text-lg"
                                 onClick={() => setSelectedItem(null)}
                             >
                                 {t('Cancel')}
                             </Button>
-                            <Button 
+                            <Button
                                 className="flex-1 h-12 text-lg bg-zinc-900 hover:bg-zinc-800 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                                 onClick={() => requestMutation.mutate(selectedItem.name)}
                                 disabled={requestMutation.isPending || !checkAvailability(selectedItem.name)}
@@ -409,7 +409,7 @@ export default function Gameroom() {
                             <BadgeStatus status={activeRental.status} />
                         </DialogDescription>
                     </DialogHeader>
-                    
+
                     <div className="py-6">
                  {activeRental?.status === 'requested' && (
                     <div className="space-y-6 text-center">
@@ -425,7 +425,7 @@ export default function Gameroom() {
                          <div className="p-4 bg-zinc-800/50 rounded-lg text-sm text-zinc-400">
                              {t('Show this screen to security to pick up your item.')}
                          </div>
-                        <Button 
+                        <Button
                             variant="outline"
                             className="w-full text-red-400 border-red-400 hover:bg-red-950"
                             onClick={() => {
@@ -446,7 +446,7 @@ export default function Gameroom() {
                             <Check className="w-8 h-8" />
                         </div>
                         <p className="text-green-400 font-medium">{t('Approved! Pick it up now.')}</p>
-                        <Button 
+                        <Button
                            className="w-full bg-white text-black hover:bg-zinc-200 font-bold"
                            onClick={() => startRentalMutation.mutate(activeRental.id)}
                         >
@@ -497,14 +497,14 @@ function BadgeStatus({ status }) {
 
 function LiveTimer({ startTime }) {
     const [elapsed, setElapsed] = useState('00:00');
-    
+
     useEffect(() => {
         const interval = setInterval(() => {
             if (!startTime) return;
             const start = new Date(startTime);
             const now = new Date();
             const diff = Math.floor((now - start) / 1000);
-            
+
             const m = Math.floor(diff / 60).toString().padStart(2, '0');
             const s = (diff % 60).toString().padStart(2, '0');
             setElapsed(`${m}:${s}`);
@@ -522,16 +522,16 @@ function CountdownTimer({ startTime }) {
         const expire = new Date(start.getTime() + 10 * 60 * 1000);
         const now = new Date();
         const diff = Math.floor((expire - now) / 1000);
-        
+
         if (diff <= 0) return 'EXPIRED';
-        
+
         const m = Math.floor(diff / 60).toString().padStart(2, '0');
         const s = (diff % 60).toString().padStart(2, '0');
         return `${m}:${s}`;
     };
 
     const [remaining, setRemaining] = useState(calculateRemaining());
-    
+
     useEffect(() => {
         const interval = setInterval(() => {
             setRemaining(calculateRemaining());

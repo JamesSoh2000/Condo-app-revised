@@ -1,7 +1,7 @@
 # Install once per clone: `cd backend && uv run pre-commit install` (the hook runs from the repo root).
 # CI runs ruff directly (.github/workflows/ci.yml); these hooks catch the same problems before a commit.
 # The merged baseline migration is never edited (CLAUDE.md rule 11), so every hook skips it.
-# Formatting hooks cover backend/ only for now; P0-03c extends them to frontend/.
+# The whitespace and end-of-file hooks cover backend/ and frontend/ (frontend/ added in P0-03c).
 exclude: ^backend/migrations/versions/989e5bd83064_initial_empty_database_baseline\.py$
 
 repos:
@@ -18,8 +18,8 @@ repos:
     rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
-        files: ^(backend/|\.pre-commit-config\.yaml$)
+        files: ^(backend/|frontend/|\.pre-commit-config\.yaml$)
       - id: trailing-whitespace
-        files: ^(backend/|\.pre-commit-config\.yaml$)
+        files: ^(backend/|frontend/|\.pre-commit-config\.yaml$)
       - id: check-merge-conflict
       - id: detect-private-key

@@ -58,7 +58,7 @@ export default function SecuritySpeakeasy() {
                 <RefreshCw className="w-4 h-4 mr-2" /> Refresh
              </Button>
         </div>
-     
+
       <Card>
         <Table>
             <TableHeader>

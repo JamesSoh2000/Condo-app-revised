@@ -40,7 +40,7 @@ export default function CreateShiftReport() {
       };
 
       const report = await base44.entities.Report.create(enrichedData);
-      
+
       // Notify property management
       const notifyName = profile?.full_name || user.full_name;
       await base44.entities.Notification.create({
@@ -50,15 +50,15 @@ export default function CreateShiftReport() {
         target_role: 'property_management',
         related_entity_id: report.id
       });
-      
+
       // Notify all board members individually for badge tracking
       const allUsers = await base44.entities.User.list();
       const boardMembers = allUsers.filter(u => u.management_role === 'board' || u.app_role === 'board');
-      
+
       console.log('====== SHIFT REPORT NOTIFICATION DEBUG ======');
       console.log('boardRecipientsFound:', boardMembers.length);
       console.log('Board member IDs:', boardMembers.map(b => ({ id: b.id, email: b.email })));
-      
+
       const createdNotifications = [];
       for (const boardMember of boardMembers) {
         const notification = await base44.entities.Notification.create({
@@ -71,7 +71,7 @@ export default function CreateShiftReport() {
         });
         createdNotifications.push(notification);
       }
-      
+
       console.log('createdNotifications:', createdNotifications.length);
       if (createdNotifications.length > 0) {
         console.log('SAMPLE notification row:', {
@@ -83,7 +83,7 @@ export default function CreateShiftReport() {
         });
       }
       console.log('=============================================');
-      
+
       return report;
     },
     onSuccess: (report) => {
@@ -120,7 +120,7 @@ export default function CreateShiftReport() {
       toast.error('Please fill in all required fields');
       return;
     }
-    
+
     createReport.mutate({
       type: 'shift',
       createdByUserId: user.id,

@@ -22,7 +22,7 @@ export default function Maintenance() {
     description: '',
     priority: 'medium'
   });
-  
+
   const queryClient = useQueryClient();
   const { data: user } = useQuery({ queryKey: ['me'], queryFn: () => base44.auth.me() });
 
@@ -53,9 +53,9 @@ export default function Maintenance() {
           unit_number: profile?.unit_number || user.unit_number,
           status: 'submitted'
         };
-        
+
         const newTicket = await base44.entities.MaintenanceTicket.create(ticketData);
-        
+
         // Create notification
         await base44.entities.Notification.create({
             title: 'New Maintenance Request',
@@ -64,7 +64,7 @@ export default function Maintenance() {
             target_role: 'property_management',
             link: 'ManagementMaintenance'
         });
-        
+
         return newTicket;
     },
     onMutate: async (data) => {
@@ -139,17 +139,17 @@ export default function Maintenance() {
                     </div>
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Title</label>
-                        <Input 
-                            placeholder="Brief summary (e.g. Leaky faucet)" 
-                            value={ticket.title} 
+                        <Input
+                            placeholder="Brief summary (e.g. Leaky faucet)"
+                            value={ticket.title}
                             onChange={e => setTicket({...ticket, title: e.target.value})}
                         />
                     </div>
                      <div className="space-y-2">
                         <label className="text-sm font-medium">Description</label>
-                        <Textarea 
-                            placeholder="Details about the issue..." 
-                            value={ticket.description} 
+                        <Textarea
+                            placeholder="Details about the issue..."
+                            value={ticket.description}
                             onChange={e => setTicket({...ticket, description: e.target.value})}
                         />
                     </div>

@@ -25,7 +25,7 @@ export default function Concierge() {
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    
+
     const userMsg = { role: 'user', content: input };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
@@ -34,9 +34,9 @@ export default function Concierge() {
     try {
         // Simulated AI response logic (In production use InvokeLLM)
         const res = await base44.integrations.Core.InvokeLLM({
-            prompt: `You are a helpful concierge for a luxury condo called EstWest. 
+            prompt: `You are a helpful concierge for a luxury condo called EstWest.
             User query: "${input}".
-            
+
             CORE INSTRUCTIONS:
             - Be polite, elegant, and concise.
             - Answer based on the Building Regulations below.
@@ -90,7 +90,7 @@ export default function Concierge() {
             19. NO EATING BY POOLS: Eating is strictly prohibited in both pool areas (indoor and outdoor).
             20. NO EATING IN GAMEROOM: Eating is strictly prohibited in the gameroom. Residents must eat in the table areas in the lounges or inside their units.
             21. INDOOR POOL FOOTWEAR: Residents must remove shoes and boots in the locker room before entering the indoor pool area.
-            
+
             IMPORTANT: When informing residents about rules, always remind them that failure to follow building rules can result in fines (see FINES & PENALTIES section below).
 
             Rules for Balconies, Loggias, and Terraces:
@@ -120,12 +120,12 @@ export default function Concierge() {
 
             AMENITY RENTAL RATES & RULES:
             - RENTABLE ROOMS: Speakeasy, TV Room (2nd floor), TV Room (3rd floor), and Living/Dining Room (3rd floor) ONLY. All other rooms are common areas and not for rent.
-            - RATES: 
+            - RATES:
               * Speakeasy (2nd floor): $250 ($150 for owners)/4 hours, security deposit $1000, max 20 people.
               * TV Room (2nd floor): $50/4 hours, security deposit $500, max 10 people.
               * TV Room (3rd floor): $50/4 hours, security deposit $500, max 10 people.
               * Living and Dining Room (3rd floor): $50/4 hours, security deposit $500, max 10 people.
-            
+
             RENTAL REGULATIONS:
             - Duration: Stated price is for max 4 hours. Additional hours: $50/hour.
             - Curfew: ALL AMENITIES CLOSE AT 11:00 PM SHARP (23:00). All residents must be OUT of amenity areas by 11pm. No extensions.
@@ -142,7 +142,7 @@ export default function Concierge() {
               * Commercial activities prohibited.
             - Security has authority to inspect at any time and end non-compliant events.`,
         });
-        
+
         setMessages(prev => [...prev, { role: 'assistant', content: res }]);
     } catch (e) {
         setMessages(prev => [...prev, { role: 'assistant', content: "I'm having trouble connecting right now. Please try again later." }]);
@@ -165,7 +165,7 @@ export default function Concierge() {
         <ScrollArea className="flex-1 p-4" ref={scrollRef}>
             <div className="space-y-4">
                 {messages.map((m, i) => (
-                    <motion.div 
+                    <motion.div
                         key={i}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -177,8 +177,8 @@ export default function Concierge() {
                              </div>
                             )}
                             <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                             m.role === 'user' 
-                             ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-br-none' 
+                             m.role === 'user'
+                             ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-br-none'
                              : 'bg-white dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-bl-none'
                             }`}>
                             {m.content}
@@ -197,13 +197,13 @@ export default function Concierge() {
                 )}
             </div>
         </ScrollArea>
-        
+
         <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 border-t border-zinc-100 dark:border-zinc-700">
-            <form 
+            <form
                 onSubmit={(e) => { e.preventDefault(); handleSend(); }}
                 className="flex gap-2"
             >
-                <Input 
+                <Input
                     placeholder={t('Type your message...')}
                     value={input}
                     onChange={e => setInput(e.target.value)}

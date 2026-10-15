@@ -31,7 +31,7 @@ export default function ManagementReports() {
     queryKey: ['management-reports'],
     queryFn: async () => {
       const reports = await base44.entities.Report.list('-created_date', 200);
-      
+
       // Auto-cleanup: permanently delete reports past purge date
       // Also auto-archive reviewed reports after 7 days
       const now = new Date();
@@ -39,7 +39,7 @@ export default function ManagementReports() {
         if (report.isDeleted && report.purgeAt && new Date(report.purgeAt) <= now) {
           await base44.entities.Report.delete(report.id);
         }
-        
+
         // Auto-archive reviewed reports after 7 days
         if (report.status === 'reviewed' && report.autoArchiveAt && new Date(report.autoArchiveAt) <= now) {
           await base44.entities.Report.update(report.id, {
@@ -48,7 +48,7 @@ export default function ManagementReports() {
           });
         }
       }
-      
+
       return reports;
     },
     refetchInterval: 2000
@@ -91,29 +91,29 @@ export default function ManagementReports() {
   // Filter reports by user role
   const filteredReportsByRole = useMemo(() => {
     if (!allReports) return [];
-    
+
     const effectiveRole = user?.management_role || user?.app_role;
-    
+
     // Security: only sees incident reports from residents
     if (effectiveRole === 'security' && allUsers && allUsers.length > 0) {
       const residentUserIds = new Set(
         allUsers.filter(u => u.account_type === 'resident').map(u => u.id)
       );
-      
-      const securityReports = allReports.filter(r => 
+
+      const securityReports = allReports.filter(r =>
         r.type === 'incident' && residentUserIds.has(r.createdByUserId)
       );
-      
+
       console.log('Security filter applied:', {
         totalReports: allReports.length,
         incidentReports: allReports.filter(r => r.type === 'incident').length,
         residentCount: residentUserIds.size,
         filteredCount: securityReports.length
       });
-      
+
       return securityReports;
     }
-    
+
     // Property management and board: see all reports
     return allReports;
   }, [allReports, allUsers, user]);
@@ -187,23 +187,23 @@ export default function ManagementReports() {
         deletedByName: user.full_name,
         purgeAt: purgeDate.toISOString()
       });
-      
+
       return { reportId: report.id, purgeDate };
     },
     onMutate: async (report) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries(['management-reports']);
-      
+
       // Snapshot the previous value
       const previousReports = queryClient.getQueryData(['management-reports']);
-      
+
       // Optimistically update to the new value
       queryClient.setQueryData(['management-reports'], (old) => {
         if (!old) return old;
-        return old.map(r => 
-          r.id === report.id 
-            ? { 
-                ...r, 
+        return old.map(r =>
+          r.id === report.id
+            ? {
+                ...r,
                 isDeleted: true,
                 deletedAt: new Date().toISOString(),
                 deletedByUserId: user.id,
@@ -213,11 +213,11 @@ export default function ManagementReports() {
             : r
         );
       });
-      
+
       // Close dialog and show instant feedback
       setSelectedReport(null);
       toast.success('Report moved to Deleted Reports');
-      
+
       return { previousReports };
     },
     onError: (err, report, context) => {
@@ -675,14 +675,14 @@ export default function ManagementReports() {
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <Textarea 
-                      placeholder="Add resolution note..." 
+                    <Textarea
+                      placeholder="Add resolution note..."
                       value={newResolutionNote}
                       onChange={(e) => setNewResolutionNote(e.target.value)}
                       className="text-sm resize-none h-16"
                     />
-                    <Button 
-                      size="icon" 
+                    <Button
+                      size="icon"
                       onClick={() => {
                         if (newResolutionNote.trim()) {
                           addResolutionNote.mutate(newResolutionNote.trim());

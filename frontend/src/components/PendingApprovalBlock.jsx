@@ -15,7 +15,7 @@ export default function PendingApprovalBlock() {
           </div>
           <h2 className="text-2xl font-bold text-zinc-900 mb-2">Pending Approval</h2>
           <p className="text-zinc-600 mb-6">
-            This feature will be available once your profile is approved by management. 
+            This feature will be available once your profile is approved by management.
             Please complete your profile and upload required documents.
           </p>
           <Link to={createPageUrl('Profile')}>

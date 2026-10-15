@@ -115,28 +115,28 @@ export default function MoveInspection() {
     mutationFn: async () => {
       // Debug logging
       console.log('📋 Submitting inspection with move_outcome:', inspectionData.move_outcome);
-      
+
       // Validate photos
       const prePhotos = photos.filter(p => p.phase === 'pre');
       const postPhotos = photos.filter(p => p.phase === 'post');
-      
+
       const preAreas = new Set(prePhotos.map(p => p.area));
       const postAreas = new Set(postPhotos.map(p => p.area));
-      
+
       if (!preAreas.has('hallway') || !preAreas.has('elevator') || !preAreas.has('garage')) {
         throw new Error('Pre-move photos required for all areas (hallway, elevator, garage)');
       }
-      
+
       if (!postAreas.has('hallway') || !postAreas.has('elevator') || !postAreas.has('garage')) {
         throw new Error('Post-move photos required for all areas (hallway, elevator, garage)');
       }
-      
+
       if (inspectionData.move_outcome === 'non_clean' && !inspectionData.post_damage_notes?.trim()) {
         throw new Error('Post-damage notes required for non-clean moves');
       }
-      
+
       toast.info(`Submitting as: ${inspectionData.move_outcome === 'clean' ? 'Clean Move' : 'Non-Clean Move'}`);
-      
+
       return await base44.entities.MoveInspection.update(inspectionData.id, {
         status: 'submitted',
         submitted_at: new Date().toISOString()
@@ -159,9 +159,9 @@ export default function MoveInspection() {
     if (existing) {
       // Ensure old inspections have default outcome if missing
       if (!existing.move_outcome) {
-        updateInspectionMutation.mutate({ 
-          move_outcome: 'clean', 
-          post_damage_found: false 
+        updateInspectionMutation.mutate({
+          move_outcome: 'clean',
+          post_damage_found: false
         });
       }
       setInspectionData(existing);
@@ -182,10 +182,10 @@ export default function MoveInspection() {
 
   const handleFileUpload = async (files, phase, area) => {
     if (!files || files.length === 0) return;
-    
+
     const fileArray = Array.from(files);
     const uploadKey = `${phase}-${area}`;
-    
+
     // Initialize progress tracking
     setUploadProgress(prev => ({
       ...prev,
@@ -209,7 +209,7 @@ export default function MoveInspection() {
               photo_url: file_url,
               captured_at: new Date().toISOString()
             });
-            
+
             setUploadProgress(prev => ({
               ...prev,
               [uploadKey]: {
@@ -231,7 +231,7 @@ export default function MoveInspection() {
         const batch = fileArray.slice(i, i + 3);
         await uploadBatch(batch);
       }
-      
+
       queryClient.invalidateQueries({ queryKey: ['inspection-photos'] });
       toast.success(`${fileArray.length} photo${fileArray.length > 1 ? 's' : ''} uploaded successfully`);
     } catch (error) {
@@ -296,17 +296,17 @@ export default function MoveInspection() {
           <Label className="text-sm font-semibold">{label}</Label>
           <Badge variant="outline">{areaPhotos.length} photos</Badge>
         </div>
-        
+
         {areaPhotos.length > 0 && (
           <div className="grid grid-cols-3 gap-2 mb-3">
             {areaPhotos.map(photo => (
-              <div 
-                key={photo.id} 
+              <div
+                key={photo.id}
                 className="relative aspect-square rounded overflow-hidden group"
               >
-                <img 
-                  src={photo.photo_url} 
-                  alt={area} 
+                <img
+                  src={photo.photo_url}
+                  alt={area}
                   className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition"
                   onClick={() => {
                     setViewerPhotos([photo.photo_url]);
@@ -333,19 +333,19 @@ export default function MoveInspection() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             className={`rounded-lg border-2 border-dashed transition ${
-              isDragging 
-                ? 'border-blue-400 bg-blue-50' 
-                : disabled 
-                ? 'opacity-50 cursor-not-allowed border-zinc-200' 
+              isDragging
+                ? 'border-blue-400 bg-blue-50'
+                : disabled
+                ? 'opacity-50 cursor-not-allowed border-zinc-200'
                 : 'hover:bg-zinc-50 hover:border-zinc-400 cursor-pointer border-zinc-300'
             }`}
           >
             <label className={`flex flex-col items-center justify-center gap-2 py-3 px-4 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-              <input 
-                type="file" 
+              <input
+                type="file"
                 accept="image/*"
                 multiple
-                className="hidden" 
+                className="hidden"
                 onChange={(e) => handleFileUpload(e.target.files, phase, area)}
                 disabled={disabled}
               />
@@ -356,7 +356,7 @@ export default function MoveInspection() {
                     Uploading {progress.completed}/{progress.total}...
                   </span>
                   <div className="w-full bg-zinc-200 rounded-full h-1.5 mt-1">
-                    <div 
+                    <div
                       className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
                       style={{ width: `${(progress.completed / progress.total) * 100}%` }}
                     />
@@ -457,8 +457,8 @@ export default function MoveInspection() {
                                   <StatusIcon className="w-3 h-3 mr-1" />
                                   {status.label}
                                 </Badge>
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  size="sm"
                                   onClick={() => handleStartInspection(move)}
                                   disabled={!isSecurity}
                                 >
@@ -508,7 +508,7 @@ export default function MoveInspection() {
                       <Camera className="w-5 h-5 text-blue-600" />
                       <h3 className="text-lg font-semibold">Pre-Move Inspection</h3>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <PhotoUploadArea phase="pre" area="hallway" label="Hallway" />
                       <PhotoUploadArea phase="pre" area="elevator" label="Elevator" />
@@ -562,7 +562,7 @@ export default function MoveInspection() {
                       <Camera className="w-5 h-5 text-green-600" />
                       <h3 className="text-lg font-semibold">Post-Move Inspection</h3>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <PhotoUploadArea phase="post" area="hallway" label="Hallway" />
                       <PhotoUploadArea phase="post" area="elevator" label="Elevator" />
@@ -616,7 +616,7 @@ export default function MoveInspection() {
 
                   {canEdit() && inspectionData?.status !== 'submitted' && (
                     <div className="flex justify-end pt-4 border-t">
-                      <Button 
+                      <Button
                         size="lg"
                         onClick={() => submitInspectionMutation.mutate()}
                         disabled={submitInspectionMutation.isPending}
@@ -626,7 +626,7 @@ export default function MoveInspection() {
                       </Button>
                     </div>
                   )}
-                  
+
                   {inspectionData?.status === 'submitted' && (
                     <div className="flex items-center justify-between pt-4 border-t">
                       <p className="text-sm text-zinc-500">
@@ -634,7 +634,7 @@ export default function MoveInspection() {
                         {isSecurity && ' You can still edit if needed.'}
                       </p>
                       {isSecurity && (
-                        <Button 
+                        <Button
                           variant="outline"
                           onClick={() => toast.success('Changes saved automatically')}
                         >
@@ -679,7 +679,7 @@ export default function MoveInspection() {
                               )}
                             </div>
                           </div>
-                          <Button 
+                          <Button
                             size="sm"
                             variant="outline"
                             onClick={() => handleViewInspection(inspection)}
@@ -726,7 +726,7 @@ export default function MoveInspection() {
                       <Camera className="w-5 h-5 text-blue-600" />
                       <h3 className="text-lg font-semibold">Pre-Move Inspection</h3>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <PhotoUploadArea phase="pre" area="hallway" label="Hallway" />
                       <PhotoUploadArea phase="pre" area="elevator" label="Elevator" />
@@ -780,7 +780,7 @@ export default function MoveInspection() {
                       <Camera className="w-5 h-5 text-green-600" />
                       <h3 className="text-lg font-semibold">Post-Move Inspection</h3>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <PhotoUploadArea phase="post" area="hallway" label="Hallway" />
                       <PhotoUploadArea phase="post" area="elevator" label="Elevator" />
@@ -837,7 +837,7 @@ export default function MoveInspection() {
                       <p className="text-sm text-zinc-500">
                         Editing a submitted inspection. Changes are saved automatically.
                       </p>
-                      <Button 
+                      <Button
                         variant="outline"
                         onClick={() => toast.success('Changes saved automatically')}
                       >
@@ -853,7 +853,7 @@ export default function MoveInspection() {
       </Tabs>
 
       {photoViewerOpen && (
-        <PhotoViewer 
+        <PhotoViewer
           photos={viewerPhotos}
           onClose={() => setPhotoViewerOpen(false)}
         />
