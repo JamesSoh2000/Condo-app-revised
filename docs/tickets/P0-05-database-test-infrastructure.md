@@ -103,9 +103,9 @@ Fixtures `engine` (session), `db` (function), `client` (function, using `db`). E
 - Criteria added or sharpened: AC1 (also proves the commit stayed inside the outer transaction, from a
   second connection), AC2/AC3 (evidence named; single-head check ordered before `upgrade`), AC6 (guard
   against dropping a non-test database), AC7 (test DB auto-created), AC8 (`client` really uses `db`).
-- Criteria loosened (with reason; also listed in the inbox): AC4's command changes from `make test` to
-  `cd backend && uv run pytest`, because the Makefile is added in P0-04 (P0-04 depends on this ticket's
-  sibling, not the reverse). Same property, same evidence.
+- Criteria loosened (with reason; also listed in the inbox): none left. AC4's command was changed to
+  `cd backend && uv run pytest` while the Makefile didn't exist; P0-04a has since added it, so AC4 uses
+  `make test` again (it runs pytest against `condo_test` on the compose db, behind `db-guard`).
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
   - `migrations/env.py` takes the URL from `config.attributes["database_url"]` when a caller sets it, else
     `settings.database_url` (ticket: "accept a URL override"; `alembic.ini`'s `sqlalchemy.url` holds a
@@ -117,4 +117,9 @@ Fixtures `engine` (session), `db` (function), `client` (function, using `db`). E
     (compose is a hot file, and the fixture covers CI and local alike).
   - The guard (AC6) is a plain function in `tests/conftest.py`, unit-tested.
   - CI service DB is `condo_dev` (as in compose); `DATABASE_URL` points at it for `alembic upgrade/check`.
+- **B-1 (2026-10-15, James): option A.** After review round 3 (H1: the `client` fixture's rollback ran
+  only on success; M1: rolling back the shared session expired the test's ORM objects), James approved:
+  each request gets its own `AsyncSessionLocal(bind=conn, join_transaction_mode="create_savepoint")` on
+  the test's connection, closed in `finally`; regression tests for write-then-`HTTPException`, a caught
+  DB error then the next request, and an ORM object after a GET; then a 4th fresh review round.
 - Split: none (estimate ~60 non-test lines: settings, env.py, CI; the fixtures are test code).
