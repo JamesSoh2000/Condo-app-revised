@@ -117,7 +117,7 @@ jobs:
       # Installs the same Node.js version pinned by the project.
       # The npm cache uses frontend/package-lock.json as the dependency key.
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24.16.0"
           cache: npm
