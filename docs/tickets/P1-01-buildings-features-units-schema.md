@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P0-05 |
 | Replaces old | M2-T03 (finishes branch `M2-T03_Core-Tenant-Schema_James`), M2-T10 (timezone storage part) |
-| Status | todo |
+| Status | done |
 
 ## Goal
 
@@ -58,16 +58,36 @@ Tables `buildings`, `building_features`, `units` as above. Enum `Feature` in `ap
 ## Acceptance criteria
 
 1. **Given** building A has unit (tower NULL, label `101`), **when** another (NULL, `101`) is inserted for A,
-   **then** `IntegrityError`.
+   **then** `IntegrityError` (the `NULLS NOT DISTINCT` unique constraint). The same holds for (`T1`, `101`)
+   twice in A.
 2. **Given** unit (NULL, `101`) in A, **when** (NULL, `101`) is inserted in B, or (`T2`, `101`) in A, **then**
    both succeed.
-3. **Given** building A has units, **when** A is deleted, **then** `IntegrityError` (RESTRICT). Deleting a
-   building with only features cascades the features.
-4. **Given** a duplicate `(building_id, feature)`, **then** `IntegrityError`.
-5. **Given** an invalid slug (`Maple Tower`) or a feature value not in the enum, **then** the check
-   constraint rejects it.
-6. **Given** `validate_timezone("Mars/Base")`, **then** `ValueError`. `"America/Toronto"` passes.
+3. **Given** building A has units, **when** A is deleted, **then** `IntegrityError` (RESTRICT) and A and its
+   units still exist. Deleting a building with only features succeeds and removes its `building_features`
+   rows (cascade).
+4. **Given** a duplicate `(building_id, feature)`, **then** `IntegrityError`. The same feature in two
+   buildings succeeds.
+5. **Given** an invalid slug (`Maple Tower`, `maple_tower`, `Maple`, empty) inserted through the model, or a
+   feature value not in the enum inserted with raw SQL (bypassing SQLAlchemy's enum validation), **then**
+   the database's check constraint rejects it (`IntegrityError` naming the constraint). `maple-tower-2`
+   passes.
+6. **Given** `validate_timezone("Mars/Base")` (also `""` and `"america/toronto"`), **then** `ValueError`.
+   `"America/Toronto"` passes and is returned unchanged. *(added)* Setting `Building.timezone` to an invalid
+   zone raises `ValueError` before any SQL runs.
 7. `alembic upgrade head`, then `downgrade -1`, then `upgrade head` succeeds, and `alembic check` is clean.
+   *(sharpened)* After `downgrade -1` none of the three tables exists; the test suite checks this in code, not
+   only by hand, with the revision ids pinned (`891dd631e5a1` → `989e5bd83064`) so later migrations don't
+   change what it tests (review round 2).
+8. *(added)* Two buildings with the same `slug`, or the same non-null `join_code`, give `IntegrityError`; two
+   buildings with `join_code` NULL succeed.
+9. *(added, ADR-0005)* `UNIQUE (building_id, id)` works as a composite-FK target: a probe table with
+   `FOREIGN KEY (building_id, unit_id) REFERENCES units (building_id, id)` accepts a row pointing at A's unit
+   with A's id, and rejects (`IntegrityError`) a row pointing at A's unit with B's id.
+10. *(added)* Defaults: a building inserted with only the required fields gets `locale = 'en'`,
+    `is_active = true`, `join_code` NULL; a feature row gets `enabled = true` and `config = {}` (a raw SQL
+    insert without `config` gets `'{}'` from the server default); a unit gets `is_active = true`.
+11. *(added, fitness)* Every `app/**/models.py` module is imported by `app/models/registry.py`, and
+    `migrations/env.py` imports the registry; a new models module that isn't registered fails a test.
 
 ## Test plan
 
@@ -90,7 +110,22 @@ Tables `buildings`, `building_features`, `units` as above. Enum `Feature` in `ap
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+- Criteria added or sharpened: 1 (towered duplicate), 3 (rows survive the failed delete), 4 (same feature in
+  two buildings), 5 (more slug spellings; the enum case uses raw SQL so the DB check, not Python, is what's
+  tested), 6 (more bad zones; model-level validation), 7 (downgrade checked in code); new 8 (slug and
+  `join_code` uniqueness), 9 (composite-FK target, the reason for `UNIQUE (building_id, id)`), 10 (defaults),
+  11 (registry fitness test).
+- Tenant table (ENGINEERING_PRACTICES §7): no row applies; this ticket has no endpoint. Criterion 9 is the
+  storage-level counterpart of row 7.
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - `BuildingFeature` keeps `TimestampMixin` (no uuid PK: the PK is composite). Basis: autonomous, matches the
+    existing stub and every other table; reversible.
+  - Timezone validation runs in a SQLAlchemy `@validates("timezone")` on `Building`, calling
+    `app.core.time.validate_timezone`, which caches `zoneinfo.available_timezones()`. No DB check (the ticket
+    says Python). Basis: ticket + autonomous (where to hook it).
+  - The enum's check constraint is named by `database_enum(Feature, name="feature")`, giving
+    `ck_building_features_feature` through the naming convention. Basis: existing code (`app/models/types.py`).
+  - `app/models/registry.py` (not `__init__.py`): importing `app.models` from a feature's models module must
+    not import every feature (cycles). Basis: ticket offers both; autonomous choice.
+- Split: none. Estimate ~200 non-test lines (three models, enum, helper, registry, migration).
