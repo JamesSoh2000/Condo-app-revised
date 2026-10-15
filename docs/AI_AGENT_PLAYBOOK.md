@@ -106,7 +106,7 @@ Command: [`/review-ticket`](../.claude/commands/review-ticket.md), run as a **su
 
 | Tier | Reviewers |
 |---|---|
-| 1 | Fresh Claude reviewer **with the security pass**, **plus** Codex (`codex-review` skill, `gpt-6-astra-high`). If Codex is unavailable, a second fresh Claude reviewer with only the security pass. Both must say `MERGE`. |
+| 1 | Fresh Claude reviewer **with the security pass**, **plus** Codex (`codex-review` skill, `gpt-6-astra-medium`). If Codex is unavailable, a second fresh Claude reviewer with only the security pass. Both must say `MERGE`. |
 | 2 | One fresh Claude reviewer |
 | 3 | One fresh Claude reviewer, short pass (scope, accuracy, nothing broken) |
 
