@@ -22,8 +22,9 @@ through `docs/HUMAN_INBOX.md` and the explanations in `docs/explanations/`.
 
 ## Commands
 
-The `Makefile` is added in P0-04 (`seed`, `gen-api`, `e2e` start as stubs until P1-06, P1-07 and P4-09;
-`prodlike` is added in P1-08; the worker in P3-01). Until then, see `README.md`.
+`make help` lists the targets (`seed`, `gen-api`, `e2e` are stubs until P1-06, P1-07 and P4-09;
+`prodlike` is added in P1-08; the worker in P3-01). If port 5432 is taken, pass `DB_PORT=<free port>` to
+every target.
 
 ```bash
 make up            # compose: api, worker, db, mailpit, s3 emulator (dev: --reload, Vite proxy)
@@ -33,6 +34,7 @@ make revision m="add packages"   # autogenerate, then READ and edit the file
 make seed          # idempotent demo data (dev only)
 make test          # backend tests (real Postgres)
 make check         # ruff + format check + mypy + pytest + alembic check + frontend lint/tsc/build
+make s3-smoke      # the S3 emulator enforces presigned-POST limits, versioning and CORS
 make gen-api       # regenerate frontend/src/api/schema.d.ts from OpenAPI
 make e2e           # Playwright journeys against the compose stack (CI uses the prod-like stack)
 ```

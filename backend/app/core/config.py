@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     Central application settings.
 
     This file only loads configuration values.
-    It does NOT create database connections, Redis clients, S3 clients,
-    SES clients, or SNS clients yet.
+    It does NOT create database connections, S3 clients, SMTP/SES clients,
+    or SNS clients yet.
     """
 
     model_config = SettingsConfigDict(
@@ -45,13 +45,18 @@ class Settings(BaseSettings):
     # Database config only. Do not connect yet.
     database_url: str = "postgresql+asyncpg://postgres:devpassword@db:5432/condo_dev"
 
-    # Redis config only. Do not connect yet.
-    redis_url: str = "redis://localhost:6379/0"
-
     # AWS config only. Do not create AWS clients yet.
     aws_region: str = "ca-central-1"
     s3_bucket_name: str = "condo-app-dev-files"
+    # Only set for the local S3 emulator (ADR-0007): the API reaches it at the container-internal
+    # URL, and presigned URLs use the public one so the browser can reach them. Unset = real AWS S3.
+    s3_endpoint_url: str | None = None
+    s3_public_endpoint_url: str | None = None
     ses_from_email: str = "noreply@example.com"
+
+    # SMTP config only (Mailpit locally). Do not connect yet; P3-02 adds the sender.
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025
 
     # Build/deployment metadata
     git_sha: str = "local"
@@ -80,6 +85,11 @@ class Settings(BaseSettings):
 
             if self.s3_bucket_name in {"", "condo-app-dev-files"}:
                 raise ValueError("S3_BUCKET_NAME must be set to a production bucket in production")
+
+            if self.s3_endpoint_url is not None or self.s3_public_endpoint_url is not None:
+                raise ValueError(
+                    "S3_ENDPOINT_URL and S3_PUBLIC_ENDPOINT_URL must not be set in production"
+                )
 
             if self.ses_from_email in {"", "noreply@example.com"}:
                 raise ValueError(

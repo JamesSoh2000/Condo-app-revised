@@ -36,7 +36,8 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P0-03a](./P0-03a-frontend-lint-and-type-gates.md) | Frontend lint and type gates (split from [P0-03](./P0-03-frontend-quality-gates.md)) | B | 3 | P0-01 | done | — |
 | [P0-03b](./P0-03b-same-origin-proxy-and-route-scope.md) | Same-origin dev proxy and demo route scope | B | 2 | P0-03a | done | — |
 | [P0-03c](./P0-03c-frontend-whitespace-and-pre-commit.md) | Frontend whitespace normalisation and pre-commit scope | B | 3 | P0-03a, P0-03b | done | — |
-| [P0-04](./P0-04-repo-workflow-and-local-stack.md) | Repo workflow and local stack | B | 2 | P0-02, P0-03a, P0-03b | todo | — |
+| [P0-04a](./P0-04a-local-stack-and-makefile.md) | Local stack and Makefile (split from [P0-04](./P0-04-repo-workflow-and-local-stack.md)) | B | 2 | P0-02, P0-03a, P0-03b | done | — |
+| [P0-04b](./P0-04b-github-workflow.md) | GitHub workflow: branch protection, PR template, Dependabot, branches | B | 2 | P0-02, P0-03a, P0-03b | todo | — |
 | [P0-05](./P0-05-database-test-infrastructure.md) | Database test infrastructure | A | 2 | P0-02 | blocked | — |
 | [P1-01](./P1-01-buildings-features-units-schema.md) | Buildings, features and units schema | A | 2 | P0-05 | todo | — |
 | [P1-02](./P1-02-users-memberships-roles-schema.md) | Users, memberships and roles schema | A | 1 | P1-01 | todo | — |
@@ -45,7 +46,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P1-05](./P1-05-test-world-and-isolation-helpers.md) | Test world fixtures and tenant-isolation helpers | A | 1 | P1-03, P0-05 | todo | — |
 | [P1-06](./P1-06-seed-and-cli.md) | Seed data and operator CLI skeleton | A | 3 | P1-03 | todo | — |
 | [P1-07](./P1-07-openapi-types-and-api-client.md) | OpenAPI → TypeScript types and API client | B | 2 | P1-04, P0-03a, P0-03b | todo | — |
-| [P1-08](./P1-08-production-like-local-stack.md) | Production-like local stack (local walking skeleton) | B | 2 | P0-04, P0-02, P0-03a, P0-03b | todo | — |
+| [P1-08](./P1-08-production-like-local-stack.md) | Production-like local stack (local walking skeleton) | B | 2 | P0-04a, P0-02, P0-03a, P0-03b | todo | — |
 | [P2-01](./P2-01-sessions-login-logout-csrf.md) | Password hashing, sessions, login/logout and CSRF | A | 1 | P1-02, P1-04 | todo | — |
 | [P2-02](./P2-02-me-and-session-management.md) | Current-user API and session management | A | 1 | P2-01 | todo | — |
 | [P2-03](./P2-03-tenant-context-guards-fitness.md) | Tenant context, guards and fitness tests | A | 1 | P2-02, P1-05 | todo | — |
@@ -55,7 +56,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P3-01](./P3-01-job-queue-and-worker.md) | Job queue and worker | B | 1 | P1-04, P0-05 | todo | — |
 | [P3-02](./P3-02-transactional-email.md) | Transactional email | B | 2 | P3-01 | todo | — |
 | [P3-03](./P3-03-notifications-api.md) | In-app notifications API | A | 2 | P3-01, P2-03 | todo | — |
-| [P3-04](./P3-04-private-file-uploads.md) | Private file uploads | A | 1 | P2-03, P0-04 | todo | — |
+| [P3-04](./P3-04-private-file-uploads.md) | Private file uploads | A | 1 | P2-03, P0-04a | todo | — |
 | [P3-05](./P3-05-frontend-notification-center.md) | Frontend notification center with polling | B | 2 | P3-03, P2-06 | todo | — |
 | [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04, P2-06 | todo | — |
 | [P4-01](./P4-01-units-api.md) | Units API | A | 2 | P2-03, P2-04 | todo | — |
@@ -78,7 +79,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 
 | ID | Title | Lane | Tier | Depends on | Status | Learned |
 |---|---|---|---|---|---|---|
-| [D-01](./D-01-terraform-base.md) | Terraform base infrastructure | B | 1 | P0-04 | todo | — |
+| [D-01](./D-01-terraform-base.md) | Terraform base infrastructure | B | 1 | P0-04a, P0-04b | todo | — |
 | [D-02](./D-02-host-bootstrap-caddy-compose.md) | Host bootstrap, Caddy and staging compose | B | 1 | D-01, P1-08, P3-01 | todo | — |
 | [D-03](./D-03-cicd-deploy-staging.md) | CI/CD: build, push and deploy to staging | B | 1 | D-02, P1-08 | todo | — |
 | [D-04](./D-04-logs-errors-uptime.md) | Logs, error tracking and uptime | A | 2 | D-03 | todo | — |

@@ -1,24 +1,42 @@
-# P0-04 — Repo workflow and local stack
+# P0-04 — Repo workflow and local stack (split)
 
 | Field | Value |
 |---|---|
 | Phase / lane | P0 / B |
 | Risk tier | 2 |
-| Depends on | P0-02, P0-03 (Makefile wraps their commands) |
-| Replaces old | M1-T02 (compose follow-ups), M1-T04 (dev docs), M0-T07 (workflow) |
-| Status | todo |
+| Depends on | P0-02, P0-03a, P0-03b |
+| Status | split into [P0-04a](./P0-04a-local-stack-and-makefile.md), [P0-04b](./P0-04b-github-workflow.md) |
 
-## Goal
+Split while framing (2026-10-15). "P0-04" in other tickets' "Depends on" means both parts; the
+[ticket index](./README.md) lists which part each dependent actually needs.
+
+| Part | Scope | Acceptance criteria (original numbers) |
+|---|---|---|
+| [P0-04a](./P0-04a-local-stack-and-makefile.md) | `Makefile`, compose (Redis out; Mailpit and the S3 emulator in), settings, `.env.dev` header, S3 smoke script, README quickstart, ADR-0007 emulator note | 1, 2, 4 |
+| [P0-04b](./P0-04b-github-workflow.md) | branch protection, PR template, Dependabot, stale branches | 3, 5 |
+
+## Why split
+
+- Size: the local stack alone is ~300 non-test lines (Makefile, compose, emulator init, smoke script,
+  settings, README); the GitHub half adds the PR template (~60) and Dependabot, which goes over ~400.
+- Different kinds of change: the local stack is code that is reviewed and run; the GitHub half changes
+  repository settings through the API, which is outward-facing and checked differently (a rejected push).
+- No criterion was dropped or loosened: AC1, AC2 and AC4 are in 04a (AC2 sharpened); AC3 and AC5 in 04b.
+
+## Original ticket (for reference)
+
+
+### Goal
 
 One command starts the full local stack (API, Postgres, Mailpit, S3 emulator), the GitHub repo enforces the
 PR workflow, and the stale branches are gone.
 
-## Why
+### Why
 
 Agents and humans need identical, fast feedback loops. Branch protection turns the practices in
 [ENGINEERING_PRACTICES.md](../ENGINEERING_PRACTICES.md) from advice into rules.
 
-## Scope
+### Scope
 
 - In:
   - **GitHub:**
@@ -56,7 +74,7 @@ Agents and humans need identical, fast feedback loops. Branch protection turns t
   - the worker service (P3-01)
   - the production-like stack (P1-08) and anything on AWS (milestone D)
 
-## Interfaces
+### Interfaces
 
 New env vars in `.env.example`:
 - `SMTP_HOST=mailpit`, `SMTP_PORT=1025`
@@ -66,7 +84,7 @@ New env vars in `.env.example`:
 
 Use the actual port of the chosen emulator.
 
-## Acceptance criteria
+### Acceptance criteria
 
 1. **Given** a fresh clone, **when** `make up && make migrate`, **then** api, db, mailpit and s3 are healthy
    (`make ps`), and `http://localhost:8025` shows the Mailpit UI.
@@ -78,26 +96,26 @@ Use the actual port of the chosen emulator.
    excluded).
 5. **Given** `git branch -r`, **then** only `main` and active ticket branches remain.
 
-## Test plan
+### Test plan
 
 - `make up`, `make ps`, `make down`
 - `uv run python scripts/s3-smoke.py`
 - An attempted direct push (expected to fail)
 - `make check` runs ruff, mypy, pytest, eslint and tsc
 
-## Likely files
+### Likely files
 
 `Makefile`, `docker-compose.yml`, `backend/app/core/config.py`, `backend/.env.example`, `backend/.env.dev`,
 `.github/pull_request_template.md`, `.github/dependabot.yml`, `scripts/s3-smoke.py`,
 `README.md`, `docs/adr/0007-private-s3-presigned-uploads.md`.
 
-## Must explain (learning checkpoint)
+### Must explain (learning checkpoint)
 
 1. Why is a long-lived `develop` branch harmful for a team (or a set of agents) that releases from `main`?
 2. What do required status checks enforce, and why are they the hard gate when no human approves PRs?
 3. Why emulate S3 and SMTP locally instead of using real AWS credentials in development?
 
-## Frame notes (filled by the agent in step 1)
+### Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
 - Criteria loosened (with reason; also listed in the inbox):

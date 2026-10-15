@@ -31,9 +31,31 @@ users' files, upload unlimited sizes, or replace bytes after acceptance.
   5. Downloads: `GET /files/{id}/download-url` authorizes through the **owning record's** visibility and
      returns a 60 s presigned GET pinned to the stored `VersionId`.
 - **Cleanup:** a nightly job deletes files still `pending` after 24 h, and `ready` but unattached after 7 days.
-- **Local development** uses an S3-compatible emulator chosen in P0-04 (a pinned MinIO image or moto server).
+- **Local development** uses an S3-compatible emulator chosen in P0-04 (see "Local emulator" below).
   The adapter only changes `endpoint_url`.
 - **Limits** (default; revisit at pilot): images (JPEG/PNG/WebP/HEIC) ≤ 10 MiB; PDF ≤ 20 MiB.
+
+## Local emulator (P0-04a, 2026-10-15)
+
+`localstack/localstack:4.14.0` with `SERVICES=s3`, port 4566 (`docker-compose.yml`, service `s3`).
+`docker/s3-init/create-bucket.sh` creates the bucket on every start with versioning, a public access
+block, and CORS for `http://localhost:5173` and `http://localhost:8080`. The API uses
+`S3_ENDPOINT_URL=http://s3:4566`; presigned URLs use `S3_PUBLIC_ENDPOINT_URL=http://localhost:4566`; both
+must be unset in production (the settings validator rejects them). `make s3-smoke` checks what this ADR relies on.
+
+Measured with the same presigned POST (a 1 KiB `content-length-range` and an exact `Content-Type`):
+
+| Candidate | Size limit | Content-Type | VersionId | CORS by origin | Result |
+|---|---|---|---|---|---|
+| MinIO | — | — | — | — | images no longer pullable (Docker Hub, Quay) |
+| moto 5.1.4 / 5.2.4.dev0 | not enforced | not enforced | yes | yes | rejected: can't test the policy |
+| SeaweedFS (latest) | upload failed | — | — | — | rejected |
+| RustFS (latest) | 400 `EntityTooLarge` | 400 `InvalidPolicyDocument` | yes | yes | works; errors differ from AWS |
+| **LocalStack 4.4.0 / 4.14.0** | 400 `EntityTooLarge` | 403 `AccessDenied` | yes | yes | **chosen**: errors match AWS |
+
+LocalStack 4.14.0 is the last tag checked that runs without an account token; it stays pinned. Its state is
+in memory, so local uploads are gone after `make down`. Revisit if the pin needs a security fix or LocalStack
+drops the free image (RustFS is the fallback).
 
 ## Consequences
 
