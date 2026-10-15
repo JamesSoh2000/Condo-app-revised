@@ -5,6 +5,7 @@ the database's verdict is asserted. Criterion numbers refer to the ticket.
 """
 
 import ast
+import re
 import asyncio
 from pathlib import Path
 from uuid import UUID
@@ -383,3 +384,33 @@ def test_migration_upgrades_downgrades_and_upgrades_again():
     command.upgrade(cfg, "head")
     assert asyncio.run(_table_names(scratch)) >= TABLES
     command.check(cfg)  # raises if the models and the migrated schema differ
+
+
+# --- review round 1 (L1): CHECK constraints match the models -------------------------------------
+# `alembic check` doesn't compare CHECK constraints, so a model or enum change without a migration
+# would otherwise go unnoticed.
+
+
+async def _check_definition(db: AsyncSession, name: str) -> str:
+    definition = await db.scalar(
+        text("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = :name"),
+        {"name": name},
+    )
+    assert definition is not None, f"constraint {name} is missing"
+    return str(definition)
+
+
+async def test_feature_check_in_the_database_lists_exactly_the_enum_values(db: AsyncSession):
+    definition = await _check_definition(db, "ck_building_features_feature")
+
+    assert set(re.findall(r"'([^']*)'", definition)) == {f.value for f in Feature}
+
+
+async def test_slug_check_in_the_database_uses_the_models_pattern(db: AsyncSession):
+    (model_check,) = (
+        c for c in Building.__table__.constraints if c.name == "ck_buildings_slug_format"
+    )
+    (model_pattern,) = re.findall(r"'([^']*)'", str(model_check.sqltext))  # type: ignore[attr-defined]
+    definition = await _check_definition(db, "ck_buildings_slug_format")
+
+    assert re.findall(r"~ '([^']*)'", definition) == [model_pattern]
