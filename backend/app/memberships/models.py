@@ -11,7 +11,7 @@ from app.models.types import database_enum
 
 
 class BuildingMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    """A user's place in one building: its status here, and (through `membership_roles`) its roles."""
+    """A user's place in one building: its status there and, through `membership_roles`, roles."""
 
     __tablename__ = "building_memberships"
     __table_args__ = (

@@ -421,7 +421,7 @@ async def test_moving_a_membership_without_roles_is_not_blocked_by_the_roles_fk(
     )
 
 
-# --- 13: enum values -------------------------------------------------------------------------------
+# --- 13: enum values ---------------------------------------------------------------------------
 
 
 def test_membership_status_values_are_the_lowercase_ticket_list():
@@ -439,7 +439,7 @@ def test_role_values_are_the_lowercase_ticket_list():
 
 
 def test_staff_roles_are_every_role_but_resident_and_immutable():
-    assert STAFF_ROLES == {Role.SECURITY, Role.PROPERTY_MANAGEMENT, Role.COUNCIL}
+    assert {Role.SECURITY, Role.PROPERTY_MANAGEMENT, Role.COUNCIL} == STAFF_ROLES
     assert isinstance(STAFF_ROLES, frozenset)
 
 

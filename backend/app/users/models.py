@@ -13,7 +13,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "users"
 
     email: Mapped[str] = mapped_column(String(320))
-    # NULL until the user sets one (invitation accept, password reset); a user without one can't log in.
+    # NULL until the user sets one (invitation accept, password reset); until then, no login.
     password_hash: Mapped[str | None] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(200))
     phone: Mapped[str | None] = mapped_column(String(32))
