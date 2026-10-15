@@ -23,6 +23,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
     healthcheck:
       test:
         [
@@ -46,7 +50,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: devpassword
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432" # DB_PORT: see Makefile
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -58,15 +62,13 @@ services:
     networks:
       - local_net
 
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
+  mailpit:
+    image: axllent/mailpit:v1.31.4
     ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - redis_data:/data
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # web UI
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "/mailpit", "readyz"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -74,9 +76,30 @@ services:
     networks:
       - local_net
 
+  # S3 emulator (ADR-0007 "Local emulator"). State is in memory: the init script recreates the bucket on
+  # every start, and uploaded files are gone after `make down`.
+  s3:
+    image: localstack/localstack:4.14.0
+    environment:
+      SERVICES: s3
+      AWS_DEFAULT_REGION: ca-central-1
+    ports:
+      - "127.0.0.1:4566:4566"
+    volumes:
+      - ./docker/s3-init/create-bucket.sh:/etc/localstack/init/ready.d/create-bucket.sh:ro
+    healthcheck:
+      # Healthy only after the init script has created the bucket.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4566/_localstack/init/ready | grep -q '\"completed\": true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - local_net
+
 volumes:
   postgres_data:
-  redis_data:
 
 networks:
   local_net:
