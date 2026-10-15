@@ -29,11 +29,15 @@ export function isDemoPage(name: string): boolean {
  * Dashboard view modes that render a whole page inline. A view is in scope only if its page is:
  * the "financials" view renders the Financials page, which is not in the demo.
  */
-const VIEW_ROLE_PAGES: Record<string, string> = { financials: 'Financials' };
+const VIEW_ROLE_PAGES: ReadonlyMap<string, string> = new Map([['financials', 'Financials']]);
 
-/** True if a dashboard view role (resident, security, property_management, board, financials…) is shown. */
+/**
+ * True if a dashboard view role (resident, security, property_management, board, financials…) is shown.
+ * Roles come from `?role=` and localStorage, so the lookup is a Map: an object literal would also
+ * return inherited members such as `constructor`.
+ */
 export function isDemoViewRole(role: string): boolean {
-  const page = VIEW_ROLE_PAGES[role];
+  const page = VIEW_ROLE_PAGES.get(role);
   return page === undefined || isDemoPage(page);
 }
 
