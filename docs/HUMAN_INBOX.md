@@ -39,6 +39,9 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 | 2026-10-14 | P0-02 | The merged baseline migration `989e5bd83064` is excluded from ruff and pre-commit by name rather than reformatted (CLAUDE.md rule 11); every new migration is linted | `backend/pyproject.toml`, PR #2 | yes |
 | 2026-10-14 | P0-02 | Alembic `post_write_hooks` run `ruff check --fix` and `ruff format` on every new revision. Side effect: an empty hand-written revision loses its unused `op`/`sa` imports | `backend/alembic.ini`, PR #2 | yes |
 | 2026-10-14 | P0-02 | Pre-commit formatting hooks cover `backend/` only. Run repo-wide they rewrote ~90 legacy frontend files and the protected `scripts/check-*.py`; P0-03 extends them to `frontend/` | `.pre-commit-config.yaml`, PR #2 | yes |
+| 2026-10-14 | P0-03a | P0-03 split into P0-03a (gates), P0-03b (proxy, route scope, Base44 runtime investigation), P0-03c (whitespace-only normalisation). Dependents now point at a/b | `docs/tickets/P0-03-frontend-quality-gates.md`, PR #6 | yes |
+| 2026-10-14 | P0-03a | [ADR-0015](./adr/0015-typescript-eslint-for-new-code.md): `typescript-eslint` (recommended rules + `rules-of-hooks`) lints `.ts/.tsx`; the Base44 fence is one regex plus `import()`/`require()` selectors, self-tested in CI by `scripts/check-eslint-fence.sh` (new protected gate) | ADR-0015, PR #6 | yes |
+| 2026-10-14 | P0-03a | `jsconfig.json` deleted (`tsconfig.json` with `allowJs` serves editors); `typecheck` checks `.ts/.tsx` only (`checkJs: false`, as the ticket says), so legacy JSX gets no type hints | PR #6 | yes |
 
 ## Resolved
 

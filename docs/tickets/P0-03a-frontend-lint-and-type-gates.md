@@ -6,7 +6,7 @@
 | Risk tier | 3 |
 | Depends on | P0-01 |
 | Replaces old | M1-T03 follow-up, M4-T06 (tracker) |
-| Status | in progress |
+| Status | done |
 
 Split from [P0-03](./P0-03-frontend-quality-gates.md) (see there why). The proxy and the route scope are in
 [P0-03b](./P0-03b-same-origin-proxy-and-route-scope.md); the whitespace normalisation in

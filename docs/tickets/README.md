@@ -33,7 +33,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 |---|---|---|---|---|---|---|
 | [P0-01](./P0-01-adopt-plan-into-repo.md) | Adopt the new plan into the repo | A | 3 | — | done | — |
 | [P0-02](./P0-02-backend-quality-gates.md) | Backend quality gates | A | 3 | P0-01 | done | — |
-| [P0-03a](./P0-03a-frontend-lint-and-type-gates.md) | Frontend lint and type gates (split from [P0-03](./P0-03-frontend-quality-gates.md)) | B | 3 | P0-01 | in progress | — |
+| [P0-03a](./P0-03a-frontend-lint-and-type-gates.md) | Frontend lint and type gates (split from [P0-03](./P0-03-frontend-quality-gates.md)) | B | 3 | P0-01 | done | — |
 | [P0-03b](./P0-03b-same-origin-proxy-and-route-scope.md) | Same-origin dev proxy and demo route scope | B | 2 | P0-03a | todo | — |
 | [P0-03c](./P0-03c-frontend-whitespace-and-pre-commit.md) | Frontend whitespace normalisation and pre-commit scope | B | 3 | P0-03a, P0-03b | todo | — |
 | [P0-04](./P0-04-repo-workflow-and-local-stack.md) | Repo workflow and local stack | B | 2 | P0-02, P0-03a, P0-03b | todo | — |

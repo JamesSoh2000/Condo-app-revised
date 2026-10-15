@@ -18,6 +18,10 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | 2026-10-14 | P0-05 | The `client` override shared the test's session, so a handler missing `commit()` passed its tests | review round 2 (Claude), Medium | followed the ticket's sketch without asking what production does at request end | rollback after request (pattern "test double diverges from production", 2) |
 | 2026-10-14 | P0-05 | That rollback had no `try/finally`, so on every error path tests still diverged from production | review round 3 (Claude), **High**, ticket blocked | fixed the success path only; didn't test the fix on raising endpoints | pending (inbox B-1). Pattern "test double diverges from production", 3: promote in the next ticket PR |
 
+| 2026-10-14 | P0-03a | Base44 fence missed `.js` extensions, the `entities`/`integrations` barrels, `import()`, `require()`; TS files had no `rules-of-hooks` | review round 1 (Claude), Medium ×2 | tested only the ticket's literal example | regex fence + `scripts/check-eslint-fence.sh` in CI |
+| 2026-10-14 | P0-03a | A broken esquery selector crashed ESLint only on files that don't exist yet, so `eslint .` passed with a broken fence | the implementer, while fixing round 1 | a gate that only runs on empty folders passes vacuously | fence self-test in CI |
+| 2026-10-14 | P0-03a | The round-1 baseline fix (`^[0-9]+$`) still let `08`/`0999` disable the ratchet (octal); the self-test ignored severity, so `warn` passed | review round 2 (Claude), Medium ×2 | fixed the reported input only, not its neighbours (pattern "fix not tested on adjacent cases", 2 with P0-05 round 3: promote in the next ticket PR) | `^(0|[1-9][0-9]*)$`, `"severity":2` |
+
 ## Promoted to rules / tests
 
 | Pattern | Promoted to | Date |

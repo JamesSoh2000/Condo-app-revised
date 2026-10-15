@@ -16,7 +16,8 @@ code will live. `tsc --noEmit` checks types, not lint rules such as import restr
 - Add the `typescript-eslint` dev dependency.
 - `.ts`/`.tsx` files under `src/` are linted with `typescript-eslint`'s `recommended` config (its parser plus
   its non-type-aware rules) and `react-hooks/rules-of-hooks`, as legacy JSX is.
-- `src/features/**` and `src/app/**` (JS or TS) use its parser and the Base44 fence:
+- `src/features/**` and `src/app/**` (JS or TS) get the Base44 fence. That block also names the
+  `typescript-eslint` parser, which only matters for `.js`/`.jsx` there (TS files already get it above):
   - `no-restricted-imports`, with one regex covering `@base44/*`, the legacy `api/base44Client`, `entities` and
     `integrations` modules (any prefix, any extension)
   - `no-restricted-syntax` for `import()` and `require()`
@@ -32,7 +33,7 @@ code will live. `tsc --noEmit` checks types, not lint rules such as import restr
     later.
 - Negative / accepted risks: one more dev dependency (with two `@eslint-community` helpers bumped as its
   peers), and lint is slightly slower. There are no runtime or bundle effects.
-- Follow-up work: consider `recommendedTypeChecked` once `src/api` and the first features exist (P1-07).
+- Follow-up work: consider `recommendedTypeChecked` (see "Revisit when").
 
 ## Alternatives considered
 
@@ -42,4 +43,5 @@ code will live. `tsc --noEmit` checks types, not lint rules such as import restr
 
 ## Revisit when
 
-The first `src/features/` slice merges (P2-06 or P4-07): decide on type-aware rules then.
+When the typed API client (`src/api`, P1-07) or the first `src/features/` slice (P2-06) merges, whichever
+comes first: decide on type-aware rules (`recommendedTypeChecked`) and `react-hooks/exhaustive-deps`.
