@@ -24,8 +24,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-# Anchored to backend/ so it does not hide frontend/src/lib/
+# Anchored (repo root and backend/) so they do not hide frontend/src/lib/
+/lib/
 /backend/lib/
+/lib64/
 /backend/lib64/
 parts/
 sdist/
