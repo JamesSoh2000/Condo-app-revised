@@ -19,5 +19,32 @@ dependencies = [
 dev = [
     "anyio>=4.0.0",
     "httpx>=0.28.0",
+    "mypy>=2.4.0",
+    "pre-commit>=4.7.0",
     "pytest>=8.0.0",
+    "ruff>=0.17.0",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+# Merged migrations are never edited (CLAUDE.md rule 11), so the pre-ruff baseline is excluded by name.
+# New migrations are linted and format-checked.
+extend-exclude = ["migrations/versions/989e5bd83064_initial_empty_database_baseline.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["migrations.*", "tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
