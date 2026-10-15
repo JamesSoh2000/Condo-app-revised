@@ -154,7 +154,8 @@ the inbox, so all three land atomically. The agent merges only when **all** of t
 - [ ] Every acceptance criterion maps to a passing test or recorded evidence in the PR.
 - [ ] The explanation exists and `scripts/check-explanation-refs.py` passes.
 - [ ] Nothing after the explanation changes what it describes: `git diff <explanation commit> HEAD` touches
-      only bookkeeping files, and a rebase after it resolved no conflict in the ticket's files. Otherwise a
+      only bookkeeping files, and a rebase after it resolved no conflict in the ticket's files (git doesn't record that: the
+      merging session confirms it). Otherwise a
       fresh explainer updates the explanation first.
 - [ ] No protected gate was loosened.
 
