@@ -4,6 +4,8 @@ The two `_probe` tests run in file order: the first commits DDL and a row inside
 transaction, the second proves both were rolled back.
 """
 
+from typing import Annotated
+
 import pytest
 from fastapi import Depends
 from sqlalchemy import text
@@ -57,7 +59,9 @@ async def test_client_requests_use_the_test_session(client, db: AsyncSession):
     await db.execute(text("CREATE TABLE _client_probe (note text)"))
     await db.execute(text("INSERT INTO _client_probe (note) VALUES ('from-the-test')"))
 
-    async def read_probe(session: AsyncSession = Depends(get_db_session)) -> dict[str, str]:
+    async def read_probe(
+        session: Annotated[AsyncSession, Depends(get_db_session)],
+    ) -> dict[str, str]:
         note = (await session.execute(text("SELECT note FROM _client_probe"))).scalar_one()
         return {"note": note}
 
