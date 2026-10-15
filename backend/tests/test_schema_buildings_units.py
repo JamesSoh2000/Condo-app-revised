@@ -5,8 +5,8 @@ the database's verdict is asserted. Criterion numbers refer to the ticket.
 """
 
 import ast
-import re
 import asyncio
+import re
 from pathlib import Path
 from uuid import UUID
 
