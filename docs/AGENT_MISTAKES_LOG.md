@@ -20,7 +20,7 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 
 | 2026-10-14 | P0-03a | Base44 fence missed `.js` extensions, the `entities`/`integrations` barrels, `import()`, `require()`; TS files had no `rules-of-hooks` | review round 1 (Claude), Medium ×2 | tested only the ticket's literal example | regex fence + `scripts/check-eslint-fence.sh` in CI |
 | 2026-10-14 | P0-03a | A broken esquery selector crashed ESLint only on files that don't exist yet, so `eslint .` passed with a broken fence | the implementer, while fixing round 1 | a gate that only runs on empty folders passes vacuously | fence self-test in CI |
-| 2026-10-14 | P0-03a | The round-1 baseline fix (`^[0-9]+$`) still let `08`/`0999` disable the ratchet (octal); the self-test ignored severity, so `warn` passed | review round 2 (Claude), Medium ×2 | fixed the reported input only, not its neighbours (pattern "fix not tested on adjacent cases", 2 with P0-05 round 3: promote in the next ticket PR) | `^(0|[1-9][0-9]*)$`, `"severity":2` |
+| 2026-10-14 | P0-03a | The round-1 baseline fix (`^[0-9]+$`) still let `08`/`0999` disable the ratchet (octal); the self-test ignored severity, so `warn` passed | review round 2 (Claude), Medium ×2 | fixed the reported input only, not its neighbours (pattern "fix not tested on adjacent cases", 2 with P0-05 round 3: promote in the next ticket PR) | `^(0\|[1-9][0-9]*)$`, `"severity":2` |
 
 ## Promoted to rules / tests
 
