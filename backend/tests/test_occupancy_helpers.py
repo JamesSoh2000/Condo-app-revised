@@ -797,3 +797,59 @@ async def test_move_out_racing_a_transfer_ends_the_new_occupancy(
     current, history = await _current_and_history(engine, committed["m"])
     assert current == []
     assert [unit for unit, *_ in history] == [committed["u101"], committed["u102"]]
+
+
+# --- review round 1 ------------------------------------------------------------------------------
+
+
+async def test_future_times_are_refused(db: AsyncSession, setup: Setup):
+    """Low 2: a future start would be listed as current before its window opens."""
+    ids = {"building_id": setup.a.id, "membership_id": setup.m.id}
+    future = await db.scalar(select(func.now() + timedelta(seconds=1)))
+    assert future is not None
+
+    with pytest.raises(OccupancyTimeError, match="future"):
+        await start_occupancy(db, unit_id=setup.u101.id, relationship=TENANT, at=future, **ids)
+    await start_occupancy(db, unit_id=setup.u101.id, relationship=TENANT, at=T0, **ids)
+    with pytest.raises(OccupancyTimeError, match="future"):
+        await end_occupancy(db, at=future, **ids)
+    with pytest.raises(OccupancyTimeError, match="future"):
+        await transfer_occupancy(
+            db, new_unit_id=setup.u102.id, relationship=TENANT, at=future, **ids
+        )
+
+    assert await _history(db, setup.m.id) == [(setup.u101.id, TENANT, T0, None)]
+
+
+async def test_window_clause_works_when_the_outer_query_joins_unit_occupancies(
+    db: AsyncSession, turnover: Turnover
+):
+    """Low 3: the EXISTS must keep its own unit_occupancies, not correlate it away."""
+    records = Table(
+        "occupancy_join_records",
+        MetaData(),
+        Column("unit_id", Uuid()),
+        Column("created_at", DateTime(timezone=True)),
+        prefixes=["TEMPORARY"],
+    )
+    await db.run_sync(lambda sync: records.create(sync.connection()))
+    await db.execute(
+        records.insert(),
+        [
+            {"unit_id": turnover.s.u101.id, "created_at": T0 + SECOND},  # former's time
+            {"unit_id": turnover.s.u101.id, "created_at": T2},  # current's time
+        ],
+    )
+    # Records joined to every occupancy of their unit (an occupant list next to each record),
+    # filtered to the records `current` may see.
+    query = (
+        select(records.c.created_at, UnitOccupancy.membership_id)
+        .join(UnitOccupancy, UnitOccupancy.unit_id == records.c.unit_id)
+        .where(
+            occupancy_window_clause(turnover.current.id, records.c.unit_id, records.c.created_at)
+        )
+        .order_by(UnitOccupancy.started_at)
+    )
+
+    rows = [tuple(r) for r in await db.execute(query)]
+    assert rows == [(T2, turnover.former.id), (T2, turnover.current.id)]

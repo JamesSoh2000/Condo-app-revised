@@ -19,7 +19,10 @@ builds on the answers (`occupancy_window_clause` in `app/memberships/occupancy.p
   stamped exactly then belongs to the new occupant only: never to both, never to neither.
 - **One clock.** When a helper isn't given `at`, it uses the database's `now()` (the start of the current
   transaction), not the app server's clock. Records default to `now()` too, so both sides of the comparison
-  come from Postgres, and an end and a start in one transaction share the same instant.
+  come from Postgres, and an end and a start in one transaction share the same instant. A future `at` is
+  refused (a future start would be listed as current before its window opens). A past `at` is for seeds,
+  tests and backfills only, and never comes from a client: a start backdated into a previous occupant's
+  time would show the newcomer that occupant's records.
 - **No overlapping history per membership.** `start_occupancy` refuses an `at` earlier than the end of one of
   the membership's earlier occupancies, and `end_occupancy` refuses an `at` before the current row's start
   (`OccupancyTimeError`). This is a check in Python, not a database exclusion constraint. The partial unique

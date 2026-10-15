@@ -6,7 +6,9 @@ then belongs to the new window only.
 
 `at=None` means the database's `now()`, the start of the current transaction. Records default to
 `now()` too, so both sides of the window come from one clock, and an end and a start in one
-transaction share it.
+transaction share it. A future `at` is refused. A past `at` is for seeds, tests and backfills, and
+it decides what a person may see: a start backdated into a previous occupant's time shows the
+newcomer that occupant's records. Never take `at` from a client.
 
 These are building blocks for services: they flush but never commit (CLAUDE.md rule 5), and they
 don't check membership status, roles or `Unit.is_active`, or record audit events. The services that
@@ -34,8 +36,12 @@ async def _prepare(
     """Resolve `at`, flush, and lock the membership for the rest of the transaction."""
     if at is not None and at.utcoffset() is None:
         raise ValueError("at must be timezone-aware")
+    now = (await db.execute(select(func.now()))).scalar_one()
     if at is None:
-        at = (await db.execute(select(func.now()))).scalar_one()
+        at = now
+    elif at > now:
+        # A future start would be listed as current before its window opens.
+        raise OccupancyTimeError("`at` is in the future")
     # The session doesn't autoflush: the checks below must also see the caller's pending rows.
     await db.flush()
     # Occupancy writes for one membership run one at a time: a concurrent start, end or transfer
@@ -172,9 +178,14 @@ def occupancy_window_clause(
     membership makes it false. No building filter is needed: a unit id belongs to one building, and
     the composite FKs keep an occupancy's unit and membership in it (ADR-0005).
     """
-    return exists().where(
-        UnitOccupancy.membership_id == membership_id,
-        UnitOccupancy.unit_id == record_unit_col,
-        UnitOccupancy.started_at <= record_time_col,
-        or_(UnitOccupancy.ended_at.is_(None), UnitOccupancy.ended_at > record_time_col),
+    return (
+        exists()
+        .where(
+            UnitOccupancy.membership_id == membership_id,
+            UnitOccupancy.unit_id == record_unit_col,
+            UnitOccupancy.started_at <= record_time_col,
+            or_(UnitOccupancy.ended_at.is_(None), UnitOccupancy.ended_at > record_time_col),
+        )
+        # Its own unit_occupancies, even when the outer query also selects from that table.
+        .correlate_except(UnitOccupancy)
     )
