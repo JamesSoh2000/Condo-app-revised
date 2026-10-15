@@ -11,8 +11,11 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { LanguageProvider } from '@/lib/LanguageContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Contacts from './pages/Contacts';
+import { isDemoPage } from '@/app/routeScope';
 
-const { Pages, Layout, mainPage } = pagesConfig;
+const { Pages: AllPages, Layout, mainPage } = pagesConfig;
+// Only demo-scope pages are routed; the rest render the 404 page (src/app/routeScope.ts).
+const Pages = Object.fromEntries(Object.entries(AllPages).filter(([name]) => isDemoPage(name)));
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
 
@@ -76,11 +79,13 @@ function App() {
       <LanguageProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router>
-          <NavigationTracker />
+          {/* Base44 editor helpers, dev only: they post to window.parent with target '*' and log page
+              views to Base44, and VisualEditAgent's message handler has no origin check. */}
+          {import.meta.env.DEV && <NavigationTracker />}
           <AuthenticatedApp />
         </Router>
         <Toaster />
-        <VisualEditAgent />
+        {import.meta.env.DEV && <VisualEditAgent />}
       </QueryClientProvider>
       </LanguageProvider>
     </AuthProvider>
