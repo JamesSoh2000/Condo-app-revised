@@ -38,7 +38,7 @@ jobs:
       # The cache uses backend/pyproject.toml and backend/uv.lock so dependency
       # installs are faster when the backend dependency graph has not changed.
       - name: Set up uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v8.3.2
         with:
           version: "0.11.17"
           enable-cache: true

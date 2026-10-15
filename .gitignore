@@ -24,8 +24,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Anchored to backend/ so it does not hide frontend/src/lib/
+/backend/lib/
+/backend/lib64/
 parts/
 sdist/
 var/
