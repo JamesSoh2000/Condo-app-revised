@@ -5,7 +5,7 @@
 | Phase / lane | P0 / B |
 | Risk tier | 3 |
 | Depends on | P0-03a, P0-03b (it touches the same files; doing it last avoids conflicts) |
-| Status | in progress |
+| Status | done |
 
 Split from [P0-03](./P0-03-frontend-quality-gates.md). The scope item came from P0-02's review (the
 pre-commit whitespace/EOF hooks were scoped to `backend/` because the frontend wasn't clean).

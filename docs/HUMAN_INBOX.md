@@ -25,7 +25,7 @@ Human-only setup the plan will need soon. Agents add these ahead of time so noth
 |---|---|---|---|
 | PRE-1 | the first autonomous merge (P0-01) | `gh auth login` in the environment where agents run, with a token that can merge PRs and edit branch protection (P0-04). Without it, agents can open PRs but not merge them | partly done: PRs merge (#1–#3); branch-protection permission not yet verified (P0-04). Note: `main` has no branch protection today |
 | PRE-2 | P0-02 (Tier 1 reviews start at P1-02) | Codex CLI installed and logged in for the `codex-review` skill. Without it, Tier 1 falls back to a second Claude reviewer | done: Codex (`gpt-6-astra`) reviewed P0-03b rounds 1 and 3 |
-| PRE-4 | P0-04 (`make up`), P0-05 (DB tests run locally) | Docker reachable from the WSL distro the agents run in (Docker Desktop → Settings → Resources → WSL integration). Today `docker` is "not found in this WSL 2 distro", so agents verify DB behaviour only in CI | open |
+| PRE-4 | P0-04 (`make up`), P0-05 (DB tests run locally) | Docker reachable from the WSL distro the agents run in (Docker Desktop → Settings → Resources → WSL integration). Today `docker` is "not found in this WSL 2 distro", so agents verify DB behaviour only in CI | done (2026-10-15, James: Docker connection is on) |
 | PRE-3 | milestone D (start ~week 8) | AWS account with MFA and budget alerts, a domain, SES domain verification ([D-01](./tickets/D-01-terraform-base.md)) | not yet |
 
 ## Decisions to audit
@@ -45,6 +45,7 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 | 2026-10-15 | P0-03b | Dashboard views and cards that open hidden pages are hidden through the same allowlist (`isDemoViewRole` drops the Finance view and the `?role=financials`/saved-view routes into it; `InScope` hides cards and buttons), not deleted | `Dashboard.jsx`, `RoleSwitcher.jsx`, `Layout.jsx`, PR #7 | yes |
 | 2026-10-15 | P0-03b | The Base44 editor helpers (`VisualEditAgent`, `NavigationTracker`) render only in dev (`import.meta.env.DEV`). Production no longer posts `app_changed_url`/visual-edit messages or page-view logs to Base44. The Base44 SDK itself still ships, and when the app is framed it posts every API request and response to the parent window: P1-08's `frame-ancestors 'none'` is the mitigation | `App.jsx`, PR #7 (AC6 table) | yes |
 | 2026-10-15 | P0-03b | Vite proxies only `/api`, `/api/…` and `/api?…` (key `^/api(/\|\?\|$)`) to `VITE_API_PROXY_TARGET` (shell or `frontend/.env*`, default `http://localhost:8000`), so the SPA calls the API same-origin with no CORS | `frontend/vite.config.js`, PR #7 | yes |
+| 2026-10-15 | P0-03c | The whitespace hooks now cover all of `frontend/`. Their one run removed trailing spaces inside 7 string/template literals (a Tailwind class list in `Layout.jsx`, HTML email markup in `NotificationHelper.jsx`, the Concierge LLM prompt), judged whitespace-insensitive, so no file was excluded from the hooks | PR #8 (AC4) | yes |
 | 2026-10-14 | P0-03a | `jsconfig.json` deleted (`tsconfig.json` with `allowJs` serves editors); `typecheck` checks `.ts/.tsx` only (`checkJs: false`, as the ticket says), so legacy JSX gets no type hints | PR #6 | yes |
 
 ## Resolved
