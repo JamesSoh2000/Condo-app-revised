@@ -91,8 +91,9 @@ if it didn't.
 1. Read the ticket in `docs/tickets/`, the ADRs it links, and the **current code** before planning.
    The docs describe targets; the code is the truth. Check `docs/HUMAN_INBOX.md`: stop if `paused`.
 2. Frame, then plan, without waiting for approval: sharpen the criteria (never loosen one silently), write
-   the plan into the PR. Decide open questions with the playbook's **decision rules**; lasting decisions get
-   an ADR and a line in the inbox's "Decisions to audit".
+   the plan into the PR. Decide open questions with the playbook's **decision rules** and record each one in
+   the PR when you make it (alternatives, tradeoffs, basis); lasting decisions get an ADR and a line in the
+   inbox's "Decisions to audit".
 3. On a **stop rule** (human-only resource, contradicts an ADR/scope/rule above, needs a weaker gate, review
    not converging, unnamed outward-facing action): set the ticket `blocked`, write it in the inbox, move on.
    Never guess past one.
@@ -103,7 +104,8 @@ if it didn't.
 6. **Never review or explain your own work.** The review and the explanation run in fresh sessions
    (subagents). Fix confirmed findings test-first; at most 3 review rounds.
 7. Merge (`gh pr merge --squash`) only when the playbook's **merge gate** passes. End with the handoff block.
-8. In explanations and answers, reference code as `path::symbol`, not bare line numbers.
+8. In explanations and answers, reference code as `path::symbol`, not bare line numbers. Name the PR and
+   revision you describe, and mark a "why" no record states as inferred.
 
 ## Never
 

@@ -76,8 +76,9 @@ make small WIP commits; the squash cleans them up.
       width.
 - [ ] Logs carry no secrets or personal data beyond IDs.
 - [ ] The independent review's final round is `MERGE`, with no open Critical or High finding.
-- [ ] The explanation is written by a fresh session (full form for Tier 1–2, short form for Tier 3): the
-      decisions, how it is implemented, the code, the review log and what was not verified.
+- [ ] The explanation is written by a fresh session (full form for Tier 1–2, short form by default for
+      Tier 3): the decisions with their recorded rationale, how it is implemented, the code, the review log
+      and what was not verified. It names the PR and the source revision it describes.
       `scripts/check-explanation-refs.py` passes for it.
 - [ ] The ticket index status is `done`, and autonomous decisions are listed in
       [HUMAN_INBOX.md](./HUMAN_INBOX.md).

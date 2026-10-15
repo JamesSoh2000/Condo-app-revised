@@ -79,6 +79,8 @@ Command: [`/implement-ticket`](../.claude/commands/implement-ticket.md).
 - `make gen-api` if the API changed; `make revision` if models changed, then read and fix the migration.
 - **≤ ~400 non-test lines.** Tests don't count; never cut tests to fit. Over the limit means split.
 - Stay in scope. Unrelated improvements become follow-up notes in the PR, not code.
+- **Record decisions when you make them**, in the PR's "Decisions and alternatives" (see
+  [recording a decision](#recording-a-decision)). Don't reconstruct them from memory at the end.
 - **Evidence, not claims:** real command output goes in the PR. Never claim a command ran if it didn't.
 - Never weaken a [protected gate](#protected-gates) to get green.
 
@@ -111,7 +113,9 @@ Command: [`/review-ticket`](../.claude/commands/review-ticket.md), run as a **su
 | 3 | One fresh Claude reviewer, short pass (scope, accuracy, nothing broken) |
 
 **Fix loop.** The implementer reproduces each finding (a failing test first) before fixing it, and records
-dismissed findings with a reason in the PR. Then a **new** fresh reviewer re-reviews the whole diff, not just
+dismissed findings with a reason in the PR. For each fix, the PR's "Independent review" section keeps the
+concrete failure that motivated it and the evidence for the final approach (the test that failed and now
+passes); a fix that chose between approaches also gets a decision record. Then a **new** fresh reviewer re-reviews the whole diff, not just
 the fixes. At most **3 rounds**: an open Critical or High after round 3 blocks the ticket. Medium and Low
 findings that are not fixed go to the PR's follow-ups and the explanation's "Not verified" section.
 
@@ -121,19 +125,23 @@ Command: [`/explain-ticket`](../.claude/commands/explain-ticket.md), run as a **
 writing `docs/explanations/<ticket>-<slug>.md` from [templates/EXPLANATION.md](./templates/EXPLANATION.md).
 It is committed to the PR as its last code commit.
 
-A fresh session explains the code that exists, not what the implementer intended. Its inputs are the ticket,
-the PR description (the plan, decisions and alternatives), the review reports, the diff and the repo.
+A fresh session explains the code that exists, not what the implementer intended. Its inputs are the ticket
+(with its Frame notes), the ADRs it links or adds, the PR description (the plan, "Decisions and
+alternatives", the review rounds, follow-ups), the PR's comments and reviews, the diff and the repo. The aim:
+a later session, without the implementation conversation, can explain what was built, how it works, why each
+consequential choice was made and what was rejected, what shaped it, and what was and wasn't verified.
 
 | Rule | Why |
 |---|---|
 | Three core parts: **decisions** (with rejected alternatives), **how it is implemented** (one walkthrough), **the code** (annotated excerpts of what was written) | What James asked for: it is read instead of reviewing the PR |
-| Plus the **review log** and **what was not verified** | With no human review, this is where James sees what the gates did and did not prove |
-| **Full form** for Tier 1–2 (≤ 400 lines including code); **short form** for Tier 3 (≤ 60 lines) | A long explanation does not get read; a config change doesn't need a walkthrough |
+| Plus the **review log** (with the failure behind each fix) and **what was not verified**, accepted risks and open follow-ups | With no human review, this is where James sees what the gates did and did not prove |
+| Opens with a brief overview. **Full form** for Tier 1–2, aiming at about 400 lines including code; **short form** by default for Tier 3 (about 60 lines), with full-form sections when the change needs them. These are editing guidelines, not limits | Length goes to consequential decisions, behaviour, failure scenarios and "Must explain" questions, never padding, repetition, whole files or generic tutorials. A long one stays one file, with sections and collapsed deeper material |
+| Each "why" is labelled: **recorded** (ticket, ADR, PR, review), **established by code and tests**, or **inferred**. Unknown motivation is stated as unknown | A later reader must tell a record from a guess. Never invent alternatives, experiments, decisions or verification results |
 | Walkthrough variant matches the ticket: **A** API request, **B** UI interaction, **C** process/pipeline | An invented request walkthrough is worse than none |
-| Prose references are `path::symbol`; code excerpts are fenced blocks headed by their `path::symbol` | They survive later edits and are checked by `scripts/check-explanation-refs.py` (which skips fenced code) |
+| Prose references are `path::symbol`; code excerpts are fenced blocks headed by their `path::symbol`; immutable permalinks where exact lines matter | They survive later edits and are checked by `scripts/check-explanation-refs.py` (which skips fenced code) |
 | Answers the ticket's "Must explain" questions, then a 5-question quiz with collapsed answers | James's self-study material |
-| If the code contradicts the PR description or the plan, the explainer reports it and **does not paper over it** | A mismatch goes back to step 5 as a finding |
-| It's a snapshot; the header names the PR | Later changes get a new explanation; lasting decisions live in ADRs |
+| If the code contradicts the PR description or the plan, or a consequential decision has no recorded rationale, the explainer reports it and **does not paper over it** | A mismatch goes back to step 5 as a finding; a missing rationale goes into the PR's decisions |
+| It's a snapshot. The header names the PR and the pre-merge **source revision** it was written from; the merge commit is recorded after the merge (handoff block, phase recap) | The explanation is committed before the merge, so it can't name the merge SHA. Later changes get a new explanation, which says which revision it describes; lasting decisions live in ADRs |
 
 ### Step 7 — Merge gate (agent merges)
 
@@ -141,10 +149,13 @@ The PR's last commit also sets the ticket's status to `done` in the index and ad
 the inbox, so all three land atomically. The agent merges only when **all** of these hold:
 
 - [ ] Every required CI check is green on the PR head.
-- [ ] Rebased onto the latest `main` (the explanation assumes the merged tree equals the PR head).
+- [ ] Rebased onto the latest `main`.
 - [ ] The final review round returned `MERGE` from every required reviewer, with no open Critical or High.
 - [ ] Every acceptance criterion maps to a passing test or recorded evidence in the PR.
 - [ ] The explanation exists and `scripts/check-explanation-refs.py` passes.
+- [ ] Nothing after the explanation changes what it describes: `git diff <explanation commit> HEAD` touches
+      only bookkeeping files, and a rebase after it resolved no conflict in the ticket's files. Otherwise a
+      fresh explainer updates the explanation first.
 - [ ] No protected gate was loosened.
 
 Then: `gh pr merge <N> --squash --delete-branch`, remove the worktree, and return to step 0.
@@ -170,7 +181,7 @@ merges (P1-08 `prodlike`, P4-09 `e2e`), needs the protection's check list update
 ## Decision rules
 
 The agent decides alone, in this order, and records every decision in the PR's "Decisions and alternatives"
-section (from there it reaches the explanation):
+section when it makes it (from there it reaches the explanation):
 
 1. **The ticket, an accepted ADR, [PRODUCT_SCOPE.md](./PRODUCT_SCOPE.md) or `CLAUDE.md` decides it.** Follow it.
 2. **A default is written down** (a stub's "Decide while framing" default, a product default): take it.
@@ -179,6 +190,24 @@ section (from there it reaches the explanation):
    - Lasting (other tickets will build on it: a convention, a table shape, a library): write an ADR with
      `Deciders: agent (autonomous) in <ticket>`, and add it to the inbox's "Decisions to audit".
 4. **A stop rule applies:** block.
+
+### Recording a decision
+
+A decision is **consequential** if a later reader would ask "why this way?": it shapes behaviour, data,
+security, an interface or a gate, trades one property for another, or a reviewer questioned it. Routine
+syntax and choices that simply follow the convention need no record. For each consequential one, write:
+
+- **Problem or constraint** it answers
+- **Chosen** approach
+- **Alternatives** actually considered, and why each lost (none considered: say so; never invent one)
+- **Tradeoffs and accepted limitations**
+- **Basis:** ticket requirement, ADR, existing convention, experiment, test result, review finding, or
+  autonomous judgment, with the evidence
+
+Review-driven decisions keep the concrete failure that motivated the fix and the evidence for the final
+approach. Context outlives the PR only in the repo: the explanation carries the ticket's decisions, accepted
+risks and open follow-ups; a follow-up that needs action also goes to the ticket it belongs to, the index or
+the inbox. ADRs are for **lasting** decisions only (rule 3 above), not every implementation detail.
 
 ## Stop rules
 
@@ -268,7 +297,7 @@ When the last ticket of a phase merges, the agent:
 
 ```markdown
 ## Handoff — <ticket>
-Status: merged (PR #N) | blocked (inbox item) | split (into …)
+Status: merged (PR #N, merge commit <sha>) | blocked (inbox item) | split (into …)
 Changed files: <list>
 Interfaces changed: <endpoints/schemas/tables>
 Migrations: <revision id + summary>

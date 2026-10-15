@@ -1,14 +1,54 @@
 # Explanation — <ticket-id> <title>
 
-> Code as merged in PR #<N> (<date>), built and merged autonomously
-> ([ADR-0014](../adr/0014-autonomous-agent-workflow.md)); no human reviewed it before merge. The branch was
-> rebased onto the latest `main` before the squash merge, so the merged tree equals the PR head. The PR's
-> commits stay reachable at `refs/pull/<N>/head`.
+> **PR:** #<N> · **Source revision:** `<sha>`, the pre-merge PR head this explanation was written from and
+> checked against. **Reviewed:** the final review round (<R>) reviewed this commit / reviewed `<sha>`.
+> **Merge commit:** not known when written; after the merge, `gh pr view <N> --json mergeCommit` gives it.
+> Built and merged autonomously ([ADR-0014](../adr/0014-autonomous-agent-workflow.md)); no human reviewed it
+> before merge. This describes the PR's changes at the source revision. Commits after it (bookkeeping) and
+> the squash merge are not described here, and a rebase after it gives the same changes new SHAs.
 > This is a snapshot: if the code changes later, write a new explanation; do not update this one. Lasting
 > decisions live in ADRs.
-> Form: full (Tier 1–2, ≤ 400 lines including code) / short (Tier 3, ≤ 60 lines). Walkthrough variant: A / B / C.
+> Form: full / short. Tier: 1 / 2 / 3. Walkthrough variant: A / B / C / none.
 
-## How to reference code
+## How to write this (for the explainer; don't copy this section)
+
+### Length and shape
+
+- Start with §1: a brief overview the reader can take in before the details.
+- **Full form** (Tier 1–2): about 400 lines including code is an editing guideline, not a limit.
+  **Short form** is the default for Tier 3 (about 60 lines); when a Tier 3 change is complex enough, add the
+  full-form sections it needs.
+- Spend extra length only where it explains a consequential decision, important behaviour, a failure
+  scenario or a "Must explain" question. Don't pad, don't restate a point, don't paste whole files, and
+  don't write tutorials on general tools (link their docs).
+- If it grows long, keep one file. Use the numbered sections, and put deeper material (full SQL, a long
+  excerpt, a second walkthrough) in `<details><summary>Deeper: …</summary>` blocks so the main path still
+  reads in order.
+
+### Where each claim comes from
+
+| Kind | What it is | How to write it |
+|---|---|---|
+| **Recorded** | Rationale written down before this explanation: the ticket and its Frame notes, an ADR, the PR's "Decisions and alternatives", the review log or review comments | State it and cite the source ("PR decision D2", "ADR-0005", "review round 2, High 1") |
+| **Code and tests** | Behaviour you established from the code, or from tests you ran | Cite `path::symbol` or the test name; say whether you ran it |
+| **Inferred** | Your own reading of *why*, which no record states | Prefix it with "Inferred:" |
+
+If the original motivation is not recorded and the code doesn't establish it, write "Rationale not
+recorded." **Never invent** an alternative, experiment, decision, test run or verification result. A
+consequential decision without recorded rationale is also reported to the implementer (`/explain-ticket`).
+
+### Revisions and links
+
+- The **source revision** is `git rev-parse HEAD` before your own commit. Check in the PR's "Independent
+  review" section that the final review round reviewed that commit; if it didn't, name the one it did.
+- Never write a merge SHA before the merge exists, and don't try to put your own commit's SHA in the file.
+- Describe the PR's changes (`git diff origin/main...HEAD`). Don't present the branch's whole tree as "what
+  merged".
+- Where exact lines matter, add an immutable permalink next to the `path::symbol`:
+  `https://github.com/<owner>/<repo>/blob/<source-sha>/<path>#L10-L20`. A later explanation or answer, written
+  after the merge, links the merge commit instead.
+
+### How to reference code
 
 - **In prose**, use symbol references, not bare line numbers: `path::anchor`, for example
   `backend/app/packages/service.py::pickup_package` or
@@ -16,20 +56,37 @@
   file: a function, class, component or hook name for code; a key or block header for config
   (`.github/workflows/ci.yml::deploy:`).
 - **Code excerpts** are fenced blocks with the language set, each preceded by a line naming its
-  `path::anchor`. Copy the code exactly as merged; cut with `# ...` rather than rewrite.
-- If exact lines matter, add a GitHub permalink at the PR head commit (`…/blob/<pr-head-sha>/path#L10-L20`).
+  `path::anchor`. Copy the code exactly as it is at the source revision; cut with `# ...` rather than
+  rewrite.
 - `scripts/check-explanation-refs.py` verifies every `path::anchor` in prose (it skips fenced code).
 
-## 1. What was built and why (≤ 3 lines)
+## 1. What was built and why
+
+A brief overview, 3–6 lines: what changed, why, and the one or two decisions that matter most.
 
 ## 2. Decisions
 
-Every non-obvious choice: from the PR's "Decisions and alternatives", the ticket's Frame notes, ADRs written
-in this ticket, and any you find in the code. Mark the ones the agent made **without a written rule** with
-"autonomous" in the Basis column: those are also in [HUMAN_INBOX](../HUMAN_INBOX.md).
+Every **consequential** decision: one a later reader would ask "why this way?" about. That covers
+behaviour, data shape, security, an interface, a gate, a tradeoff, and anything a reviewer questioned.
+Sources: the PR's "Decisions and alternatives", the ticket's Frame notes, ADRs written or applied in this
+ticket, the review log, and any you find in the code (those are inferred unless a record backs them).
+Routine choices (syntax, naming that follows the convention) need no entry. Decisions the agent made
+**without a written rule** have Basis "autonomous": those are also in [HUMAN_INBOX](../HUMAN_INBOX.md).
 
-| Decision | Alternative rejected | Why | Basis (ticket / ADR-NNNN / default / autonomous) |
-|---|---|---|---|
+### D1. <the decision, in one line>
+
+- **Problem or constraint:**
+- **Chosen:**
+- **Alternatives rejected:** <alternative>: why it lost. "None recorded" if the records name none.
+- **Tradeoffs and accepted limitations:**
+- **Basis:** ticket / ADR-NNNN / existing convention (`path::symbol`) / experiment / test result / review
+  finding (round N) / autonomous
+- **Source:** recorded (where) / inferred
+
+Smaller decisions, one row each:
+
+| Decision | Alternative rejected | Why | Basis | Source |
+|---|---|---|---|---|
 
 **Framing changes:** criteria the agent added, sharpened or (with reason) loosened in step 1. "None" is valid.
 
@@ -87,18 +144,20 @@ The code this ticket wrote, so you can read it here instead of in the PR.
 | File | Change | Lines (+/−) |
 |---|---|---|
 
-**Key excerpts.** The 3–6 pieces that carry the ticket: the core service function or component, the
-migration, the guard or constraint, and one test that proves the hardest criterion. At most ~150 lines of
-code in total. For each:
+**Key excerpts.** The pieces that carry the ticket: usually 3–6 (the core service function or component,
+the migration, the guard or constraint, and one test that proves the hardest criterion), around 150 lines
+of code in total. Both numbers are guidance: add an excerpt when a consequential decision or failure
+scenario needs the reader to see the code; never paste a whole file when a trimmed excerpt makes the point.
+For each:
 
 `backend/app/<x>/service.py::<use_case>`
 
 ```python
-# the merged code, trimmed with "# ..." where it is routine
+# the code at the source revision, trimmed with "# ..." where it is routine
 ```
 
 - What it does, in 2–4 lines.
-- Why it is written this way (link to §2 where a decision drives it).
+- Why it is written this way (link to the §2 decision that drives it).
 - What would break if a key line were removed.
 
 ## 5. Edge cases and tests
@@ -110,13 +169,20 @@ Acceptance criteria → tests: one line per criterion, naming its test or eviden
 
 ## 6. Review log
 
-| Round | Reviewer | Verdict | Findings (severity: one line) | Outcome (fixed in commit / dismissed: why) |
-|---|---|---|---|---|
+| Round | Reviewer | Commit reviewed | Verdict | Findings (severity: one line) | Outcome (fixed in commit / dismissed: why) |
+|---|---|---|---|---|---|
 
-## 7. Not verified
+For each finding that changed the code or the design: the concrete failure that motivated it (inputs →
+wrong outcome), the evidence for the final approach (the test that failed and now passes, a proof run), and
+the §2 decision it produced, if any.
+
+## 7. Not verified, accepted risks and follow-ups
 
 What no test, check or reviewer proved: behaviour only real infrastructure shows, unfixed Medium/Low findings,
 residual risks the reviewers listed, manual checks not run. "None" only if that is literally true.
+
+Then the risks the PR accepted and the follow-ups it left open, each with where it is tracked (a ticket's
+file, an index row, the inbox, an ADR), or "tracked only here".
 
 ## 8. How to change this safely
 
@@ -124,7 +190,8 @@ residual risks the reviewers listed, manual checks not run. "None" only if that 
 
 ## 9. Must explain, then quiz
 
-Answer each of the ticket's "Must explain" questions in 3–6 lines, with `path::anchor` references.
+Answer each of the ticket's "Must explain" questions, with `path::anchor` references. A few lines each is
+usual; take more when the question needs it.
 
 Then five quiz questions that test understanding, not recall of names:
 
@@ -142,14 +209,18 @@ Then five quiz questions that test understanding, not recall of names:
 
 ---
 
-## Short form (Tier 3 tickets only, ≤ 60 lines)
+## Short form (default for Tier 3 tickets, about 60 lines)
 
-Use this instead of sections 1–9 for docs, config, copy, styling and tooling tickets.
+Use this instead of sections 1–9 for docs, config, copy, styling and tooling tickets. Keep the header, and
+the rules in "How to write this". When the change is complex enough (a non-obvious pipeline, a decision with
+real alternatives), add the full-form sections it needs, such as the walkthrough or the edge-case table.
 
-1. **What changed and why** (≤ 3 lines)
-2. **Decisions**: one line each, with the basis; "None" is valid
+1. **What changed and why**: a brief overview, 3–6 lines
+2. **Decisions**: one line each, with basis and source; "None" is valid. A consequential decision gets the
+   §2 block instead
 3. **Files changed**: one line each, using `path` or `path::anchor`
-4. **The code**: the one excerpt that matters, if any (≤ 20 lines)
+4. **The code**: the excerpt that matters, if any (usually ≤ 20 lines)
 5. **How to verify it**: the command or check, and what success looks like
-6. **Review**: verdict and anything fixed or dismissed
-7. **How to change it safely**: one or two lines
+6. **Review**: verdict, and anything fixed (with the failure that motivated it) or dismissed
+7. **Not verified, accepted risks and follow-ups**: and where each is tracked; "None" only if literally true
+8. **How to change it safely**: one or two lines
