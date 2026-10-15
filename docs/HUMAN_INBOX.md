@@ -15,7 +15,7 @@ The next `/build-next` unblocks the ticket and moves the item to "Resolved".
 
 | # | Date | Ticket | What's needed | Options (agent's recommendation first) | Blocks |
 |---|---|---|---|---|---|
-| — | — | — | — | — | — |
+| B-1 | 2026-10-14 | [P0-05](./tickets/P0-05-database-test-infrastructure.md) (PR #4) | Stop rule 4: the third review round left a **High** open. In the test `client` fixture, the "roll back the request's uncommitted work" step added in round 2 only runs when the request succeeds. When the endpoint raises (an `HTTPException` or an error), its uncommitted writes stay visible to the test, while production discards them. So a write-then-raise bug (for example, a failed-login audit event that is never committed) passes its tests. The reviewer proved this and verified two fixes. I need your OK for a 4th review round (or to take another option). Everything else in PR #4 passed review; CI is green. | **A (recommended):** give the request its own session on the test's connection (`AsyncSessionLocal(bind=conn, join_transaction_mode="create_savepoint")` per request). This fixes H1 and the round-3 M1 (expired ORM objects after a GET), and test setup no longer needs to commit first. Add tests for write-then-`HTTPException`, caught-DB-error-then-next-request, and an ORM object after a GET. Then a 4th fresh review. **B:** minimal `try/finally` around the rollback plus the same tests, then a 4th review (leaves M1 open). **C:** revert to the ticket's plain `yield db` and log "missing commit isn't caught by client tests" as a known gap for P1-05. | P1-01 → the whole critical path (P1-02, P1-03, P1-05, P2-*…), and P3-01. P0-03 and P0-04 can continue. |
 
 ## Prerequisites coming up
 
