@@ -4,8 +4,10 @@ An ADR records **one** decision: its context, what we chose, what we gave up, an
 ADRs are short (one screen), numbered, and never deleted. When a decision changes, write a new ADR that
 supersedes the old one and set the old one's status to `Superseded by NNNN`.
 
-**Who writes them:** humans author ADRs, and agents may draft them. Writing them is a core learning activity,
-because it forces you to articulate trade-offs. Agents flag "ADR candidates" in PRs ([05](../AI_AGENT_PLAYBOOK.md)).
+**Who writes them:** agents write them when a ticket makes a lasting decision
+([decision rules](../AI_AGENT_PLAYBOOK.md#decision-rules)), with `Deciders: agent (autonomous) in <ticket>`, and
+list them in [HUMAN_INBOX.md](../HUMAN_INBOX.md) for James to audit. James writes them for decisions he makes
+himself. Reading them is a core learning activity, because they state the trade-offs.
 
 | # | Decision | Status |
 |---|---|---|
@@ -22,5 +24,6 @@ because it forces you to articulate trade-offs. Agents flag "ADR candidates" in 
 | [0011](./0011-frontend-strangler-typescript.md) | Strangler migration of the Base44 frontend to typed API + TypeScript | Accepted |
 | [0012](./0012-polling-not-websockets.md) | Polling with React Query for freshness; no WebSockets/Redis in MVP | Accepted |
 | [0013](./0013-local-first-deployment-milestone.md) | Build and test locally first; deployment is a separate milestone (D) | Accepted |
+| [0014](./0014-autonomous-agent-workflow.md) | Agents build, review and merge tickets autonomously; humans audit asynchronously | Accepted |
 
 Template: [../templates/ADR.md](../templates/ADR.md).

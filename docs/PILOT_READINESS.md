@@ -67,6 +67,9 @@ Not legal advice. Get qualified advice for the specific building.
 - [ ] File uploads: decide on malware scanning (for example ClamAV in the worker, or an S3 scan service) and
       per-building storage quotas.
 - [ ] Optionally, an external penetration test or a peer review by an experienced engineer.
+- [ ] **Re-decide autonomous merging** ([ADR-0014](./adr/0014-autonomous-agent-workflow.md)): with real
+      residents' data, decide whether Tier 1 PRs (auth, tenancy, files, deploy, deletion) need a human review
+      before merge, and whether production deploys need a human trigger.
 
 ## 4. Environments, releases and recovery
 

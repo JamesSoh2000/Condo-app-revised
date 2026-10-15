@@ -15,7 +15,7 @@
 ## Goal
 
 The staging database is backed up every night to the versioned, encrypted backups bucket. A weekly restore
-test proves the backups are usable, and both developers get an email if a backup is missing or a restore
+test proves the backups are usable, and James gets an email if a backup is missing or a restore
 fails.
 
 ## Why
@@ -37,7 +37,7 @@ have never restored is not a backup", so the restore test runs on a schedule, no
     from D-01 or by the script. Say which in the runbook.
   - **Alert:** a heartbeat (dead-man's switch) monitor in the uptime service from D-04. `backup.sh` and
     `restore-test.sh` ping it only on success. If no ping arrives within 26 h (backup) or 8 days (restore
-    test), both devs get an email.
+    test), James gets an email.
   - **Runbook `docs/runbooks/restore.md`:** extend the local version from P7-01 with "restore staging from
     S3 onto the host or a replacement host". Each developer rehearses it once and notes the time it took
     (the measured RTO).
@@ -59,9 +59,9 @@ systemd units `condo-backup.{service,timer}` and `condo-restore-test.{service,ti
 3. **Given** `systemctl start condo-restore-test`, **then** the latest dump restores into a throwaway
    container, the row counts and `alembic current` are printed, and the container is removed.
 4. **Given** the backup timer is disabled, **when** the heartbeat window passes (or a shortened window is
-   used for the test), **then** both devs receive an alert email.
-5. **Given** the runbook, **then** both developers have restored staging from S3 once, and the PR records
-   each measured restore time.
+   used for the test), **then** James receives an alert email.
+5. **Given** the runbook, **then** the agent has followed it once to restore staging from S3, and the PR
+   records the measured restore time and any runbook step that was wrong.
 
 ## Test plan
 
@@ -79,7 +79,9 @@ script, and `systemd-analyze verify` on the units.
 2. Why does the alert use a heartbeat that must arrive, rather than a check that fires on failure?
 3. Why is `pg_dump --format=custom` enough for staging but not for real residents?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

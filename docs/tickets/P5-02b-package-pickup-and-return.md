@@ -78,7 +78,9 @@ conditional `UPDATE … RETURNING`, never `PATCH status`. Notices and maintenanc
 2. Why does `SELECT` then `UPDATE` have a race that `UPDATE … WHERE status='received' RETURNING` does not?
 3. After zero rows come back, why re-read the package, and how does the re-read decide between 404 and 409?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

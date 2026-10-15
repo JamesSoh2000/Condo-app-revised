@@ -69,7 +69,9 @@ Consumes `notifications_list`, `notifications_summary`, `notifications_read` and
 2. Why invalidate the summary after mark-read instead of decrementing the number locally?
 3. When would you switch this to SSE?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

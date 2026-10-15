@@ -134,7 +134,9 @@ instead of debugging them for the first time on a server.
    compose network safe here?
 5. What does the prod-like stack still *not* prove about staging? Where is each of those checked (D-06)?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

@@ -85,7 +85,9 @@ Tenant tests only get written if they are cheap. With one fixture and a few help
 2. Why do we need a nested savepoint to assert an `IntegrityError` inside a transactional test?
 3. Why "same building, other resident" tests in addition to cross-building tests?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

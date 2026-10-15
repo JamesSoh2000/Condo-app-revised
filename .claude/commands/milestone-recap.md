@@ -1,19 +1,22 @@
 ---
-description: Milestone gate — draft the phase recap from merged tickets; humans write the learning sections
+description: Phase gate (automated) — run the exit gate, write the recap; James's sections stay optional
 argument-hint: <phase, e.g. P2>
 ---
 
-Draft `docs/recaps/$ARGUMENTS.md` from `docs/templates/MILESTONE_RECAP.md`.
+Run the phase gate for $ARGUMENTS and write `docs/recaps/$ARGUMENTS.md` from
+`docs/templates/MILESTONE_RECAP.md`. Don't ask me anything.
 
-1. Collect the tickets in phase $ARGUMENTS from `docs/tickets/README.md`, their merged PRs
-   (`git log --oneline --grep "\[$ARGUMENTS-"`) and their explanations.
-2. Fill in: §1 demo script (exact steps on the prod-like stack, or on staging after milestone D), §2
-   architecture delta (a mermaid diagram of what
-   was added), §5 agent performance (from `docs/AGENT_MISTAKES_LOG.md`), §6 open risks and debt (from PR
-   follow-ups and TODOs in the code).
-3. Leave §3 "What we learned", §4 cross-teach, §7 the STAR story and §8 interview answers EMPTY with prompts.
-   The developers must write these in their own words.
-4. Propose 3 interview questions for §8 based on the phase's hardest parts.
-5. List which "Must explain" questions from the phase's tickets have no matching explanation or test.
-6. List every ticket in the phase that is `done` but not yet "learned ✓" in the ticket index. The phase gate
-   does not pass until this list is empty.
+1. Confirm every ticket in phase $ARGUMENTS is `done` in `docs/tickets/README.md`. If any is `blocked`, the
+   gate waits: say so, note it in the inbox item, and stop.
+2. Run each item of the phase's exit gate in `docs/ROADMAP.md` on the stack and in CI, and record pass/fail
+   with evidence in §0.
+3. Collect the merged PRs (`git log --oneline --grep "\[$ARGUMENTS-"`) and the explanations. Fill in: §1 demo
+   script (exact steps on the prod-like stack, or on staging after milestone D), §2 architecture delta (a
+   mermaid diagram), §3 decisions (ADRs and the inbox's "Decisions to audit" for this phase), §4 agent
+   performance (review rounds from the PRs, `docs/AGENT_MISTAKES_LOG.md`), §5 open risks (unfixed findings,
+   "Not verified" sections, follow-ups), §6 reading order.
+4. Leave §7 and §8 for James, with prompts. Propose the 3 interview questions in §9 without answers.
+5. List the "Must explain" questions from the phase's tickets that no explanation answers.
+6. Gate red: add fix tickets (`$ARGUMENTS-fix-01`…) to the index; they are built before the next phase
+   starts. Gate green: the next phase may start.
+7. Commit the recap (and any fix-ticket rows) as a Tier 3 docs PR through the normal loop.

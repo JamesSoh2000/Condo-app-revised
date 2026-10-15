@@ -131,18 +131,22 @@ Start at [docs/README.md](docs/README.md) (reading order). The main documents:
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) and [adr/](docs/adr/README.md): how the system fits together, and why.
 - [ROADMAP.md](docs/ROADMAP.md) and [tickets/](docs/tickets/README.md): phases, gates and the tickets.
 - [ENGINEERING_PRACTICES.md](docs/ENGINEERING_PRACTICES.md): git, PRs, Definition of Done, testing, CI.
-- [AI_AGENT_PLAYBOOK.md](docs/AI_AGENT_PLAYBOOK.md): the frame → implement → review → explain → learn loop.
+- [AI_AGENT_PLAYBOOK.md](docs/AI_AGENT_PLAYBOOK.md): the autonomous frame → build → review → explain → merge loop.
+- [HUMAN_INBOX.md](docs/HUMAN_INBOX.md): what the agents need from you, and what they decided without you.
 
 Check docs links locally with `python3 scripts/check-links.py` (CI runs it in the `docs` job).
 
 ## Development Workflow
 
-Follow the loop in [docs/AI_AGENT_PLAYBOOK.md](docs/AI_AGENT_PLAYBOOK.md). In short, with Claude Code:
+AI agents build, review and merge tickets on their own
+([docs/AI_AGENT_PLAYBOOK.md](docs/AI_AGENT_PLAYBOOK.md), [ADR-0014](docs/adr/0014-autonomous-agent-workflow.md)).
+In short, with Claude Code:
 
-1. `/frame-ticket P0-02`: sharpen the ticket's acceptance criteria and record your design prediction.
-2. `/implement-ticket P0-02`: plan, approve, implement on branch `p0-02-<slug>`, one PR per ticket.
-3. `/review-ticket P0-02` and `/explain-ticket P0-02`, each in a fresh session.
-4. After the merge: `/quiz-me P0-02`.
+1. `/build-next` (or `/loop /build-next` to keep going): picks the next ready ticket and runs `/build-ticket`,
+   which frames it, implements it test-first on branch `<id>-<slug>`, gets a fresh-session review (plus
+   Codex on Tier 1), writes the explanation in `docs/explanations/`, and squash-merges when every gate passes.
+2. You check [docs/HUMAN_INBOX.md](docs/HUMAN_INBOX.md) for blocked items and decisions to audit, and read
+   the explanations to learn (`/quiz-me P0-02` if you want to test yourself).
 
 `CLAUDE.md` holds the rules every session follows; [`.claude/README.md`](.claude/README.md) lists all the
 commands.

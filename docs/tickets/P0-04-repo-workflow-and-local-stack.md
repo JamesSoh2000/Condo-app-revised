@@ -22,9 +22,11 @@ Agents and humans need identical, fast feedback loops. Branch protection turns t
 
 - In:
   - **GitHub:**
-    - Branch protection on `main`: PR required, 1 approval, required checks `backend` + `frontend`, linear
-      history, no force push.
-    - `.github/CODEOWNERS` (`* @JamesSoh2000 @KhoiTienNguyen`; confirm the handles).
+    - Branch protection on `main`: PR required, **no required approval** (agents merge their own PRs,
+      [ADR-0014](../adr/0014-autonomous-agent-workflow.md)), required checks `backend` + `frontend` + `docs`,
+      branches up to date before merging, linear history, no force push. Changing branch protection is this
+      ticket's scope; it needs PRE-1 in [HUMAN_INBOX](../HUMAN_INBOX.md) (`gh` with admin rights).
+    - No `CODEOWNERS`: with one human and no review gate it would only add a notification.
     - `.github/pull_request_template.md` (from the template).
     - `.github/dependabot.yml` (pip/uv, npm, github-actions, docker; weekly).
   - **Branches:**
@@ -86,16 +88,18 @@ Use the actual port of the chosen emulator.
 ## Likely files
 
 `Makefile`, `docker-compose.yml`, `backend/app/core/config.py`, `backend/.env.example`, `backend/.env.dev`,
-`.github/CODEOWNERS`, `.github/pull_request_template.md`, `.github/dependabot.yml`, `scripts/s3-smoke.py`,
+`.github/pull_request_template.md`, `.github/dependabot.yml`, `scripts/s3-smoke.py`,
 `README.md`, `docs/adr/0007-private-s3-presigned-uploads.md`.
 
 ## Must explain (learning checkpoint)
 
-1. Why is a long-lived `develop` branch harmful for a two-person team that releases from `main`?
-2. What do CODEOWNERS and required status checks enforce?
+1. Why is a long-lived `develop` branch harmful for a team (or a set of agents) that releases from `main`?
+2. What do required status checks enforce, and why are they the hard gate when no human approves PRs?
 3. Why emulate S3 and SMTP locally instead of using real AWS credentials in development?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

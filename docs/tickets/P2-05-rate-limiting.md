@@ -82,7 +82,9 @@ process restarts. Postgres meets that without Redis.
 3. Why hash the email in the key?
 4. Why can't we trust `X-Forwarded-For` from anyone?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

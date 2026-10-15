@@ -77,7 +77,9 @@ generated types, a backend change that breaks the UI fails `tsc` instead of fail
 2. Why should the client never retry 4xx responses?
 3. Why include `buildingId` in query keys? What bug happens without it?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

@@ -2,11 +2,11 @@
 
 | Field | Value |
 |---|---|
-| Phase / lane | P? / A (backend-platform) or B (frontend-QA-ops) |
+| Phase / lane | P? / A (backend-platform) or B (frontend-QA-ops); lanes are parallel agent tracks |
 | Risk tier | 1 / 2 / 3 ([what this means](../AI_AGENT_PLAYBOOK.md#risk-tiers)) |
 | Depends on | <ticket IDs that must be merged first> |
 | Replaces old | <old M-ticket IDs, if any> |
-| Status | todo / framing / in progress / review / done |
+| Status | todo / in progress / review / done / blocked |
 
 ## Goal
 
@@ -44,11 +44,13 @@ Starting points only. The agent must still read the code before changing it.
 
 ## Must explain (learning checkpoint)
 
-Questions the reviewer answers without notes before merging (also used by `/quiz-me`).
+Questions the explanation answers in its §9 (also used by `/quiz-me`).
 
 1. …
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

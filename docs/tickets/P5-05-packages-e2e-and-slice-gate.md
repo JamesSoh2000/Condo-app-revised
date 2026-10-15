@@ -64,14 +64,16 @@ developer can build a slice independently, using the recipe.
    production-like stack, and CI runs it the same way (P4-09).
 3. **Given** the manual prod-like checks, **then** all three have evidence (screenshot, curl output, log
    excerpt).
-4. **Given** `docs/SLICE_RECIPE.md`, **when** the other developer reads it, **then** they can explain how they
-   would build "maintenance" with it (cross-teach, noted in the recap).
-5. **Given** the P5 recap, **then** it is complete, including both developers' learning sections written by
-   themselves.
+4. **Given** `docs/SLICE_RECIPE.md`, **when** a fresh agent session reads only the recipe and the P6-03 stub,
+   **then** it produces a plan for the maintenance backend that reuses the slice's helpers and test table
+   without reading the packages code (the recipe's completeness test, noted in the recap).
+5. **Given** the P5 recap, **then** its gate result, demo script, decisions and agent-performance sections
+   are complete (James's own sections are optional).
 
 ## Test plan
 
-Run the E2E suites against the dev and prod-like stacks. Do the manual checks. Do the cross-teach session.
+Run the E2E suites against the dev and prod-like stacks. Do the manual checks. Run the recipe check (criterion 4)
+in a fresh subagent.
 
 ## Likely files
 
@@ -79,11 +81,13 @@ Run the E2E suites against the dev and prod-like stacks. Do the manual checks. D
 
 ## Must explain (learning checkpoint)
 
-1. Explain the whole packages slice on a whiteboard, from schema to UI, without notes. (This is the cross-teach.)
+1. Explain the whole packages slice, from schema to UI, as you would on a whiteboard.
 2. Which part of this slice would you change first if the building had 50 packages per minute? Why?
 3. What would you add to the recipe after building the next slice?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

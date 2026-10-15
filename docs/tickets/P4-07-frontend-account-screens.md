@@ -76,7 +76,9 @@ Consumes `invitations_get_public`, `invitations_accept`, `auth_password_reset_re
 2. How does `next=` work safely? Why must it only allow internal paths (open-redirect risk)?
 3. How are server validation errors mapped onto form fields?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

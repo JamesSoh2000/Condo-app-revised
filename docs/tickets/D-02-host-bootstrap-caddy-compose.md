@@ -93,7 +93,9 @@ built and smoke-tested by the `prodlike` CI job (P1-08).
 3. Why must cloud-init check for an existing filesystem before formatting? What would happen otherwise?
 4. Why bind the API to `127.0.0.1` and publish no DB port?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

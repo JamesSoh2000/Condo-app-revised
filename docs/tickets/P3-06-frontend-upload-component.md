@@ -79,7 +79,9 @@ Consumes `files_create`, `files_complete` and `files_download_url`. Exports `Fil
 2. Why use XHR instead of `fetch` here?
 3. Why do client-side size checks not replace server enforcement?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

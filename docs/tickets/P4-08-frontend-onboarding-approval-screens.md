@@ -79,7 +79,9 @@ Consumes `auth_signup`, `join_*`, `onboarding_*` and `members_*`.
 2. Why disable the button *and* rely on the server's conditional update?
 3. How do you explain "owner vs tenant vs household" to a non-technical resident in the UI?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

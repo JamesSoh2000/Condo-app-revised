@@ -83,7 +83,9 @@ something that did.
 2. Why does `auth.login_failed` *not* store the attempted email? What is the trade-off?
 3. What makes a log entry "append-only" in practice, and how could a real system make it tamper-evident?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

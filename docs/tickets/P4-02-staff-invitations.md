@@ -96,7 +96,9 @@ security interview topic.
 3. Why must an existing account log in before accepting, rather than setting a password through the invite?
 4. Where do the roles come from at accept time, and why never from the request?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

@@ -1,8 +1,9 @@
 # Condo Management App — Project Docs
 
-Condo / building management app (FastAPI + PostgreSQL + React), built by James with AI agents
-implementing tickets and the human framing, reviewing and learning. Since 2026-10-13 James works solo: where
-these docs mention a second developer or lane B, see the note in the [roadmap change log](./ROADMAP.md#change-log).
+Condo / building management app (FastAPI + PostgreSQL + React). AI agents build, review, explain and merge
+every ticket autonomously; James (solo since 2026-10-13) sets direction, answers escalations and learns from
+the explanations ([ADR-0014](./adr/0014-autonomous-agent-workflow.md)). Lanes A and B are two parallel agent
+tracks.
 
 **This folder is the single source of truth** for scope, architecture, decisions, tickets and process.
 It was created on 2026-10-13 from a senior-engineer review ([REVIEW-2026-10.md](./REVIEW-2026-10.md)) and
@@ -16,16 +17,17 @@ history in [archive/2026-10-legacy/](./archive/2026-10-legacy/README.md), along 
 | 1 | [REVIEW-2026-10.md](./REVIEW-2026-10.md) | What is strong, what is blocking you, and why the plan changed | 15 min |
 | 2 | [PRODUCT_SCOPE.md](./PRODUCT_SCOPE.md) | What the week-8 demo does, what waits for the pilot, the product defaults | 10 min |
 | 3 | [ARCHITECTURE.md](./ARCHITECTURE.md) | How the system fits together (diagrams, data model, auth, tenancy, jobs, files, deploy) | 30 min |
-| 4 | [ROADMAP.md](./ROADMAP.md) | Week-by-week plan for two developers, phase gates | 10 min |
-| 5 | [AI_AGENT_PLAYBOOK.md](./AI_AGENT_PLAYBOOK.md) | **Your improved implement → review → explain → learn loop** | 15 min |
-| 6 | [ENGINEERING_PRACTICES.md](./ENGINEERING_PRACTICES.md) | Git, PRs, Definition of Done, testing table, CI, security baseline, quality bars | 15 min |
-| 7 | [LEARNING_PATH.md](./LEARNING_PATH.md) | What you must be able to explain per phase; interview stories | skim, then per phase |
-| 8 | [PILOT_READINESS.md](./PILOT_READINESS.md) | What must be true before real residents (later) | skim |
-| — | [adr/](./adr/README.md) | 13 short decision records | as referenced |
+| 4 | [ROADMAP.md](./ROADMAP.md) | Week-by-week plan for two agent tracks, phase gates | 10 min |
+| 5 | [AI_AGENT_PLAYBOOK.md](./AI_AGENT_PLAYBOOK.md) | **The autonomous frame → build → review → explain → merge loop**, stop rules, what you still do | 15 min |
+| 6 | [HUMAN_INBOX.md](./HUMAN_INBOX.md) | **The one page you check:** what's blocked on you, decisions made without you | 2 min, then weekly |
+| 7 | [ENGINEERING_PRACTICES.md](./ENGINEERING_PRACTICES.md) | Git, PRs, Definition of Done, testing table, CI, security baseline, quality bars | 15 min |
+| 8 | [LEARNING_PATH.md](./LEARNING_PATH.md) | What you must be able to explain per phase; interview stories | skim, then per phase |
+| 9 | [PILOT_READINESS.md](./PILOT_READINESS.md) | What must be true before real residents (later) | skim |
+| — | [adr/](./adr/README.md) | 14 short decision records | as referenced |
 | — | [tickets/](./tickets/README.md) | 40 detailed tickets (P0–P5), 6 for milestone D (D-01…D-06), and stubs (P6–P7) | per ticket |
 | — | [templates/](./templates/) | Ticket, ADR, PR, explanation, review prompt, recap, mistakes log | when writing one |
 | — | [`CLAUDE.md`](../CLAUDE.md), [`.claude/commands/`](../.claude/README.md) | Agent context and the loop's slash commands | before your first ticket |
-| — | [AGENT_MISTAKES_LOG.md](./AGENT_MISTAKES_LOG.md), [explanations/](./explanations/), [recaps/](./recaps/) | Living records the loop produces | as they grow |
+| — | [explanations/](./explanations/), [recaps/](./recaps/), [AGENT_MISTAKES_LOG.md](./AGENT_MISTAKES_LOG.md) | What the loop leaves behind: one explanation per ticket (decisions, how it works, the code), one recap per phase, the mistakes reviewers caught | as they grow |
 
 ## The plan in one minute
 
@@ -45,26 +47,32 @@ history in [archive/2026-10-legacy/](./archive/2026-10-legacy/README.md), along 
   after the week-8 demo). It ships those already-tested artifacts to an HTTPS staging URL.
 - **Packages is the reference slice** (week 6). Notices, maintenance and dashboard follow its recipe
   (week 7). Hardening and the demo come in week 8.
-- **One ticket = one agent session = one PR.** A fresh AI session reviews it, James reviews it, and a
-  fresh session explains it. After the merge, the dev who drove the agent learns actively (quiz, explain-back
-  note, a hand-written change); every ticket must be "learned ✓" before its phase gate passes.
+- **One ticket = one branch = one PR, built and merged by agents.** The implementer frames and builds it; a
+  fresh session reviews it (plus Codex on Tier 1) and must say `MERGE`; another fresh session writes the
+  explanation; the agent merges when CI and the merge gate pass. It stops and writes to the
+  [inbox](./HUMAN_INBOX.md) only on a [stop rule](./AI_AGENT_PLAYBOOK.md#stop-rules). Learning is yours, at
+  your pace, and gates nothing.
 - **Model owner vs tenant now** ([ADR-0010](./adr/0010-unit-occupancy-relationship.md)), and host in
   `ca-central-1` (likely Quebec pilot; [ADR-0008](./adr/0008-single-ec2-compose-caddy.md)).
 
-## Your first three days
+## Getting started
 
-Solo, both lanes run in sequence: lane A first, then lane B, unless a dependency says otherwise.
+**You, once (about 30 minutes):**
+1. Clear the "Prerequisites coming up" items in [HUMAN_INBOX.md](./HUMAN_INBOX.md) that are needed now:
+   authenticate `gh` (agents can't merge without it) and, ideally, the Codex CLI.
+2. Merge **P0-01** (this docs adoption; it predates the loop).
 
-| Day | Lane A | Lane B |
-|---|---|---|
-| 1 | Read REVIEW-2026-10 and PRODUCT_SCOPE … AI_AGENT_PLAYBOOK. **P0-01 first** (adopt docs, `CLAUDE.md`, commands; ~1 hour, no loop yet). Then frame and implement **P0-02** (backend gates) | **P0-03** (frontend gates) |
-| 2 | **P0-05** (DB tests) | **P0-04** (Makefile, compose, branch protection, delete stale branches) |
-| 3 | **P1-01** (finish the old M2-T03 branch's work under the new ticket) | **P1-04** (API conventions); then a demo + retro note |
+**Then the agents.** In Claude Code, from the repo root:
+- `/build-next` builds and merges the next ready ticket, then stops. Run it again, or
+- `/loop /build-next` keeps going ticket after ticket until the inbox says `paused` or nothing is ready.
+- For two lanes at once, run a second session with `/build-next B` (lane B only); each works in its own
+  worktree.
 
-No AWS account, domain or cloud setup is needed in these days, or at all until milestone D. You need GitHub
-(for CI and branch protection) and Docker on each laptop.
+The first tickets are P0-02 → P0-05 → P1-01 (lane A) and P0-03 → P0-04 → P1-04 (lane B). P0-04 switches
+branch protection to required checks with no required approval, which autonomous merging needs. No AWS
+account, domain or cloud setup is needed until milestone D.
 
 ## Next step
 
-Don't run another plan review. Start P0-01, and let real tickets show what else needs to
-change: record it in the roadmap change log, the retro, or `AGENT_MISTAKES_LOG.md`.
+Don't run another plan review. Start the agents, and let real tickets show what else needs to change: the
+agents record it in `AGENT_MISTAKES_LOG.md` and the recaps; you record it in the roadmap change log.

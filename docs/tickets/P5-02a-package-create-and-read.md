@@ -92,7 +92,9 @@ idempotency. It is the template for every later slice's create and read paths.
 2. Explain the idempotency logic, and why "same key, different body" is a 409.
 3. Why notify current occupants rather than "everyone ever linked to unit 101"?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

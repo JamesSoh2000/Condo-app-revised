@@ -74,7 +74,9 @@ text.
 2. Why is returning `str(exc)` in an HTTP response a security problem?
 3. What does `S` (bandit) in the ruff rules look for? Give one example from this codebase.
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

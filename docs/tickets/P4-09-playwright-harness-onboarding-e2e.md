@@ -82,7 +82,9 @@ The journeys above. Run 5 times locally in a row to check flakiness before mergi
    web-first assertions)?
 3. Why keep E2E to a few critical journeys instead of testing everything this way?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

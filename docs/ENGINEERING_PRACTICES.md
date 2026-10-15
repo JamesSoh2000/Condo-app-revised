@@ -1,7 +1,8 @@
 # 04 — Engineering Practices
 
-These practices apply to every ticket, whether a human or an agent writes the code. Most of them are enforced
-by tooling (CI, branch protection, fitness tests), so they do not depend on anyone's memory.
+These practices apply to every ticket, whether a human or an agent writes the code. Agents build and merge
+tickets without a human check ([ADR-0014](./adr/0014-autonomous-agent-workflow.md)), so these rules are
+enforced by tooling (CI, branch protection, fitness tests) and by independent review, never by anyone's memory.
 
 ## 1. Git workflow: trunk-based
 
@@ -14,7 +15,8 @@ by tooling (CI, branch protection, fitness tests), so they do not depend on anyo
 - **Branch name:** the ticket ID in lowercase plus a short slug, for example `p2-03-tenant-context` or
   `p5-02a-package-create`. Ticket IDs stay uppercase everywhere else (`P2-03`, file names, commit tags). Put
   the owner in the PR assignee field, not in the branch name.
-- **Squash merge only.** The squashed commit message is the PR title.
+- **Squash merge only.** The squashed commit message is the PR title. The agent merges once the
+  [merge gate](./AI_AGENT_PLAYBOOK.md#step-7--merge-gate-agent-merges) passes.
 - **Parallel agents:** use one `git worktree` per agent session
   (`git worktree add ../bw-p3-02 -b p3-02-email`), so agents never share a working directory.
 
@@ -35,18 +37,19 @@ make small WIP commits; the squash cleans them up.
 
 | Rule | Why |
 |---|---|
-| One ticket per PR. ≤ ~400 changed **non-test** lines, excluding generated files and lockfiles. Tests don't count. | Reviewable in under an hour, so bugs are actually caught. Counting tests would push agents to cut them, the exact wrong incentive. Over the limit → split the ticket |
-| PR template completed ([templates/PULL_REQUEST.md](./templates/PULL_REQUEST.md)) | Reviewers get context, evidence and risks up front |
-| CI green before requesting human review | Humans don't spend time on what machines catch |
-| Independent AI review done and addressed (see [05](./AI_AGENT_PLAYBOOK.md)) | A second, uncorrelated reviewer |
-| Approved by the *other* developer (CODEOWNERS) | Shared ownership; both devs know the whole system |
-| Tier 1 tickets: reviewer runs the feature locally | Auth and tenancy bugs hide in paths tests don't cover |
-| **Review deadline:** once CI is green and the AI review is addressed, Tier 1 review starts within ~4 working hours, Tier 2 within 1 working day | Lane A is a serial critical path; a PR waiting half a day costs more than any learning step |
+| One ticket per PR. ≤ ~400 changed **non-test** lines, excluding generated files and lockfiles. Tests don't count. | A reviewer (human or AI) catches more in a small diff, and a bad merge is cheaper to revert. Counting tests would push agents to cut them, the exact wrong incentive. Over the limit → split the ticket |
+| PR template completed ([templates/PULL_REQUEST.md](./templates/PULL_REQUEST.md)), including the plan and "Decisions and alternatives" | The reviewer and the explainer get context, evidence and risks up front |
+| CI green before the independent review | Reviewers don't spend rounds on what machines catch |
+| Independent review by a fresh session returns `MERGE`; Tier 1 also needs Codex or a second reviewer ([05 §Step 5](./AI_AGENT_PLAYBOOK.md#step-5--independent-review-fresh-session-the-merge-paths-only-judge)) | No human reviews after it, so the reviewer must not share the author's context |
+| Tier 1–2 user-reachable behaviour: the journey is run on the stack and the transcript is in the PR | Auth and tenancy bugs hide in paths tests don't cover |
+| No protected gate loosened ([05](./AI_AGENT_PLAYBOOK.md#protected-gates)) | The agent merges its own work, so it must not edit the checks that judge it |
 | Branch rebased onto the latest `main` before merge | The squashed tree equals the PR head, so the explanation stays accurate |
 
 **Branch protection on `main`:**
-- PR required, with 1 approval.
-- Required status checks: `backend`, `frontend`, `prodlike` (from P1-08), `e2e` (from P4-09).
+- PR required, with **no required approval** (the agent merges its own PRs once the merge gate passes;
+  GitHub doesn't let an author approve their own PR anyway).
+- Required status checks: `backend`, `frontend`, `docs`, `prodlike` (from P1-08), `e2e` (from P4-09).
+- Branches must be up to date before merging.
 - Linear history.
 - No force push.
 
@@ -54,31 +57,33 @@ make small WIP commits; the squash cleans them up.
 
 - The ticket has a goal, scope and out-of-scope, interfaces, Given/When/Then acceptance criteria and a test plan.
 - Dependencies are merged, or their interface contract is merged.
-- **Frame step done.** The human has edited the acceptance criteria and written a design prediction
-  ([05 §Step 1](./AI_AGENT_PLAYBOOK.md)).
-- Any product or tech decision the ticket needs exists as an ADR or a scope-doc entry.
+- **Frame step done.** The agent has sharpened the acceptance criteria and recorded its Frame notes as the
+  branch's first commit ([05 §Step 1](./AI_AGENT_PLAYBOOK.md#step-1--frame-implementer-no-code-yet)).
+- Any product or tech decision the ticket needs exists as an ADR or a scope-doc entry, or is resolved by the
+  [decision rules](./AI_AGENT_PLAYBOOK.md#decision-rules) without hitting a stop rule.
 
 ## 4. Definition of Done (every ticket)
 
 - [ ] Acceptance criteria demonstrably met. The PR shows command output or screenshots.
 - [ ] Tests are added and pass locally and in CI. For tenant data: the same-building and cross-building cases
       from the checklist below.
-- [ ] Migrations are included, reviewed by a human (not just autogenerated) and reversible where practical.
-      `alembic check` is clean.
+- [ ] Migrations are included, read and edited by the implementer (not just autogenerated), checked by the
+      reviewer against the models, and reversible where practical. `alembic check` is clean.
 - [ ] New settings are in `.env.example`, with secrets marked as secrets (they become SSM parameters in
       milestone D).
 - [ ] OpenAPI is regenerated and the frontend types are committed if the API changed.
 - [ ] The UI handles loading, empty, error (problem+json `detail`), 403 and 404 states, and works at mobile
       width.
 - [ ] Logs carry no secrets or personal data beyond IDs.
-- [ ] The explanation is written by a fresh session (full form for Tier 1–2, short form for Tier 3), and
+- [ ] The independent review's final round is `MERGE`, with no open Critical or High finding.
+- [ ] The explanation is written by a fresh session (full form for Tier 1–2, short form for Tier 3): the
+      decisions, how it is implemented, the code, the review log and what was not verified.
       `scripts/check-explanation-refs.py` passes for it.
-- [ ] The reviewer passed the explain-back gate (can explain every changed file).
-- [ ] The ticket index status is updated.
+- [ ] The ticket index status is `done`, and autonomous decisions are listed in
+      [HUMAN_INBOX.md](./HUMAN_INBOX.md).
 
-**After merge (not blocking the merge):** within 2 working days, the driver completes the learn step (quiz,
-explain-back note in `learnings/`, hand-written change, and a bug hunt for Tier 1) and marks the ticket
-"learned ✓" in the index. A phase gate does not pass while any of its tickets is not "learned ✓".
+**Learning is separate from Done.** James reads explanations, takes `/quiz-me` and marks "Learned" in the
+index at their own pace; nothing waits on it.
 
 ## 5. Backend standards
 
@@ -120,7 +125,7 @@ explain-back note in `learnings/`, hand-written change, and a bug hunt for Tier 
 2. **Expand/contract for anything that could break the previous release.**
    - Expand: add a nullable column → backfill → set NOT NULL in a *later* release.
    - Contract: never drop or rename a column in the same release that stops using it.
-3. Never edit a migration that has been merged to `main`: the other developer has already applied it
+3. Never edit a migration that has been merged to `main`: other worktrees and agents have already applied it
    locally, and from milestone D staging has run it. Write a new one instead.
 4. If two branches both add a migration, the second to merge rebases and re-points `down_revision`, so there
    is one head. CI fails on multiple heads.
@@ -215,6 +220,7 @@ Mapped to the OWASP Top 10 so it doubles as interview material.
 | Rules for coding agents | `CLAUDE.md` (≤ 150 lines; link out, don't repeat) |
 | What a merged ticket did and why (snapshot) | `docs/explanations/<ticket>.md` |
 | What *I* learned (personal, in my words) | `learnings/<name>_<yyyy-mm>.md` |
+| What needs James, and what agents decided without James | `docs/HUMAN_INBOX.md` |
 | How to operate production | `docs/runbooks/` (pilot phase) |
 
 If you find yourself copying a rule into a second document, link to it instead.
@@ -238,8 +244,8 @@ account, domain or server.
 - [ ] Security headers (on the prod-like stack), dependency scans, secret scan and the ASVS L1 checklist
       reviewed. No open High findings.
 - [ ] README with architecture diagram, ADR index, demo script and a walkthrough video recorded locally.
-- [ ] Each dev can whiteboard the request lifecycle, the tenant model, the session design, the outbox and the
-      build pipeline (PR → CI → image → prod-like smoke) without notes.
+- [ ] Learning goal (not gating): James can whiteboard the request lifecycle, the tenant model, the session
+      design, the outbox and the build pipeline (PR → CI → image → prod-like smoke) without notes.
 
 ### Deployed (milestone D)
 
@@ -250,10 +256,10 @@ Everything in demo-ready, plus:
       [D-06](./tickets/D-06-staging-verification-gate.md) has evidence (cookies over HTTPS, real S3 and SES,
       client IP behind the proxy, headers and TLS on the real domain).
 - [ ] A nightly `pg_dump` to S3 runs, and a restore from S3 was tested within the last 7 days.
-- [ ] Sentry, CloudWatch logs and uptime checks are live, with alerts reaching both devs.
+- [ ] Sentry, CloudWatch logs and uptime checks are live, with alerts reaching James.
 - [ ] No inbound SSH, and no AWS keys stored in GitHub (OIDC only).
-- [ ] Each dev can whiteboard the deploy pipeline (merge → image in ECR → SSM → `deploy.sh` → smoke) without
-      notes.
+- [ ] Learning goal (not gating): James can whiteboard the deploy pipeline (merge → image in ECR → SSM →
+      `deploy.sh` → smoke) without notes.
 
 ### Pilot-ready (before real residents)
 

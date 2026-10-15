@@ -71,8 +71,8 @@ list explicit, instead of discovering it during the pilot.
 3. **Given** the staging-only checklist, **then** every item has evidence or a linked follow-up ticket with
    a reason.
 4. **Given** the deployed bar in 04, **then** every box is ticked.
-5. **Given** the D recap, **then** both developers can explain, without notes, what happens between
-   `git push` and the new version answering on staging.
+5. **Given** the D recap, **then** it contains a step-by-step account, with `path::anchor` references, of
+   what happens between `git push` and the new version answering on staging.
 
 ## Test plan
 
@@ -90,7 +90,9 @@ J4 on staging by hand.
 2. Why does the staging smoke avoid reading email, while the local E2E reads Mailpit?
 3. What would you add to P1-08's prod-like stack so the surprise from question 1 is caught locally next time?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

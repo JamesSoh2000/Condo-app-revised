@@ -95,7 +95,9 @@ Model `Package`, enum `PackageStatus`, `visible_packages(ctx)`, `assert_transiti
 2. Why put the transition rules both in Python (`ALLOWED`) and in check constraints?
 3. Why is visibility a reusable `Select` rather than a filter applied in each endpoint?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

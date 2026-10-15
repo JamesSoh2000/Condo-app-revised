@@ -1,264 +1,274 @@
-# 05 — AI Agent Playbook: Build → Review → Explain → Learn
+# 05 — AI Agent Playbook: Autonomous Build → Review → Explain → Merge
 
-You decided that AI agents implement the work while you review it and learn from it. This playbook makes that
-loop produce **correct code** and **real understanding**. Right now it risks producing neither.
+Agents build every ticket end to end and merge it themselves; no step waits for a human
+([ADR-0014](./adr/0014-autonomous-agent-workflow.md)). James does not check tickets one by one, and audits
+asynchronously instead, through three things the loop always leaves behind:
 
-## Why the current loop needs upgrading
+- an **explanation** per ticket in [explanations/](./explanations/): the decisions, how it is implemented,
+  and the code
+- the **[HUMAN_INBOX.md](./HUMAN_INBOX.md)**: what is blocked on James, and every decision made without James
+- the **phase recaps** in [recaps/](./recaps/), with the exit-gate evidence
 
-Current flow: *the AI implements a whole milestone → the AI reviews it → the AI writes an explanation.*
-
-| Problem | Consequence | Upgrade |
-|---|---|---|
-| Milestone-sized changes | Thousands of lines per review; errors in ticket 2 are built on by ticket 6 | **One ticket = one agent session = one PR.** A milestone is a set of tickets plus a gate. |
-| Same AI reviews its own work | Its blind spots are correlated with the author's: it "agrees with itself" | **A fresh session reviews with no implementation context**, guided by a checklist. CI and fitness tests act as objective reviewers. |
-| "Correct" is never written down first | Review has no yardstick; agents fill gaps with guesses | **Frame step:** a human edits the acceptance criteria and test list *before* coding |
-| Long explanations written before the code (`Process/` guides, ~1,000 lines) | They describe intended code, not actual code; reading them feels like learning but isn't | **Short explanations after the code**, written by a fresh session, anchored to `path::symbol` in a PR |
-| Passive reading | The illusion of competence: you recognise it but cannot reproduce it | **Active recall:** quiz, explain-back in your own words, one hand-written change, bug hunts |
-| Agent mistakes repeat | The same corrections every week | A **mistakes log** that becomes `CLAUDE.md` rules |
+Without a human gate, correctness rests on three things this playbook makes non-negotiable: **CI and fitness
+tests** (they never agree with the author), **independent review by a fresh session** (the implementer never
+reviews itself), and **hard stop rules** (the agent escalates instead of guessing on anything it cannot undo).
 
 ## The loop (one ticket)
 
 ```mermaid
 flowchart LR
-    F[1 Frame<br/>human] --> P[2 Plan<br/>agent → human approves]
-    P --> I[3 Implement<br/>agent, tests first]
-    I --> V[4 Verify<br/>CI + fitness tests]
-    V --> R[5 Independent review<br/>fresh agent]
-    R --> H[6 Human review<br/>reviewer runs it; explain-back gate]
-    H --> E[7 Explain<br/>fresh agent drafts]
-    E --> M[8 Merge + improve<br/>mistakes log → CLAUDE.md]
-    M -.->|within 2 working days| L[9 Learn<br/>driver: quiz, note, hand change]
+    S[0 Pick<br/>next ready ticket] --> F[1 Frame<br/>sharpen criteria]
+    F --> P[2 Plan<br/>written, not approved]
+    P --> I[3 Implement<br/>tests first]
+    I --> V[4 Verify<br/>make check + CI]
+    V --> R[5 Independent review<br/>fresh session]
+    R -->|findings| I
+    R -->|MERGE| E[6 Explain<br/>fresh session]
+    E --> M[7 Merge gate<br/>agent squash-merges]
+    M --> L[8 Improve<br/>mistakes log, inbox]
+    F & I & R -.->|stop rule hit| B[Blocked<br/>inbox entry, next ticket]
 ```
 
-Steps 1–8 are on the merge path and should take as little calendar time as possible, because the lane-A
-tickets form a serial critical path (P2-01 → P2-02 → P2-03 → P2-04 must merge one after another). Step 9 is
-off the merge path but not optional: it is tracked in the ticket index ("Learned" column) and checked at the
-phase gate.
+One ticket = one branch = one PR. A **session** here means a context: the implementer is one session, and the
+reviewer and the explainer are each a **fresh** one (a subagent or a new terminal) that never saw the
+implementation conversation. Commands: [`/build-next`](../.claude/commands/build-next.md) picks a ticket and
+runs [`/build-ticket`](../.claude/commands/build-ticket.md), which runs steps 1–8 and spawns the fresh
+sessions itself.
 
-### Who does what
+### Step 0 — Pick (orchestrator)
 
-| Person | Steps |
-|---|---|
-| **Driver** (the dev who ran the agent) | 1 Frame, 2 approve the plan, 3 supervise implementation, 7 check the explanation, 8 merge, 9 Learn |
-| **Reviewer** (the other dev, via CODEOWNERS) | 6 Human review, including the explain-back gate |
-| **Both** | Phase cross-teach, which covers each person's gaps on the tickets they didn't drive |
+1. Read [HUMAN_INBOX.md](./HUMAN_INBOX.md). If `Run state` is `paused`, stop. If James answered a blocked
+   item, set that ticket back to `todo` and move the item to "Resolved".
+2. Pick from [tickets/README.md](./tickets/README.md) a `todo` ticket whose dependencies are all `done`.
+   Prefer the critical path, then the lowest ID. Skip tickets that touch a hot file another running agent
+   holds (see [parallel agents](#running-agents-in-parallel)).
+3. If the ticket is a backlog stub, draft it first with `/draft-ticket` (a docs PR through this same loop).
 
-### Review deadline
+### Step 1 — Frame (implementer, no code yet)
 
-A PR waiting half a day for review costs more than any learning step. Once CI is green and the independent AI
-review is addressed, the reviewer starts:
-- **Tier 1:** within ~4 working hours
-- **Tier 2:** within 1 working day
-- **Tier 3:** whenever convenient; skim + CI is enough
+Command: [`/frame-ticket`](../.claude/commands/frame-ticket.md). This is the step a human used to do; the
+agent now does it against the same yardstick.
 
-If you can't make the deadline, say so in chat so the driver can pick up other work.
+1. Read the ticket, its linked ADRs, `CLAUDE.md`, [PRODUCT_SCOPE.md](./PRODUCT_SCOPE.md) and the current code.
+2. Make every acceptance criterion precise and testable. Add the rows of the
+   [10-case tenant table](./ENGINEERING_PRACTICES.md#7-testing-standards) that apply, and at least one case
+   the ticket missed.
+3. Resolve open questions with the [decision rules](#decision-rules). Hit a [stop rule](#stop-rules)? Block.
+4. If it won't fit in ≤ ~400 non-test lines, split it (`P3-04a`, `P3-04b`), dividing the criteria, and add
+   the rows to the ticket index.
+5. Record what changed in the ticket's "Frame notes" and commit the ticket file **as the branch's first
+   commit**, so the reviewer can diff it.
 
-### Step 1 — Frame (human, 15–30 min)
+**Framing may add or sharpen criteria; it never deletes or loosens one** unless the reason is recorded in the
+Frame notes and listed in the inbox for audit. The reviewer checks this.
 
-1. Read the ticket. Edit its **acceptance criteria** and **test list** until you would bet money that passing
-   them means the feature is right. Add at least one case the ticket missed.
-2. Write a **3–5 line design prediction** in the PR draft or a scratch note:
-   - which files change
-   - which tables and columns
-   - the request flow
-   - the trickiest part
-3. Set or confirm the **risk tier**.
+### Step 2 — Plan (implementer, written down, no approval)
 
-Command: [`/frame-ticket P2-03`](../.claude/commands/frame-ticket.md). The agent drafts improvements to
-the criteria and asks you questions. You decide.
+Write the plan into the PR description draft: files to change, interfaces and schemas, the migration, each
+acceptance criterion mapped to a test, risks, and the decisions taken. It replaces the human's design
+prediction: the explainer and the reviewer compare the code against it, and a large gap between plan and code
+is a review finding.
 
-### Step 2 — Plan (agent in plan mode, human approves)
+### Step 3 — Implement (implementer)
 
-The agent reads `CLAUDE.md`, the ticket, the linked ADRs and the actual code, then proposes:
-- the files to change
-- interfaces and schemas
-- the migration
-- tests mapped to each acceptance criterion
-- risks and open questions
+Command: [`/implement-ticket`](../.claude/commands/implement-ticket.md).
 
-**Compare it with your prediction.** Every difference is either a bug in the plan, a gap in your
-understanding, or a better idea. Write down which one in one line; this is the most valuable learning moment
-in the loop.
-
-### Step 3 — Implement (agent)
-
-Command: [`/implement-ticket P2-03`](../.claude/commands/implement-ticket.md).
-
-- **Tests first** for each acceptance criterion: red, then green.
-- Small commits. Run `make check` (lint, types, tests) before declaring done.
-- **Evidence, not claims:** paste real command output in the PR.
-- **ADR candidates:** any non-trivial choice not covered by the ticket or an ADR is *flagged* in the PR as
-  "ADR candidate: …", not silently decided.
-- Stay in scope. Unrelated improvements become follow-up notes.
-- **≤ ~400 non-test lines.** Tests don't count toward the limit; never cut tests to fit. Over the limit means
-  split the ticket, not trim the tests.
-- **Rebase onto the latest `main`** before asking for review, and write the PR's "Decisions and alternatives"
-  section for a reader who wasn't in the conversation (the explainer in step 7 is that reader).
+- Work in a dedicated worktree on branch `<ticket-id lowercase>-<slug>`.
+- **Tests first** for each acceptance criterion: show them red, then green.
+- Small commits, Conventional Commit messages ending with `[<ticket-id>]`.
+- `make gen-api` if the API changed; `make revision` if models changed, then read and fix the migration.
+- **≤ ~400 non-test lines.** Tests don't count; never cut tests to fit. Over the limit means split.
+- Stay in scope. Unrelated improvements become follow-up notes in the PR, not code.
+- **Evidence, not claims:** real command output goes in the PR. Never claim a command ran if it didn't.
+- Never weaken a [protected gate](#protected-gates) to get green.
 
 ### Step 4 — Verify (CI)
 
-Lint, types, tests against Postgres, `alembic check`, fitness tests (tenant guard, auth allowlist,
-commit-only-in-services), OpenAPI drift, the Base44 ratchet, and E2E. These checks never get tired and never
-"agree with the author".
+`make check` locally, then push and wait for CI: lint, types, tests against Postgres, `alembic check`, fitness
+tests, OpenAPI drift, the Base44 ratchet, `prodlike` smoke, E2E, `docs`. A failure is fixed at its cause. A
+failure unrelated to the ticket (flaky test, broken `main`) gets **two** retries; after that, fix it in its
+own small PR first if it is in the repo, or block if it is external.
 
-### Step 5 — Independent AI review (fresh session)
+**Tier 1–2 tickets that change behaviour a user can reach** also run the journey on the stack (`make up` or
+`make prodlike`) and paste the transcript (curl sequence or Playwright output) in the PR. This replaces "the
+reviewer ran it locally".
 
-Command: [`/review-ticket P2-03`](../.claude/commands/review-ticket.md), run in a **new session**
-(or a separate subagent or worktree) that has *not* seen the implementation conversation.
+### Step 5 — Independent review (fresh session; the merge path's only judge)
 
-It uses [templates/REVIEW_PROMPT.md](./templates/REVIEW_PROMPT.md):
-- Isolated from the implementation *conversation*, not from the code: it may read any file in the repo, and
-  must open the helpers a diff calls before judging them.
-- Adversarial stance; the ticket's acceptance criteria as the yardstick.
-- Every finding needs a **concrete failure scenario** (inputs → wrong outcome). No style nitpicks.
-- **Tier 1** tickets also get a dedicated security pass (`/security-review` or the security section of the
-  prompt).
+Command: [`/review-ticket`](../.claude/commands/review-ticket.md), run as a **subagent or new session**, using
+[templates/REVIEW_PROMPT.md](./templates/REVIEW_PROMPT.md).
 
-**Codex as the reviewer (optional):** a different model family has fewer blind spots in common with the author
-than a fresh Claude session. Add `use gpt-6-astra-high` (any `gpt-<model>-<effort>`) to a prompt in the
-implementation session. Claude then runs the Codex CLI with this review prompt; Codex reviews, runs the
-checks and writes failing proof tests in `codex_proofs/` without editing existing files. Claude reproduces
-each finding before fixing it. Use it always for Tier 1, and when useful for Tier 2. Personal setup: a
-`codex-review` skill and hook in `~/.claude/`, plus [`AGENTS.md`](../AGENTS.md) in the repo.
+- Isolated from the implementation *conversation*, not from the code: it reads any file it needs, read-only.
+- Adversarial; the ticket's acceptance criteria and `CLAUDE.md` are the yardstick. Every finding needs a
+  concrete failure scenario and, where possible, a failing proof test.
+- It also checks the frame diff (criteria not loosened) and the [protected gates](#protected-gates).
+- It ends with a verdict: **`MERGE`** (no open Critical or High) or **`BLOCK`** (with the findings).
 
-Fix confirmed findings in the implementation session, and re-run CI. Record dismissed findings in the PR with
-the reason.
+| Tier | Reviewers |
+|---|---|
+| 1 | Fresh Claude reviewer **with the security pass**, **plus** Codex (`codex-review` skill, `gpt-6-astra-high`). If Codex is unavailable, a second fresh Claude reviewer with only the security pass. Both must say `MERGE`. |
+| 2 | One fresh Claude reviewer |
+| 3 | One fresh Claude reviewer, short pass (scope, accuracy, nothing broken) |
 
-### Step 6 — Human review (reviewer; depth by tier; see the review deadline above)
+**Fix loop.** The implementer reproduces each finding (a failing test first) before fixing it, and records
+dismissed findings with a reason in the PR. Then a **new** fresh reviewer re-reviews the whole diff, not just
+the fixes. At most **3 rounds**: an open Critical or High after round 3 blocks the ticket. Medium and Low
+findings that are not fixed go to the PR's follow-ups and the explanation's "Not verified" section.
 
-1. Read the PR description, then the tests (they describe behaviour), then the code.
-2. **Run it yourself:** `make up`, call the endpoint or click through the page. Try one thing the tests don't
-   cover.
-3. **Explain-back gate:** you may approve only if you can explain what every changed file does and why. If
-   you can't, ask the driver or the agent. This gate stays **before** merge.
+### Step 6 — Explain (fresh session)
 
-### Step 7 — Explain (fresh agent session drafts; driver checks)
+Command: [`/explain-ticket`](../.claude/commands/explain-ticket.md), run as a **subagent or new session**,
+writing `docs/explanations/<ticket>-<slug>.md` from [templates/EXPLANATION.md](./templates/EXPLANATION.md).
+It is committed to the PR as its last code commit.
 
-Command: [`/explain-ticket P2-03`](../.claude/commands/explain-ticket.md), run in a **new session**,
-producing `docs/explanations/P2-03-tenant-context.md` from [templates/EXPLANATION.md](./templates/EXPLANATION.md)
-and committed to the PR as its last commit.
-
-A fresh session explains the code that exists, not what the implementer intended: the same reasoning as the
-independent review. Its inputs are the ticket, the diff, the repo, and the **PR description** (the "why" and
-the rejected alternatives the implementing session knew).
+A fresh session explains the code that exists, not what the implementer intended. Its inputs are the ticket,
+the PR description (the plan, decisions and alternatives), the review reports, the diff and the repo.
 
 | Rule | Why |
 |---|---|
-| **Full form** for Tier 1–2 (≤ 250 lines); **short form** for Tier 3 (≤ 40 lines) | A long explanation does not get read; a config change doesn't need a walkthrough |
-| Walkthrough variant matches the ticket: **A** API request, **B** UI interaction, **C** process/pipeline (infra, CI, worker, schema) | An invented request walkthrough is worse than none |
-| Header names the PR number; the branch is rebased onto the latest `main` before the squash merge | The squashed tree then equals the PR head; PR commits stay reachable at `refs/pull/N/head` |
-| References are `path::symbol`, not bare line numbers | They survive later edits and can be checked mechanically |
-| `scripts/check-explanation-refs.py` checks the explanation files **changed in the PR** only | Explanations are snapshots; checking old ones against current code would fail as soon as the code moves on |
-| Includes decisions *and the alternatives rejected*, failure modes and how they are tested | These are the parts interviews probe |
-| Full form ends with 5 quiz questions, answers in a collapsed block | Feeds step 9 |
-| It's a snapshot | When code changes later, write a new explanation; don't maintain old ones. Lasting decisions belong in ADRs |
+| Three core parts: **decisions** (with rejected alternatives), **how it is implemented** (one walkthrough), **the code** (annotated excerpts of what was written) | What James asked for: it is read instead of reviewing the PR |
+| Plus the **review log** and **what was not verified** | With no human review, this is where James sees what the gates did and did not prove |
+| **Full form** for Tier 1–2 (≤ 400 lines including code); **short form** for Tier 3 (≤ 60 lines) | A long explanation does not get read; a config change doesn't need a walkthrough |
+| Walkthrough variant matches the ticket: **A** API request, **B** UI interaction, **C** process/pipeline | An invented request walkthrough is worse than none |
+| Prose references are `path::symbol`; code excerpts are fenced blocks headed by their `path::symbol` | They survive later edits and are checked by `scripts/check-explanation-refs.py` (which skips fenced code) |
+| Answers the ticket's "Must explain" questions, then a 5-question quiz with collapsed answers | James's self-study material |
+| If the code contradicts the PR description or the plan, the explainer reports it and **does not paper over it** | A mismatch goes back to step 5 as a finding |
+| It's a snapshot; the header names the PR | Later changes get a new explanation; lasting decisions live in ADRs |
 
-### Step 8 — Merge and improve
+### Step 7 — Merge gate (agent merges)
 
-- Squash merge and update [tickets/README.md](./tickets/README.md): status `done`, Learned `—`.
-- If the agent made a mistake that you or the reviewer caught, add a line to `docs/AGENT_MISTAKES_LOG.md`
-  ([template](./templates/AGENT_MISTAKES_LOG.md)).
-- When a mistake appears **twice**, convert it into a rule in `CLAUDE.md` or a fitness test. Prefer the test,
-  because tests enforce and rules only remind.
+The PR's last commit also sets the ticket's status to `done` in the index and adds any decisions to audit to
+the inbox, so all three land atomically. The agent merges only when **all** of these hold:
 
-### Step 9 — Learn (driver, after merge, within 2 working days; 20–40 min)
+- [ ] Every required CI check is green on the PR head.
+- [ ] Rebased onto the latest `main` (the explanation assumes the merged tree equals the PR head).
+- [ ] The final review round returned `MERGE` from every required reviewer, with no open Critical or High.
+- [ ] Every acceptance criterion maps to a passing test or recorded evidence in the PR.
+- [ ] The explanation exists and `scripts/check-explanation-refs.py` passes.
+- [ ] No protected gate was loosened.
 
-The driver does this on `main`, while the next ticket's agent works. It never blocks a merge, but the phase
-gate does not pass until every ticket in the phase is "learned ✓".
+Then: `gh pr merge <N> --squash --delete-branch`, remove the worktree, and return to step 0.
 
-1. **Quiz:** run [`/quiz-me P2-03`](../.claude/commands/quiz-me.md). The agent asks questions one at a
-   time, and you answer **without looking**. It grades, explains what you missed, and asks a follow-up "what
-   would break if…?".
-2. **Explain-back note:** write 5–10 lines **in your own words** in `learnings/<you>_<yyyy-mm>.md`:
-   - what it does
-   - why it is built this way
-   - one thing that surprised you
-   - one question still open
+**Bookkeeping PRs** only touch `docs/tickets/README.md`, `docs/HUMAN_INBOX.md` or
+`docs/AGENT_MISTAKES_LOG.md` (blocking a ticket, logging). They need green CI only: no review, no explanation.
 
-   Writing it yourself is what makes it stick.
-3. **Hand-written change:** make one small change yourself, without the agent. Examples:
-   - add a field
-   - add a validation
-   - add a test case from the 10-case table
-   - change an error code
+### Step 8 — Improve (agent)
 
-   Run the tests. If you are stuck for more than 20 minutes, ask the agent for a *hint*, not the code.
-4. **Bug hunt (Tier 1, optional but recommended):** on a throwaway branch, the agent plants one realistic bug
-   without telling you where. Examples:
-   - drops the `building_id` filter
-   - forgets to revoke sessions
-   - an off-by-one on expiry
+- Log every finding the reviewers confirmed in [AGENT_MISTAKES_LOG.md](./AGENT_MISTAKES_LOG.md): it measures
+  what the implementer gets wrong.
+- When a pattern appears **twice**, promote it: a fitness test (preferred, because tests enforce) or a line
+  in `CLAUDE.md`'s "Lessons learned", in the next PR. The agent may **add** rules and tests; removing or
+  softening one is a stop rule.
+- If a command keeps needing the same correction, fix the command file.
 
-   Find it using the tests, logs and the debugger. If the tests don't catch it, **that is a missing test**:
-   add it for real.
-5. **Mark it:** set the ticket's Learned column to `✓` in [tickets/README.md](./tickets/README.md) (a one-line
-   docs commit, or batch several in the next PR).
+## Decision rules
+
+The agent decides alone, in this order, and records every decision in the PR's "Decisions and alternatives"
+section (from there it reaches the explanation):
+
+1. **The ticket, an accepted ADR, [PRODUCT_SCOPE.md](./PRODUCT_SCOPE.md) or `CLAUDE.md` decides it.** Follow it.
+2. **A default is written down** (a stub's "Decide while framing" default, a product default): take it.
+3. **Otherwise choose the simplest option that is reversible and matches the existing code patterns.**
+   - Affects only this ticket: record it in the PR.
+   - Lasting (other tickets will build on it: a convention, a table shape, a library): write an ADR with
+     `Deciders: agent (autonomous) in <ticket>`, and add it to the inbox's "Decisions to audit".
+4. **A stop rule applies:** block.
+
+## Stop rules
+
+Stop the ticket, set it to `blocked` in the index, add an entry to the inbox's "Blocked — needs James"
+section (one bookkeeping PR), and move to the next ready ticket that does not depend on it, when:
+
+1. **A human-only resource is needed:** an account, a credential or secret, a domain, payment, legal or
+   privacy input, real (non-seed) data.
+2. **The work contradicts an accepted ADR, the product scope or a `CLAUDE.md` non-negotiable**, or needs new
+   infrastructure (`CLAUDE.md` rule 13). Superseding an ADR is James's call.
+3. **Getting green needs weakening a protected gate** or editing a merged migration.
+4. **The review does not converge:** a Critical or High is still open after 3 rounds, or the reviewers
+   disagree on one and the implementer cannot prove either side with a test.
+5. **The action is irreversible or outward-facing and the ticket's scope doesn't name it:** touching
+   staging (milestone D tickets name it), anything in production, sending real email, publishing, deleting
+   remote branches or data.
+
+A blocked entry says what is needed, the options the agent sees with a recommendation, and what is blocked
+behind it. When James writes an answer, step 0 picks it up.
+
+## Protected gates
+
+The agent is judged by these, so it may not loosen them. It may **add** to them or make them stricter,
+and change them when its ticket's scope says so; loosening them in any way is stop rule 3.
+
+- `.github/workflows/*` (removing or skipping a job, `continue-on-error`, narrower triggers)
+- Lint, type and test configuration: ruff rule sets, mypy strictness, ESLint rules, `tsconfig` strictness,
+  pytest markers that skip tests, the Base44 ratchet
+- Fitness tests, the tenant test helpers, and any existing test (deleting, skipping or weakening assertions)
+- `docs/templates/REVIEW_PROMPT.md`, `scripts/check-*.py`, `CLAUDE.md` non-negotiables, this playbook's
+  stop rules and merge gate
+- Branch protection and required checks
 
 ## Risk tiers
 
-| Tier | Areas | Frame | AI review | Human review | Explanation | Learn step (after merge) |
-|---|---|---|---|---|---|---|
-| **1** | Auth, sessions, tenancy, permissions, migrations on existing data, file/S3 security, deletion/retention, deploy/backup, money | Full; write extra negative cases | Standard + security pass | Line by line; run locally; try to break it | Full form | Quiz + note + hand change + bug hunt |
-| **2** | Domain features, APIs, UI with logic | Full | Standard | Read tests + code; run the journey | Full form | Quiz + note + hand change |
-| **3** | Docs, config, copy, styling, tooling | Light | Optional | Skim + CI | Short form | Note only |
+| Tier | Areas | Frame | Review | Run on stack | Explanation |
+|---|---|---|---|---|---|
+| **1** | Auth, sessions, tenancy, permissions, migrations on existing data, file/S3 security, deletion/retention, deploy/backup, money | Full; extra negative cases | Claude + security pass, **plus** Codex (or a second reviewer) | Yes, transcript in PR | Full form |
+| **2** | Domain features, APIs, UI with logic | Full | One fresh reviewer | If user-reachable | Full form |
+| **3** | Docs, config, copy, styling, tooling | Light | One fresh reviewer, short pass | No | Short form |
 
-## Per milestone (phase gate)
+## Phase gates (automated)
 
-0. **Learning check:** every ticket in the phase is `done` and "learned ✓". Finish any stragglers first.
-1. **Live demo:** each dev performs the phase's journey by hand on the local prod-like stack
-   (`make prodlike`), and on staging once milestone D is done.
-2. **Cross-teach (30 min):** the dev who did *not* own most of the phase explains it to the one who did, at
-   the whiteboard, without notes. The owner corrects. This is the strongest single learning technique here.
-3. **Milestone recap** ([templates/MILESTONE_RECAP.md](./templates/MILESTONE_RECAP.md)):
-   - the architecture delta (diagram)
-   - what we learned
-   - open risks
-   - one STAR interview story
-   - three interview questions answered in your own words
-4. **Retro (20 min):** what slowed us down, which agent mistakes repeated, and what to change in this
-   playbook or `CLAUDE.md`.
+When the last ticket of a phase merges, the agent:
 
-## Running agents in parallel (two devs, several agents)
+1. Runs the phase's exit gate from the [roadmap](./ROADMAP.md) on the stack and in CI, and records the
+   evidence.
+2. Drafts the recap with `/milestone-recap` ([template](./templates/MILESTONE_RECAP.md)): demo script,
+   architecture delta, agent performance, open risks, gate evidence. James's own sections stay empty.
+3. Gate red: writes fix tickets (`P2-fix-01`…) into the index and does them before starting the next phase.
+   Gate green: starts the next phase without waiting.
 
-- **One worktree per agent:** `git worktree add ../bw-<ticket> -b <ticket-lowercase>-<slug>` (for example
-  `git worktree add ../bw-p2-03 -b p2-03-tenant-context`).
-- **Do not run two agents on tickets that touch the same file at the same time.** Hot files:
-  - `app/main.py` (router includes)
-  - `migrations/versions/` (one migration head at a time)
-  - `frontend/src/api/schema.d.ts`
-  - `docker-compose.yml`
-  - `.github/workflows/*`
-- **Sequence migrations:** only one open PR with a migration per lane at a time. The second rebases and
-  re-points `down_revision`.
+## Running agents in parallel
+
+- **At most two agents at once, one per lane.** Lanes A and B are now two agent tracks, chosen to avoid file
+  conflicts. More agents add merge conflicts, not throughput.
+- **One worktree per agent:** `git worktree add ../bw-<ticket> -b <ticket-lowercase>-<slug>`.
+- **Hot files, one agent at a time:** `app/main.py`, `migrations/versions/` (one open migration PR at a
+  time; the second rebases and re-points `down_revision`), `frontend/src/api/schema.d.ts`,
+  `docker-compose.yml`, `compose.prodlike.yml`, `.github/workflows/*`.
 - **Contract first across lanes:** if lane B's UI needs lane A's endpoint, lane A merges the schema and route
-  stub (OpenAPI) first. Lane B then generates types and builds against it.
-- **Review is the real bottleneck.** Two agents per dev at most. A third adds unreviewed code, not throughput.
+  stub first.
+
+## What James does (asynchronous, never blocking)
+
+| When | What |
+|---|---|
+| Whenever there's an inbox notice | Answer "Blocked — needs James" items in [HUMAN_INBOX.md](./HUMAN_INBOX.md) |
+| Weekly, ~30 min | Skim "Decisions to audit". Overturn one by writing an ADR or a ticket (the agent builds it like any other) |
+| Per phase | Read the recap; try the demo script yourself if you want to |
+| To learn | Read the explanations; `/quiz-me <ticket>`; your own notes in `learnings/`; one hand-written change. The ticket index's "Learned" column is your tracker; nothing waits on it |
+| To pause | Set `Run state: paused` in the inbox. Agents finish the current step, then stop at step 0 |
 
 ## Context for agents
 
-- **`CLAUDE.md`** at the repo root ([draft](../CLAUDE.md)): ≤ 150 lines of commands, layout, rules
-  and links. It replaces `AI_PROJECT_CONTEXT.md`.
-- **Project commands** in `.claude/commands/` ([drafts](../.claude/commands/)) encode this loop so both
-  devs run it the same way.
-- **Give an agent:** the ticket file plus whatever `CLAUDE.md` links to. Do not paste whole design documents;
-  the ticket links the ADR sections it needs.
+- **`CLAUDE.md`** at the repo root: ≤ 150 lines of commands, layout, rules and links.
+- **Project commands** in [`.claude/commands/`](../.claude/README.md) encode this loop.
+- **Give an agent** the ticket file plus whatever `CLAUDE.md` links to. Do not paste whole design documents.
 - **Never let an agent:**
   - run commands against staging or production data
-  - edit applied migrations
-  - change CI or branch protection without a ticket
-  - touch secrets
-  - commit `.env` files with real values
+  - edit merged migrations
+  - loosen a protected gate
+  - touch secrets, or commit `.env` files with real values
+  - merge without the merge gate
 
-## Handoff format (end of every implementation session)
+## Handoff format (end of every ticket, in the PR and the session output)
 
 ```markdown
 ## Handoff — <ticket>
-Status: done | partially done (what's left) | blocked (on what)
+Status: merged (PR #N) | blocked (inbox item) | split (into …)
 Changed files: <list>
 Interfaces changed: <endpoints/schemas/tables>
 Migrations: <revision id + summary>
 Env vars / secrets: <added/changed>
 Evidence: <commands run + results>
-ADR candidates: <decisions made that need human confirmation>
+Review: <rounds, verdicts, findings fixed / dismissed>
+Decisions to audit: <lines added to the inbox, ADRs written>
 Known gaps / follow-ups: <list>
 ```

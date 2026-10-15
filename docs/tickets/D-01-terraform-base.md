@@ -68,7 +68,7 @@ weekend of console clicking ([ADR-0008](../adr/0008-single-ec2-compose-caddy.md)
     - **SSM parameters** as **placeholders** only: `SECRET_KEY`, `SMTP_USER`, `SMTP_PASSWORD`, `SENTRY_DSN`.
       Real values are set by humans with `aws ssm put-parameter --overwrite`, never in `.tfvars` or state.
     - **CloudWatch log groups** `/condo/staging/{api,worker,caddy}` with 30-day retention.
-    - **Budget** alarms at $30 and $40 per month, emailing both devs.
+    - **Budget** alarms at $30 and $40 per month, emailing James.
   - Outputs: instance id, EIP, domain, bucket names, ECR URL, deploy role ARN.
   - **CI:** a `terraform fmt -check` and `terraform validate` job (plus `tflint` optional) on changes under
     `infra/`.
@@ -113,7 +113,9 @@ Manual steps for criteria 2–5, with the commands recorded in the PR.
 3. Why is the database on a separate EBS volume with `prevent_destroy`?
 4. Why must secret values never go into Terraform variables or state?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

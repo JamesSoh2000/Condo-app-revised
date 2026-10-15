@@ -95,7 +95,9 @@ Consumes `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` and
 3. Why are frontend guards "UX only"? Which server mechanism actually protects the data?
 4. Why does council "view as" never change API permissions?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

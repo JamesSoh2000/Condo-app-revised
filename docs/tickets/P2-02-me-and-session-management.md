@@ -81,7 +81,9 @@ Endpoints above, with operation IDs `auth_me`, `auth_logout_all`, `auth_sessions
 2. How does logout-all take effect immediately with server-side sessions? What would it take with JWTs?
 3. Why return 404 (not 403) when deleting someone else's session?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

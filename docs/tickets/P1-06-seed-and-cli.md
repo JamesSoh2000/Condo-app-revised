@@ -80,7 +80,9 @@ bucket).
 2. Why is the CLI allowed to commit, while helpers are not?
 3. Why must `seed` refuse to run in production?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

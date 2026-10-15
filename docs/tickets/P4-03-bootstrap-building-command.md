@@ -84,7 +84,9 @@ CLI `bootstrap-building`. Audit action `building.bootstrapped`.
 2. Why print the URL to stdout but never log it?
 3. What would go wrong if bootstrap were not a single transaction?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

@@ -82,7 +82,7 @@ interfaces and the decisions to make while framing.
   `alembic current` and the row counts of key tables, report
 - CI runs backup + restore test on a weekly schedule (and on `workflow_dispatch`) against a seeded stack; a
   failure is visible on the Actions tab
-- runbook `docs/runbooks/restore.md` (local restore), rehearsed once by each developer
+- runbook `docs/runbooks/restore.md` (local restore), rehearsed once by the agent (the PR records the steps and timings)
 - the nightly timer on the host, real S3 and the backup-age alert are [D-05](./D-05-nightly-backups-to-s3.md)
 - [ADR-0009](../adr/0009-backups-staged.md)
 

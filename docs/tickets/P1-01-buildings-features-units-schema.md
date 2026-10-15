@@ -88,7 +88,9 @@ Tables `buildings`, `building_features`, `units` as above. Enum `Feature` in `ap
 3. Why `RESTRICT` for units but `CASCADE` for features?
 4. Why are enums stored as non-native (check-constrained strings) in this project? (See `app/models/types.py`.)
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

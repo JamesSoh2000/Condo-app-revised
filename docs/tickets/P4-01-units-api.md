@@ -73,7 +73,9 @@ CLI `import-units`.
 2. Why block deactivating an occupied unit rather than cascading?
 3. What makes the CSV import safe to re-run?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

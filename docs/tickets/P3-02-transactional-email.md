@@ -85,7 +85,9 @@ it simple ([ADR-0006](../adr/0006-postgres-job-queue.md)).
 3. Which SMTP errors are worth retrying, and which aren't?
 4. Why must HTML templates autoescape?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

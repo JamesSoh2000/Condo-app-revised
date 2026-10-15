@@ -100,7 +100,9 @@ Dependencies above, plus `GET /api/buildings/{building_id}` (`buildings_get`).
 3. How does fitness test #1 walk FastAPI's dependency tree? What would make it miss a route?
 4. Why does a role change apply on the next request, with no logout needed?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

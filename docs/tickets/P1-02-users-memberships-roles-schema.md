@@ -84,7 +84,9 @@ Tables as above. Enums `MembershipStatus`, `Role`; constant `STAFF_ROLES`.
 3. `lower(email)` unique index vs the `citext` extension: trade-offs?
 4. Why is `password_hash` nullable?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

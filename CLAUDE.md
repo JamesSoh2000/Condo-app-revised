@@ -4,8 +4,9 @@
      remove the marker when that ticket merges. -->
 
 Multi-building condo operations app: FastAPI + PostgreSQL backend replacing a Base44-exported React
-frontend. One developer (James, solo since 2026-10-13). AI agents implement tickets; the human frames,
-reviews and learns.
+frontend. One developer (James, solo since 2026-10-13). AI agents frame, build, review, explain and merge
+tickets **autonomously** (ADR-0014); no human checks a ticket before merge. James audits asynchronously
+through `docs/HUMAN_INBOX.md` and the explanations in `docs/explanations/`.
 
 ## Where things are
 
@@ -82,26 +83,31 @@ if it didn't.
   `tests/conftest.py` (added in P1-05) and the tenant helpers in `tests/helpers/tenancy.py` (added in
   P2-03). Apply the 10-case table in docs/ENGINEERING_PRACTICES.md §7 to every tenant endpoint.
 
-## How to work a ticket
+## How to work a ticket (docs/AI_AGENT_PLAYBOOK.md; `/build-ticket <ID>` runs it all)
 
 1. Read the ticket in `docs/tickets/`, the ADRs it links, and the **current code** before planning.
-   The docs describe targets; the code is the truth.
-2. Plan first: files, interfaces, migration, tests mapped to acceptance criteria, risks. Wait for approval.
-3. Tests first for each acceptance criterion. Keep the PR ≤ ~400 non-test lines (tests don't count; never
+   The docs describe targets; the code is the truth. Check `docs/HUMAN_INBOX.md`: stop if `paused`.
+2. Frame, then plan, without waiting for approval: sharpen the criteria (never loosen one silently), write
+   the plan into the PR. Decide open questions with the playbook's **decision rules**; lasting decisions get
+   an ADR and a line in the inbox's "Decisions to audit".
+3. On a **stop rule** (human-only resource, contradicts an ADR/scope/rule above, needs a weaker gate, review
+   not converging, unnamed outward-facing action): set the ticket `blocked`, write it in the inbox, move on.
+   Never guess past one.
+4. Tests first for each acceptance criterion. Keep the PR ≤ ~400 non-test lines (tests don't count; never
    cut tests to fit). Stay in scope; put extras under "follow-ups".
-4. Flag any decision not covered by the ticket or an ADR as **"ADR candidate"** in the PR. Don't decide it
-   silently.
-5. Branch `<ticket-id lowercase>-<slug>` (`p2-03-tenant-context`). Rebase onto the latest `main` before
-   review.
-6. Finish with the handoff block from docs/AI_AGENT_PLAYBOOK.md and fill in the PR template, including
-   "Decisions and alternatives".
-7. In explanations and answers, reference code as `path::symbol`, not bare line numbers.
+5. Branch `<ticket-id lowercase>-<slug>` (`p2-03-tenant-context`) in its own worktree. Rebase onto the
+   latest `main` before review and before merge.
+6. **Never review or explain your own work.** The review and the explanation run in fresh sessions
+   (subagents). Fix confirmed findings test-first; at most 3 review rounds.
+7. Merge (`gh pr merge --squash`) only when the playbook's **merge gate** passes. End with the handoff block.
+8. In explanations and answers, reference code as `path::symbol`, not bare line numbers.
 
 ## Never
 
 - Touch staging/production data or credentials, `.env` files with real values, branch protection or CI
   permissions, unless the ticket says so.
-- Disable a test, lint rule or type check to make CI pass. Fix the cause, or ask.
+- Loosen a protected gate (CI jobs, lint/type config, fitness or existing tests, check scripts, these rules)
+  to make CI pass. Fix the cause, or block the ticket.
 - Add dependencies without saying why in the PR.
 
 ## Lessons learned (from docs/AGENT_MISTAKES_LOG.md)

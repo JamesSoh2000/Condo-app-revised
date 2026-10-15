@@ -2,8 +2,9 @@
 
 The project is the curriculum. Each phase lists:
 - **Concepts** that phase exercises.
-- **Must explain:** questions you should answer aloud without notes before the phase gate. The `/quiz-me`
-  command draws from these.
+- **Must explain:** questions to be able to answer aloud without notes. They are learning goals, not gates:
+  agents build and merge on their own ([ADR-0014](./adr/0014-autonomous-agent-workflow.md)), and each
+  ticket's explanation answers its own "Must explain" questions. The `/quiz-me` command draws from these.
 - **Read:** short, primary sources only. Official docs beat blog posts.
 - **Interview story:** the STAR story the phase gives you.
 
@@ -267,6 +268,6 @@ merge…"
 **Portfolio artifacts:** README with an architecture diagram, an ADR folder, a recorded demo, and 2–3
 explanations as writing samples.
 
-**System-design practice:** at the end, each dev presents "design a building-management platform" in
+**System-design practice:** at the end, present "design a building-management platform" in
 45 minutes, using this project as the worked example. Include how it would change for 1,000 buildings:
 connection pooling, read replicas, RLS, partitioning `notifications` and `audit_events`, a managed queue.

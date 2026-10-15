@@ -107,7 +107,9 @@ Endpoints `files_create`, `files_complete`, `files_download_url`. Helper `claim_
 3. Why check magic bytes when S3 already has a `Content-Type`?
 4. Why is download authorization delegated to the owning domain (`can_view`)?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

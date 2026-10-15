@@ -81,7 +81,9 @@ This completes demo journey 7, and it is one of the most commonly attacked flows
 3. Why is the token valid for 1 hour, while invitations last 7 days?
 4. Why scrub the link from the job payload after sending?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

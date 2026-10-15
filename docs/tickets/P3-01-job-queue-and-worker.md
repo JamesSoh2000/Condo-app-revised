@@ -104,7 +104,9 @@ This solves the dual-write problem for email and powers all background work with
 3. Why jitter in the backoff?
 4. Why does each job run in its own transaction rather than one per batch?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

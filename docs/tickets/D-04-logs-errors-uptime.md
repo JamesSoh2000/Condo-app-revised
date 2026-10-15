@@ -15,7 +15,7 @@
 ## Goal
 
 Staging logs are searchable in CloudWatch by request ID. Backend and frontend errors reach Sentry, tagged
-with the release SHA. An external monitor emails both devs when the API is down.
+with the release SHA. An external monitor emails James when the API is down.
 
 ## Why
 
@@ -41,7 +41,7 @@ is the safety net behind tests.
       from an optional `{$SENTRY_ORIGIN}`, so the prod-like stack still validates)
   - **CLI `sentry-test`:** raises and captures a test exception (for verification).
   - **Uptime:** an external monitor (UptimeRobot or Better Stack free tier) on `https://<domain>/api/health`
-    every 5 minutes, emailing both devs. Document it in `docs/runbooks/monitoring.md`. It is configured by
+    every 5 minutes, emailing James. Document it in `docs/runbooks/monitoring.md`. It is configured by
     hand; record the monitor URL.
   - **Saved CloudWatch Logs Insights queries** in the runbook:
     - errors by route
@@ -62,7 +62,7 @@ Env `SENTRY_DSN` (SSM), `VITE_SENTRY_DSN` (build-time, public), `VITE_RELEASE`.
 2. **Given** `python -m app.cli sentry-test` on staging, **then** Sentry shows the event with
    `release=<sha>`, `environment=staging`, and no cookie values.
 3. **Given** a thrown error in a React component on staging, **then** Sentry shows it with the same release.
-4. **Given** the API container is stopped for 10 minutes, **then** both devs receive a downtime email, and a
+4. **Given** the API container is stopped for 10 minutes, **then** James receives a downtime email, and a
    recovery email after restart.
 5. **Given** a search of the staging logs, **then** no `session` cookie values or passwords appear (spot
    check after P2-01 as well).
@@ -83,7 +83,9 @@ scrubber.
 2. Why is `send_default_pii=False` important, and what still might leak?
 3. Why use an *external* uptime monitor rather than one running on the same host?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

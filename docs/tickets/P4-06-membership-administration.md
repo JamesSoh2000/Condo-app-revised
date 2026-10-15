@@ -76,7 +76,9 @@ Real buildings constantly change staff and residents. Access must change immedia
 2. Why does suspension apply on the very next request?
 3. Why is "deactivate" a move-out that ends occupancy, and not a delete?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

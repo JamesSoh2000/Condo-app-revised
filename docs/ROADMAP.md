@@ -12,17 +12,17 @@
 3. **Rolling-wave detail.** Only the next ~3 weeks are detailed tickets. Later work stays as stubs and is
    detailed during the week before it starts. A detailed plan for month 4 is waste, because it goes stale
    first.
-4. **Small work in progress.** Each dev has at most 2 tickets in progress (one in review, one being built).
-   Finish before you start.
-5. **Gates are demos, not documents.** A phase is done when its exit gate runs green, both devs have
-   performed the journey themselves, and every ticket in the phase is "learned ✓" in the
-   [ticket index](./tickets/README.md). Learning happens after each merge, so it never blocks the critical
-   path, but it cannot be skipped.
-6. **Protect the critical path's calendar time.** Lane A's tickets merge one after another, so a PR waiting
-   for review delays everything behind it. Tier 1 review starts within ~4 working hours of the PR being ready
-   ([review deadline](./AI_AGENT_PLAYBOOK.md#review-deadline)).
+4. **Small work in progress.** At most two agents run at once, one per lane, each with one ticket in
+   flight. Finish (merge or block) before starting the next.
+5. **Gates are checks, not documents.** A phase is done when its exit gate runs green on the stack and in CI
+   and the agent has written the recap with the evidence
+   ([automated phase gates](./AI_AGENT_PLAYBOOK.md#phase-gates-automated)). Nothing waits on a human.
+6. **Agents build autonomously; James audits asynchronously**
+   ([ADR-0014](./adr/0014-autonomous-agent-workflow.md)). No ticket waits for human review. What can stop
+   the line is a [stop rule](./AI_AGENT_PLAYBOOK.md#stop-rules): those land in
+   [HUMAN_INBOX.md](./HUMAN_INBOX.md), and the agent moves on to other ready work.
 
-## Timeline (8 local weeks + about 2 weeks of deployment; 2 devs full-time, AI agents implementing)
+## Timeline (8 local weeks + about 2 weeks of deployment; two agent tracks merging autonomously)
 
 | Week | Lane A (backend / platform) | Lane B (frontend / QA / ops) | End-of-week demo |
 |---|---|---|---|
@@ -45,7 +45,8 @@
 
 **Schedule risks.**
 - **Weeks 1–8: the lane A critical path.** No gate waits on cloud infrastructure any more, so the
-  data-and-identity chain and its review latency set the pace (principle 6 and the
+  data-and-identity chain sets the pace. Without human review latency, what slows it is CI time, review
+  rounds that don't converge, and blocked tickets waiting on the inbox (see the
   [ticket index](./tickets/README.md#critical-path)).
 - **Milestone D: late deployment surprises.** Some behaviour only shows up on real infrastructure:
   HTTPS-only cookies, the client IP behind the proxy, real S3 CORS, the SES sandbox, and memory on a small
@@ -58,11 +59,13 @@
 
   Start D's human prerequisites (AWS account, domain, SES) about a week before D, because they involve real
   waiting time. D does not block the week-8 demo, but it blocks pilot readiness. If D runs past 2 weeks, make
-  it the top priority for both devs before any new feature.
+  it the top priority for both agent tracks before any new feature.
 
-**Lanes are about avoiding conflicts, not job titles.** Swap lanes at least once (for example in week 7) so
-both devs touch backend, frontend and ops. When working in parallel, coordinate on the shared files:
-`app/main.py`, `migrations/versions/`, `api/schema.d.ts`, `docker-compose.yml` and `compose.prodlike.yml`.
+**Lanes are two parallel agent tracks**, split to avoid file conflicts. Two agents may run at once, one per
+lane; a hot file (`app/main.py`, `migrations/versions/`, `api/schema.d.ts`, `docker-compose.yml`,
+`compose.prodlike.yml`) is held by one agent at a time
+([parallel agents](./AI_AGENT_PLAYBOOK.md#running-agents-in-parallel)). With one agent, run lane A first,
+then lane B, unless a dependency says otherwise.
 
 ## Phases, tickets and exit gates
 
@@ -217,7 +220,8 @@ the single-host staging environment from [ADR-0008](./adr/0008-single-ec2-compos
 the demo there. The default is weeks 9–10, straight after the demo. Pull it forward if a hosted demo is
 needed sooner (it can start once P1-08 and P3-01 are merged). It must finish before pilot readiness starts.
 
-**Before it starts** (humans, about a week ahead; by default during week 8 as part of P7-07):
+**Before it starts** (James, about a week ahead; by default during week 8 as part of P7-07; agents list it
+in the inbox's "Prerequisites coming up"):
 - an AWS account with MFA and budget alerts
 - a domain
 - SES domain verification
@@ -238,7 +242,7 @@ See the prerequisites in [D-01](./tickets/D-01-terraform-base.md).
 - A merge to `main` reaches staging with no manual steps, and a rollback by SHA has been rehearsed.
 - The staging smoke passes after every deploy, and every staging-only check in D-06 has evidence.
 - Nightly backups reach S3, and a restore from S3 has been tested.
-- Sentry, CloudWatch logs and uptime alerts reach both devs.
+- Sentry, CloudWatch logs and uptime alerts reach James.
 
 ## Dependency overview
 
@@ -281,13 +285,13 @@ Suggested order of pilot options by learning and product value:
 
 ## Weekly rhythm
 
-| When | What | Time |
+| When | Who | What |
 |---|---|---|
-| Monday | Planning: pick the week's tickets, check dependencies, detail next week's stubs if needed (`/draft-ticket`) | 45 min |
-| Daily | Async stand-up note in the PR or chat: done / doing / blocked, PRs waiting for your review, merged tickets you haven't marked learned | 5 min |
-| Per ticket | The build → review → explain loop ([05](./AI_AGENT_PLAYBOOK.md)) | — |
-| Friday | Demo the week's journey live, cross-teach, retro, update the ticket index and roadmap | 90 min |
-| End of phase | Milestone recap ([templates/MILESTONE_RECAP.md](./templates/MILESTONE_RECAP.md)) | 60 min |
+| Continuously | Agents | `/build-next` → the autonomous loop ([05](./AI_AGENT_PLAYBOOK.md)), one ticket per lane at a time |
+| Week 5 (rolling wave) | Agents | Draft P6–P7 stubs into tickets with `/draft-ticket`, through the same loop |
+| End of phase | Agents | Run the exit gate, write the recap ([template](./templates/MILESTONE_RECAP.md)) |
+| When the inbox has a blocked item | James | Answer it in [HUMAN_INBOX.md](./HUMAN_INBOX.md) |
+| Weekly, ~30 min | James | Skim "Decisions to audit"; read the week's explanations and recap; add lessons to the change log below |
 
 ## How to change this plan
 
@@ -302,4 +306,5 @@ Suggested order of pilot options by learning and product value:
 | 2026-10-13 | Plan created from the review of `Recent_Plan/` | Replace the 170-ticket backlog with a phased, rolling-wave plan |
 | 2026-10-13 | P0-01 first; P2-05, P3-02, P4-04 moved to lane B; P5-02 split into P5-02a/P5-02b; learn step after merge with a "Learned" column checked at phase gates; review deadline; staging named as the top schedule risk | Second review: lane A is a serial critical path, so calendar time matters more than total hours; P5-02 was too big for one PR even excluding tests; the loop commands need P0-01 to exist |
 | 2026-10-13 | **Local first** ([ADR-0013](./adr/0013-local-first-deployment-milestone.md)): weeks 1–8 need no AWS, domain or server. The deploy chain (old P1-08…P1-11) moved to milestone D (D-01…D-04) after week 8, plus new D-05 (nightly backups to S3) and D-06 (staging verification gate). New P1-08 is a production-like local stack smoke-tested in CI. Phase gates are local and CI checks; P5-05 renamed "reference-slice gate"; P1-04 moved to lane B; P3-01, P3-02 and P4-04 start a week earlier; three quality bars (demo-ready local, deployed, pilot-ready) | The team wants to build and test the application locally first. It also takes the plan's top schedule risk (staging in weeks 1–2) off the early critical weeks |
-| 2026-10-14 | **Solo:** Khoi left on 2026-10-13; James continues alone. `CLAUDE.md` and `docs/README.md` updated. Lanes A and B now run in sequence, and "the other dev reviews" means a self-review after the fresh-session AI review | Follow-up (not yet done): re-plan the week-by-week table and the week-8 date for one developer; drop Khoi from CODEOWNERS (P0-04), alert emails (D-01, D-04, D-05) and the recap template |
+| 2026-10-14 | **Autonomous agents** ([ADR-0014](./adr/0014-autonomous-agent-workflow.md)): agents frame, build, review (fresh session; plus Codex on Tier 1), explain and merge every ticket with no human step on the merge path. New [HUMAN_INBOX.md](./HUMAN_INBOX.md) for stop-rule escalations and decisions to audit. Phase gates automated; learning no longer gates anything. Lanes become two parallel agent tracks. Branch protection needs no approval (P0-04). Supersedes the "self-review" note in the entry below | James chose to let agents build without a per-ticket human check, keeping a full explanation per ticket. It removes review latency from the critical path |
+| 2026-10-14 | **Solo:** Khoi left on 2026-10-13; James continues alone. `CLAUDE.md` and `docs/README.md` updated. Lanes A and B now run in sequence, and "the other dev reviews" means a self-review after the fresh-session AI review | Follow-up (not yet done): re-plan the week-by-week table and the week-8 date for one developer; drop Khoi from CODEOWNERS (P0-04), alert emails (D-01, D-04, D-05) and the recap template (all done 2026-10-14 with ADR-0014; the week-by-week re-plan is still open) |

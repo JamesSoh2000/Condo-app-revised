@@ -113,7 +113,9 @@ Endpoints above. Cookie: `HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `s
 4. Why `SameSite=Lax` rather than `Strict` here?
 5. Why limit `last_seen_at` updates to once every 5 minutes?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

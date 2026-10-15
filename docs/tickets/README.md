@@ -7,31 +7,31 @@ and in CI only ([ADR-0013](../adr/0013-local-first-deployment-milestone.md)).
 **Milestone D** (deployment to AWS staging, after week 8) has its own tickets, D-01…D-06. D-01…D-04 were
 the first draft's P1-08…P1-11, so they are already detailed. Re-frame each one before starting, because the
 code it builds on will have changed. Every ticket follows
-[../templates/TICKET.md](../templates/TICKET.md) and is worked with the loop in
-[../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
+[../templates/TICKET.md](../templates/TICKET.md) and is built, reviewed and merged by agents with the
+autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 
 **How to use this index:**
-- **Pick** a ticket whose dependencies are all `done`, or whose interface contract is merged (see
+- **Pick:** `/build-next` picks a `todo` ticket whose dependencies are all `done` (or whose interface
+  contract is merged), critical path first (see
   [Definition of Ready](../ENGINEERING_PRACTICES.md#3-definition-of-ready-before-an-agent-starts)).
-- **Status values:** `todo` → `framing` → `in progress` → `review` → `done`. Update the table in the PR
-  that changes the status. Optionally mirror tickets as GitHub Issues: one issue per file, with the issue
-  linking the file.
-- **Lane** A = backend/platform; B = frontend/QA/ops. Lanes avoid file conflicts and are not job titles.
-  Swap lanes at least once.
-- **Tier** 1/2/3 sets the review depth ([risk tiers](../AI_AGENT_PLAYBOOK.md#risk-tiers)).
-- **Learned:** `—` until the driver finishes the after-merge learn step (quiz, explain-back note, hand-written
-  change, plus a bug hunt for Tier 1), then `✓`. Do it within 2 working days of the merge. A phase gate does
-  not pass while any of its `done` tickets is not `✓`.
-- If a ticket turns out larger than one PR (≤ ~400 changed non-test lines), split it during framing
-  (`P3-04a`, `P3-04b`) and add the rows here, as was done for P5-02a/P5-02b.
-- To turn a P6–P7 stub into a full ticket, use `/draft-ticket <ID>`.
+- **Status values:** `todo` → `in progress` → `review` → `done`, or `blocked` when the agent hits a
+  [stop rule](../AI_AGENT_PLAYBOOK.md#stop-rules) (the reason is in [HUMAN_INBOX.md](../HUMAN_INBOX.md)).
+  The agent sets `done` in the ticket's own PR, so it lands with the merge.
+- **Lane** A = backend/platform; B = frontend/QA/ops. Lanes are two parallel agent tracks that avoid file
+  conflicts; at most one agent per lane.
+- **Tier** 1/2/3 sets the frame, review and explanation depth ([risk tiers](../AI_AGENT_PLAYBOOK.md#risk-tiers)).
+- **Learned:** James's own tracker: `✓` after reading the explanation and doing any learning wanted
+  (`/quiz-me`, a note, a hand-written change). Nothing waits on it.
+- If a ticket turns out larger than one PR (≤ ~400 changed non-test lines), the agent splits it during
+  framing (`P3-04a`, `P3-04b`) and adds the rows here, as was done for P5-02a/P5-02b.
+- P6–P7 stubs become full tickets with `/draft-ticket <ID>`, through the same loop.
 
 ## Index
 
 <!-- generated -->
 | ID | Title | Lane | Tier | Depends on | Status | Learned |
 |---|---|---|---|---|---|---|
-| [P0-01](./P0-01-adopt-plan-into-repo.md) | Adopt the new plan into the repo | A | 3 | — | in review | — |
+| [P0-01](./P0-01-adopt-plan-into-repo.md) | Adopt the new plan into the repo | A | 3 | — | done | — |
 | [P0-02](./P0-02-backend-quality-gates.md) | Backend quality gates | A | 3 | P0-01 | todo | — |
 | [P0-03](./P0-03-frontend-quality-gates.md) | Frontend quality gates | B | 3 | P0-01 | todo | — |
 | [P0-04](./P0-04-repo-workflow-and-local-stack.md) | Repo workflow and local stack | B | 2 | P0-02, P0-03 | todo | — |
@@ -91,9 +91,9 @@ P0-02 → P0-05 → P1-01 → P1-02 → P1-03 → P1-05 → P2-03 → P2-04 → 
 ```
 
 The data and identity chain (lane A) is the critical path. Its tickets must merge one after another, so the
-calendar time between "PR ready" and "merged" matters more than total hours. Two rules protect it: the
-[review deadline](../AI_AGENT_PLAYBOOK.md#review-deadline) (Tier 1 review starts within ~4 working hours),
-and learning after merge rather than before. Tickets that are off this chain were moved to lane B: P2-05
+calendar time between "PR ready" and "merged" matters more than total hours. With no human review on the
+merge path ([ADR-0014](../adr/0014-autonomous-agent-workflow.md)), that time is CI plus review rounds; a
+blocked critical-path ticket is the costliest thing in the inbox. Tickets that are off this chain were moved to lane B: P2-05
 (rate limiting), P3-02 (email, which builds on lane B's P3-01), P4-04 (password reset) and P1-04 (API
 conventions). P1-04 should merge by the start of week 2, because P2-01 (lane A) and P1-07 need it. P2-05
 and P3-02 feed P4-02 and P4-05 on lane A, so lane B merges them in week 3.

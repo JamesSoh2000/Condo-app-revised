@@ -82,7 +82,9 @@ Fixtures `engine` (session), `db` (function), `client` (function, using `db`). E
 3. Why is building the test schema with `alembic upgrade head`, not `Base.metadata.create_all()`, a better
    test of reality?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

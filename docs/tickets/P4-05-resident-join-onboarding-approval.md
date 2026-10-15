@@ -109,7 +109,9 @@ matches the existing Base44 UI ([01 §Onboarding](../PRODUCT_SCOPE.md#onboarding
 4. Signup returns `email_in_use`, while password reset hides account existence. Why is that trade-off
    acceptable here?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

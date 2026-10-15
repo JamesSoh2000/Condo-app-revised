@@ -1,5 +1,5 @@
 ---
-description: Step 9 (after merge) — active-recall quiz on a ticket or topic; grade answers and probe gaps
+description: James's learning (optional, any time) — active-recall quiz on a ticket or topic; grade and probe gaps
 argument-hint: <ticket-id or topic, e.g. P2-03 or "outbox">
 ---
 
@@ -17,5 +17,4 @@ Quiz me on $ARGUMENTS. The goal is learning, not passing.
    a test for case #7 yourself", or "re-read SQLAlchemy savepoint docs §…".
 6. Offer to append a 5-line summary to `learnings/<my-name>_<yyyy-mm>.md`, but I write the explain-back
    note myself.
-7. Remind me to mark the ticket "learned ✓" in `docs/tickets/README.md` once the note and the hand-written
-   change are done.
+7. Offer to mark the ticket "Learned ✓" in `docs/tickets/README.md` (my own tracker; nothing waits on it).

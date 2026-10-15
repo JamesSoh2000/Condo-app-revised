@@ -66,7 +66,9 @@ Consumes `packages_list`, `packages_get` and `packages_summary`.
 2. How does the badge stay fresh without WebSockets, and what is the worst-case delay?
 3. How is a UTC timestamp rendered in the building's timezone?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

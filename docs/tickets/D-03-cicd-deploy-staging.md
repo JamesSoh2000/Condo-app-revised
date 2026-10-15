@@ -95,7 +95,9 @@ Run every criterion once on staging and paste the evidence (workflow run links, 
 3. How does keeping old hashed assets protect users with open tabs?
 4. What does `flock` protect against, and why also use a GitHub concurrency group?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:

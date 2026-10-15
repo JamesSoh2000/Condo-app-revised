@@ -82,7 +82,9 @@ The same-origin proxy removes CORS and makes local development behave like produ
 2. What is a ratchet in CI, and why is it better than "fix everything first"?
 3. Why hide out-of-scope routes instead of deleting the pages?
 
-## Frame notes (filled by the human in step 1)
+## Frame notes (filled by the agent in step 1)
 
-- Design prediction:
-- Extra cases added:
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:
