@@ -45,9 +45,10 @@ def assert_safe_test_database_url(test_url: str, dev_url: str) -> None:
         raise UnsafeTestDatabaseError(
             f"TEST_DATABASE_URL database {test_db.database!r} must end in '_test'"
         )
-    same_server = (test_db.host, test_db.port) == (dev_db.host, dev_db.port)
-    if same_server and test_db.database == dev_db.database:
-        raise UnsafeTestDatabaseError("TEST_DATABASE_URL must not be the DATABASE_URL database")
+    # Compared by name only: host aliases (localhost, 127.0.0.1, ::1) and default ports would make a
+    # host/port comparison miss the same database.
+    if test_db.database == dev_db.database:
+        raise UnsafeTestDatabaseError("TEST_DATABASE_URL must not name the DATABASE_URL database")
 
 
 async def _recreate_test_schema(test_url: str) -> None:
@@ -125,10 +126,17 @@ async def db(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
 
 @pytest.fixture
 async def client(db: AsyncSession) -> AsyncIterator[AsyncClient]:
-    """Async test client that hits the FastAPI app directly, using the test's `db` session."""
+    """Async test client that hits the FastAPI app directly, using the test's `db` session.
+
+    Like production, work a request didn't commit is discarded when the request ends, so a
+    missing `commit()` fails tests. Test setup must therefore `commit()` before calling the client.
+    """
 
     async def override_get_db_session() -> AsyncIterator[AsyncSession]:
         yield db
+        # Production closes its session without committing; here that means back to the last
+        # savepoint, which keeps the test's committed setup and the request's committed work.
+        await db.rollback()
 
     app.dependency_overrides[get_db_session] = override_get_db_session
     try:
