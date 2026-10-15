@@ -39,14 +39,14 @@ export default function MoveRequest() {
     const loadUser = async () => {
       try {
         const currentUser = await base44.auth.me();
-        
+
         // Redirect management users to SecurityMoveRequests
         if (currentUser.account_type === 'management') {
           navigate(createPageUrl('SecurityMoveRequests'));
           // Keep loading true during redirect
           return;
         }
-        
+
         setUser(currentUser);
         setLoading(false);
       } catch (error) {
@@ -71,10 +71,10 @@ export default function MoveRequest() {
       // Fetch Profile to get accurate name and unit
       const profiles = await base44.entities.Profile.filter({ userId: user.id });
       const residentProfiles = await base44.entities.ResidentProfile.filter({ user_id: user.id });
-      
+
       let residentName = user.full_name;
       let residentUnit = user.unit_number;
-      
+
       if (profiles.length > 0) {
         residentName = profiles[0].full_name;
         residentUnit = profiles[0].unit_number;
@@ -82,16 +82,16 @@ export default function MoveRequest() {
         residentName = residentProfiles[0].full_name;
         residentUnit = residentProfiles[0].unit_number;
       }
-      
+
       const requestData = {
         ...data,
         residentName,
         unitNumber: residentUnit,
         tower: residentUnit?.toString().startsWith('1') ? 'E' : 'W'
       };
-      
+
       const request = await base44.entities.MoveRequest.create(requestData);
-      
+
       // Notify security
       await base44.entities.Notification.create({
         title: 'New Move Request',
@@ -115,14 +115,14 @@ export default function MoveRequest() {
     onSuccess: (newRequest) => {
       console.log('✅ SUCCESS HANDLER FIRED - Move Request ID:', newRequest.id);
       toast.success(`Success handler fired for Move Request ID: ${newRequest.id}`);
-      
+
       setLastMoveRequestId(newRequest.id);
       setShowMoveSentOverlay(true);
-      
+
       setTimeout(() => {
         setShowMoveSentOverlay(false);
       }, 2000);
-      
+
       queryClient.invalidateQueries({ queryKey: ['my-move-requests'] });
       setRequestType('');
       setPurpose('');
@@ -168,7 +168,7 @@ export default function MoveRequest() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!requestType || !purpose || !date || !startTime || !endTime) {
       toast.error('Please fill in all required fields');
       return;
@@ -179,12 +179,12 @@ export default function MoveRequest() {
     const startMinute = parseInt(startTime.split(':')[1]);
     const endHour = parseInt(endTime.split(':')[0]);
     const endMinute = parseInt(endTime.split(':')[1]);
-    
+
     if (startHour < 8 || startHour >= 22) {
       toast.error('Start time must be between 08:00 and 22:00');
       return;
     }
-    
+
     if (endHour > 22 || (endHour === 22 && endMinute > 0)) {
       toast.error('End time must be 22:00 or earlier');
       return;
@@ -197,7 +197,7 @@ export default function MoveRequest() {
       toast.error('End time must be after start time');
       return;
     }
-    
+
     // Validate minimum 2-hour duration
     const durationMinutes = (end - start) / (1000 * 60);
     if (durationMinutes < 120) {
@@ -266,16 +266,16 @@ export default function MoveRequest() {
             {/* Truck with bounce and movement */}
             <motion.div
               initial={{ x: '60vw', y: 0 }}
-              animate={{ 
+              animate={{
                 x: '-60vw',
                 y: [0, -12, 0, -12, 0, -12, 0, -12, 0]
               }}
-              transition={{ 
+              transition={{
                 x: { duration: 1.8, ease: 'linear' },
                 y: { duration: 1.8, times: [0, 0.11, 0.22, 0.33, 0.44, 0.55, 0.66, 0.77, 1], ease: 'easeInOut' }
               }}
               className="relative"
-              style={{ 
+              style={{
                 position: 'absolute',
                 top: '45%',
                 fontSize: '140px',
@@ -284,14 +284,14 @@ export default function MoveRequest() {
               }}
             >
               🚚
-              
+
               {/* Smoke puffs */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: [0, 0.6, 0] }}
                 transition={{ duration: 0.4, repeat: 4, repeatDelay: 0.2 }}
                 className="absolute"
-                style={{ 
+                style={{
                   right: '-40px',
                   bottom: '10px',
                   fontSize: '50px',
@@ -305,7 +305,7 @@ export default function MoveRequest() {
                 animate={{ opacity: [0, 0.5, 0] }}
                 transition={{ duration: 0.4, delay: 0.15, repeat: 4, repeatDelay: 0.2 }}
                 className="absolute"
-                style={{ 
+                style={{
                   right: '-60px',
                   bottom: '20px',
                   fontSize: '40px',
@@ -319,7 +319,7 @@ export default function MoveRequest() {
                 animate={{ opacity: [0, 0.4, 0] }}
                 transition={{ duration: 0.4, delay: 0.3, repeat: 3, repeatDelay: 0.2 }}
                 className="absolute"
-                style={{ 
+                style={{
                   right: '-80px',
                   bottom: '30px',
                   fontSize: '32px',
@@ -383,8 +383,8 @@ export default function MoveRequest() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label>{t('Request Type *')}</Label>
-              <Select 
-                value={requestType} 
+              <Select
+                value={requestType}
                 onValueChange={(value) => {
                   setRequestType(value);
                   // Reset purpose if it's no longer valid for the new request type
@@ -467,7 +467,7 @@ export default function MoveRequest() {
                   <strong>{t('Move Hours:')}</strong> 08:00–22:00 {t('only')} • <strong>{t('Minimum Duration:')}</strong> {t('2 hours')}
                 </p>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>{t('Start Time *')}</Label>
@@ -475,7 +475,7 @@ export default function MoveRequest() {
                     value={startTime}
                     onValueChange={(value) => {
                       setStartTime(value);
-                      
+
                       // Auto-fill end time to start + 2 hours
                       if (value) {
                         const [hours, minutes] = value.split(':').map(Number);
@@ -483,7 +483,7 @@ export default function MoveRequest() {
                         const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
                         const endHours = endDate.getHours();
                         const endMinutes = endDate.getMinutes();
-                        
+
                         // Cap at 22:00
                         if (endHours > 22 || (endHours === 22 && endMinutes > 0)) {
                           setEndTime('22:00');
@@ -530,7 +530,7 @@ export default function MoveRequest() {
                         const minutes = totalMinutes % 60;
                         if (hours > 22 || (hours === 22 && minutes > 0)) return null; // Max 22:00
                         const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-                        
+
                         // Disable times that don't meet 2-hour minimum from start
                         let disabled = false;
                         if (startTime) {
@@ -539,7 +539,7 @@ export default function MoveRequest() {
                           const endMinutes = hours * 60 + minutes;
                           disabled = (endMinutes - startMinutes) < 120;
                         }
-                        
+
                         return (
                           <SelectItem key={timeStr} value={timeStr} disabled={disabled}>
                             {timeStr}
@@ -648,7 +648,7 @@ export default function MoveRequest() {
                         </Button>
                       </div>
                     </div>
-                    
+
                     {request.notes && (
                       <p className="text-sm text-zinc-600 mb-3">
                         <span className="font-medium">{t('Notes')}:</span> {request.notes}

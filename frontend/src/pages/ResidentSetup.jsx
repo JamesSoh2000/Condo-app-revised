@@ -39,7 +39,7 @@ export default function ResidentSetup() {
       try {
         const currentUser = await base44.auth.me();
         setUser(currentUser);
-        
+
         // Check if already has profile
         const profiles = await base44.entities.Profile.filter({ userId: currentUser.id });
         if (profiles.length > 0) {
@@ -99,7 +99,7 @@ export default function ResidentSetup() {
     setLoading(true);
     try {
       const selectedUnit = units.find(u => u.id === formData.unit_id);
-      
+
       // Create ResidentProfile for approval (NOT Profile yet)
       await base44.entities.ResidentProfile.create({
         user_id: user.id,
@@ -148,10 +148,10 @@ export default function ResidentSetup() {
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 flex items-center justify-center p-4">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-8">
-          <img 
-            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/9780cdd25_logo-footer-estwest-r.png" 
-            alt="EstWest Condominiums" 
-            className="h-16 w-auto object-contain mx-auto mb-4" 
+          <img
+            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/9780cdd25_logo-footer-estwest-r.png"
+            alt="EstWest Condominiums"
+            className="h-16 w-auto object-contain mx-auto mb-4"
           />
           <h1 className="text-3xl font-bold text-zinc-900">Resident Profile Setup</h1>
           <p className="text-zinc-500 mt-2">Step {step} of 3</p>
@@ -347,8 +347,8 @@ export default function ResidentSetup() {
                     <Button variant="outline" onClick={() => setStep(2)} className="flex-1 h-12">
                       ← Back
                     </Button>
-                    <Button 
-                      onClick={handleSubmit} 
+                    <Button
+                      onClick={handleSubmit}
                       className="flex-1 h-12 bg-blue-600 hover:bg-blue-700 text-base"
                       disabled={loading}
                     >

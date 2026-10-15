@@ -393,9 +393,9 @@ export default function ProfilePage() {
             <div className="flex items-center justify-between mb-3">
               <Label>{t('Additional Occupants (Max 2)')}</Label>
               {formData.additional_occupants.length < 2 && (
-                <Button 
+                <Button
                   type="button"
-                  variant="outline" 
+                  variant="outline"
                   size="sm"
                   onClick={() => setFormData({
                     ...formData,

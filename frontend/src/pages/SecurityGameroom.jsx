@@ -38,13 +38,13 @@ export default function SecurityGameroom() {
       try {
         const me = await base44.auth.me();
         const notifications = await base44.entities.Notification.list('-created_date', 100);
-        const myUnread = notifications.filter(n => 
+        const myUnread = notifications.filter(n =>
           n.target_user_id === me.id &&
           n.type === 'amenity' &&
           n.link === 'SecurityGameroom' &&
           n.is_read === false
         );
-        
+
         // Mark all as read
         for (const notification of myUnread) {
           await base44.entities.Notification.update(notification.id, { is_read: true });
@@ -53,7 +53,7 @@ export default function SecurityGameroom() {
         console.error('Failed to mark notifications as read:', error);
       }
     };
-    
+
     markNotificationsRead();
   }, []);
 
@@ -83,14 +83,14 @@ export default function SecurityGameroom() {
     queryFn: async () => {
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        
+
         // Query the event log for completed events
         const allEvents = await base44.entities.GameroomRentalEvent.list('-event_at', 200);
-        
+
         console.log('DEBUG: All events fetched:', allEvents.length);
-        
-        const completedEvents = allEvents.filter(e => 
-            e.event_type === 'completed' && 
+
+        const completedEvents = allEvents.filter(e =>
+            e.event_type === 'completed' &&
             e.event_at &&
             new Date(e.event_at) >= sevenDaysAgo
         );
@@ -101,22 +101,22 @@ export default function SecurityGameroom() {
         const eventsNeedingTower = completedEvents.filter(e => !e.resident_tower && e.resident_unit);
         if (eventsNeedingTower.length > 0) {
             console.log('DEBUG: Backfilling tower for', eventsNeedingTower.length, 'events');
-            
+
             for (const event of eventsNeedingTower) {
                 // Derive tower from unit number (units starting with 1 are East tower)
                 const tower = event.resident_unit.toString().startsWith('1') ? 'E' : 'W';
-                
+
                 // Update the event record
                 await base44.entities.GameroomRentalEvent.update(event.id, {
                     resident_tower: tower
                 });
-                
+
                 // Also update in memory
                 event.resident_tower = tower;
-                
+
                 console.log(`DEBUG: Backfilled event ${event.id} with tower ${tower}`);
             }
-            
+
             // Also backfill the original rental requests
             const requestIds = [...new Set(eventsNeedingTower.map(e => e.request_id))];
             for (const requestId of requestIds) {
@@ -161,13 +161,13 @@ export default function SecurityGameroom() {
   const acceptRequest = useMutation({
     mutationFn: async (rental) => {
       const me = await base44.auth.me();
-      const updated = await base44.entities.GameroomRental.update(rental.id, { 
+      const updated = await base44.entities.GameroomRental.update(rental.id, {
         status: 'accepted',
         assigned_security_user_id: me.id,
         accepted_at: new Date().toISOString(),
         security_notes: `Accepted by ${me.full_name}`
       });
-      
+
       await base44.entities.Notification.create({
         title: 'Gameroom Request Accepted',
         message: `Your ${rental.item_name} request has been accepted. Security is preparing the item.`,
@@ -175,7 +175,7 @@ export default function SecurityGameroom() {
         target_unit: rental.resident_unit,
         link: 'gameroom'
       });
-      
+
       return updated;
     },
     onSuccess: () => {
@@ -190,16 +190,16 @@ export default function SecurityGameroom() {
       console.log('[DENY] Starting denial for rental:', rental.id);
       const me = await base44.auth.me();
       console.log('[DENY] Current user:', me.id, me.full_name);
-      
-      const updated = await base44.entities.GameroomRental.update(rental.id, { 
+
+      const updated = await base44.entities.GameroomRental.update(rental.id, {
         status: 'denied',
         completed_at: new Date().toISOString(),
         assigned_security_user_id: me.id,
         security_notes: `Denied by ${me.full_name}`
       });
-      
+
       console.log('[DENY] Record updated:', updated);
-      
+
       await base44.entities.Notification.create({
         title: 'Gameroom Request Denied',
         message: `Your ${rental.item_name} request was not approved.`,
@@ -207,7 +207,7 @@ export default function SecurityGameroom() {
         target_unit: rental.resident_unit,
         link: 'gameroom'
       });
-      
+
       console.log('[DENY] Notification sent');
       return updated;
     },
@@ -228,10 +228,10 @@ export default function SecurityGameroom() {
       if (!photoFile) {
         throw new Error('Photo is required before proceeding');
       }
-      
+
       const me = await base44.auth.me();
       const { file_url } = await base44.integrations.Core.UploadFile({ file: photoFile });
-      
+
       await base44.entities.GameroomRental.update(selectedRental.id, {
         status: 'active',
         preUsePhotoUrls: [file_url],
@@ -264,9 +264,9 @@ export default function SecurityGameroom() {
     mutationFn: async ({ rental, condition, conditionNotes }) => {
       const me = await base44.auth.me();
       const completedAt = new Date().toISOString();
-      
+
       // Update the rental request
-      await base44.entities.GameroomRental.update(rental.id, { 
+      await base44.entities.GameroomRental.update(rental.id, {
         status: 'completed',
         completed_at: completedAt,
         return_reviewed_at: completedAt,
@@ -275,7 +275,7 @@ export default function SecurityGameroom() {
         condition_notes: conditionNotes,
         assigned_security_user_id: rental.assigned_security_user_id || me.id
       });
-      
+
       // Ensure tower is set (backfill if missing)
       let tower = rental.resident_tower;
       if (!tower && rental.resident_unit) {
@@ -285,7 +285,7 @@ export default function SecurityGameroom() {
           resident_tower: tower
         });
       }
-      
+
       // Write immutable event log entry
       const eventData = await base44.entities.GameroomRentalEvent.create({
       request_id: rental.id,
@@ -307,10 +307,10 @@ export default function SecurityGameroom() {
       preUseUploadedAt: rental.preUseUploadedAt,
       postUseUploadedAt: rental.postUseUploadedAt
       });
-      
+
       // DEBUG: Show completion details
       toast.info(`DEBUG: Completed request ${rental.id}. Event logged. completedAt=${completedAt}`, { duration: 5000 });
-      
+
       await base44.entities.Notification.create({
         title: 'Gameroom Return Confirmed',
         message: `Your ${rental.item_name} return has been confirmed. Thank you!`,
@@ -318,7 +318,7 @@ export default function SecurityGameroom() {
         target_unit: rental.resident_unit,
         link: 'gameroom'
       });
-      
+
       return { rentalId: rental.id, completedAt };
     },
     onSuccess: (data) => {
@@ -331,7 +331,7 @@ export default function SecurityGameroom() {
       setSelectedReturnRental(null);
       setCondition('good');
       setConditionNotes('');
-      
+
       // Force immediate refetch to show in history
       setTimeout(() => {
         queryClient.refetchQueries(['gameroom-history']);
@@ -344,7 +344,7 @@ export default function SecurityGameroom() {
     mutationFn: async ({ rentalId, eventId, condition, conditionNotes }) => {
       const me = await base44.auth.me();
       const editedAt = new Date().toISOString();
-      
+
       // Update rental record
       await base44.entities.GameroomRental.update(rentalId, {
         condition: condition,
@@ -352,7 +352,7 @@ export default function SecurityGameroom() {
         condition_edited_at: editedAt,
         condition_edited_by_security_user_id: me.id
       });
-      
+
       // Update event record
       await base44.entities.GameroomRentalEvent.update(eventId, {
         condition: condition,
@@ -380,18 +380,18 @@ export default function SecurityGameroom() {
 
       const me = await base44.auth.me();
       const completedAt = new Date().toISOString();
-      
+
       // Upload return photo
       const { file_url } = await base44.integrations.Core.UploadFile({ file: photoFile });
-      
+
       // Ensure tower is set
       let tower = rental.resident_tower;
       if (!tower && rental.resident_unit) {
         tower = rental.resident_unit.toString().startsWith('1') ? 'E' : 'W';
       }
-      
+
       // Update rental to completed
-      await base44.entities.GameroomRental.update(rental.id, { 
+      await base44.entities.GameroomRental.update(rental.id, {
         status: 'completed',
         completed_at: completedAt,
         end_time: completedAt,
@@ -404,7 +404,7 @@ export default function SecurityGameroom() {
         resident_tower: tower,
         assigned_security_user_id: rental.assigned_security_user_id || me.id
       });
-      
+
       // Write immutable event log entry
       await base44.entities.GameroomRentalEvent.create({
         request_id: rental.id,
@@ -426,7 +426,7 @@ export default function SecurityGameroom() {
         preUseUploadedAt: rental.preUseUploadedAt,
         postUseUploadedAt: completedAt
       });
-      
+
       // Notify resident
       await base44.entities.Notification.create({
         title: 'Gameroom Return Confirmed',
@@ -446,7 +446,7 @@ export default function SecurityGameroom() {
       setReturnCondition('good');
       setReturnNotes('');
       toast.success("Return processed successfully");
-      
+
       setTimeout(() => {
         queryClient.refetchQueries(['gameroom-history']);
       }, 500);
@@ -456,14 +456,14 @@ export default function SecurityGameroom() {
   // Group history by day
   const groupedHistory = React.useMemo(() => {
     if (!history) return {};
-    
+
     const groups = {};
     history.forEach(rental => {
       const date = format(new Date(rental.completed_at), 'yyyy-MM-dd');
       if (!groups[date]) groups[date] = [];
       groups[date].push(rental);
     });
-    
+
     return groups;
   }, [history]);
 
@@ -498,8 +498,8 @@ export default function SecurityGameroom() {
                 </div>
                 <div className="flex items-center gap-3">
                   {r.postUsePhotoUrls?.[0] && (
-                    <img 
-                      src={r.postUsePhotoUrls[0]} 
+                    <img
+                      src={r.postUsePhotoUrls[0]}
                       className="w-20 h-20 object-cover rounded border border-zinc-200 cursor-pointer hover:opacity-75"
                       alt="Return photo"
                       onClick={() => window.open(r.postUsePhotoUrls[0], '_blank')}
@@ -510,7 +510,7 @@ export default function SecurityGameroom() {
                   </div>
                 </div>
               </div>
-              <Button 
+              <Button
                 size="sm"
                 className="bg-green-600 hover:bg-green-700"
                 onClick={() => {
@@ -525,7 +525,7 @@ export default function SecurityGameroom() {
           </div>
         </Card>
       )}
-     
+
       <Card>
         <Table>
             <TableHeader>
@@ -553,17 +553,17 @@ export default function SecurityGameroom() {
                         <TableCell className="text-right space-x-2">
                             {r.status === 'requested' && (
                                 <>
-                                    <Button 
-                                        size="sm" 
-                                        className="bg-green-600 hover:bg-green-700" 
+                                    <Button
+                                        size="sm"
+                                        className="bg-green-600 hover:bg-green-700"
                                         onClick={() => acceptRequest.mutate(r)}
                                         disabled={acceptRequest.isPending}
                                     >
                                         Accept
                                     </Button>
-                                    <Button 
-                                        size="sm" 
-                                        variant="destructive" 
+                                    <Button
+                                        size="sm"
+                                        variant="destructive"
                                         onClick={() => denyRequest.mutate(r)}
                                         disabled={denyRequest.isPending}
                                     >
@@ -571,22 +571,22 @@ export default function SecurityGameroom() {
                                     </Button>
                                 </>
                             )}
-                            
+
                             {r.status === 'accepted' && (
-                                <Button 
-                                    size="sm" 
-                                    className="bg-blue-600 hover:bg-blue-700" 
+                                <Button
+                                    size="sm"
+                                    className="bg-blue-600 hover:bg-blue-700"
                                     onClick={() => setSelectedRental(r)}
                                 >
                                     Upload Photo & Proceed
                                 </Button>
                             )}
-                            
+
                             {r.status === 'active' && (
                                 <>
                                     <Badge className="bg-blue-500 text-white">Active</Badge>
-                                    <Button 
-                                        size="sm" 
+                                    <Button
+                                        size="sm"
                                         className="bg-green-600 hover:bg-green-700"
                                         onClick={() => {
                                           setReturnRental(r);
@@ -597,7 +597,7 @@ export default function SecurityGameroom() {
                                     </Button>
                                 </>
                             )}
-                            
+
 
                         </TableCell>
                     </TableRow>
@@ -620,27 +620,27 @@ export default function SecurityGameroom() {
               Photo is required before checking out the item to the resident.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
               📸 Take a clear photo of the <strong>{selectedRental?.item_name}</strong> before handing it over.
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="photo">Equipment Photo (Required)</Label>
-              <Input 
-                id="photo" 
-                type="file" 
+              <Input
+                id="photo"
+                type="file"
                 accept="image/*"
                 capture="environment"
-                onChange={(e) => setPhotoFile(e.target.files?.[0])} 
+                onChange={(e) => setPhotoFile(e.target.files?.[0])}
               />
               {photoFile && (
                 <p className="text-sm text-green-600 font-medium">✓ Photo ready</p>
               )}
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setSelectedRental(null);
@@ -648,8 +648,8 @@ export default function SecurityGameroom() {
             }}>
               Cancel
             </Button>
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700" 
+            <Button
+              className="bg-blue-600 hover:bg-blue-700"
               onClick={() => proceedWithPhoto.mutate()}
               disabled={!photoFile || proceedWithPhoto.isPending}
             >
@@ -677,8 +677,8 @@ export default function SecurityGameroom() {
                 </p>
               </div>
             </div>
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               variant="outline"
               onClick={() => queryClient.refetchQueries(['gameroom-history'])}
             >
@@ -698,8 +698,8 @@ export default function SecurityGameroom() {
               .map(dateKey => (
                 <div key={dateKey} className="p-6">
                   <h4 className="text-sm font-semibold text-zinc-700 mb-4">
-                    {isToday(new Date(dateKey)) ? 'Today' : 
-                     isYesterday(new Date(dateKey)) ? 'Yesterday' : 
+                    {isToday(new Date(dateKey)) ? 'Today' :
+                     isYesterday(new Date(dateKey)) ? 'Yesterday' :
                      format(new Date(dateKey), 'EEEE, MMM d')}
                   </h4>
                   <div className="space-y-3">
@@ -707,13 +707,13 @@ export default function SecurityGameroom() {
                       const isDamagedOrLost = rental.condition === 'damaged' || rental.condition === 'lost';
                       const isExpanded = expandedHistoryId === rental.id;
                       return (
-                        <div 
-                          key={rental.id} 
+                        <div
+                          key={rental.id}
                           className={`rounded-lg border overflow-hidden ${
                             isDamagedOrLost ? 'bg-red-50 border-red-200' : 'bg-zinc-50 border-zinc-100'
                           }`}
                         >
-                          <div 
+                          <div
                             className="flex items-center justify-between p-4 cursor-pointer hover:shadow-md transition-shadow"
                             onClick={() => setExpandedHistoryId(isExpanded ? null : rental.id)}
                           >
@@ -771,7 +771,7 @@ export default function SecurityGameroom() {
                                     <div className="space-y-3">
                                       <div className="grid grid-cols-2 gap-2">
                                         {rental.preUsePhotoUrls.map((url, idx) => (
-                                          <div 
+                                          <div
                                             key={idx}
                                             className="relative aspect-square rounded-lg overflow-hidden border border-zinc-200 cursor-pointer hover:opacity-75 transition-opacity group"
                                             onClick={() => setLightboxImage(url)}
@@ -805,7 +805,7 @@ export default function SecurityGameroom() {
                                     <div className="space-y-3">
                                       <div className="grid grid-cols-2 gap-2">
                                         {rental.postUsePhotoUrls.map((url, idx) => (
-                                          <div 
+                                          <div
                                             key={idx}
                                             className="relative aspect-square rounded-lg overflow-hidden border border-zinc-200 cursor-pointer hover:opacity-75 transition-opacity group"
                                             onClick={() => setLightboxImage(url)}
@@ -871,13 +871,13 @@ export default function SecurityGameroom() {
               Were the items damaged or lost?
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="space-y-3">
               <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-zinc-50 transition-colors" style={{ borderColor: condition === 'good' ? '#22c55e' : '#e5e7eb' }}>
-                <input 
-                  type="radio" 
-                  name="condition" 
+                <input
+                  type="radio"
+                  name="condition"
                   value="good"
                   checked={condition === 'good'}
                   onChange={(e) => setCondition(e.target.value)}
@@ -885,11 +885,11 @@ export default function SecurityGameroom() {
                 />
                 <span className="font-medium">✅ Good condition</span>
               </label>
-              
+
               <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-zinc-50 transition-colors" style={{ borderColor: condition === 'damaged' ? '#f97316' : '#e5e7eb' }}>
-                <input 
-                  type="radio" 
-                  name="condition" 
+                <input
+                  type="radio"
+                  name="condition"
                   value="damaged"
                   checked={condition === 'damaged'}
                   onChange={(e) => setCondition(e.target.value)}
@@ -897,11 +897,11 @@ export default function SecurityGameroom() {
                 />
                 <span className="font-medium">⚠️ Damaged</span>
               </label>
-              
+
               <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-zinc-50 transition-colors" style={{ borderColor: condition === 'lost' ? '#ef4444' : '#e5e7eb' }}>
-                <input 
-                  type="radio" 
-                  name="condition" 
+                <input
+                  type="radio"
+                  name="condition"
                   value="lost"
                   checked={condition === 'lost'}
                   onChange={(e) => setCondition(e.target.value)}
@@ -913,7 +913,7 @@ export default function SecurityGameroom() {
 
             <div className="grid gap-2">
               <Label htmlFor="condition-notes">Notes (optional)</Label>
-              <Input 
+              <Input
                 id="condition-notes"
                 placeholder="Add any notes about the condition..."
                 value={conditionNotes}
@@ -921,17 +921,17 @@ export default function SecurityGameroom() {
               />
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setConditionModalOpen(false)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               className="bg-green-600 hover:bg-green-700"
-              onClick={() => acceptReturn.mutate({ 
-                rental: selectedReturnRental, 
-                condition, 
-                conditionNotes 
+              onClick={() => acceptReturn.mutate({
+                rental: selectedReturnRental,
+                condition,
+                conditionNotes
               })}
               disabled={acceptReturn.isPending}
             >
@@ -950,13 +950,13 @@ export default function SecurityGameroom() {
               Update the return condition for this rental
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="space-y-3">
               <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-zinc-50 transition-colors" style={{ borderColor: condition === 'good' ? '#22c55e' : '#e5e7eb' }}>
-                <input 
-                  type="radio" 
-                  name="edit-condition" 
+                <input
+                  type="radio"
+                  name="edit-condition"
                   value="good"
                   checked={condition === 'good'}
                   onChange={(e) => setCondition(e.target.value)}
@@ -964,11 +964,11 @@ export default function SecurityGameroom() {
                 />
                 <span className="font-medium">✅ Good condition</span>
               </label>
-              
+
               <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-zinc-50 transition-colors" style={{ borderColor: condition === 'damaged' ? '#f97316' : '#e5e7eb' }}>
-                <input 
-                  type="radio" 
-                  name="edit-condition" 
+                <input
+                  type="radio"
+                  name="edit-condition"
                   value="damaged"
                   checked={condition === 'damaged'}
                   onChange={(e) => setCondition(e.target.value)}
@@ -976,11 +976,11 @@ export default function SecurityGameroom() {
                 />
                 <span className="font-medium">⚠️ Damaged</span>
               </label>
-              
+
               <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-zinc-50 transition-colors" style={{ borderColor: condition === 'lost' ? '#ef4444' : '#e5e7eb' }}>
-                <input 
-                  type="radio" 
-                  name="edit-condition" 
+                <input
+                  type="radio"
+                  name="edit-condition"
                   value="lost"
                   checked={condition === 'lost'}
                   onChange={(e) => setCondition(e.target.value)}
@@ -992,7 +992,7 @@ export default function SecurityGameroom() {
 
             <div className="grid gap-2">
               <Label htmlFor="edit-condition-notes">Notes (optional)</Label>
-              <Input 
+              <Input
                 id="edit-condition-notes"
                 placeholder="Add any notes about the condition..."
                 value={conditionNotes}
@@ -1000,17 +1000,17 @@ export default function SecurityGameroom() {
               />
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditModalOpen(false)}>
               Cancel
             </Button>
-            <Button 
-              onClick={() => editCondition.mutate({ 
+            <Button
+              onClick={() => editCondition.mutate({
                 rentalId: editingRental.request_id,
                 eventId: editingRental.id,
-                condition, 
-                conditionNotes 
+                condition,
+                conditionNotes
               })}
               disabled={editCondition.isPending}
             >
@@ -1029,7 +1029,7 @@ export default function SecurityGameroom() {
               Take a photo of the returned item and verify its condition
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
               📸 Resident returning: <strong>{returnRental?.item_name}</strong>
@@ -1037,15 +1037,15 @@ export default function SecurityGameroom() {
                 {returnRental?.resident_name} • Unit {returnRental?.resident_unit}
               </div>
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="return-photo">Return Photo (Required)</Label>
-              <Input 
-                id="return-photo" 
-                type="file" 
+              <Input
+                id="return-photo"
+                type="file"
                 accept="image/*"
                 capture="environment"
-                onChange={(e) => setReturnPhotoFile(e.target.files?.[0])} 
+                onChange={(e) => setReturnPhotoFile(e.target.files?.[0])}
               />
               {returnPhotoFile && (
                 <p className="text-sm text-green-600 font-medium">✓ Photo ready</p>
@@ -1055,9 +1055,9 @@ export default function SecurityGameroom() {
             <div className="space-y-3">
               <Label>Item Condition</Label>
               <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-zinc-50 transition-colors" style={{ borderColor: returnCondition === 'good' ? '#22c55e' : '#e5e7eb' }}>
-                <input 
-                  type="radio" 
-                  name="return-condition" 
+                <input
+                  type="radio"
+                  name="return-condition"
                   value="good"
                   checked={returnCondition === 'good'}
                   onChange={(e) => setReturnCondition(e.target.value)}
@@ -1065,11 +1065,11 @@ export default function SecurityGameroom() {
                 />
                 <span className="font-medium">✅ Good condition</span>
               </label>
-              
+
               <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-zinc-50 transition-colors" style={{ borderColor: returnCondition === 'damaged' ? '#f97316' : '#e5e7eb' }}>
-                <input 
-                  type="radio" 
-                  name="return-condition" 
+                <input
+                  type="radio"
+                  name="return-condition"
                   value="damaged"
                   checked={returnCondition === 'damaged'}
                   onChange={(e) => setReturnCondition(e.target.value)}
@@ -1077,11 +1077,11 @@ export default function SecurityGameroom() {
                 />
                 <span className="font-medium">⚠️ Damaged</span>
               </label>
-              
+
               <label className="flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer hover:bg-zinc-50 transition-colors" style={{ borderColor: returnCondition === 'lost' ? '#ef4444' : '#e5e7eb' }}>
-                <input 
-                  type="radio" 
-                  name="return-condition" 
+                <input
+                  type="radio"
+                  name="return-condition"
                   value="lost"
                   checked={returnCondition === 'lost'}
                   onChange={(e) => setReturnCondition(e.target.value)}
@@ -1093,7 +1093,7 @@ export default function SecurityGameroom() {
 
             <div className="grid gap-2">
               <Label htmlFor="return-notes">Notes (optional)</Label>
-              <Input 
+              <Input
                 id="return-notes"
                 placeholder="Add any notes about the condition..."
                 value={returnNotes}
@@ -1101,7 +1101,7 @@ export default function SecurityGameroom() {
               />
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setShowReturnModal(false);
@@ -1112,13 +1112,13 @@ export default function SecurityGameroom() {
             }}>
               Cancel
             </Button>
-            <Button 
+            <Button
               className="bg-green-600 hover:bg-green-700"
-              onClick={() => processReturn.mutate({ 
-                rental: returnRental, 
+              onClick={() => processReturn.mutate({
+                rental: returnRental,
                 photoFile: returnPhotoFile,
-                condition: returnCondition, 
-                notes: returnNotes 
+                condition: returnCondition,
+                notes: returnNotes
               })}
               disabled={!returnPhotoFile || processReturn.isPending}
             >
@@ -1130,14 +1130,14 @@ export default function SecurityGameroom() {
 
       {/* Lightbox for Photo Zoom */}
       {lightboxImage && (
-        <div 
+        <div
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
           onClick={() => setLightboxImage(null)}
         >
           <div className="relative max-w-4xl max-h-[90vh]">
-            <img 
-              src={lightboxImage} 
-              alt="Full size" 
+            <img
+              src={lightboxImage}
+              alt="Full size"
               className="max-w-full max-h-[90vh] object-contain rounded-lg"
             />
             <Button

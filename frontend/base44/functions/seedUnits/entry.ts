@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
 
     // Generate all units
     const units = [];
-    
+
     // WEST Tower: floors 2-30
     for (let floor = 2; floor <= 30; floor++) {
       for (let unitNum = 1; unitNum <= 14; unitNum++) {
@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
         });
       }
     }
-    
+
     // EST Tower: floors 2-29
     for (let floor = 2; floor <= 29; floor++) {
       for (let unitNum = 1; unitNum <= 14; unitNum++) {
@@ -46,8 +46,8 @@ Deno.serve(async (req) => {
     // Check if units already exist
     const existingUnits = await base44.asServiceRole.entities.Unit.list('-created_date', 1);
     if (existingUnits.length > 0) {
-      return Response.json({ 
-        error: 'Units already exist. Delete existing units first if you want to reseed.' 
+      return Response.json({
+        error: 'Units already exist. Delete existing units first if you want to reseed.'
       }, { status: 400 });
     }
 
@@ -55,8 +55,8 @@ Deno.serve(async (req) => {
     console.log(`Creating ${units.length} units...`);
     await base44.asServiceRole.entities.Unit.bulkCreate(units);
 
-    return Response.json({ 
-      success: true, 
+    return Response.json({
+      success: true,
       message: `Successfully created ${units.length} units`,
       breakdown: {
         westTower: 29 * 14, // floors 2-30

@@ -14,15 +14,15 @@ export default function SecurityReportPage() {
     location: '',
     description: ''
   });
-  
+
   const createMutation = useMutation({
     mutationFn: async (data) => {
         const user = await base44.auth.me();
-        
+
         // Fetch Profile to get accurate name
         const profiles = await base44.entities.Profile.filter({ userId: user.id });
         const residentName = profiles.length > 0 ? profiles[0].full_name : user.full_name;
-        
+
         // Create report for management/property to see
         const rep = await base44.entities.Report.create({
           type: 'incident',
@@ -33,7 +33,7 @@ export default function SecurityReportPage() {
           status: 'submitted',
           recipientRoles: ['property_management', 'board']
         });
-        
+
         // Notify property management
         await base44.entities.Notification.create({
             title: `Resident Security Report: ${data.type.toUpperCase()}`,
@@ -42,7 +42,7 @@ export default function SecurityReportPage() {
             target_role: 'property_management',
             link: 'ManagementReports'
         });
-        
+
         return rep;
     },
     onSuccess: () => {
@@ -104,7 +104,7 @@ export default function SecurityReportPage() {
                     <label className="text-sm font-medium flex items-center gap-2">
                         <MapPin className="w-4 h-4" /> Location
                     </label>
-                    <Input 
+                    <Input
                         placeholder={report.type === 'parking' ? "e.g. Spot #104 or P1 Level" : report.type === 'noise' ? "e.g. Unit 402 or Hallway" : "e.g. Specific location"}
                         value={report.location}
                         onChange={e => setReport({...report, location: e.target.value})}
@@ -113,7 +113,7 @@ export default function SecurityReportPage() {
 
                 <div className="space-y-2">
                     <label className="text-sm font-medium">Description</label>
-                    <Textarea 
+                    <Textarea
                         placeholder="Please describe the issue..."
                         className="min-h-[120px]"
                         value={report.description}

@@ -102,7 +102,7 @@ export default function ManagementMaintenance() {
   const updateTicket = useMutation({
     mutationFn: async ({id, updates, ticket}) => {
         const updated = await base44.entities.MaintenanceTicket.update(id, updates);
-        
+
         // Notify resident of status change
         if (ticket && updates.status) {
           await base44.entities.Notification.create({
@@ -114,7 +114,7 @@ export default function ManagementMaintenance() {
             link: 'Maintenance'
           });
         }
-        
+
         return updated;
     },
     onSuccess: (updated) => {
@@ -147,8 +147,8 @@ export default function ManagementMaintenance() {
           <div className="flex justify-between items-center">
              <h2 className="text-2xl font-bold">Maintenance Management</h2>
              <div className="flex gap-2">
-               <Button 
-                 size="sm" 
+               <Button
+                 size="sm"
                  variant={showArchive ? 'default' : 'outline'}
                  onClick={() => {
                    setShowArchive(!showArchive);
@@ -178,7 +178,7 @@ export default function ManagementMaintenance() {
             </div>
           )}
         </div>
-     
+
       <Card className="overflow-hidden">
         <div className="overflow-y-auto max-h-[600px]">
           <Table>
@@ -336,12 +336,12 @@ export default function ManagementMaintenance() {
 
               <div className="space-y-4 pt-4 border-t">
                 <h4 className="font-semibold text-sm">Management Actions</h4>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs text-zinc-500">Status</label>
-                    <Select 
-                      value={selectedTicket.status} 
+                    <Select
+                      value={selectedTicket.status}
                       onValueChange={(v) => updateTicket.mutate({id: selectedTicket.id, updates: {status: v}, ticket: selectedTicket})}
                     >
                       <SelectTrigger>
@@ -360,8 +360,8 @@ export default function ManagementMaintenance() {
 
                   <div className="space-y-2">
                     <label className="text-xs text-zinc-500">Priority</label>
-                    <Select 
-                      value={selectedTicket.priority} 
+                    <Select
+                      value={selectedTicket.priority}
                       onValueChange={(v) => updateTicket.mutate({id: selectedTicket.id, updates: {priority: v}, ticket: selectedTicket})}
                     >
                       <SelectTrigger>
@@ -378,8 +378,8 @@ export default function ManagementMaintenance() {
 
                   <div className="space-y-2">
                     <label className="text-xs text-zinc-500">Assign To</label>
-                    <Input 
-                      placeholder="Staff name" 
+                    <Input
+                      placeholder="Staff name"
                       defaultValue={selectedTicket.assigned_to || ''}
                       onBlur={(e) => {
                         if (e.target.value !== selectedTicket.assigned_to) {
@@ -391,8 +391,8 @@ export default function ManagementMaintenance() {
 
                   <div className="space-y-2">
                     <label className="text-xs text-zinc-500">Schedule For</label>
-                    <Input 
-                      type="datetime-local" 
+                    <Input
+                      type="datetime-local"
                       defaultValue={selectedTicket.scheduled_for ? format(new Date(selectedTicket.scheduled_for), "yyyy-MM-dd'T'HH:mm") : ''}
                       onBlur={(e) => {
                         if (e.target.value) {
@@ -421,14 +421,14 @@ export default function ManagementMaintenance() {
                      )}
                    </div>
                    <div className="flex gap-2">
-                     <Textarea 
-                       placeholder="Add a new note..." 
+                     <Textarea
+                       placeholder="Add a new note..."
                        value={newNoteContent}
                        onChange={(e) => setNewNoteContent(e.target.value)}
                        className="text-sm resize-none h-20"
                      />
-                     <Button 
-                       size="icon" 
+                     <Button
+                       size="icon"
                        onClick={() => {
                          if (newNoteContent.trim()) {
                            addNoteMutation.mutate(newNoteContent.trim());
@@ -467,8 +467,8 @@ export default function ManagementMaintenance() {
 
                 <div className="space-y-2">
                    <label className="text-xs text-zinc-500">Resolution Notes (visible to resident)</label>
-                  <Textarea 
-                    placeholder="How was this resolved?" 
+                  <Textarea
+                    placeholder="How was this resolved?"
                     defaultValue={selectedTicket.resolution_notes || ''}
                     onBlur={(e) => {
                       if (e.target.value !== selectedTicket.resolution_notes) {

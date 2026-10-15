@@ -68,12 +68,12 @@ export default function Onboarding() {
       if (type === 'management') {
         updates.management_role = role;
         updates.app_role = role; // Keep legacy field in sync
-        
+
         // Set appropriate unit number based on role
         if (role === 'security') updates.unit_number = 'SEC-01';
         if (role === 'property_management') updates.unit_number = 'HQ';
         if (role === 'board') updates.unit_number = 'PH-01';
-        
+
         await base44.auth.updateMe(updates);
         toast.success('Account setup complete!');
         window.location.href = createPageUrl('Dashboard');
@@ -94,10 +94,10 @@ export default function Onboarding() {
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 flex items-center justify-center p-4">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-8">
-          <img 
-            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/9780cdd25_logo-footer-estwest-r.png" 
-            alt="EstWest Condominiums" 
-            className="h-16 w-auto object-contain mx-auto mb-4" 
+          <img
+            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/9780cdd25_logo-footer-estwest-r.png"
+            alt="EstWest Condominiums"
+            className="h-16 w-auto object-contain mx-auto mb-4"
           />
           <h1 className="text-3xl font-bold text-zinc-900">Welcome to EstWest</h1>
           <p className="text-zinc-500 mt-2">Let's set up your account</p>
@@ -107,7 +107,7 @@ export default function Onboarding() {
           <div className="space-y-4">
             <h2 className="text-xl font-semibold text-center mb-6">Select Account Type</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card 
+              <Card
                 className="cursor-pointer hover:shadow-xl hover:border-blue-500 transition-all duration-300 border-2"
                 onClick={() => handleAccountTypeSelect('resident')}
               >
@@ -122,7 +122,7 @@ export default function Onboarding() {
                 </CardContent>
               </Card>
 
-              <Card 
+              <Card
                 className="cursor-pointer hover:shadow-xl hover:border-purple-500 transition-all duration-300 border-2"
                 onClick={() => handleAccountTypeSelect('management')}
               >
@@ -142,8 +142,8 @@ export default function Onboarding() {
 
         {step === 2 && (
           <div className="space-y-4">
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               onClick={() => setStep(1)}
               className="mb-4"
             >
@@ -151,7 +151,7 @@ export default function Onboarding() {
             </Button>
             <h2 className="text-xl font-semibold text-center mb-6">Choose Management Role</h2>
             <div className="space-y-4">
-              <Card 
+              <Card
                 className="cursor-pointer hover:shadow-lg hover:border-red-500 transition-all border-2"
                 onClick={() => handleManagementRoleSelect('security')}
               >
@@ -166,7 +166,7 @@ export default function Onboarding() {
                 </CardContent>
               </Card>
 
-              <Card 
+              <Card
                 className="cursor-pointer hover:shadow-lg hover:border-amber-500 transition-all border-2"
                 onClick={() => handleManagementRoleSelect('board')}
               >
@@ -181,7 +181,7 @@ export default function Onboarding() {
                 </CardContent>
               </Card>
 
-              <Card 
+              <Card
                 className="cursor-pointer hover:shadow-lg hover:border-blue-500 transition-all border-2"
                 onClick={() => handleManagementRoleSelect('property_management')}
               >
@@ -202,8 +202,8 @@ export default function Onboarding() {
         {step === 3 && (
           <Card>
             <CardContent className="p-8">
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 onClick={() => setStep(2)}
                 className="mb-4"
               >
@@ -220,7 +220,7 @@ export default function Onboarding() {
 
                 <form onSubmit={handlePasswordSubmit} className="space-y-4">
                   <div>
-                    <Input 
+                    <Input
                       type="password"
                       placeholder="Management Password"
                       value={password}
@@ -229,7 +229,7 @@ export default function Onboarding() {
                       autoFocus
                     />
                   </div>
-                  <Button 
+                  <Button
                     type="submit"
                     className="w-full h-12 text-lg bg-purple-600 hover:bg-purple-700"
                     disabled={loading || !password}

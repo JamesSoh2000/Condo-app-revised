@@ -31,14 +31,14 @@ export default function SecurityMoveRequests() {
   React.useEffect(() => {
     const markAsViewed = async () => {
       if (!user) return;
-      
+
       const role = user.management_role || user.app_role;
       const isBoard = user.isAdmin || role === 'board';
-      
+
       // Determine which field to update based on role
       let viewedField = null;
       let viewedAtField = null;
-      
+
       if (role === 'security' || (isBoard && user.activeViewRole === 'security')) {
         viewedField = 'viewed_by_security';
         viewedAtField = 'viewed_by_security_at';
@@ -46,13 +46,13 @@ export default function SecurityMoveRequests() {
         viewedField = 'viewed_by_management';
         viewedAtField = 'viewed_by_management_at';
       }
-      
+
       if (!viewedField) return;
-      
+
       // Fetch all pending unviewed requests
       const allRequests = await base44.entities.MoveRequest.filter({ status: 'pending' });
       const unviewedRequests = allRequests.filter(r => !r[viewedField]);
-      
+
       // Mark them all as viewed
       const updatePromises = unviewedRequests.map(request =>
         base44.entities.MoveRequest.update(request.id, {
@@ -60,15 +60,15 @@ export default function SecurityMoveRequests() {
           [viewedAtField]: new Date().toISOString()
         })
       );
-      
+
       await Promise.all(updatePromises);
-      
+
       // Refresh the list
       if (updatePromises.length > 0) {
         queryClient.invalidateQueries({ queryKey: ['move-requests'] });
       }
     };
-    
+
     markAsViewed();
   }, [user, queryClient]);
 
@@ -217,8 +217,8 @@ export default function SecurityMoveRequests() {
                     </TableCell>
                     <TableCell>
                       <p className="text-sm text-zinc-700 max-w-xs">
-                        {request.purpose ? 
-                          request.purpose.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) 
+                        {request.purpose ?
+                          request.purpose.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
                           : '-'}
                       </p>
                     </TableCell>
@@ -302,8 +302,8 @@ export default function SecurityMoveRequests() {
                     </TableCell>
                     <TableCell>
                       <p className="text-sm text-zinc-700 max-w-xs">
-                        {request.purpose ? 
-                          request.purpose.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) 
+                        {request.purpose ?
+                          request.purpose.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
                           : '-'}
                       </p>
                     </TableCell>

@@ -129,28 +129,28 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
     queryKey: ['personal-notifications', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      
+
       // Fetch Profile to get actual unit_number
       const profiles = await base44.entities.Profile.filter({ userId: user.id });
       const userUnitNumber = profiles.length > 0 ? profiles[0].unit_number : user.unit_number;
-      
+
       if (!userUnitNumber) return [];
-      
+
       // Fetch notifications targeted by user_id OR by unit_number
       const byUserId = await base44.entities.Notification.filter({
         target_user_id: user.id
       }, '-created_date', 50);
-      
+
       const byUnit = await base44.entities.Notification.filter({
         target_unit: userUnitNumber
       }, '-created_date', 50);
-      
+
       // Merge and deduplicate
       const allNotifs = [...byUserId, ...byUnit];
       const uniqueNotifs = Array.from(new Map(allNotifs.map(n => [n.id, n])).values());
-      
+
       // Extra safety: only show if target_user_id matches OR target_unit matches
-      return uniqueNotifs.filter(n => 
+      return uniqueNotifs.filter(n =>
         n.target_user_id === user.id || n.target_unit === userUnitNumber
       ).slice(0, 20);
     },
@@ -194,7 +194,7 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const items = [];
-    
+
     // Add building updates — triple-check: isActive=true, not deleted, not expired
     // Emergency type gets NO special pass-through — it must also be isActive=true and not deleted
     if (buildingUpdates) {
@@ -208,7 +208,7 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
         .map(u => ({ ...u, source: 'building' }))
       );
     }
-    
+
     // Add personal notifications — package notifications always show; others: 7-day window
     if (personalNotifications) {
       items.push(...personalNotifications
@@ -216,7 +216,7 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
         .map(n => ({ ...n, source: 'notification' }))
       );
     }
-    
+
     // Add general announcements — only from the past 7 days
     if (generalAnnouncements) {
       items.push(...generalAnnouncements
@@ -224,12 +224,12 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
         .map(n => ({ ...n, source: 'notification' }))
       );
     }
-    
+
     // Filter out user-archived items
-    const filteredItems = archivedIds 
+    const filteredItems = archivedIds
       ? items.filter(item => !archivedIds.includes(`${item.source}-${item.id}`))
       : items;
-    
+
     return filteredItems;
   }, [buildingUpdates, personalNotifications, generalAnnouncements, archivedIds]);
 
@@ -283,9 +283,9 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
       if (!user?.id) {
         throw new Error('User not authenticated');
       }
-      
+
       console.log('[ARCHIVE] Creating archive record:', { userId: user.id, updateId, updateType });
-      
+
       const result = await base44.entities.UpdateArchive.create({
         userId: user.id,
         updateId,
@@ -293,24 +293,24 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
         archivedAt: new Date().toISOString(),
         is_deleted: false
       });
-      
+
       console.log('[ARCHIVE] Archive created successfully:', result);
       return { updateId, updateType, archiveId: result.id };
     },
     onMutate: async ({ updateId, updateType }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['update-archives'] });
-      
+
       // Snapshot previous value
       const previousArchived = queryClient.getQueryData(['update-archives', user?.id]);
-      
+
       // Optimistically add to archived ids
       const newArchivedId = `${updateType}-${updateId}`;
       queryClient.setQueryData(
-        ['update-archives', user?.id], 
+        ['update-archives', user?.id],
         [...(previousArchived || []), newArchivedId]
       );
-      
+
       return { previousArchived };
     },
     onError: (err, variables, context) => {
@@ -333,10 +333,10 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
     mutationFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
       if (!allItems || allItems.length === 0) return 0;
-      
+
       // Archive all currently visible items
       await Promise.all(
-        allItems.map(item => 
+        allItems.map(item =>
           base44.entities.UpdateArchive.create({
             userId: user.id,
             updateId: item.id,
@@ -346,7 +346,7 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
           })
         )
       );
-      
+
       return allItems.length;
     },
     onSuccess: (count) => {
@@ -364,7 +364,7 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
   const handleUpdateClick = (update, e) => {
     // Don't open modal if clicking archive button
     if (e?.target?.closest('.archive-button')) return;
-    
+
     setSelectedUpdate(update);
     setIsModalOpen(true);
   };
@@ -430,13 +430,13 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
 
   const handleArchive = (item, e) => {
     e.stopPropagation();
-    
+
     if (isPinned(item)) {
       if (!confirm('This is a pinned update. Archive anyway?')) {
         return;
       }
     }
-    
+
     archiveMutation.mutate({
       updateId: item.id,
       updateType: item.source
@@ -550,8 +550,8 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`relative flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all duration-200
-              ${activeTab === tab.id 
-                ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm' 
+              ${activeTab === tab.id
+                ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm'
                 : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}
               ${tab.id === 'emergency' && emergencyCount > 0 && activeTab !== 'emergency' ? 'text-red-600' : ''}
             `}
@@ -600,7 +600,7 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
             const Icon = typeBadge.icon;
             const pinned = isPinned(item);
             const isEmergency = item.type === 'emergency';
-            
+
             return (
               <motion.div
                 key={`${item.source}-${item.id}`}
@@ -610,7 +610,7 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
                 exit={{ opacity: 0, scale: 0.97 }}
                 transition={{ duration: 0.18 }}
               >
-                <Card 
+                <Card
                   className={`cursor-pointer hover:shadow-md transition-shadow bg-white/80 dark:bg-zinc-800/80 backdrop-blur-sm
                     ${isEmergency ? 'border-red-400 border-l-4 bg-red-50/60 dark:bg-red-950/30' : ''}
                     ${!isEmergency && pinned ? 'border-zinc-400 dark:border-zinc-500 border-l-4' : ''}
@@ -647,7 +647,7 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
                         <Archive className="w-3.5 h-3.5 text-zinc-400 hover:text-zinc-600" />
                       </Button>
                     </div>
-                    
+
                     <div className="flex items-center gap-2 text-xs">
                       <Badge variant="outline" className={`${typeBadge.className} text-xs`}>
                         {typeBadge.label}
@@ -676,7 +676,7 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
         </AnimatePresence>
       </motion.div>
 
-      <BuildingUpdateModal 
+      <BuildingUpdateModal
         update={selectedUpdate}
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setSelectedUpdate(null); }}
@@ -686,7 +686,7 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
         onResolve={(item) => resolveMutation.mutate(item)}
       />
 
-      <ArchivedUpdatesModal 
+      <ArchivedUpdatesModal
         isOpen={isArchivedModalOpen}
         onClose={() => setIsArchivedModalOpen(false)}
         user={user}

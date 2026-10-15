@@ -36,18 +36,18 @@ export default function UnitCombobox({ units, value, onChange, placeholder = "Se
       if (!isNaN(numericQuery)) {
         const aStr = a.unit_number.toString();
         const bStr = b.unit_number.toString();
-        
+
         // Exact prefix match gets highest priority
         const aStartsWith = aStr.startsWith(query);
         const bStartsWith = bStr.startsWith(query);
-        
+
         if (aStartsWith && !bStartsWith) return -1;
         if (!aStartsWith && bStartsWith) return 1;
-        
+
         // Then sort by numeric distance
         const aDist = Math.abs(aNum - numericQuery);
         const bDist = Math.abs(bNum - numericQuery);
-        
+
         if (aDist !== bDist) return aDist - bDist;
       }
 
@@ -75,8 +75,8 @@ export default function UnitCombobox({ units, value, onChange, placeholder = "Se
       </PopoverTrigger>
       <PopoverContent className="w-full p-0" align="start">
         <Command shouldFilter={false}>
-          <CommandInput 
-            placeholder="Type to search (e.g., 1314)..." 
+          <CommandInput
+            placeholder="Type to search (e.g., 1314)..."
             value={searchQuery}
             onValueChange={setSearchQuery}
           />

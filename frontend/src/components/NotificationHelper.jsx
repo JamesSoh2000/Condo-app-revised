@@ -25,7 +25,7 @@ export async function createNotification(notification, options = {}) {
               <p style="color: #52525b; line-height: 1.6; font-size: 16px;">${notification.message}</p>
               ${notification.link ? `
                 <div style="margin-top: 30px;">
-                  <a href="${import.meta.env.VITE_APP_URL || 'https://app.base44.com'}/${notification.link}" 
+                  <a href="${import.meta.env.VITE_APP_URL || 'https://app.base44.com'}/${notification.link}"
                      style="background: #18181b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">
                     View Details
                   </a>
@@ -128,7 +128,7 @@ export async function notifyMaintenanceUpdate(ticket, newStatus, residentEmail) 
 export async function notifyAmenityConfirmation(reservation, residentEmail, approved = true) {
   return createNotification({
     title: approved ? 'Reservation Approved' : 'Reservation Status Update',
-    message: approved 
+    message: approved
       ? `Your ${reservation.room_type} reservation for ${reservation.date} at ${reservation.start_time} has been approved!`
       : `Your ${reservation.room_type} reservation status has changed to: ${reservation.status}`,
     type: 'amenity',

@@ -12,7 +12,7 @@ export default function BoardOverview() {
             <h1 className="text-3xl font-bold mb-2">Board Oversight</h1>
             <p className="text-zinc-400">Access all operations and management tools.</p>
         </div>
-        
+
         <div className="grid md:grid-cols-2 gap-6">
           {/* Security Reports */}
           <Card className="border-zinc-200">

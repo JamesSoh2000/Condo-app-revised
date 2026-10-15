@@ -57,12 +57,12 @@ export default function VisitorAccess() {
   // Auto-update expired passes
   React.useEffect(() => {
     if (!accessPasses) return;
-    
+
     const interval = setInterval(async () => {
       const now = new Date();
-      const toExpire = accessPasses.filter(p => 
-        p.status === 'active' && 
-        p.validUntil && 
+      const toExpire = accessPasses.filter(p =>
+        p.status === 'active' &&
+        p.validUntil &&
         isPast(new Date(p.validUntil))
       );
 
@@ -85,7 +85,7 @@ export default function VisitorAccess() {
   const createPassMutation = useMutation({
     mutationFn: async () => {
       let code = generateCode();
-      
+
       // Ensure unique code
       const existingCodes = await base44.entities.VisitorAccessPass.filter({ status: 'active' });
       while (existingCodes.some(p => p.code6 === code)) {
@@ -145,7 +145,7 @@ export default function VisitorAccess() {
   });
 
   const revokeMutation = useMutation({
-    mutationFn: (id) => base44.entities.VisitorAccessPass.update(id, { 
+    mutationFn: (id) => base44.entities.VisitorAccessPass.update(id, {
       status: 'revoked',
       revokedAt: new Date().toISOString()
     }),

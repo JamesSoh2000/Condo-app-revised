@@ -55,7 +55,7 @@ export default function AgendaCard({ item, onMarkComplete, onCardClick }) {
             <h4 className={`font-semibold text-sm ${isCompleted ? 'line-through text-zinc-500' : ''}`}>
               {item.title}
             </h4>
-            
+
             {item.timeWindow && (
               <div className="flex items-center gap-1 text-xs text-zinc-600 mt-1">
                 <Clock className="w-3 h-3" />

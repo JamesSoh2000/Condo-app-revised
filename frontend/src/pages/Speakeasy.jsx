@@ -60,14 +60,14 @@ function VirtualTourCollapsible() {
 }
 
 const ROOMS = [
-  "Speakeasy", 
-  "TV Room (2nd floor)", 
-  "Dining room with TV (2nd floor)", 
+  "Speakeasy",
+  "TV Room (2nd floor)",
+  "Dining room with TV (2nd floor)",
   "Living and Dining Room (3rd floor)"
 ];
 const CLOSING_HOUR = 23; // All reservations must end by 23:00
 const TIMES = [
-  "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", 
+  "09:00", "10:00", "11:00", "12:00", "13:00", "14:00",
   "15:00", "16:00", "17:00", "18:00", "19:00", "20:00",
   "21:00", "22:00"
 ];
@@ -88,8 +88,8 @@ export default function Speakeasy() {
     queryKey: ['reservations', date, room],
     queryFn: async () => {
       const allReservations = await base44.entities.SpeakeasyReservation.list();
-      return allReservations.filter(r => 
-        r.room_type === room && 
+      return allReservations.filter(r =>
+        r.room_type === room &&
         r.date === format(date, 'yyyy-MM-dd') &&
         (r.status === 'pending' || r.status === 'approved' || r.status === 'paid' || r.status === 'active')
       );
@@ -141,7 +141,7 @@ export default function Speakeasy() {
         const profiles = await base44.entities.Profile.filter({ userId: user.id });
         const residentName = profiles.length > 0 ? profiles[0].full_name : user.full_name;
         const residentUnit = profiles.length > 0 ? profiles[0].unit_number : user.unit_number;
-        
+
         const res = await base44.entities.SpeakeasyReservation.create({
             room_type: room,
             date: format(date, 'yyyy-MM-dd'),
@@ -153,11 +153,11 @@ export default function Speakeasy() {
             resident_name: residentName,
             resident_unit: residentUnit
         });
-        
+
         // Notify all property management users
         const allUsers = await base44.entities.User.list();
         const managementUsers = allUsers.filter(u => u.management_role === 'property_management');
-        
+
         for (const mgmt of managementUsers) {
             await base44.entities.Notification.create({
                 title: 'New Speakeasy Reservation',
@@ -167,7 +167,7 @@ export default function Speakeasy() {
                 link: 'ManagementSpeakeasy'
             });
         }
-        
+
         // Confirm to resident - use target_user_id for personal notifications
         await base44.entities.Notification.create({
             title: 'Reservation Submitted',
@@ -176,7 +176,7 @@ export default function Speakeasy() {
             target_user_id: user.id,
             link: 'Speakeasy'
         });
-        
+
         return res;
     },
     onSuccess: () => {
@@ -210,7 +210,7 @@ export default function Speakeasy() {
             <Card className="border-zinc-200 dark:border-zinc-700 dark:bg-zinc-800 shadow-xl h-fit">
                 <CardContent className="p-8 space-y-6">
                     <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 border-b dark:border-zinc-700 pb-4">{t('New Reservation')}</h2>
-                    
+
                     <div className="space-y-4">
                         <div className="space-y-2">
                             <label className="text-sm font-medium">{t('Select Room')}</label>
@@ -266,8 +266,8 @@ export default function Speakeasy() {
                                         {TIMES.map(time => {
                                            const reserved = isTimeReserved(time);
                                            return (
-                                             <SelectItem 
-                                               key={time} 
+                                             <SelectItem
+                                               key={time}
                                                value={time}
                                                disabled={reserved}
                                                className={reserved ? 'opacity-40 cursor-not-allowed line-through' : ''}
@@ -301,8 +301,8 @@ export default function Speakeasy() {
                             </div>
                         </div>
 
-                        <Button 
-                            className="w-full bg-purple-900 hover:bg-purple-800 h-12 mt-4" 
+                        <Button
+                            className="w-full bg-purple-900 hover:bg-purple-800 h-12 mt-4"
                             onClick={() => {
                               const startHour = parseInt(startTime.split(':')[0]);
                               const endHour = startHour + parseInt(duration);
@@ -407,8 +407,8 @@ function MyReservations({ user }) {
             <CardContent className="p-4">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{t('Your Reservations')}</h3>
-                    <Button 
-                        variant="ghost" 
+                    <Button
+                        variant="ghost"
                         size="sm"
                         onClick={() => setShowArchived(!showArchived)}
                         className="text-xs"
@@ -433,17 +433,17 @@ function MyReservations({ user }) {
                               <p className="text-xs text-zinc-500">{format(new Date(res.date + 'T12:00:00'), 'MMM d')} • {res.start_time}</p>
                           </div>
                           <Badge className={
-                              res.status === 'approved' ? 'bg-green-100 text-green-800 border-green-200' : 
-                              res.status === 'pending' ? 'bg-amber-100 text-amber-800 border-amber-200' : 
+                              res.status === 'approved' ? 'bg-green-100 text-green-800 border-green-200' :
+                              res.status === 'pending' ? 'bg-amber-100 text-amber-800 border-amber-200' :
                               'bg-zinc-200 text-zinc-600 border-zinc-300'
                           }>
-                              {res.status === 'pending' ? t('Pending reservation') : 
-                               res.status === 'approved' ? t('Reservation approved') : 
+                              {res.status === 'pending' ? t('Pending reservation') :
+                               res.status === 'approved' ? t('Reservation approved') :
                                res.status}
                           </Badge>
                           {!showArchived && (
-                              <Button 
-                                  variant="ghost" 
+                              <Button
+                                  variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 shrink-0"
                                   onClick={() => archiveMutation.mutate(res.id)}

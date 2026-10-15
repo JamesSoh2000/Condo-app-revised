@@ -27,7 +27,7 @@ export default function SecurityPackages() {
   const [uploading, setUploading] = useState(false);
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const [successPackageId, setSuccessPackageId] = useState(null);
-  
+
   // Recent Activity filters
   const [filterTower, setFilterTower] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -37,7 +37,7 @@ export default function SecurityPackages() {
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [photoViewerPhotos, setPhotoViewerPhotos] = useState(null);
   const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
-  
+
   const queryClient = useQueryClient();
 
   const { data: packages } = useQuery({
@@ -55,35 +55,35 @@ export default function SecurityPackages() {
   // Filter and sort packages
   const filteredPackages = React.useMemo(() => {
     if (!packages) return [];
-    
+
     let filtered = [...packages];
-    
+
     // Date range filter
     const now = new Date();
     const daysAgo = parseInt(filterDateRange);
     const cutoffDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
     filtered = filtered.filter(pkg => new Date(pkg.created_date) >= cutoffDate);
-    
+
     // Tower filter
     if (filterTower) {
       filtered = filtered.filter(pkg => pkg.tower === filterTower);
     }
-    
+
     // Status filter
     if (filterStatus) {
       filtered = filtered.filter(pkg => pkg.status === filterStatus);
     }
-    
+
     // Search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(pkg => 
+      filtered = filtered.filter(pkg =>
         pkg.unit_number?.toLowerCase().includes(query) ||
         pkg.recipient_name?.toLowerCase().includes(query) ||
         pkg.notes?.toLowerCase().includes(query)
       );
     }
-    
+
     // Sort
     if (sortBy === 'date') {
       filtered.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
@@ -92,7 +92,7 @@ export default function SecurityPackages() {
     } else if (sortBy === 'recipient') {
       filtered.sort((a, b) => (a.recipient_name || '').localeCompare(b.recipient_name || ''));
     }
-    
+
     return filtered;
   }, [packages, filterTower, filterStatus, filterDateRange, searchQuery, sortBy]);
 
@@ -154,7 +154,7 @@ export default function SecurityPackages() {
   const handlePhotoUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
-    
+
     setUploading(true);
     try {
       const uploadPromises = files.map(file => base44.integrations.Core.UploadFile({ file }));
@@ -179,7 +179,7 @@ export default function SecurityPackages() {
       console.log('Selected Unit ID:', selectedUnitId);
       console.log('Recipient Name:', recipientName);
       console.log('Package Photos:', packagePhotos.length);
-      
+
       if (!selectedUnitId) {
         throw new Error('❌ Validation failed: Please select a unit');
       }
@@ -193,22 +193,22 @@ export default function SecurityPackages() {
       console.log('✅ Validation passed, fetching current user...');
       const currentUser = await base44.auth.me();
       console.log('Current user:', currentUser?.id, currentUser?.email);
-      
+
       if (!currentUser?.id) {
         throw new Error('❌ Authentication failed: User not logged in');
       }
-      
+
       console.log('📦 Fetching unit details...');
       const units = await base44.entities.Unit.filter({ id: selectedUnitId });
       console.log('Units found:', units.length);
-      
+
       if (!units || units.length === 0) {
         throw new Error(`❌ Unit not found with ID: ${selectedUnitId}`);
       }
-      
+
       const unit = units[0];
       console.log('Unit data:', unit);
-      
+
       const packageData = {
         unit_id: selectedUnitId,
         recipient_profile_id: selectedRecipientId || null,
@@ -222,9 +222,9 @@ export default function SecurityPackages() {
         unit_number: unit.unit_number,
         tower: unit.tower
       };
-      
+
       console.log('📤 Attempting to create Package with data:', JSON.stringify(packageData, null, 2));
-      
+
       let pkg;
       try {
         pkg = await base44.entities.Package.create(packageData);
@@ -238,9 +238,9 @@ export default function SecurityPackages() {
         });
         throw new Error(`Database insert failed: ${createError.message || 'Unknown error'}`);
       }
-      
+
       console.log('📧 Sending notifications...');
-      
+
       // Send notifications
       try {
         if (selectedRecipientId) {
@@ -278,7 +278,7 @@ export default function SecurityPackages() {
       } catch (notificationError) {
         console.warn('⚠️ Notification sending failed (non-critical):', notificationError);
       }
-      
+
       // Send email if recipient has profile
       try {
         if (selectedRecipientId) {
@@ -316,32 +316,32 @@ export default function SecurityPackages() {
       } catch (error) {
         console.warn('⚠️ Email sending failed (non-critical):', error);
       }
-      
+
       console.log('✅ MUTATION COMPLETE - Returning package:', pkg.id);
       return pkg;
     },
     onSuccess: (newPackage) => {
       console.log('🎉 SUCCESS CALLBACK FIRED - Package created:', newPackage.id);
-      
+
       // Store package ID for display
       setSuccessPackageId(newPackage.id);
-      
+
       // Show animated success overlay
       setShowSuccessAnimation(true);
-      
+
       // DEBUG: Confirm success callback fired
       toast.success(`✅ Success UI triggered: ${newPackage.id}`, { duration: 3000 });
-      
+
       // Auto-hide after 2 seconds
       setTimeout(() => {
         console.log('🎉 Hiding success overlay');
         setShowSuccessAnimation(false);
         setSuccessPackageId(null);
       }, 2000);
-      
+
       // Immediately refetch to update Recent Activity
       queryClient.invalidateQueries(['all-packages']);
-      
+
       // Reset form
       setSelectedTower('');
       setSelectedUnitId('');
@@ -357,18 +357,18 @@ export default function SecurityPackages() {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
       console.error('===========================================');
-      
+
       // Show detailed error to user
       const errorMessage = error.message || 'Unknown error occurred';
       toast.error(
         <div>
           <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Failed to log package</div>
           <div style={{ fontSize: '14px' }}>{errorMessage}</div>
-        </div>, 
-        { 
+        </div>,
+        {
           duration: 8000,
-          style: { 
-            background: '#fef2f2', 
+          style: {
+            background: '#fef2f2',
             color: '#991b1b',
             border: '2px solid #fca5a5',
             padding: '16px'
@@ -381,8 +381,8 @@ export default function SecurityPackages() {
   const pickupMutation = useMutation({
     mutationFn: async (id) => {
       const currentUser = await base44.auth.me();
-      return base44.entities.Package.update(id, { 
-        status: 'picked_up', 
+      return base44.entities.Package.update(id, {
+        status: 'picked_up',
         picked_up_at: new Date().toISOString(),
         picked_up_by_user_id: currentUser.id,
         pickup_method: 'security'
@@ -412,7 +412,7 @@ export default function SecurityPackages() {
     console.log('- packagePhotos count:', packagePhotos.length);
     console.log('========================================');
     console.log('Starting mutation...');
-    
+
     try {
       createMutation.mutate();
     } catch (error) {
@@ -462,9 +462,9 @@ export default function SecurityPackages() {
               <motion.div
                 initial={{ scale: 0, rotate: -180 }}
                 animate={{ scale: 1, rotate: 0 }}
-                transition={{ 
-                  type: "spring", 
-                  stiffness: 400, 
+                transition={{
+                  type: "spring",
+                  stiffness: 400,
                   damping: 15,
                   delay: 0.1
                 }}
@@ -479,8 +479,8 @@ export default function SecurityPackages() {
                   boxShadow: '0 10px 30px rgba(34, 197, 94, 0.3)',
                 }}
               >
-                <CheckCircle 
-                  className="text-white" 
+                <CheckCircle
+                  className="text-white"
                   style={{ width: '80px', height: '80px', strokeWidth: 2.5 }}
                 />
               </motion.div>
@@ -521,8 +521,8 @@ export default function SecurityPackages() {
               </motion.div>
 
               {/* Debug Fallback - Plain Text */}
-              <div style={{ 
-                fontSize: '100px', 
+              <div style={{
+                fontSize: '100px',
                 lineHeight: 1,
                 position: 'absolute',
                 opacity: 0.05,
@@ -651,15 +651,15 @@ export default function SecurityPackages() {
                     </div>
                     <div>
                         <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Notes</label>
-                        <Textarea 
-                            placeholder="Damage, location, etc." 
+                        <Textarea
+                            placeholder="Damage, location, etc."
                             value={notes}
                             onChange={e => setNotes(e.target.value)}
                         />
                     </div>
-                    <Button 
-                        type="submit" 
-                        className="w-full bg-blue-600 hover:bg-blue-700" 
+                    <Button
+                        type="submit"
+                        className="w-full bg-blue-600 hover:bg-blue-700"
                         disabled={createMutation.isPending || packagePhotos.length === 0 || !selectedUnitId || !recipientName || showSuccessAnimation}
                     >
                         {createMutation.isPending ? 'Logging...' : 'Log Package'}
@@ -695,7 +695,7 @@ export default function SecurityPackages() {
                       className="pl-9"
                     />
                   </div>
-                  
+
                   <Select value={sortBy} onValueChange={setSortBy}>
                     <SelectTrigger>
                       <SelectValue placeholder="Sort by" />
@@ -741,7 +741,7 @@ export default function SecurityPackages() {
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div className="mt-3 flex items-center gap-2 text-xs text-zinc-500">
                   <Filter className="w-3 h-3" />
                   Showing {filteredPackages.length} of {packages?.length || 0} packages
@@ -798,10 +798,10 @@ export default function SecurityPackages() {
                                           }}
                                           className="relative group"
                                         >
-                                          <img 
-                                            src={pkg.packagePhotoUrls[0]} 
-                                            alt="Package" 
-                                            className="w-12 h-12 object-cover rounded border border-zinc-200 group-hover:border-blue-400 transition-colors" 
+                                          <img
+                                            src={pkg.packagePhotoUrls[0]}
+                                            alt="Package"
+                                            className="w-12 h-12 object-cover rounded border border-zinc-200 group-hover:border-blue-400 transition-colors"
                                           />
                                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded flex items-center justify-center transition-colors">
                                             <ZoomIn className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -830,8 +830,8 @@ export default function SecurityPackages() {
                                 </TableCell>
                                 <TableCell className="text-right">
                                     {pkg.status === 'ready_for_pickup' && (
-                                        <Button 
-                                            size="sm" 
+                                        <Button
+                                            size="sm"
                                             variant="outline"
                                             className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
                                             onClick={() => pickupMutation.mutate(pkg.id)}
@@ -880,10 +880,10 @@ export default function SecurityPackages() {
                       }}
                       className="block relative group"
                     >
-                      <img 
-                        src={url} 
-                        alt={`Package photo ${idx + 1}`} 
-                        className="w-full h-48 object-cover rounded-lg border border-zinc-200 hover:border-blue-400 transition-colors" 
+                      <img
+                        src={url}
+                        alt={`Package photo ${idx + 1}`}
+                        className="w-full h-48 object-cover rounded-lg border border-zinc-200 hover:border-blue-400 transition-colors"
                       />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 rounded-lg flex items-center justify-center transition-colors">
                         <ZoomIn className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />

@@ -25,47 +25,47 @@ export default function ArchivedUpdatesModal({ isOpen, onClose, user }) {
         console.log('[ARCHIVED] No user ID available');
         return [];
       }
-      
+
       console.log('[ARCHIVED] Fetching archives for userId:', user.id, 'limit:', limit);
-      
+
       // Fetch archives with limit, sorted by archivedAt desc, exclude deleted
       const allArchives = await base44.entities.UpdateArchive.filter(
-        { userId: user.id }, 
-        '-archivedAt', 
+        { userId: user.id },
+        '-archivedAt',
         limit
       );
-      
+
       // Filter out deleted items
       const archives = allArchives.filter(a => !a.is_deleted);
-      
+
       console.log('[ARCHIVED] Found', archives.length, 'archive records');
-      
+
       if (archives.length === 0) {
         console.log('[ARCHIVED] No archives found, returning empty array');
         return [];
       }
-      
+
       // Batch fetch all building updates and notifications
       const buildingIds = archives.filter(a => a.updateType === 'building').map(a => a.updateId);
       const notificationIds = archives.filter(a => a.updateType === 'notification').map(a => a.updateId);
-      
+
       console.log('[ARCHIVED] Fetching buildingIds:', buildingIds.length, 'notificationIds:', notificationIds.length);
-      
+
       const [buildings, notifications] = await Promise.all([
-        buildingIds.length > 0 
-          ? base44.entities.BuildingUpdate.list('-created_date', 100).then(all => 
+        buildingIds.length > 0
+          ? base44.entities.BuildingUpdate.list('-created_date', 100).then(all =>
               all.filter(b => buildingIds.includes(b.id))
             )
           : [],
-        notificationIds.length > 0 
-          ? base44.entities.Notification.list('-created_date', 100).then(all => 
+        notificationIds.length > 0
+          ? base44.entities.Notification.list('-created_date', 100).then(all =>
               all.filter(n => notificationIds.includes(n.id))
             )
           : []
       ]);
-      
+
       console.log('[ARCHIVED] Fetched', buildings.length, 'buildings and', notifications.length, 'notifications');
-      
+
       // Map archives to items
       const items = archives.map(archive => {
         let item;
@@ -78,21 +78,21 @@ export default function ArchivedUpdatesModal({ isOpen, onClose, user }) {
         }
         return null;
       }).filter(Boolean);
-      
+
       console.log('[ARCHIVED] Returning', items.length, 'items');
-      
+
       // Show debug toast
       if (isOpen) {
         toast.info(`Archived count: ${items.length}`, { duration: 3000 });
       }
-      
+
       return items;
     },
     enabled: !!user?.id && isOpen,
     staleTime: 30000, // Cache for 30 seconds
     refetchOnMount: 'always'
   });
-  
+
   // Log when modal opens
   React.useEffect(() => {
     if (isOpen && user?.id) {
@@ -108,25 +108,25 @@ export default function ArchivedUpdatesModal({ isOpen, onClose, user }) {
     onMutate: async ({ archiveId, itemId, source }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['archived-items-optimized'] });
-      
+
       // Snapshot previous value
       const previousArchived = queryClient.getQueryData(['archived-items-optimized', user?.id, limit]);
-      
+
       // Optimistically remove from archived list
       if (previousArchived) {
         queryClient.setQueryData(
-          ['archived-items-optimized', user?.id, limit], 
+          ['archived-items-optimized', user?.id, limit],
           previousArchived.filter(item => item.id !== itemId)
         );
       }
-      
+
       return { previousArchived };
     },
     onError: (err, variables, context) => {
       // Rollback on error
       if (context?.previousArchived) {
         queryClient.setQueryData(
-          ['archived-items-optimized', user?.id, limit], 
+          ['archived-items-optimized', user?.id, limit],
           context.previousArchived
         );
       }
@@ -154,25 +154,25 @@ export default function ArchivedUpdatesModal({ isOpen, onClose, user }) {
     onMutate: async ({ archiveId, itemId }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['archived-items-optimized'] });
-      
+
       // Snapshot previous value
       const previousArchived = queryClient.getQueryData(['archived-items-optimized', user?.id, limit]);
-      
+
       // Optimistically remove from archived list
       if (previousArchived) {
         queryClient.setQueryData(
-          ['archived-items-optimized', user?.id, limit], 
+          ['archived-items-optimized', user?.id, limit],
           previousArchived.filter(item => item.id !== itemId)
         );
       }
-      
+
       return { previousArchived };
     },
     onError: (err, variables, context) => {
       // Rollback on error
       if (context?.previousArchived) {
         queryClient.setQueryData(
-          ['archived-items-optimized', user?.id, limit], 
+          ['archived-items-optimized', user?.id, limit],
           context.previousArchived
         );
       }
@@ -189,20 +189,20 @@ export default function ArchivedUpdatesModal({ isOpen, onClose, user }) {
   const deleteAllMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
-      
+
       // Fetch all archive records for this user
       const archives = await base44.entities.UpdateArchive.filter({ userId: user.id }, '-archivedAt', 500);
-      
+
       // Mark all as deleted
       await Promise.all(
-        archives.map(archive => 
+        archives.map(archive =>
           base44.entities.UpdateArchive.update(archive.id, {
             is_deleted: true,
             deleted_at: new Date().toISOString()
           })
         )
       );
-      
+
       return archives.length;
     },
     onSuccess: (count) => {
@@ -228,7 +228,7 @@ export default function ArchivedUpdatesModal({ isOpen, onClose, user }) {
     if (!confirm('Delete this archived update? This cannot be undone.')) {
       return;
     }
-    
+
     deleteMutation.mutate({
       archiveId: item.archiveRecord.id,
       itemId: item.id
@@ -311,7 +311,7 @@ export default function ArchivedUpdatesModal({ isOpen, onClose, user }) {
               archivedItems.map((item) => {
                 const typeBadge = getTypeBadge(item.type);
                 const Icon = typeBadge.icon;
-                
+
                 return (
                   <motion.div
                     key={`${item.source}-${item.id}`}
@@ -329,7 +329,7 @@ export default function ArchivedUpdatesModal({ isOpen, onClose, user }) {
                             <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
                           )}
                         </div>
-                        
+
                         <div className="flex items-center gap-2 text-xs flex-wrap">
                           <Badge variant="outline" className={`${typeBadge.className} text-xs`}>
                             {typeBadge.label}
@@ -382,7 +382,7 @@ export default function ArchivedUpdatesModal({ isOpen, onClose, user }) {
                 );
               })
             )}
-            
+
             {archivedItems && archivedItems.length >= limit && (
               <Button
                 variant="outline"
@@ -397,7 +397,7 @@ export default function ArchivedUpdatesModal({ isOpen, onClose, user }) {
         </DialogContent>
       </Dialog>
 
-      <BuildingUpdateModal 
+      <BuildingUpdateModal
         update={selectedUpdate}
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
