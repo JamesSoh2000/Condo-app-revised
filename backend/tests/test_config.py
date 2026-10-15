@@ -40,3 +40,11 @@ def test_test_app_env_is_accepted(monkeypatch):
 
     assert settings.app_env == "test"
     assert settings.is_production is False
+
+
+def test_aws_region_defaults_to_ca_central_1(monkeypatch):
+    monkeypatch.delenv("AWS_REGION", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.aws_region == "ca-central-1"
