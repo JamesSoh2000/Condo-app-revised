@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Home, Shield, Building2, DollarSign } from 'lucide-react';
+import { isDemoViewRole } from '@/app/routeScope';
 
 const ALL_ROLES = [
   { value: 'resident',             label: 'Resident', icon: Home,         access: ['board', 'property_management'] },
@@ -11,7 +12,8 @@ const ALL_ROLES = [
 
 export default function RoleSwitcher({ activeRole, onRoleChange, userRole }) {
   // Filter roles based on the user's actual role
-  const roles = ALL_ROLES.filter(r => !userRole || r.access.includes(userRole));
+  // Views of pages outside the demo scope (Finance) are not offered (src/app/routeScope.ts).
+  const roles = ALL_ROLES.filter(r => (!userRole || r.access.includes(userRole)) && isDemoViewRole(r.value));
 
   return (
     <motion.div

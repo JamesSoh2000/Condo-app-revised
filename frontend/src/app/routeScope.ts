@@ -25,6 +25,18 @@ export function isDemoPage(name: string): boolean {
   return demoPages.has(name.toLowerCase());
 }
 
+/**
+ * Dashboard view modes that render a whole page inline. A view is in scope only if its page is:
+ * the "financials" view renders the Financials page, which is not in the demo.
+ */
+const VIEW_ROLE_PAGES: Record<string, string> = { financials: 'Financials' };
+
+/** True if a dashboard view role (resident, security, property_management, board, financials…) is shown. */
+export function isDemoViewRole(role: string): boolean {
+  const page = VIEW_ROLE_PAGES[role];
+  return page === undefined || isDemoPage(page);
+}
+
 /** True if an app path such as `/packages?tab=1` points at a demo page. */
 export function isDemoPath(path: string): boolean {
   const name = path.replace(/^\//, '').split(/[/?#]/)[0];

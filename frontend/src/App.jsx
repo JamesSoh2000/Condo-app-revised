@@ -16,7 +16,8 @@ import { isDemoPage } from '@/app/routeScope';
 const { Pages: AllPages, Layout, mainPage } = pagesConfig;
 // Only demo-scope pages are routed; the rest render the 404 page (src/app/routeScope.ts).
 const Pages = Object.fromEntries(Object.entries(AllPages).filter(([name]) => isDemoPage(name)));
-const mainPageKey = mainPage ?? Object.keys(Pages)[0];
+// A hidden mainPage falls back to the first demo page instead of a blank "/".
+const mainPageKey = mainPage && isDemoPage(mainPage) ? mainPage : Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
@@ -65,7 +66,7 @@ const AuthenticatedApp = () => {
           }
         />
       ))}
-      <Route path="/Contacts" element={<LayoutWrapper currentPageName="Contacts"><Contacts /></LayoutWrapper>} />
+      {isDemoPage('Contacts') && <Route path="/Contacts" element={<LayoutWrapper currentPageName="Contacts"><Contacts /></LayoutWrapper>} />}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

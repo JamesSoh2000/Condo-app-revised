@@ -25,7 +25,7 @@ import {
             } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
-import { isDemoPath } from '@/app/routeScope';
+import { isDemoPath, isDemoViewRole } from '@/app/routeScope';
 import { useRouteProtection } from '@/components/RouteProtection';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import EmergencyListener from '@/components/EmergencyListener';
@@ -192,7 +192,8 @@ export default function Layout({ children }) {
           const saved = localStorage.getItem('boardActiveViewRole');
           // Property management defaults to their own role, not 'resident'
           const defaultRole = isPropertyMgmt && !currentUser.isAdmin ? 'property_management' : 'resident';
-          setActiveViewRole(saved || defaultRole);
+          // A saved view outside the demo scope (e.g. financials) falls back to the default.
+          setActiveViewRole(saved && isDemoViewRole(saved) ? saved : defaultRole);
         }
       } catch (error) {
         setAuthReady(true);
