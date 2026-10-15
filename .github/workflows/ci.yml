@@ -44,7 +44,7 @@ jobs:
       # Downloads the repository onto the GitHub-hosted runner.
       # Without this step, the runner has no project files to test.
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Installs the same Python version pinned by the project.
       - name: Set up Python
@@ -112,7 +112,7 @@ jobs:
     steps:
       # Downloads the repository onto the GitHub-hosted runner.
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Installs the same Node.js version pinned by the project.
       # The npm cache uses frontend/package-lock.json as the dependency key.
@@ -157,7 +157,7 @@ jobs:
     steps:
       # Full history so the explanation check can diff this branch against the base branch.
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
