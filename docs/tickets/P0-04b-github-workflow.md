@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P0-02, P0-03a, P0-03b |
 | Replaces old | M0-T07 (workflow) |
-| Status | in progress |
+| Status | done |
 
 Split from [P0-04](./P0-04-repo-workflow-and-local-stack.md) (see there why). The local stack is
 [P0-04a](./P0-04a-local-stack-and-makefile.md).

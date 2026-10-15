@@ -22,10 +22,11 @@ Human-only setup the plan will need soon. Agents add these ahead of time so noth
 
 | # | Needed by | What | Status |
 |---|---|---|---|
-| PRE-1 | the first autonomous merge (P0-01) | `gh auth login` in the environment where agents run, with a token that can merge PRs and edit branch protection (P0-04). Without it, agents can open PRs but not merge them | partly done: PRs merge (#1–#3); branch-protection permission not yet verified (P0-04). Note: `main` has no branch protection today |
+| PRE-1 | the first autonomous merge (P0-01) | `gh auth login` in the environment where agents run, with a token that can merge PRs and edit branch protection (P0-04). Without it, agents can open PRs but not merge them | done: PRs merge (#1–#11), and the token's admin rights set branch protection on `main` (P0-04b, 2026-10-15) |
 | PRE-2 | P0-02 (Tier 1 reviews start at P1-02) | Codex CLI installed and logged in for the `codex-review` skill. Without it, Tier 1 falls back to a second Claude reviewer | done: Codex (`gpt-6-astra`) reviewed P0-03b rounds 1 and 3 |
 | PRE-4 | P0-04 (`make up`), P0-05 (DB tests run locally) | Docker reachable from the WSL distro the agents run in (Docker Desktop → Settings → Resources → WSL integration). Today `docker` is "not found in this WSL 2 distro", so agents verify DB behaviour only in CI | done (2026-10-15, James: Docker connection is on) |
 | PRE-5 | now (local runs) | A `pgserver` Postgres started by an earlier agent session (P0-05 work, 2026-10-14, from `/tmp/claude-1000/.../f1c4eb4b-…/scratchpad/pgenv`) still listens on 127.0.0.1:5432, so the compose `db` can't publish there. Agents use `make … DB_PORT=55432`, and `db-guard` stops `make migrate` from hitting the stray server. Stop it when convenient (`pkill -f pgserver/pginstall`); nothing in the repo needs it | open |
+| PRE-6 | optional, any time | (a) The archived `building-website` repo still has the long-lived `develop`, `staging`, `starting` and `starting-james` branches; P0-04b didn't touch that repo. Delete them if you want. (b) Settings → General → "Automatically delete head branches" is off; agents pass `--delete-branch`, but turning it on makes that automatic | open |
 | PRE-3 | milestone D (start ~week 8) | AWS account with MFA and budget alerts, a domain, SES domain verification ([D-01](./tickets/D-01-terraform-base.md)) | not yet |
 
 ## Decisions to audit
@@ -52,6 +53,8 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 | 2026-10-15 | P0-04a | Migrations and `alembic check` run on the host against `127.0.0.1:$DB_PORT` (default 5432), behind a `db-guard` that fails unless compose's db owns that port; `make e2e` (stub) exits 1 | `Makefile`, PR #9 | yes |
 | 2026-10-15 | P0-05 | Test convention for every endpoint test from P1 on: `client` gives each request its own session on the test's connection (savepoints); the test's `db` sees the request's committed work and setup needs no commit. Don't `rollback()` `db` after a request, and don't run requests concurrently in one test (docstring of `tests/conftest.py::client`) | `backend/tests/conftest.py`, PR #4 | yes |
 | 2026-10-15 | P0-05 | `make test` runs pytest against `condo_test` on the compose db (`127.0.0.1:$DB_PORT`, behind `db-guard`); the test-DB defaults use `127.0.0.1` | `Makefile`, PR #4 | yes |
+| 2026-10-15 | P0-04b | Branch protection on `main`: PR required with 0 approvals; required checks `Backend tests`, `Frontend lint, types, ratchet and build`, `Docs links and explanation references` (up to date); linear history; no force push or deletion; **enforced for admins** (agents push with your admin token). Emergency push: turn "Do not allow bypassing" off in Settings → Branches | GitHub settings, PR #11 | yes |
+| 2026-10-15 | P0-04b | The PR template moved to `.github/pull_request_template.md` (no copy left in `docs/templates/`); Dependabot runs weekly for uv, npm, actions, docker and compose, ignoring LocalStack (ADR-0007 pin) | PR #11 | yes |
 | 2026-10-14 | P0-03a | `jsconfig.json` deleted (`tsconfig.json` with `allowJs` serves editors); `typecheck` checks `.ts/.tsx` only (`checkJs: false`, as the ticket says), so legacy JSX gets no type hints | PR #6 | yes |
 
 ## Resolved
