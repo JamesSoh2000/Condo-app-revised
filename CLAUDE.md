@@ -121,3 +121,6 @@ if it didn't.
   (P0-05 round 3, P0-03a round 2, 2026-10-14).
 - Don't claim an effect ("unbreaks main", "new revisions come out ruff-clean") until you have run the
   thing that shows it and pasted the output (fix PR #3, P0-02, 2026-10-14).
+- Prove a gate, check or health signal can fail before trusting it: make it fail once on purpose (a probe
+  PR, a mutation, a failing init script) and paste that output too. Four checks passed vacuously in P0
+  (P0-03a fence, P0-03b route check, P0-04a LocalStack health, P0-05 ORM test; 2026-10-15).
