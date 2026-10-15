@@ -4,16 +4,19 @@ The two `_probe` tests run in file order: the first commits DDL and a row inside
 transaction, the second proves both were rolled back.
 """
 
-from typing import Annotated
+import contextlib
+from collections.abc import Callable, Iterator
+from typing import Annotated, Any
 
 import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from fastapi import Depends
-from sqlalchemy import text
+from fastapi import Depends, HTTPException
+from sqlalchemy import select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -220,3 +223,199 @@ async def test_request_writes_with_commit_are_visible_to_the_test(client, db: As
 
     assert response.status_code == 200
     assert (await db.execute(text("SELECT count(*) FROM _request_probe"))).scalar_one() == 1
+
+
+# --- Request sessions on error paths (B-1, option A) ---------------------------------------------
+
+
+class _ProbeBase(DeclarativeBase):
+    """Test-only metadata, kept out of the app's Base so autogenerate never sees it."""
+
+
+class _OrmProbe(_ProbeBase):
+    __tablename__ = "_orm_probe"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str]
+
+
+async def _create_request_probe_table(db: AsyncSession) -> None:
+    await db.execute(text("CREATE TABLE _request_probe (note text UNIQUE)"))
+
+
+async def _count_request_probe(db: AsyncSession) -> int:
+    return (await db.execute(text("SELECT count(*) FROM _request_probe"))).scalar_one()
+
+
+@contextlib.contextmanager
+def _route(path: str, endpoint: Callable[..., Any], method: str = "POST") -> Iterator[None]:
+    app.add_api_route(path, endpoint, methods=[method])
+    try:
+        yield
+    finally:
+        _remove_route(path)
+
+
+async def _insert(session: AsyncSession, note: str) -> None:
+    await session.execute(text("INSERT INTO _request_probe (note) VALUES (:note)"), {"note": note})
+
+
+@pytest.mark.anyio
+async def test_request_writes_are_discarded_when_the_handler_raises_http_exception(
+    client, db: AsyncSession
+):
+    await _create_request_probe_table(db)
+
+    async def write_then_conflict(
+        session: Annotated[AsyncSession, Depends(get_db_session)],
+    ) -> None:
+        await _insert(session, "uncommitted")
+        raise HTTPException(status_code=409, detail="conflict")
+
+    with _route("/__test__/write-then-409", write_then_conflict):
+        response = await client.post("/__test__/write-then-409")
+
+    assert response.status_code == 409
+    # Production discards the uncommitted insert when the request fails; tests must agree.
+    assert await _count_request_probe(db) == 0
+
+
+@pytest.mark.anyio
+async def test_request_writes_are_discarded_when_the_handler_raises_an_unhandled_error(
+    client, db: AsyncSession
+):
+    await _create_request_probe_table(db)
+
+    async def write_then_crash(session: Annotated[AsyncSession, Depends(get_db_session)]) -> None:
+        await _insert(session, "uncommitted")
+        raise RuntimeError("boom")
+
+    with _route("/__test__/write-then-crash", write_then_crash):
+        with pytest.raises(RuntimeError, match="boom"):
+            await client.post("/__test__/write-then-crash")
+
+    assert await _count_request_probe(db) == 0
+
+
+@pytest.mark.anyio
+async def test_request_work_committed_before_an_error_is_kept(client, db: AsyncSession):
+    await _create_request_probe_table(db)
+
+    async def commit_then_conflict(
+        session: Annotated[AsyncSession, Depends(get_db_session)],
+    ) -> None:
+        await _insert(session, "committed")
+        await session.commit()
+        await _insert(session, "uncommitted")
+        raise HTTPException(status_code=409, detail="conflict")
+
+    with _route("/__test__/commit-then-409", commit_then_conflict):
+        response = await client.post("/__test__/commit-then-409")
+
+    assert response.status_code == 409
+    notes = (await db.execute(text("SELECT note FROM _request_probe"))).scalars().all()
+    assert notes == ["committed"]
+
+
+@pytest.mark.anyio
+async def test_next_request_works_after_a_request_caught_a_db_error(client, db: AsyncSession):
+    await _create_request_probe_table(db)
+    await _insert(db, "taken")
+
+    async def insert_duplicate_and_recover(
+        session: Annotated[AsyncSession, Depends(get_db_session)],
+    ) -> dict[str, bool]:
+        try:
+            await _insert(session, "taken")
+            await session.commit()
+            return {"created": True}
+        except IntegrityError:
+            await session.rollback()
+            return {"created": False}
+
+    async def insert_fresh(session: Annotated[AsyncSession, Depends(get_db_session)]) -> None:
+        await _insert(session, "fresh")
+        await session.commit()
+
+    with (
+        _route("/__test__/duplicate", insert_duplicate_and_recover),
+        _route("/__test__/fresh", insert_fresh),
+    ):
+        first = await client.post("/__test__/duplicate")
+        second = await client.post("/__test__/fresh")
+
+    assert first.json() == {"created": False}
+    assert second.status_code == 200
+    assert await _count_request_probe(db) == 2  # "taken" from setup + "fresh"
+
+
+@pytest.mark.anyio
+async def test_next_request_works_after_a_request_failed_on_an_uncaught_db_error(
+    client, db: AsyncSession
+):
+    await _create_request_probe_table(db)
+    await _insert(db, "taken")
+
+    async def insert_duplicate(session: Annotated[AsyncSession, Depends(get_db_session)]) -> None:
+        await _insert(session, "taken")
+        await session.commit()
+
+    async def insert_fresh(session: Annotated[AsyncSession, Depends(get_db_session)]) -> None:
+        await _insert(session, "fresh")
+        await session.commit()
+
+    with (
+        _route("/__test__/duplicate-uncaught", insert_duplicate),
+        _route("/__test__/fresh-after-uncaught", insert_fresh),
+    ):
+        with pytest.raises(IntegrityError):
+            await client.post("/__test__/duplicate-uncaught")
+        second = await client.post("/__test__/fresh-after-uncaught")
+
+    assert second.status_code == 200
+    # The test's own session is still usable and sees its setup plus the second request's row.
+    assert await _count_request_probe(db) == 2
+
+
+async def _create_orm_probe(db: AsyncSession) -> None:
+    await db.run_sync(lambda s: _ProbeBase.metadata.create_all(s.connection()))
+    db.add(_OrmProbe(id=1, name="before"))
+    await db.commit()
+
+
+async def _get_orm_probe_count(client) -> int:
+    async def count(session: Annotated[AsyncSession, Depends(get_db_session)]) -> dict[str, int]:
+        return {"n": len((await session.execute(select(_OrmProbe))).scalars().all())}
+
+    with _route("/__test__/orm-probe", count, method="GET"):
+        response = await client.get("/__test__/orm-probe")
+    return int(response.json()["n"])
+
+
+@pytest.mark.anyio
+async def test_orm_objects_loaded_by_the_test_stay_usable_after_a_request(
+    client, db: AsyncSession
+):
+    await _create_orm_probe(db)
+    db.expunge_all()
+    probe = (await db.execute(select(_OrmProbe))).scalar_one()
+
+    assert await _get_orm_probe_count(client) == 1
+
+    # A request must not expire the test's objects: plain attribute access, no lazy reload
+    # (which raises MissingGreenlet in async code).
+    assert probe.name == "before"
+
+
+@pytest.mark.anyio
+async def test_test_setup_flushed_but_not_committed_survives_a_request(client, db: AsyncSession):
+    await _create_orm_probe(db)
+    probe = await db.get(_OrmProbe, 1)
+    assert probe is not None
+    probe.name = "changed"
+    await db.flush()  # not committed: requests see it, and a request must not undo it
+
+    assert await _get_orm_probe_count(client) == 1
+
+    assert probe.name == "changed"
+    db.expunge_all()
+    assert (await db.get(_OrmProbe, 1)).name == "changed"  # type: ignore[union-attr]
