@@ -677,12 +677,12 @@ Accepted risks and follow-ups, with where each is tracked:
 | Login treats NULL `password_hash` and inactive users as invalid credentials | P2-01 ticket's login criterion ("null password or inactive user") |
 | Authorization accepts only `status = 'active'` memberships and active buildings | P2-03 ticket Scope (`get_tenant_context` query) |
 | Services that change `status` also set `status_changed_at`/`status_changed_by_user_id` | inbox row "Memberships → users and buildings" ("services set it on each change; no trigger") |
-| Pydantic schemas reject empty or padded `email`/`full_name` | **Tracked only here** and in the PR body |
-| `email-validator` isn't a dependency yet; the first `EmailStr` schema adds it | **Tracked only here** and in the PR body |
-| Indexes on `membership_roles.building_id`, `building_memberships.status_changed_by_user_id` (L3) | **Tracked only here** and in the PR body |
-| A `building` relationship on `BuildingMembership`/`MembershipRole` (and `Unit`) if buildings are ever deleted through the ORM (L-A) | Mistakes log mentions it as part of the round-2 row, not as an open item; otherwise **tracked only here** and in the PR body |
-| Tests pinning `passive_deletes` and the `user` relationship alone (L-B) | Mistakes log row "No test pins `passive_deletes=True`…" ("follow-ups"); no ticket |
-| Fitness test: one-to-many relationships whose child FK is in the child's PK have `delete-orphan` | Mistakes log, "Proposed for the next ticket"; not in any ticket |
+| Pydantic schemas reject empty or padded `email`/`full_name` | P2-01 ticket, "Carried from P1-02" (added in `f6f9ef7`, after the merge) |
+| `email-validator` isn't a dependency yet; the first `EmailStr` schema adds it | P2-01 ticket, "Carried from P1-02" (added in `f6f9ef7`, after the merge) |
+| Indexes on `membership_roles.building_id`, `building_memberships.status_changed_by_user_id` (L3) | P1-05 ticket, "Carried from P1-02 (decide while framing)" (added in `f6f9ef7`, after the merge) |
+| A `building` relationship on `BuildingMembership`/`MembershipRole` (and `Unit`) if buildings are ever deleted through the ORM (L-A) | P1-05 ticket, "Carried from P1-02 (decide while framing)" (added in `f6f9ef7`, after the merge) |
+| Tests pinning `passive_deletes` and the `user` relationship alone (L-B) | P1-05 ticket, "Carried from P1-02 (decide while framing)" (added in `f6f9ef7`, after the merge); mistakes log row "No test pins `passive_deletes=True`…" |
+| Fitness test: one-to-many relationships whose child FK is in the child's PK have `delete-orphan` | P1-05 ticket, "Carried from P1-02 (decide while framing)" (added in `f6f9ef7`, after the merge); mistakes log, "Proposed for the next ticket" |
 | Deleting or erasing users and buildings (RESTRICT blocks it today) | "Retention/erasure is a later ticket" (Frame notes); no ticket found |
 
 ## 8. How to change this safely
