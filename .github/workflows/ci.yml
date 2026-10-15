@@ -51,6 +51,19 @@ jobs:
       - name: Install backend dependencies
         run: uv sync --locked
 
+      # Lint: unused imports, import order, bugbear, bandit security checks and more
+      # (rule sets in backend/pyproject.toml). Fails the job before tests run.
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      # Formatting: fails if any file would be reformatted. Fix locally with `uv run ruff format .`.
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      # Static types, strict for app/.
+      - name: Mypy
+        run: uv run mypy app
+
       # Runs the backend test suite.
       # uv run ensures pytest runs from the uv-managed backend environment.
       - name: Run backend tests
