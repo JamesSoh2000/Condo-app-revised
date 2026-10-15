@@ -141,8 +141,14 @@ async def client(db_connection: AsyncConnection) -> AsyncIterator[AsyncClient]:
     test's connection. It sees the test's setup, committed or only flushed. What the request
     commits stays visible to the test; what it doesn't commit is discarded when the request ends,
     on every path (success, `HTTPException`, unhandled error), as in production. The test's own
-    session is never rolled back or expired by a request. Requests share one connection, so they
-    must not run concurrently.
+    session is never rolled back or expired by a request.
+
+    Harness rules (one connection, nested savepoints):
+    - Requests must not run concurrently (they fail loudly with "savepoint does not exist").
+    - Don't `rollback()` the test's session after a request: a request's savepoint sits inside the
+      test's open one, so that also undoes what the request committed.
+    - If the test catches a DB error in its own session, `rollback()` it before the next request;
+      an aborted test savepoint makes every later request fail.
     """
 
     async def override_get_db_session() -> AsyncIterator[AsyncSession]:
