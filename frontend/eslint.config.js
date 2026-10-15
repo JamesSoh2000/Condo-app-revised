@@ -17,6 +17,11 @@ const esqueryBase44 = `/${BASE44_SOURCE.replaceAll("/", "\\x2F")}/`;
 const noBase44DynamicImports = [
   "error",
   { selector: `ImportExpression[source.value=${esqueryBase44}]`, message: BASE44_MESSAGE },
+  // A template literal has no .value; new code has no reason to build import paths dynamically.
+  {
+    selector: 'ImportExpression[source.type="TemplateLiteral"]',
+    message: "Use a plain string in import(), so the Base44 fence can check it (ADR-0011).",
+  },
   {
     selector: `CallExpression[callee.name="require"][arguments.0.value=${esqueryBase44}]`,
     message: BASE44_MESSAGE,

@@ -6,8 +6,9 @@
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../frontend"
-fence='"ruleId":"(no-restricted-imports|no-restricted-syntax)"'
-hooks='"ruleId":"react-hooks/rules-of-hooks"'
+# Severity 2 = "error". A rule downgraded to "warn" must count as missing: CI runs eslint --quiet.
+fence='"ruleId":"(no-restricted-imports|no-restricted-syntax)","severity":2'
+hooks='"ruleId":"react-hooks/rules-of-hooks","severity":2'
 failures=0
 
 check() { # $1 = fence|hooks|none, $2 = filename eslint should assume, $3 = code
@@ -41,6 +42,7 @@ check fence src/features/x.ts "import { User } from '../../api/entities.js'; exp
 check fence src/features/x.ts "export * from '@/api/integrations';"
 check fence src/features/x.ts "export const m = () => import('@/api/base44Client');"
 check fence src/features/x.ts "export const s = require('@/api/base44Client');"
+check fence src/features/x.ts "export const t = () => import(\`@/api/base44Client\`);"
 check fence src/features/x.tsx "import { createClient } from '@base44/sdk'; export { createClient };"
 check fence src/app/y.jsx "export const m = () => import('@base44/sdk');"
 check fence src/app/y.js "import { base44 } from '@/api/base44Client.js'; export { base44 };"
