@@ -7,6 +7,8 @@ transaction, the second proves both were rolled back.
 from typing import Annotated
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -17,7 +19,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.dependencies import get_db_session
 from app.main import app
-from tests.conftest import UnsafeTestDatabaseError, assert_safe_test_database_url
+from tests.conftest import BACKEND_DIR, UnsafeTestDatabaseError, assert_safe_test_database_url
 
 
 @pytest.mark.anyio
@@ -91,8 +93,9 @@ async def test_db_session_is_configured_like_the_app_session(db: AsyncSession):
 
 @pytest.mark.anyio
 async def test_schema_is_built_by_alembic(db: AsyncSession):
-    heads = (await db.execute(text("SELECT version_num FROM alembic_version"))).scalars().all()
-    assert heads == ["989e5bd83064"]
+    script = ScriptDirectory.from_config(Config(str(BACKEND_DIR / "alembic.ini")))
+    applied = (await db.execute(text("SELECT version_num FROM alembic_version"))).scalars().all()
+    assert applied == [script.get_current_head()]
 
 
 @pytest.mark.anyio
@@ -143,6 +146,11 @@ async def test_client_requests_use_the_test_session(client, db: AsyncSession):
             "postgresql+asyncpg://postgres:pw@localhost:5432",
             "postgresql+asyncpg://postgres:pw@localhost:5432/condo_dev",
         ),
+        # Same database name as DATABASE_URL through a host alias (localhost vs 127.0.0.1).
+        (
+            "postgresql+asyncpg://postgres:pw@127.0.0.1:5432/shared_test",
+            "postgresql+asyncpg://postgres:pw@localhost/shared_test",
+        ),
         # Query parameters that asyncpg uses to override the parsed URL.
         *[
             (
@@ -163,3 +171,52 @@ def test_guard_accepts_a_separate_test_database():
         "postgresql+asyncpg://postgres:pw@localhost:5432/condo_test",
         "postgresql+asyncpg://postgres:pw@localhost:5432/condo_dev",
     )
+
+
+def _add_probe_route(path: str, *, commit: bool) -> None:
+    async def write_probe(
+        session: Annotated[AsyncSession, Depends(get_db_session)],
+    ) -> dict[str, bool]:
+        await session.execute(text("INSERT INTO _request_probe (note) VALUES ('from-request')"))
+        if commit:
+            await session.commit()
+        return {"committed": commit}
+
+    app.add_api_route(path, write_probe, methods=["POST"])
+
+
+def _remove_route(path: str) -> None:
+    app.router.routes = [r for r in app.router.routes if getattr(r, "path", None) != path]
+
+
+@pytest.mark.anyio
+async def test_request_writes_without_commit_are_discarded_like_in_production(
+    client, db: AsyncSession
+):
+    await db.execute(text("CREATE TABLE _request_probe (note text)"))
+    await db.commit()  # test setup is committed before calling the client
+
+    _add_probe_route("/__test__/write-no-commit", commit=False)
+    try:
+        response = await client.post("/__test__/write-no-commit")
+    finally:
+        _remove_route("/__test__/write-no-commit")
+
+    assert response.status_code == 200
+    # Production closes the session without committing, so the insert is lost; tests must agree.
+    assert (await db.execute(text("SELECT count(*) FROM _request_probe"))).scalar_one() == 0
+
+
+@pytest.mark.anyio
+async def test_request_writes_with_commit_are_visible_to_the_test(client, db: AsyncSession):
+    await db.execute(text("CREATE TABLE _request_probe (note text)"))
+    await db.commit()
+
+    _add_probe_route("/__test__/write-commit", commit=True)
+    try:
+        response = await client.post("/__test__/write-commit")
+    finally:
+        _remove_route("/__test__/write-commit")
+
+    assert response.status_code == 200
+    assert (await db.execute(text("SELECT count(*) FROM _request_probe"))).scalar_one() == 1
