@@ -119,3 +119,5 @@ if it didn't.
 - When fixing a review finding, also test the fix on its neighbours: error paths, malformed input, and the
   same check one notch weaker (warn vs error). A fix that only covers the reported case gets reopened
   (P0-05 round 3, P0-03a round 2, 2026-10-14).
+- Don't claim an effect ("unbreaks main", "new revisions come out ruff-clean") until you have run the
+  thing that shows it and pasted the output (fix PR #3, P0-02, 2026-10-14).

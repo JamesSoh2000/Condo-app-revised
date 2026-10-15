@@ -50,6 +50,8 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 | 2026-10-15 | P0-04a | Local S3 emulator is LocalStack 4.14.0 (pinned; newer images need an account token). MinIO images are no longer pullable; moto doesn't enforce presigned-POST size or type; RustFS works but its errors differ from AWS (the fallback) | ADR-0007 "Local emulator", PR #9 | yes |
 | 2026-10-15 | P0-04a | Kept `S3_BUCKET_NAME=condo-app-dev-files` instead of the ticket's new `S3_BUCKET=condo-dev-files`; production settings now reject `S3_ENDPOINT_URL`/`S3_PUBLIC_ENDPOINT_URL` | `backend/app/core/config.py`, PR #9 | yes |
 | 2026-10-15 | P0-04a | Migrations and `alembic check` run on the host against `127.0.0.1:$DB_PORT` (default 5432), behind a `db-guard` that fails unless compose's db owns that port; `make e2e` (stub) exits 1 | `Makefile`, PR #9 | yes |
+| 2026-10-15 | P0-05 | Test convention for every endpoint test from P1 on: `client` gives each request its own session on the test's connection (savepoints); the test's `db` sees the request's committed work and setup needs no commit. Don't `rollback()` `db` after a request, and don't run requests concurrently in one test (docstring of `tests/conftest.py::client`) | `backend/tests/conftest.py`, PR #4 | yes |
+| 2026-10-15 | P0-05 | `make test` runs pytest against `condo_test` on the compose db (`127.0.0.1:$DB_PORT`, behind `db-guard`); the test-DB defaults use `127.0.0.1` | `Makefile`, PR #4 | yes |
 | 2026-10-14 | P0-03a | `jsconfig.json` deleted (`tsconfig.json` with `allowJs` serves editors); `typecheck` checks `.ts/.tsx` only (`checkJs: false`, as the ticket says), so legacy JSX gets no type hints | PR #6 | yes |
 
 ## Resolved

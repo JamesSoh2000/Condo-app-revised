@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P0-02 (shares the CI workflow file) |
 | Replaces old | M2-T07 (infrastructure part), M1-T05 (migration checks) |
-| Status | todo |
+| Status | done |
 
 ## Goal
 
@@ -50,17 +50,35 @@ outbox. Mocks cannot prove them. See [02 §14](../ARCHITECTURE.md#14-testing-arc
 
 ## Interfaces
 
-Fixtures `engine` (session), `db` (function), `client` (function, using `db`). Env `TEST_DATABASE_URL`.
+Fixtures `engine` (session), `db_connection` (function: one connection in an outer transaction), `db`
+(function, on `db_connection`), `client` (function: one session per request on `db_connection`; B-1).
+Env `TEST_DATABASE_URL`.
 
 ## Acceptance criteria
 
 1. **Given** test 1 creates table `_probe`, inserts a row and calls `await db.commit()`, **when** test 2
    runs, **then** `_probe` does not exist. This shows both commit-inside-savepoint and transactional DDL.
+   *(sharpened)* Test 1 also proves, after its `commit()`, that (a) its own session still sees the row and
+   (b) a **separate** connection does not see `_probe` (the outer transaction is still open). Test 2 checks
+   with `to_regclass('public._probe') IS NULL`.
 2. **Given** a model change without a migration, **when** CI runs, **then** `alembic check` fails.
-3. **Given** two migration heads, **when** CI runs, **then** the single-head step fails.
-4. **Given** the dev database `condo_dev` has data, **when** `make test` runs, **then** `condo_dev` is
-   untouched.
+   Evidence: a demo commit on the PR branch (a probe model imported by `env.py`), its failing run URL and
+   the log line, then the revert.
+3. **Given** two migration heads, **when** CI runs, **then** the single-head step fails. The single-head
+   step runs **before** `alembic upgrade head` (which would otherwise fail first with "Multiple head
+   revisions"). Evidence as in AC2.
+4. **Given** the dev database `condo_dev` has data, **when** the backend tests run, **then** `condo_dev` is
+   untouched. *(changed)* `make test` arrives in P0-04, so the evidence is `cd backend && uv run pytest`:
+   a marker table and row in `condo_dev` survive a full test run (transcript).
 5. **Given** CI, **then** the backend job runs against Postgres and passes.
+6. *(added)* **Given** `TEST_DATABASE_URL` points at a database whose name does not end in `_test`, or at
+   the same database as `DATABASE_URL`, **when** the test session starts, **then** it aborts before
+   dropping anything (unit test of the guard).
+7. *(added)* **Given** `condo_test` does not exist, **when** the test session starts, **then** it is created
+   and migrated (CI starts with only `condo_dev`, so CI proves it).
+8. *(added)* **Given** the `client` fixture, **then** a request handled through `get_db_session` uses the
+   test's `db` session (a test reads, through a probe dependency, data the test inserted but never
+   committed outside the savepoint).
 
 ## Test plan
 
@@ -84,7 +102,26 @@ Fixtures `engine` (session), `db` (function), `client` (function, using `db`). E
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+- Criteria added or sharpened: AC1 (also proves the commit stayed inside the outer transaction, from a
+  second connection), AC2/AC3 (evidence named; single-head check ordered before `upgrade`), AC6 (guard
+  against dropping a non-test database), AC7 (test DB auto-created), AC8 (`client` really uses `db`).
+- Criteria loosened (with reason; also listed in the inbox): none left. AC4's command was changed to
+  `cd backend && uv run pytest` while the Makefile didn't exist; P0-04a has since added it, so AC4 uses
+  `make test` again (it runs pytest against `condo_test` on the compose db, behind `db-guard`).
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - `migrations/env.py` takes the URL from `config.attributes["database_url"]` when a caller sets it, else
+    `settings.database_url` (ticket: "accept a URL override"; `alembic.ini`'s `sqlalchemy.url` holds a
+    placeholder, so it can't be the override).
+  - The schema reset and `alembic upgrade head` run in a **sync** session fixture (`asyncio.run` /
+    Alembic's own `asyncio.run` in `env.py` cannot run inside the test event loop); the async `engine`
+    fixture is session-scoped with a session-scoped `anyio_backend` (ticket: keep anyio if it works).
+  - The fixture creates `condo_test` through the `postgres` maintenance database; no compose init script
+    (compose is a hot file, and the fixture covers CI and local alike).
+  - The guard (AC6) is a plain function in `tests/conftest.py`, unit-tested.
+  - CI service DB is `condo_dev` (as in compose); `DATABASE_URL` points at it for `alembic upgrade/check`.
+- **B-1 (2026-10-15, James): option A.** After review round 3 (H1: the `client` fixture's rollback ran
+  only on success; M1: rolling back the shared session expired the test's ORM objects), James approved:
+  each request gets its own `AsyncSessionLocal(bind=conn, join_transaction_mode="create_savepoint")` on
+  the test's connection, closed in `finally`; regression tests for write-then-`HTTPException`, a caught
+  DB error then the next request, and an ORM object after a GET; then a 4th fresh review round.
+- Split: none (estimate ~60 non-test lines: settings, env.py, CI; the fixtures are test code).

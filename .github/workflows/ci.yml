@@ -14,9 +14,27 @@ jobs:
     name: Backend tests
     runs-on: ubuntu-24.04
 
+    # Real Postgres, as in docker-compose.yml. The test suite creates condo_test itself.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: condo_dev
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: devpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d condo_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       APP_ENV: test
-      READINESS_CHECK_DATABASE: "false"
+      # Migrations and `alembic check` run against this database; tests use TEST_DATABASE_URL.
+      DATABASE_URL: postgresql+asyncpg://postgres:devpassword@localhost:5432/condo_dev
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:devpassword@localhost:5432/condo_test
 
     defaults:
       run:
@@ -63,6 +81,20 @@ jobs:
       # Static types, strict for app/.
       - name: Mypy
         run: uv run mypy app
+
+      # Exactly one migration head. Runs before `upgrade`, which would otherwise fail first with
+      # "Multiple head revisions" and hide the real problem.
+      - name: Single migration head
+        run: |
+          uv run alembic heads
+          test "$(uv run alembic heads | wc -l)" -eq 1
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      # Fails when the models and the migrations disagree (a model change without a migration).
+      - name: Alembic check (model/migration drift)
+        run: uv run alembic check
 
       # Runs the backend test suite.
       # uv run ensures pytest runs from the uv-managed backend environment.

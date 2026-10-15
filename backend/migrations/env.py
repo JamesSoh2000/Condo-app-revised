@@ -16,14 +16,20 @@ from app.models.base import Base
 
 config = context.config
 
-if config.config_file_name is not None:
+# Programmatic callers (the test suite) keep the app's logging: fileConfig would replace the root
+# handlers and disable every logger created before it.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
+# Callers (the test suite) can point Alembic at another database with
+# `Config.attributes["database_url"]`; otherwise DATABASE_URL is used.
+database_url: str = config.attributes.get("database_url", settings.database_url)
+
 
 def run_migrations_offline() -> None:
-    url = settings.database_url
+    url = database_url
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -47,7 +53,7 @@ def do_run_migrations(connection: Connection) -> None:
 
 async def run_async_migrations() -> None:
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.database_url
+    configuration["sqlalchemy.url"] = database_url
 
     connectable = async_engine_from_config(
         configuration,

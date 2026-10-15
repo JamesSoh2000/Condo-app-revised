@@ -44,6 +44,8 @@ class Settings(BaseSettings):
 
     # Database config only. Do not connect yet.
     database_url: str = "postgresql+asyncpg://postgres:devpassword@db:5432/condo_dev"
+    # Used by the test suite only. Its schema is dropped and rebuilt on every test session.
+    test_database_url: str = "postgresql+asyncpg://postgres:devpassword@127.0.0.1:5432/condo_test"
 
     # AWS config only. Do not create AWS clients yet.
     aws_region: str = "ca-central-1"
