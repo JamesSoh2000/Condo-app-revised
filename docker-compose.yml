@@ -13,8 +13,9 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
+      # The image's venv is in /opt/venv, outside this mount, so a rebuilt image always brings its own
+      # packages. The host's backend/.venv shows up as /app/.venv but nothing in the container uses it.
       - ./backend:/app
-      - /app/.venv
     command: >
       uvicorn app.main:app
       --host 0.0.0.0

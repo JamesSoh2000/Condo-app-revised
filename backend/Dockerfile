@@ -4,13 +4,16 @@ FROM python:3.14-slim
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.17 /uv /uvx /bin/
 
+# The venv lives outside /app: compose bind-mounts ./backend over /app in dev, which would hide a venv
+# there (P0-07). UV_PROJECT_ENVIRONMENT points uv's `sync` and `run` at it.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
     WEB_CONCURRENCY=2 \
     UV_NO_DEV=1 \
     UV_LINK_MODE=copy \
-    PATH="/app/.venv/bin:$PATH"
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
