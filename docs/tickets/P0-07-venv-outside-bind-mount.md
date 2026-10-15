@@ -6,7 +6,7 @@
 | Risk tier | 3 |
 | Depends on | P0-06 |
 | Replaces old | — |
-| Status | in progress |
+| Status | done |
 
 The two follow-ups of [P0-06](./P0-06-runtime-and-ci-upgrades.md) (PR #35, review round 3 L1 and L2),
 started by James in session on 2026-10-15.
