@@ -46,6 +46,9 @@ updates:
     directory: /backend
     schedule:
       interval: weekly
+    groups:
+      docker-minor-and-patch:
+        update-types: [minor, patch]
     ignore:
       - dependency-name: python
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
@@ -54,6 +57,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      compose-minor-and-patch:
+        update-types: [minor, patch]
     ignore:
       # Newer LocalStack images need an account token; 4.14.0 is pinned on purpose (ADR-0007).
       - dependency-name: localstack/localstack
