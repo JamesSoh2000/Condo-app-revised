@@ -126,8 +126,9 @@ Notes:
 ## Backend
 
 The backend setup lives in `backend/pyproject.toml`.
-Use Python 3.14.8 (`pyenv install 3.14.8`, or `uv python install 3.14.8`, which needs uv 0.13 or newer;
-older uv versions don't know 3.14.8).
+Use Python 3.14.8 (`pyenv install 3.14.8`, or `uv python install 3.14.8` with a recent uv: 0.11.17, the
+version CI pins, doesn't know 3.14.8, while 0.13.1 does; `uvx uv@0.13.1 python install 3.14.8` works with
+either).
 
 ```bash
 cd backend

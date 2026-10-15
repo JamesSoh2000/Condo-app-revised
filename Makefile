@@ -17,8 +17,10 @@ FRONTEND := cd frontend &&
 help: ## List the targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
+# --renew-anon-volumes: the app's /app/.venv volume is a copy of the image's venv. Without it, a recreated
+# container keeps the old copy (stale packages after a uv.lock change; after a Python bump, no packages at all).
 up: ## Start api, db, mailpit and the S3 emulator; waits until all are healthy
-	$(COMPOSE) up -d --build --wait --remove-orphans
+	$(COMPOSE) up -d --build --wait --remove-orphans --renew-anon-volumes
 
 down: ## Stop the stack (the database volume is kept)
 	$(COMPOSE) down
