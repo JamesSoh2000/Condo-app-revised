@@ -1046,3 +1046,14 @@ async def test_window_clause_refuses_an_argument_named_like_its_own_alias(
 
 def records_unit() -> Any:
     return Table("some_records", MetaData(), Column("unit_id", Uuid())).c.unit_id
+
+
+async def test_ending_at_the_instant_it_started_is_allowed(db: AsyncSession, setup: Setup):
+    """Review round 3, L1: `started_at <= at`, not `<`; a zero-length occupancy is valid."""
+    ids = {"building_id": setup.a.id, "membership_id": setup.m.id}
+    await start_occupancy(db, unit_id=setup.u101.id, relationship=TENANT, at=T1, **ids)
+
+    ended = await end_occupancy(db, at=T1, **ids)
+
+    assert ended is not None
+    assert ended.ended_at == T1

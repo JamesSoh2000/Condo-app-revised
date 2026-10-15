@@ -35,9 +35,9 @@ tenant's packages. History plus a window filter prevents it by design
     - Index `(building_id, unit_id, ended_at)`
   - **Helpers** in `app/memberships/occupancy.py`. They never commit:
     - `start_occupancy(db, *, building_id, membership_id, unit_id, relationship, at=None)`
-    - `end_occupancy(db, *, membership_id, at=None)` (no-op if none is current)
-    - `transfer_occupancy(db, *, membership_id, new_unit_id, relationship, at=None)` (end + start, same
-      transaction)
+    - `end_occupancy(db, *, building_id, membership_id, at=None)` (no-op if none is current)
+    - `transfer_occupancy(db, *, building_id, membership_id, new_unit_id, relationship, at=None)` (end +
+      start, same transaction)
     - `current_occupants(db, building_id, unit_id) -> list[membership_id]`
     - `occupancy_window_clause(membership_id, record_unit_col, record_time_col)` returns a SQLAlchemy
       `exists()` clause that is true when the record's unit was occupied by the membership at the record's
