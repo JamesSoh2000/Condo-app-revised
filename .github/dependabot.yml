@@ -1,5 +1,14 @@
 # Weekly dependency updates (P0-04b). Dependabot PRs go through the same CI and branch protection as any
 # other PR; agents don't pick them up on their own (they aren't tickets).
+#
+# Minor and patch updates come as one grouped PR per ecosystem; majors come one PR each.
+# Some upgrades are ignored here because they need a coordinated change, made in a ticket (P0-06 did
+# Python 3.14 and Postgres 18):
+# - Python: the image tag, `.python-version`, `requires-python`, ruff/mypy targets and CI move together. A
+#   new Python (3.14 → 3.15) is a *minor* bump to Dependabot, so minor bumps are ignored too.
+# - Postgres: the CI service in .github/workflows/ci.yml isn't updated by Dependabot, and a new major
+#   needs a new data volume.
+# - Tailwind 4 and framer-motion 12+: kept back by James (inbox PRE-7, 2026-10-15).
 version: 2
 updates:
   - package-ecosystem: uv
@@ -7,22 +16,39 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      backend-minor-and-patch:
+        update-types: [minor, patch]
 
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      frontend-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+      - dependency-name: framer-motion
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
 
   - package-ecosystem: docker
     directory: /backend
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: docker-compose
     directory: /
@@ -31,3 +57,5 @@ updates:
     ignore:
       # Newer LocalStack images need an account token; 4.14.0 is pinned on purpose (ADR-0007).
       - dependency-name: localstack/localstack
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
