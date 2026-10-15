@@ -38,7 +38,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P0-03c](./P0-03c-frontend-whitespace-and-pre-commit.md) | Frontend whitespace normalisation and pre-commit scope | B | 3 | P0-03a, P0-03b | done | — |
 | [P0-04a](./P0-04a-local-stack-and-makefile.md) | Local stack and Makefile (split from [P0-04](./P0-04-repo-workflow-and-local-stack.md)) | B | 2 | P0-02, P0-03a, P0-03b | done | — |
 | [P0-04b](./P0-04b-github-workflow.md) | GitHub workflow: branch protection, PR template, Dependabot, branches | B | 2 | P0-02, P0-03a, P0-03b | todo | — |
-| [P0-05](./P0-05-database-test-infrastructure.md) | Database test infrastructure | A | 2 | P0-02 | blocked | — |
+| [P0-05](./P0-05-database-test-infrastructure.md) | Database test infrastructure | A | 2 | P0-02 | todo | — |
 | [P1-01](./P1-01-buildings-features-units-schema.md) | Buildings, features and units schema | A | 2 | P0-05 | todo | — |
 | [P1-02](./P1-02-users-memberships-roles-schema.md) | Users, memberships and roles schema | A | 1 | P1-01 | todo | — |
 | [P1-03](./P1-03-unit-occupancies-schema.md) | Unit occupancies schema | A | 1 | P1-02 | todo | — |
