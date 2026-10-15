@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Wrench, Plus, Image as ImageIcon, Calendar, Clock } from 'lucide-react';
+import { Calendar, Clock } from 'lucide-react';
 import { toast } from "sonner";
 import { format } from 'date-fns';
 

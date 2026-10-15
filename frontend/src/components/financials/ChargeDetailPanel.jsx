@@ -1,9 +1,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, CreditCard, User, Hash, Calendar, FileText } from 'lucide-react';
+import { X, CheckCircle2, CreditCard, User, Calendar, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
 
 const CHARGE_TYPE_LABELS = { condo_fee: 'Condo Fee', lounge_rental: 'Lounge Rental', key_fob: 'Key / Fob', fine: 'Fine', rent: 'Rent', other: 'Other' };
 const CHARGE_COLORS = { condo_fee: 'bg-blue-100 text-blue-700', lounge_rental: 'bg-purple-100 text-purple-700', key_fob: 'bg-zinc-100 text-zinc-700', fine: 'bg-red-100 text-red-700', rent: 'bg-emerald-100 text-emerald-700', other: 'bg-amber-100 text-amber-700' };

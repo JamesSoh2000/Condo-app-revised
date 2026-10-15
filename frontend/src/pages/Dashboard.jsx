@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Package, ShieldAlert, Wrench, Info, ArrowRight, Bell, Gamepad2, Wine, CalendarDays, Send, Megaphone, AlertCircle, UserCheck, Zap, AlertTriangle, ChevronDown, DollarSign } from 'lucide-react';
+import { Package, ShieldAlert, Wrench, Bell, Gamepad2, Wine, CalendarDays, Send, Megaphone, AlertCircle, UserCheck, ChevronDown } from 'lucide-react';
 import { useLanguage } from '@/lib/LanguageContext';
 import Financials from './Financials';
 import NoticeAttachmentUpload from '@/components/NoticeAttachmentUpload';

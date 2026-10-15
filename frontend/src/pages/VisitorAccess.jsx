@@ -10,10 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { UserCheck, Copy, Eye, EyeOff, Ban, Clock, CheckCircle, XCircle, Calendar, Car } from 'lucide-react';
-import { format, addHours, addDays, isPast, isWithinInterval } from 'date-fns';
+import { UserCheck, Copy, Eye, EyeOff, Ban, Car } from 'lucide-react';
+import { format, addHours, isPast } from 'date-fns';
 import { toast } from 'sonner';
-import { motion } from 'framer-motion';
 
 export default function VisitorAccess() {
   const [user, setUser] = useState(null);

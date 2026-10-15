@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronLeft, ChevronRight, Expand, Camera } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Expand } from 'lucide-react';
 import { useLanguage } from '@/lib/LanguageContext';
 
 const ROOM_DATA = [

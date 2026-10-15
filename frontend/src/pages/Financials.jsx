@@ -2,15 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
 import {
-  DollarSign, TrendingUp, TrendingDown, CreditCard, FileText, Users,
-  Plus, CheckCircle2, Receipt, Building2, Landmark, PieChart,
-  RefreshCw, Download, BarChart2, AlertCircle, Lightbulb
+  DollarSign, TrendingUp, TrendingDown, FileText, Users,
+  Plus, CheckCircle2, Receipt, Landmark, PieChart,
+  RefreshCw, Download, BarChart2
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';

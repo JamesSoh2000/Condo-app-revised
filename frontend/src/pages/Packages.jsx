@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, Plus, CheckCircle, Box, Package, History, X, ZoomIn, ChevronDown, ChevronUp } from 'lucide-react';
-import { format, isToday, isYesterday, differenceInDays } from 'date-fns';
+import { Box, Package, History, X, ZoomIn, ChevronDown, ChevronUp } from 'lucide-react';
+import { format, isToday, isYesterday } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import PhotoViewer from '@/components/PhotoViewer';
