@@ -10,9 +10,11 @@ import pytest
 from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.config import settings
+from app.core.database import AsyncSessionLocal
 from app.core.dependencies import get_db_session
 from app.main import app
 from tests.conftest import UnsafeTestDatabaseError, assert_safe_test_database_url
@@ -39,6 +41,50 @@ async def test_commit_inside_test_transaction_is_visible_to_the_test_only(
 async def test_previous_test_ddl_and_rows_were_rolled_back(db: AsyncSession):
     found = await db.execute(text("SELECT to_regclass('public._probe')"))
     assert found.scalar_one() is None
+
+
+async def _create_probe_item(session: AsyncSession, item_id: int, name: str) -> bool:
+    """Shaped like a service write: commit on success, rollback on a constraint error."""
+    try:
+        await session.execute(
+            text("INSERT INTO _rollback_probe (id, name) VALUES (:id, :name)"),
+            {"id": item_id, "name": name},
+        )
+        await session.commit()
+        return True
+    except IntegrityError:
+        await session.rollback()
+        return False
+
+
+@pytest.mark.anyio
+async def test_service_rollback_after_an_error_keeps_the_test_transaction(
+    db: AsyncSession, engine: AsyncEngine
+):
+    await db.execute(text("CREATE TABLE _rollback_probe (id integer PRIMARY KEY, name text UNIQUE)"))
+    await db.commit()
+
+    assert await _create_probe_item(db, 1, "a") is True
+    assert await _create_probe_item(db, 2, "a") is False  # unique violation -> rollback()
+
+    # rollback() only went back to the last savepoint: the table and the first row remain.
+    assert (await db.execute(text("SELECT count(*) FROM _rollback_probe"))).scalar_one() == 1
+    async with engine.connect() as other:
+        found = await other.execute(text("SELECT to_regclass('public._rollback_probe')"))
+        assert found.scalar_one() is None
+
+
+@pytest.mark.anyio
+async def test_previous_test_rollback_probe_was_rolled_back(db: AsyncSession):
+    found = await db.execute(text("SELECT to_regclass('public._rollback_probe')"))
+    assert found.scalar_one() is None
+
+
+@pytest.mark.anyio
+async def test_db_session_is_configured_like_the_app_session(db: AsyncSession):
+    # Tests must see the same flush behaviour as production code (AsyncSessionLocal).
+    assert db.sync_session.autoflush == AsyncSessionLocal.kw["autoflush"]
+    assert db.sync_session.expire_on_commit == AsyncSessionLocal.kw["expire_on_commit"]
 
 
 @pytest.mark.anyio
@@ -95,6 +141,14 @@ async def test_client_requests_use_the_test_session(client, db: AsyncSession):
             "postgresql+asyncpg://postgres:pw@localhost:5432",
             "postgresql+asyncpg://postgres:pw@localhost:5432/condo_dev",
         ),
+        # Query parameters that asyncpg uses to override the parsed URL.
+        *[
+            (
+                f"postgresql+asyncpg://postgres:pw@localhost:5432/condo_test?{param}=condo_dev",
+                "postgresql+asyncpg://postgres:pw@localhost:5432/condo_dev",
+            )
+            for param in ("database", "host", "port", "dsn")
+        ],
     ],
 )
 def test_guard_refuses_unsafe_test_database_urls(test_url: str, dev_url: str):
