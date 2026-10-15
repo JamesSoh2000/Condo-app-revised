@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import app.ci_drift_probe  # noqa: F401  (P0-05 AC2 demo, reverted)
 from app.core.config import settings
 from app.models.base import Base
 
