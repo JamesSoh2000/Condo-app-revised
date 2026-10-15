@@ -99,4 +99,10 @@ refers to the old path except the files above.
     elsewhere; the image's `uv sync` and any `uv` command in the container agree on it.
   - Ignore uv in Dependabot instead of teaching the pin check about it (autonomous): a uv bump must move
     CI's `version` too, which Dependabot can't do.
+  - Found while proving AC1: with the venv moved, `app` was still recreated on every `make up`, because
+    Docker Desktop's containerd image store wraps each build in an index with a provenance attestation
+    that carries a timestamp, so the image ID changed even with every step cached. compose's
+    `build.provenance: false` / `sbom: false` didn't change that (compose 2.40.3); exporting
+    `BUILDX_NO_DEFAULT_ATTESTATIONS=1` from the Makefile does (autonomous; the dev image is never pushed,
+    so it loses nothing).
 - Split: none.
