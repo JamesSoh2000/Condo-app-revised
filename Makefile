@@ -6,6 +6,8 @@ COMPOSE := docker compose
 # something else already listens on 5432, run every target with the same free port: `make up DB_PORT=55432`.
 export DB_PORT ?= 5432
 DEV_DATABASE_URL := postgresql+asyncpg://postgres:devpassword@127.0.0.1:$(DB_PORT)/condo_dev
+# Dropped and rebuilt by every test run (backend/tests/conftest.py refuses any name not ending in _test).
+TEST_DATABASE_URL := postgresql+asyncpg://postgres:devpassword@127.0.0.1:$(DB_PORT)/condo_test
 BACKEND := cd backend &&
 FRONTEND := cd frontend &&
 
@@ -44,8 +46,8 @@ revision: db-guard ## Autogenerate a migration: make revision m="add packages" (
 seed: ## Demo data (stub until P1-06)
 	@echo "make seed: nothing to seed yet; P1-06 adds the demo data"
 
-test: ## Backend tests
-	$(BACKEND) uv run pytest
+test: db-guard ## Backend tests, against condo_test on the compose db (needs `make up`)
+	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) TEST_DATABASE_URL=$(TEST_DATABASE_URL) uv run pytest
 
 lint: ## ruff, the format check, eslint and the Base44 import fence self-test
 	$(BACKEND) uv run ruff check .
@@ -61,7 +63,7 @@ typecheck: ## mypy and tsc
 	$(BACKEND) uv run mypy app
 	$(FRONTEND) npm run typecheck
 
-check: lint typecheck test db-guard ## Everything CI checks, plus alembic check (needs `make up`)
+check: lint typecheck test ## Everything CI checks, plus alembic check (needs `make up`)
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) uv run alembic check
 	bash scripts/base44-count.sh
 	$(FRONTEND) npm run build
