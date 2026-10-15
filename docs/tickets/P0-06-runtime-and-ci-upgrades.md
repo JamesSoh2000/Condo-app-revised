@@ -77,8 +77,9 @@ None. No API, schema or env var changes. Compose's db volume is renamed (`postgr
    and the ordering.
 10. (new) **Given** a later bump that moves only some pins (Dependabot updates compose but not CI's
     `services:`, the Dockerfile but not `.python-version`), **then** CI fails:
-    `scripts/check-version-pins.py` (docs job and `make check`) requires one Python patch/minor and one
-    Postgres major everywhere. Shown to fail on purpose (CLAUDE.md lesson).
+    `scripts/check-version-pins.py` (docs job and `make check`) requires one Python patch/minor, one
+    Postgres major and one uv release everywhere, quoted or not, with one pin per `setup-python`/`setup-uv`
+    step (review round 1, L1, L2, L4). Shown to fail on purpose (CLAUDE.md lesson).
 
 ## Test plan
 
