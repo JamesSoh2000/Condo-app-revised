@@ -7,7 +7,8 @@ refer to the ticket.
 
 import asyncio
 import re
-from uuid import UUID
+import warnings
+from uuid import UUID, uuid7
 
 import pytest
 from alembic import command
@@ -419,6 +420,54 @@ async def test_moving_a_membership_without_roles_is_not_blocked_by_the_roles_fk(
         text("UPDATE building_memberships SET building_id = :b WHERE id = :m"),
         {"b": b.id, "m": m.id},
     )
+
+
+# --- review round 1 (M1): the ORM orders these tables by their FKs, not by class name ---------
+# Without relationships, the unit of work sorts mappers by `module.ClassName`, so
+# `app.memberships...BuildingMembership` would be inserted before `app.users...User`.
+
+
+async def test_new_user_and_their_membership_can_be_flushed_together(db: AsyncSession):
+    a = await _building(db, "a")
+    alice = User(id=uuid7(), email="alice@example.com", full_name="Alice")
+    manager = User(id=uuid7(), email="manager@example.com", full_name="Manager")
+    # Added membership-first on purpose: the flush must still insert the users first.
+    db.add(
+        BuildingMembership(building_id=a.id, user_id=alice.id, status_changed_by_user_id=manager.id)
+    )
+    db.add_all([alice, manager])
+
+    await db.flush()
+
+    assert await db.scalar(select(func.count()).select_from(BuildingMembership)) == 1
+
+
+async def test_membership_and_its_roles_can_be_deleted_together(db: AsyncSession):
+    a = await _building(db, "a")
+    m = await _membership(db, a, await _user(db, "alice@example.com"))
+    role = await _role(db, m, Role.RESIDENT)
+
+    await db.delete(m)
+    await db.delete(role)
+    with warnings.catch_warnings():
+        # The roles must be deleted before the membership, not found already gone by the cascade.
+        warnings.simplefilter("error")
+        await db.flush()
+
+    assert await _roles_of(db, m.id) == set()
+
+
+async def test_orm_delete_of_a_membership_leaves_unloaded_roles_to_the_cascade(db: AsyncSession):
+    a = await _building(db, "a")
+    m = await _membership(db, a, await _user(db, "alice@example.com"))
+    await _role(db, m, Role.RESIDENT)
+    db.expunge_all()  # the roles aren't in the session: the database must remove them
+    membership = await db.get_one(BuildingMembership, m.id)
+
+    await db.delete(membership)
+    await db.flush()
+
+    assert await _roles_of(db, m.id) == set()
 
 
 # --- 13: enum values ---------------------------------------------------------------------------

@@ -2,12 +2,13 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, ForeignKeyConstraint, UniqueConstraint, Uuid, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.memberships.enums import MembershipStatus, Role
 from app.models.base import Base
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.types import database_enum
+from app.users.models import User
 
 
 class BuildingMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -35,6 +36,16 @@ class BuildingMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status_changed_by_user_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT")
     )
+
+    # Declared so the unit of work orders a flush by these FKs: users before the memberships that
+    # name them, roles deleted before their membership. Without relationships it orders tables by
+    # class name. lazy="raise": load them explicitly; an implicit lazy load fails under asyncio.
+    user: Mapped[User] = relationship(foreign_keys=[user_id], lazy="raise")
+    status_changed_by: Mapped[User | None] = relationship(
+        foreign_keys=[status_changed_by_user_id], lazy="raise"
+    )
+    # passive_deletes: deleting a membership leaves its unloaded roles to the database's cascade.
+    roles: Mapped[list[MembershipRole]] = relationship(passive_deletes=True, lazy="raise")
 
 
 class MembershipRole(TimestampMixin, Base):
