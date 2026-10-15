@@ -1,0 +1,33 @@
+# Weekly dependency updates (P0-04b). Dependabot PRs go through the same CI and branch protection as any
+# other PR; agents don't pick them up on their own (they aren't tickets).
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      # Newer LocalStack images need an account token; 4.14.0 is pinned on purpose (ADR-0007).
+      - dependency-name: localstack/localstack

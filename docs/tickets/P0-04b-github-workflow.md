@@ -24,7 +24,7 @@ The GitHub repo enforces the PR workflow, and stale branches are gone.
     protection is this ticket's scope; it needs PRE-1 in [HUMAN_INBOX](../HUMAN_INBOX.md) (`gh` with admin
     rights).
   - No `CODEOWNERS`: with one human and no review gate it would only add a notification.
-  - `.github/pull_request_template.md` (from [the template](../templates/PULL_REQUEST.md)).
+  - `.github/pull_request_template.md` (moved from `docs/templates/PULL_REQUEST.md`).
   - `.github/dependabot.yml` (uv, npm, github-actions, docker; weekly).
   - **Branches:** list `git branch -r --no-merged origin/main` and decide each case; delete merged or stale
     remote branches, including `develop`, `staging`, `starting` and `starting-james`, after confirming

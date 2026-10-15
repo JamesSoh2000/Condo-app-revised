@@ -38,7 +38,7 @@ make small WIP commits; the squash cleans them up.
 | Rule | Why |
 |---|---|
 | One ticket per PR. ≤ ~400 changed **non-test** lines, excluding generated files and lockfiles. Tests don't count. | A reviewer (human or AI) catches more in a small diff, and a bad merge is cheaper to revert. Counting tests would push agents to cut them, the exact wrong incentive. Over the limit → split the ticket |
-| PR template completed ([templates/PULL_REQUEST.md](./templates/PULL_REQUEST.md)), including the plan and "Decisions and alternatives" | The reviewer and the explainer get context, evidence and risks up front |
+| PR template completed ([.github/pull_request_template.md](../.github/pull_request_template.md)), including the plan and "Decisions and alternatives" | The reviewer and the explainer get context, evidence and risks up front |
 | CI green before the independent review | Reviewers don't spend rounds on what machines catch |
 | Independent review by a fresh session returns `MERGE`; Tier 1 also needs Codex or a second reviewer ([05 §Step 5](./AI_AGENT_PLAYBOOK.md#step-5--independent-review-fresh-session-the-merge-paths-only-judge)) | No human reviews after it, so the reviewer must not share the author's context |
 | Tier 1–2 user-reachable behaviour: the journey is run on the stack and the transcript is in the PR | Auth and tenancy bugs hide in paths tests don't cover |
