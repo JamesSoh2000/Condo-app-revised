@@ -42,7 +42,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P0-06](./P0-06-runtime-and-ci-upgrades.md) | Runtime and CI upgrades: Python 3.14, Postgres 18, SQLAlchemy 2.1, Actions v7 | A | 2 | P0-04a, P0-04b, P0-05 | done | — |
 | [P0-07](./P0-07-venv-outside-bind-mount.md) | App venv outside the bind mount; Dependabot leaves uv alone | A | 3 | P0-06 | done | — |
 | [P1-01](./P1-01-buildings-features-units-schema.md) | Buildings, features and units schema | A | 2 | P0-05 | done | — |
-| [P1-02](./P1-02-users-memberships-roles-schema.md) | Users, memberships and roles schema | A | 1 | P1-01 | todo | — |
+| [P1-02](./P1-02-users-memberships-roles-schema.md) | Users, memberships and roles schema | A | 1 | P1-01 | done | — |
 | [P1-03](./P1-03-unit-occupancies-schema.md) | Unit occupancies schema | A | 1 | P1-02 | todo | — |
 | [P1-04](./P1-04-api-conventions.md) | API conventions: errors, pagination, schemas | B | 2 | P0-02 | todo | — |
 | [P1-05](./P1-05-test-world-and-isolation-helpers.md) | Test world fixtures and tenant-isolation helpers | A | 1 | P1-03, P0-05 | todo | — |
