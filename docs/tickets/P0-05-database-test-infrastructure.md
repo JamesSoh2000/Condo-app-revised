@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P0-02 (shares the CI workflow file) |
 | Replaces old | M2-T07 (infrastructure part), M1-T05 (migration checks) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
@@ -50,7 +50,9 @@ outbox. Mocks cannot prove them. See [02 §14](../ARCHITECTURE.md#14-testing-arc
 
 ## Interfaces
 
-Fixtures `engine` (session), `db` (function), `client` (function, using `db`). Env `TEST_DATABASE_URL`.
+Fixtures `engine` (session), `db_connection` (function: one connection in an outer transaction), `db`
+(function, on `db_connection`), `client` (function: one session per request on `db_connection`; B-1).
+Env `TEST_DATABASE_URL`.
 
 ## Acceptance criteria
 

@@ -32,6 +32,8 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | 2026-10-15 | P0-04a | The Makefile's DB URL used `localhost` while its own `db-guard` checked `127.0.0.1`, so an IPv6-only stray server could still be migrated | review round 1 (Claude), Low | guard and guarded value written separately | one address in both (e878bb4) |
 | 2026-10-15 | P0-04a | Split P0-04 and dropped the named stale branches from P0-04b's scope while the split note said nothing was dropped | review round 1 (Claude), Low | summarised scope while splitting | restored (bd77038) |
 
+| 2026-10-15 | P0-05 | The shared-session `client` design also expired the test's ORM objects after any request (round 3 M1); the first regression test for it passed vacuously (flush-only setup gets expunged, not expired) | implementer, before the fix (mutation of the test against the old fixture) | wrote the reproduction from the finding's summary instead of its exact state | test rewritten to load the object by query and to flush a change; both red on the old fixture |
+
 ## Promoted to rules / tests
 
 | Pattern | Promoted to | Date |
