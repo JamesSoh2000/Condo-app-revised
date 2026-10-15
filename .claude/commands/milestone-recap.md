@@ -10,7 +10,8 @@ Run the phase gate for $ARGUMENTS and write `docs/recaps/$ARGUMENTS.md` from
    gate waits: say so, note it in the inbox item, and stop.
 2. Run each item of the phase's exit gate in `docs/ROADMAP.md` on the stack and in CI, and record pass/fail
    with evidence in §0.
-3. Collect the merged PRs (`git log --oneline --grep "\[$ARGUMENTS-"`) and the explanations. Fill in: §1 demo
+3. Collect the merged PRs (`git log --oneline --grep "\[$ARGUMENTS-"`) and the explanations, and fill in
+   the "Tickets merged" table: each ticket's PR, merge commit and explanation. Fill in: §1 demo
    script (exact steps on the prod-like stack, or on staging after milestone D), §2 architecture delta (a
    mermaid diagram), §3 decisions (ADRs and the inbox's "Decisions to audit" for this phase), §4 agent
    performance (review rounds from the PRs, `docs/AGENT_MISTAKES_LOG.md`), §5 open risks (unfixed findings,

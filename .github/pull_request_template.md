@@ -11,10 +11,22 @@ Built autonomously (docs/AI_AGENT_PLAYBOOK.md); merged by the agent once the mer
      written; note any deviation below it with the reason. The reviewer compares the code against it. -->
 
 ### Decisions and alternatives
-<!-- Each non-obvious choice, the alternative considered, why it lost, and its basis (ticket / ADR / default /
-     autonomous). The explainer runs in a fresh session and gets the "why" only from here, so write it for
-     someone who wasn't in the conversation. Autonomous lasting decisions also go to docs/HUMAN_INBOX.md. -->
-| Decision | Alternative | Why not | Basis |
+<!-- Record each decision when you make it (plan, implementation or review fix), for someone who wasn't in
+     the conversation: the explainer gets the "why" only from here, the ticket, the ADRs and the review log.
+     A consequential decision (behaviour, data, security, an interface, a gate, a tradeoff, anything a
+     reviewer questioned) gets a block; a smaller one a table row; routine syntax nothing. Basis: ticket /
+     ADR-NNNN / existing convention / experiment / test result / review finding (round N) / autonomous.
+     Only alternatives you actually considered; say so if none. Lasting autonomous decisions also get an
+     ADR and a line in docs/HUMAN_INBOX.md. See docs/AI_AGENT_PLAYBOOK.md#recording-a-decision. -->
+
+#### D1. <decision>
+- Problem or constraint:
+- Chosen:
+- Alternatives rejected (why):
+- Tradeoffs and accepted limitations:
+- Basis and evidence:
+
+| Smaller decision | Alternative | Why not | Basis |
 |---|---|---|---|
 
 ### Framing changes
@@ -37,7 +49,9 @@ Built autonomously (docs/AI_AGENT_PLAYBOOK.md); merged by the agent once the mer
      tightens. "None" is the expected answer. -->
 
 ### Independent review
-<!-- One line per round: reviewer, verdict, findings fixed (commit) / dismissed (reason). -->
+<!-- One line per round: reviewer, commit reviewed, verdict, findings fixed (commit) / dismissed (reason).
+     For each fix: the concrete failure that motivated it and the evidence for the final approach (the test
+     that failed and now passes). -->
 
 ### Merge gate (agent ticks these before `gh pr merge --squash`)
 - [ ] Required CI checks green on the PR head (backend, frontend, prodlike, e2e when applicable, docs)
@@ -47,9 +61,11 @@ Built autonomously (docs/AI_AGENT_PLAYBOOK.md); merged by the agent once the mer
 - [ ] Tenant test table applied where relevant (docs/ENGINEERING_PRACTICES.md §7)
 - [ ] Tier 1–2 user-reachable behaviour: journey run on the stack, transcript above
 - [ ] Explanation written by a fresh session: docs/explanations/<ticket>.md; reference check passes
+- [ ] Nothing after the explanation changes what it describes (only bookkeeping since its commit)
 - [ ] No protected gate loosened
 - [ ] Ticket index status `done`; inbox updated with any decisions to audit
 - [ ] `.env.example` updated, with secrets marked (if settings changed); OpenAPI types regenerated (if the API changed)
 
-### Follow-ups
-<!-- Out-of-scope improvements, unfixed Medium/Low findings. -->
+### Follow-ups and accepted risks
+<!-- Out-of-scope improvements, unfixed Medium/Low findings, risks accepted on purpose. The explanation
+     carries them into the repo; one that needs action also goes to its ticket, the index or the inbox. -->

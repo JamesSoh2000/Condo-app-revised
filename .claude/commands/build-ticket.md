@@ -25,21 +25,29 @@ that get file paths and the ticket ID, never this conversation.
    - Tier 1 also: run the Codex review with the `codex-review` skill (use gpt-6-astra-high). If Codex isn't
      available, spawn a second fresh subagent that runs only the Tier 1 security pass.
    - For each finding: reproduce it with a failing test, then fix it; or dismiss it with a reason. Record
-     both in the PR's "Independent review" section. Push, wait for CI.
+     both in the PR's "Independent review" section: the commit reviewed, and for each fix the concrete
+     failure and the evidence (the failing-then-passing test). A fix that chose between approaches also
+     gets a block in "Decisions and alternatives". Push, wait for CI.
    - Repeat with **new** subagents until every required reviewer says `VERDICT: MERGE`, at most 3 rounds.
      An open Critical/High after round 3 is stop rule 4.
-5. **Explain** (step 6). Spawn a fresh subagent with: "Run `.claude/commands/explain-ticket.md` for
-   $ARGUMENTS in worktree `<path>`." If it reports a mismatch between the code and the PR's plan or
-   decisions, treat it as a review finding: fix, and run one more review round.
+5. **Explain** (step 6). Rebase onto `origin/main` first if `main` has moved, so the source revision the
+   explanation records is normally the one that merges. Spawn a fresh subagent with: "Run
+   `.claude/commands/explain-ticket.md` for $ARGUMENTS in worktree `<path>`." If it reports a mismatch
+   between the code and the PR's plan or decisions, treat it as a review finding: fix, run one more review
+   round, then have a fresh explainer update the explanation. If it reports a decision without recorded
+   rationale, add the rationale to the PR (only what you actually know) and have a fresh explainer update
+   that part.
 6. **Bookkeeping commit** on the branch: the ticket's status `done` in `docs/tickets/README.md`; autonomous
    lasting decisions added to the inbox's "Decisions to audit"; confirmed findings added to
-   `docs/AGENT_MISTAKES_LOG.md`. Rebase onto `origin/main`, push, wait for CI.
+   `docs/AGENT_MISTAKES_LOG.md`; follow-ups that need action added to their ticket, the index or the inbox.
+   Rebase onto `origin/main`, push, wait for CI.
 7. **Merge gate.** Tick every box in the PR's "Merge gate" from real evidence. If one fails, fix it or block.
    Then `gh pr merge --squash --delete-branch`, and remove the worktree.
 8. **Improve.** If a mistake pattern now appears twice in the log, note it as the first follow-up for the
    next ticket (fitness test or `CLAUDE.md` lesson). If this was the last ticket of its phase, run
    `/milestone-recap <phase>` (the automated phase gate).
-9. Print the handoff block.
+9. Print the handoff block, with the merge commit (`gh pr view <N> --json mergeCommit`), and post it on
+   the PR.
 
 **To block** (any step): stop work on the branch and leave it pushed. Open a bookkeeping PR from
 `origin/main` that sets $ARGUMENTS to `blocked` in the index and adds an inbox item (what's needed, the

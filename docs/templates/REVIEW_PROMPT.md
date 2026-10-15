@@ -47,8 +47,9 @@ Check, in this order:
 10. Protected gates (docs/AI_AGENT_PLAYBOOK.md#protected-gates): did the diff loosen CI, lint/type
     config, fitness tests, existing tests, skip markers, CLAUDE.md rules or check scripts? Any
     loosening is Critical.
-11. Plan and decisions: does the code match the PR's plan and "Decisions" table? Is any decision
-    taken silently that the decision rules say needs an ADR or a stop?
+11. Plan and decisions: does the code match the PR's plan and "Decisions and alternatives"? Is any decision
+    taken silently that the decision rules say needs an ADR or a stop? Does each consequential
+    decision record its problem, the alternatives considered, the tradeoffs and its basis?
 
 Output format:
 - Findings ordered by severity (Critical / High / Medium / Low). For each: file:line, the

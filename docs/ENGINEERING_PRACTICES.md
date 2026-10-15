@@ -9,8 +9,8 @@ enforced by tooling (CI, branch protection, fitness tests) and by independent re
 - `main` is always releasable. CI builds and smoke-tests the production image on every PR and merge (P1-08).
   From milestone D, a merge to `main` also deploys to staging.
 - **Short-lived branches** last at most 2–3 days. Branch from `main` and **rebase onto the latest `main`
-  before merging**. This is required, not just tidy: it makes the squashed tree identical to the PR head, which
-  is what the ticket's explanation describes.
+  before merging**. This is required, not just tidy: CI and the review then ran against the code that
+  merges. The explanation describes the PR at its recorded source revision, not the merged tree.
 - **Delete the long-lived `develop` and `staging` branches** (P0-04). Environments are deployments, not branches.
 - **Branch name:** the ticket ID in lowercase plus a short slug, for example `p2-03-tenant-context` or
   `p5-02a-package-create`. Ticket IDs stay uppercase everywhere else (`P2-03`, file names, commit tags). Put
@@ -43,7 +43,7 @@ make small WIP commits; the squash cleans them up.
 | Independent review by a fresh session returns `MERGE`; Tier 1 also needs Codex or a second reviewer ([05 §Step 5](./AI_AGENT_PLAYBOOK.md#step-5--independent-review-fresh-session-the-merge-paths-only-judge)) | No human reviews after it, so the reviewer must not share the author's context |
 | Tier 1–2 user-reachable behaviour: the journey is run on the stack and the transcript is in the PR | Auth and tenancy bugs hide in paths tests don't cover |
 | No protected gate loosened ([05](./AI_AGENT_PLAYBOOK.md#protected-gates)) | The agent merges its own work, so it must not edit the checks that judge it |
-| Branch rebased onto the latest `main` before merge | The squashed tree equals the PR head, so the explanation stays accurate |
+| Branch rebased onto the latest `main` before merge | CI and the review ran on what merges; the merge gate checks that nothing after the explanation changed what it describes |
 
 **Branch protection on `main`:**
 - PR required, with **no required approval** (the agent merges its own PRs once the merge gate passes;
@@ -76,8 +76,9 @@ make small WIP commits; the squash cleans them up.
       width.
 - [ ] Logs carry no secrets or personal data beyond IDs.
 - [ ] The independent review's final round is `MERGE`, with no open Critical or High finding.
-- [ ] The explanation is written by a fresh session (full form for Tier 1–2, short form for Tier 3): the
-      decisions, how it is implemented, the code, the review log and what was not verified.
+- [ ] The explanation is written by a fresh session (full form for Tier 1–2, short form by default for
+      Tier 3): the decisions with their recorded rationale, how it is implemented, the code, the review log
+      and what was not verified. It names the PR and the source revision it describes.
       `scripts/check-explanation-refs.py` passes for it.
 - [ ] The ticket index status is `done`, and autonomous decisions are listed in
       [HUMAN_INBOX.md](./HUMAN_INBOX.md).

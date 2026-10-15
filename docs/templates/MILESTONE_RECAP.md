@@ -9,6 +9,11 @@ The phase's exit gate from the [roadmap](../ROADMAP.md), one line per item: pass
 (CI run, command output, Playwright report). If any item failed: the fix tickets created, and the next phase
 does not start until they merge.
 
+**Tickets merged**
+
+| Ticket | PR | Merge commit | Explanation |
+|---|---|---|---|
+
 ## 1. What now works (demo script)
 
 Steps someone can follow to see the phase's journey working: on the local prod-like stack (`make prodlike`)

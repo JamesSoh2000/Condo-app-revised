@@ -52,5 +52,6 @@ Questions the explanation answers in its §9 (also used by `/quiz-me`).
 
 - Criteria added or sharpened:
 - Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
+  also the alternatives considered and why they lost):
 - Split:
