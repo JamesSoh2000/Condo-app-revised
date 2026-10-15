@@ -8,6 +8,8 @@
 #   new Python (3.14 → 3.15) is a *minor* bump to Dependabot, so minor bumps are ignored too.
 # - Postgres: the CI service in .github/workflows/ci.yml isn't updated by Dependabot, and a new major
 #   needs a new data volume.
+# - uv (the Dockerfile's uv image): moves with setup-uv's `version` in ci.yml, which Dependabot doesn't
+#   update.
 # - Tailwind 4 and framer-motion 12+: kept back by James (inbox PRE-7, 2026-10-15).
 version: 2
 updates:
@@ -52,6 +54,9 @@ updates:
     ignore:
       - dependency-name: python
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # The uv image must move with setup-uv's `version` in ci.yml, which Dependabot doesn't update; a lone
+      # bump fails scripts/check-version-pins.py (P0-07). Bump both in a ticket.
+      - dependency-name: ghcr.io/astral-sh/uv
 
   - package-ecosystem: docker-compose
     directory: /

@@ -13,13 +13,17 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
+      # The image's venv is in /opt/venv, outside this mount, so a rebuilt image always brings its own
+      # packages. The host's backend/.venv shows up as /app/.venv but nothing in the container uses it.
       - ./backend:/app
-      - /app/.venv
+    # --reload-dir: watch the app's code only. /app also shows the host's backend/.venv (its symlinks point
+    # outside the container), tests and migrations, none of which should restart the server (P0-07).
     command: >
       uvicorn app.main:app
       --host 0.0.0.0
       --port 8000
       --reload
+      --reload-dir app
     depends_on:
       db:
         condition: service_healthy
