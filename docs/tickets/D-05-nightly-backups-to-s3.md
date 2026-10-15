@@ -31,7 +31,7 @@ have never restored is not a backup", so the restore test runs on a schedule, no
       `scripts/backup.sh` against the staging `db` container. It uploads to the backups bucket from D-01,
       using the instance role, with no endpoint override.
     - `condo-restore-test.service` + `.timer` (weekly) download the newest dump from S3 and run the P7-01
-      `scripts/restore-test.sh` in a throwaway `postgres:16` container on the host. It prints
+      `scripts/restore-test.sh` in a throwaway `postgres:18` container on the host. It prints
       `alembic current` and the key row counts.
   - **Retention:** 14 dailies ([ADR-0009](../adr/0009-backups-staged.md)), enforced by the bucket lifecycle
     from D-01 or by the script. Say which in the runbook.

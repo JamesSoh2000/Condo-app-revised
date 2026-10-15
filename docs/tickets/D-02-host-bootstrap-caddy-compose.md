@@ -40,7 +40,7 @@ compose layout already run locally (P1-08), so this ticket is about the host, no
       - healthcheck on `/api/ready`, `restart: unless-stopped`
       - the image's gunicorn command from P1-08, with `FORWARDED_ALLOW_IPS=127.0.0.1` (host Caddy)
     - `db`:
-      - `postgres:16.x` (pinned minor), bind mount `/srv/app/pgdata`
+      - `postgres:18.x` (pinned minor), bind mount `/srv/app/pgdata`
       - **no published ports**
       - healthcheck `pg_isready`, `restart: unless-stopped`
       - password from `.env`

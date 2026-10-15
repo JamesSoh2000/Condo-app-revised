@@ -75,7 +75,7 @@ if it didn't.
 
 ## Conventions
 
-- Python 3.12, full type hints, ruff + mypy clean. Pydantic `XCreate`/`XOut` schemas with `max_length` on
+- Python 3.14, full type hints, ruff + mypy clean. Pydantic `XCreate`/`XOut` schemas with `max_length` on
   strings. Never return ORM objects.
 - Reuse: `app/models/base.py` (Base, naming convention), `app/models/mixins.py` (uuid7 PK, timestamps),
   `app/models/types.py` (`database_enum`), `app/core/dependencies.py` (`get_db_session`).

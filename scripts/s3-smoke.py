@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.12"
+# requires-python = ">=3.14"
 # dependencies = ["boto3>=1.35", "httpx>=0.28"]
 # ///
 """Smoke test for the local S3 emulator (P0-04a AC2, ADR-0007).

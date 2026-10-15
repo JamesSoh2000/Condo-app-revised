@@ -14,10 +14,11 @@ jobs:
     name: Backend tests
     runs-on: ubuntu-24.04
 
-    # Real Postgres, as in docker-compose.yml. The test suite creates condo_test itself.
+    # Real Postgres, the same major as docker-compose.yml (Dependabot doesn't update this block; bump both
+    # together). The test suite creates condo_test itself.
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_DB: condo_dev
           POSTGRES_USER: postgres
@@ -44,19 +45,19 @@ jobs:
       # Downloads the repository onto the GitHub-hosted runner.
       # Without this step, the runner has no project files to test.
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Installs the same Python version pinned by the project.
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.12.13"
+          python-version: "3.14.8"
 
       # Installs uv and enables uv's dependency cache.
       # The cache uses backend/pyproject.toml and backend/uv.lock so dependency
       # installs are faster when the backend dependency graph has not changed.
       - name: Set up uv
-        uses: astral-sh/setup-uv@v8.3.2
+        uses: astral-sh/setup-uv@v10.3.0
         with:
           version: "0.11.17"
           enable-cache: true
@@ -112,12 +113,12 @@ jobs:
     steps:
       # Downloads the repository onto the GitHub-hosted runner.
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Installs the same Node.js version pinned by the project.
       # The npm cache uses frontend/package-lock.json as the dependency key.
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24.16.0"
           cache: npm
@@ -157,14 +158,19 @@ jobs:
     steps:
       # Full history so the explanation check can diff this branch against the base branch.
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.12.13"
+          python-version: "3.14.8"
+
+      # The Python and Postgres pins agree across .python-version, the Dockerfile, pyproject, compose and
+      # this file (Dependabot updates some of them and not others).
+      - name: Check version pins
+        run: python3 scripts/check-version-pins.py
 
       # Every relative markdown link (outside docs/archive/) must resolve, including #anchors.
       - name: Check markdown links

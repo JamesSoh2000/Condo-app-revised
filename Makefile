@@ -17,8 +17,10 @@ FRONTEND := cd frontend &&
 help: ## List the targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
+# --renew-anon-volumes: the app's /app/.venv volume is a copy of the image's venv. Without it, a recreated
+# container keeps the old copy (stale packages after a uv.lock change; after a Python bump, no packages at all).
 up: ## Start api, db, mailpit and the S3 emulator; waits until all are healthy
-	$(COMPOSE) up -d --build --wait --remove-orphans
+	$(COMPOSE) up -d --build --wait --remove-orphans --renew-anon-volumes
 
 down: ## Stop the stack (the database volume is kept)
 	$(COMPOSE) down
@@ -66,6 +68,7 @@ typecheck: ## mypy and tsc
 check: lint typecheck test ## Everything CI checks, plus alembic check (needs `make up`)
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) uv run alembic check
 	bash scripts/base44-count.sh
+	python3 scripts/check-version-pins.py
 	$(FRONTEND) npm run build
 
 gen-api: ## Regenerate the frontend API types (stub until P1-07)
@@ -75,7 +78,7 @@ e2e: ## Playwright journeys (stub until P4-09; fails so a stub never counts as a
 	@echo "make e2e: no Playwright suite yet; P4-09 adds it"; exit 1
 
 s3-smoke: ## Check that the S3 emulator enforces the upload policy, versioning and CORS (needs `make up`)
-	uv run --python 3.12 scripts/s3-smoke.py
+	uv run --python 3.14 scripts/s3-smoke.py
 
 psql: ## psql shell on the dev database
 	$(COMPOSE) exec db psql -U postgres -d condo_dev

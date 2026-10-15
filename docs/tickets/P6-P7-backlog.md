@@ -78,7 +78,7 @@ interfaces and the decisions to make while framing.
 ### P7-01 — Backup and restore scripts with an automated restore test · Lane A · Tier 1
 - `scripts/backup.sh`: `pg_dump -Fc` from the compose `db`, uploaded to a backups bucket in the S3 emulator
   (the endpoint and bucket come from settings, so D-05 only changes configuration)
-- `scripts/restore-test.sh`: restore the newest dump into a throwaway `postgres:16` container, check
+- `scripts/restore-test.sh`: restore the newest dump into a throwaway `postgres:18` container, check
   `alembic current` and the row counts of key tables, report
 - CI runs backup + restore test on a weekly schedule (and on `workflow_dispatch`) against a seeded stack; a
   failure is visible on the Actions tab

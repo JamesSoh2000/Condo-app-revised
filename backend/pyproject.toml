@@ -3,16 +3,16 @@ name = "condo-management-api"
 version = "0.1.0"
 description = "FastAPI backend for the condo management app."
 readme = "../README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "fastapi>=0.115.0",
     "pydantic-settings>=2.7.0",
     "uvicorn[standard]>=0.34.0",
     "gunicorn",
-    "SQLAlchemy>=2.0.30,<3.0.0",
+    # The asyncio extra brings greenlet, which SQLAlchemy 2.1 no longer installs by default.
+    "SQLAlchemy[asyncio]>=2.1.0,<3.0.0",
     "asyncpg>=0.29.0,<1.0.0",
     "alembic>=1.13.0,<2.0.0",
-    "uuid6>=2025.0.1",
 ]
 
 [dependency-groups]
@@ -26,7 +26,7 @@ dev = [
 ]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 100
 # Merged migrations are never edited (CLAUDE.md rule 11), so the pre-ruff baseline is excluded by name.
 # New migrations are linted and format-checked.
@@ -39,7 +39,7 @@ select = ["E", "F", "I", "B", "UP", "S", "ASYNC", "SIM", "RUF"]
 "tests/**" = ["S101"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 strict = true
 plugins = ["pydantic.mypy"]
 
