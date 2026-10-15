@@ -35,7 +35,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P0-02](./P0-02-backend-quality-gates.md) | Backend quality gates | A | 3 | P0-01 | done | — |
 | [P0-03](./P0-03-frontend-quality-gates.md) | Frontend quality gates | B | 3 | P0-01 | todo | — |
 | [P0-04](./P0-04-repo-workflow-and-local-stack.md) | Repo workflow and local stack | B | 2 | P0-02, P0-03 | todo | — |
-| [P0-05](./P0-05-database-test-infrastructure.md) | Database test infrastructure | A | 2 | P0-02 | todo | — |
+| [P0-05](./P0-05-database-test-infrastructure.md) | Database test infrastructure | A | 2 | P0-02 | blocked | — |
 | [P1-01](./P1-01-buildings-features-units-schema.md) | Buildings, features and units schema | A | 2 | P0-05 | todo | — |
 | [P1-02](./P1-02-users-memberships-roles-schema.md) | Users, memberships and roles schema | A | 1 | P1-01 | todo | — |
 | [P1-03](./P1-03-unit-occupancies-schema.md) | Unit occupancies schema | A | 1 | P1-02 | todo | — |
