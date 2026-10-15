@@ -9,6 +9,11 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.core.config import settings
 from app.models.base import Base
 
+# Autogenerate only sees tables whose model modules are imported. When a feature module defines a
+# real table (P1-01 onwards), import it here (e.g. `import app.buildings.models`), with a noqa for
+# F401 since the import is only for its side effect. The P0 stubs have no table yet and can't be
+# imported: they raise "does not have a __table__ or __tablename__".
+
 config = context.config
 
 if config.config_file_name is not None:
