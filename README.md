@@ -8,16 +8,22 @@ The app is organized as a small monorepo:
 .
 ├── backend/   # FastAPI starter backend
 ├── frontend/  # Current Base44-exported frontend V1
-└── docs/      # Product, architecture, tickets, and AI-agent context
+├── docs/      # Plan: scope, architecture, ADRs, tickets, process (start at docs/README.md)
+├── scripts/   # Repo tooling (docs checks)
+├── CLAUDE.md  # Agent context: layout, commands, non-negotiable rules
+└── .claude/   # Claude Code slash commands for the ticket loop
 ```
 
 ## Current State
 
+- The project follows the plan adopted on 2026-10-13: [docs/README.md](docs/README.md) is the single source of
+  truth, and work is in phase P0 (quality gates and workflow) of the [roadmap](docs/ROADMAP.md).
 - `frontend/` contains the current frontend export from Base44.
-- `backend/` is intentionally minimal: FastAPI app startup, JSON request logging, and health/version endpoints.
-- Database, auth, Alembic, Docker, deployment, S3, notifications, and feature modules will be added through the milestone tickets instead of living in the repo as half-built scaffolding.
-- `docs/AI_PROJECT_CONTEXT.md` is the standard context file to attach to AI coding sessions.
-- `docs/AI_AGENT_WORKFLOW.md` explains how two developers should work with AI agents on this project.
+- `backend/` is a FastAPI app with JSON request logging, health/readiness/version endpoints, SQLAlchemy model
+  bases and an empty Alembic baseline. Domain modules are added through the [tickets](docs/tickets/README.md).
+- [`CLAUDE.md`](CLAUDE.md) is the agent context, loaded automatically by Claude Code; Codex reads
+  [`AGENTS.md`](AGENTS.md).
+- The pre-2026-10-13 docs are archived in [docs/archive/2026-10-legacy/](docs/archive/2026-10-legacy/README.md).
 
 ## Important Terms
 
@@ -89,7 +95,8 @@ Notes:
 
 - The frontend still imports Base44 SDK code.
 - The frontend still contains legacy `board` naming from the export.
-- Frontend migration work should happen through tickets in `docs/MILESTONES_AND_TICKETS.md`.
+- Frontend migration work happens through tickets in [docs/tickets/](docs/tickets/README.md)
+  ([ADR-0011](docs/adr/0011-frontend-strangler-typescript.md)).
 
 ## Backend
 
@@ -118,19 +125,31 @@ uv run pytest
 
 ## Docs
 
-- `docs/backend_requirements.md`: backend/product requirements.
-- `docs/BACKEND_INFRA.md`: target backend and infrastructure guide.
-- `docs/MILESTONES_AND_TICKETS.md`: canonical milestone and ticket breakdown.
-- `docs/AI_PROJECT_CONTEXT.md`: attach this to AI coding sessions.
-- `docs/AI_AGENT_WORKFLOW.md`: team workflow for two developers using agentic AI coding.
+Start at [docs/README.md](docs/README.md) (reading order). The main documents:
+
+- [PRODUCT_SCOPE.md](docs/PRODUCT_SCOPE.md): what the demo does, what waits for the pilot, product defaults.
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) and [adr/](docs/adr/README.md): how the system fits together, and why.
+- [ROADMAP.md](docs/ROADMAP.md) and [tickets/](docs/tickets/README.md): phases, gates and the tickets.
+- [ENGINEERING_PRACTICES.md](docs/ENGINEERING_PRACTICES.md): git, PRs, Definition of Done, testing, CI.
+- [AI_AGENT_PLAYBOOK.md](docs/AI_AGENT_PLAYBOOK.md): the autonomous frame → build → review → explain → merge loop.
+- [HUMAN_INBOX.md](docs/HUMAN_INBOX.md): what the agents need from you, and what they decided without you.
+
+Check docs links locally with `python3 scripts/check-links.py` (CI runs it in the `docs` job).
 
 ## Development Workflow
 
-1. Pick a ticket from `docs/MILESTONES_AND_TICKETS.md`.
-2. Attach `docs/AI_PROJECT_CONTEXT.md` to the AI coding session.
-3. Follow `docs/AI_AGENT_WORKFLOW.md` for prompt shape, branch naming, PR checklist, and handoff format.
-4. Keep each PR scoped to one ticket.
-5. Add database, auth, Docker, and infra only when the relevant ticket calls for it.
+AI agents build, review and merge tickets on their own
+([docs/AI_AGENT_PLAYBOOK.md](docs/AI_AGENT_PLAYBOOK.md), [ADR-0014](docs/adr/0014-autonomous-agent-workflow.md)).
+In short, with Claude Code:
+
+1. `/build-next` (or `/loop /build-next` to keep going): picks the next ready ticket and runs `/build-ticket`,
+   which frames it, implements it test-first on branch `<id>-<slug>`, gets a fresh-session review (plus
+   Codex on Tier 1), writes the explanation in `docs/explanations/`, and squash-merges when every gate passes.
+2. You check [docs/HUMAN_INBOX.md](docs/HUMAN_INBOX.md) for blocked items and decisions to audit, and read
+   the explanations to learn (`/quiz-me P0-02` if you want to test yourself).
+
+`CLAUDE.md` holds the rules every session follows; [`.claude/README.md`](.claude/README.md) lists all the
+commands.
 
 ## Running Alembic migration
 From the project root:

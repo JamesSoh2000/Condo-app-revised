@@ -1,0 +1,37 @@
+---
+description: Steps 2–4 — write the plan, then implement one ticket test-first with evidence (no approval stop)
+argument-hint: <ticket-id, e.g. P2-03>
+---
+
+Implement ticket $ARGUMENTS following CLAUDE.md. Don't wait for approval; the plan is written down so the
+reviewer and the explainer can check the code against it.
+
+**Plan (step 2):**
+1. Read `docs/tickets/$ARGUMENTS-*.md` (including the Frame notes), its linked ADRs, and the current code.
+   The code is the truth; the docs are targets.
+2. Write the plan into the PR description's "Plan" section: files to change, interfaces (endpoints, schemas,
+   tables), the migration, each acceptance criterion mapped to a test, risks. Put every decision in
+   "Decisions and alternatives" with its basis (ticket / ADR / default / autonomous). Lasting autonomous
+   decisions: write the ADR now (`Deciders: agent (autonomous) in $ARGUMENTS`).
+3. If the estimate is over ~400 non-test lines, go back and split the ticket instead.
+
+**Implement (step 3):**
+1. Work in the ticket's worktree on branch `<ticket-id in lowercase>-<slug>`, for example
+   `p2-03-tenant-context`.
+2. Tests first: write the failing tests for the acceptance criteria and show them failing.
+3. Implement the smallest change that makes them pass. Small commits, Conventional Commit messages ending
+   with `[$ARGUMENTS]`.
+4. If the API changed: `make gen-api`. If models changed: `make revision`, then read and fix the migration.
+5. Never loosen a protected gate (playbook "Protected gates"). If that seems the only way to green, it is a
+   stop rule.
+
+**Verify (step 4):**
+1. Run `make check`. Fix everything at its cause.
+2. Tier 1–2 with user-reachable behaviour: run the journey on `make up` or `make prodlike` and paste the
+   transcript (curl sequence or Playwright output) into the PR's evidence table.
+3. Rebase onto the latest `main` (`git fetch && git rebase origin/main`) and run `make check` again.
+4. Fill in the rest of `.github/pull_request_template.md` (`docs/templates/PULL_REQUEST.md` until P0-04)
+   with real evidence. Write "Decisions and alternatives" for a reader who wasn't in this conversation: the
+   explainer gets the "why" only from there.
+5. Open or update the PR and wait for CI. An unrelated failure gets two retries, then its own fix PR, or a
+   block if it is external.

@@ -110,3 +110,28 @@ jobs:
             echo "M1-T03 recorded 68 unused-import errors from the exported frontend."
             echo "Keep this non-blocking until the lint cleanup ticket is completed."
           } >> "$GITHUB_STEP_SUMMARY"
+  docs:
+    name: Docs links and explanation references
+    runs-on: ubuntu-24.04
+
+    steps:
+      # Full history so the explanation check can diff this branch against the base branch.
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.13"
+
+      # Every relative markdown link (outside docs/archive/) must resolve, including #anchors.
+      - name: Check markdown links
+        run: python3 scripts/check-links.py
+
+      # Only explanation files added or changed by this branch are checked; older ones are snapshots.
+      - name: Check explanation code references
+        env:
+          BASE_REF: origin/${{ github.base_ref || 'main' }}
+        run: python3 scripts/check-explanation-refs.py
