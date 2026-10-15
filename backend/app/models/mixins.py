@@ -1,12 +1,8 @@
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid7
 
 from sqlalchemy import DateTime, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
-
-# The standard library has uuid7 only from Python 3.14; this project is on 3.12, so it
-# comes from the uuid6 package.
-from uuid6 import uuid7
 
 
 class UUIDPrimaryKeyMixin:

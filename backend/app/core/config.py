@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     readiness_check_database: bool = False
 
     @model_validator(mode="after")
-    def validate_production_settings(self) -> "Settings":
+    def validate_production_settings(self) -> Settings:
         """
         Keep local development easy, but prevent obvious unsafe production config.
         """

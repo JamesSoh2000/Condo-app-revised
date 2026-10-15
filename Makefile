@@ -66,6 +66,7 @@ typecheck: ## mypy and tsc
 check: lint typecheck test ## Everything CI checks, plus alembic check (needs `make up`)
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) uv run alembic check
 	bash scripts/base44-count.sh
+	python3 scripts/check-version-pins.py
 	$(FRONTEND) npm run build
 
 gen-api: ## Regenerate the frontend API types (stub until P1-07)
@@ -75,7 +76,7 @@ e2e: ## Playwright journeys (stub until P4-09; fails so a stub never counts as a
 	@echo "make e2e: no Playwright suite yet; P4-09 adds it"; exit 1
 
 s3-smoke: ## Check that the S3 emulator enforces the upload policy, versioning and CORS (needs `make up`)
-	uv run --python 3.12 scripts/s3-smoke.py
+	uv run --python 3.14 scripts/s3-smoke.py
 
 psql: ## psql shell on the dev database
 	$(COMPOSE) exec db psql -U postgres -d condo_dev
