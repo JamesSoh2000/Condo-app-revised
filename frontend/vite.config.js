@@ -5,6 +5,17 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   logLevel: 'error', // Suppress warnings, only show errors
+  server: {
+    // Same-origin API in development (ADR-0003): the browser calls /api on the Vite origin and Vite
+    // forwards it to FastAPI, so there is no CORS. changeOrigin stays false, like the production proxy.
+    // Note: the Base44 plugin adds its own /api proxy if VITE_BASE44_APP_BASE_URL is set; leave that unset.
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
+        changeOrigin: false,
+      },
+    },
+  },
   plugins: [
     base44({
       // Support for legacy code that imports the base44 SDK with @/integrations, @/entities, etc.
