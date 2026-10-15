@@ -149,6 +149,12 @@ the inbox, so all three land atomically. The agent merges only when **all** of t
 
 Then: `gh pr merge <N> --squash --delete-branch`, remove the worktree, and return to step 0.
 
+GitHub enforces most of this: `main` is protected (P0-04b). A PR is required, the three CI jobs must be
+green and the branch up to date, history is linear, and the rules apply to admins. Never use
+`gh pr merge --admin` or change the protection to get a merge through; that is loosening a protected gate.
+The required checks are matched by the CI jobs' `name:`: renaming a job, or adding a job that must block
+merges (P1-08 `prodlike`, P4-09 `e2e`), needs the protection's check list updated in the same PR.
+
 **Bookkeeping PRs** only touch `docs/tickets/README.md`, `docs/HUMAN_INBOX.md` or
 `docs/AGENT_MISTAKES_LOG.md` (blocking a ticket, logging). They need green CI only: no review, no explanation.
 
