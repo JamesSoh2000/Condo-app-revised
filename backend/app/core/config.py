@@ -5,7 +5,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-AppEnv = Literal["dev", "prod"]
+AppEnv = Literal["dev", "test", "prod"]
 
 
 class Settings(BaseSettings):

@@ -30,3 +30,13 @@ def test_prod_rejects_localhost_allowed_origins():
             s3_bucket_name="condo-app-prod-files",
             ses_from_email="noreply@example.org",
         )
+
+
+def test_test_app_env_is_accepted(monkeypatch):
+    # CI runs with APP_ENV=test (.github/workflows/ci.yml).
+    monkeypatch.setenv("APP_ENV", "test")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.app_env == "test"
+    assert settings.is_production is False
