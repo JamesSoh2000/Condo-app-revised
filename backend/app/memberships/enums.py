@@ -21,3 +21,11 @@ class Role(StrEnum):
 
 
 STAFF_ROLES: frozenset[Role] = frozenset({Role.SECURITY, Role.PROPERTY_MANAGEMENT, Role.COUNCIL})
+
+
+class OccupancyRelationship(StrEnum):
+    """How an occupant relates to a unit (`unit_occupancies.relationship`, ADR-0010)."""
+
+    OWNER = "owner"
+    TENANT = "tenant"
+    HOUSEHOLD = "household"
