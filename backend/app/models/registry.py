@@ -5,6 +5,8 @@ autogenerate. `tests/test_schema_buildings_units.py` fails if an `app/**/models.
 """
 
 import app.buildings.models
+import app.memberships.models
 import app.units.models
+import app.users.models
 
 __all__ = ["app"]

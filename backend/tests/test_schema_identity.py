@@ -27,7 +27,7 @@ from tests.conftest import BACKEND_DIR, _recreate_test_schema, assert_safe_test_
 pytestmark = pytest.mark.anyio
 
 TABLES = {"users", "building_memberships", "membership_roles"}
-P1_02_REVISION = "TODO"
+P1_02_REVISION = "2b2e5bcaf6b4"
 P1_02_DOWN_REVISION = "891dd631e5a1"
 
 INSERT_USER = text(
