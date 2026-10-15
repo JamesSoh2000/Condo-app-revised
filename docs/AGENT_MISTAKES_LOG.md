@@ -39,6 +39,12 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | 2026-10-15 | P0-06 | Said Dependabot groups "one PR per ecosystem" with no group for docker/docker-compose; README claimed "uv 0.13 or newer" without testing 0.12 | review rounds 1 and 2 (Claude), Low ×2 | summary written ahead of the config / claim before evidence | groups added; README states only what was run |
 | 2026-10-15 | P0-07 | Removed the `/app/.venv` anonymous volume without checking what else it masked: the reloader then watched the host's `backend/.venv` (restarts on host `uv sync`, ~150 log lines a minute from its dangling symlinks) | review round 1 (Claude), Low | proved the reload that should happen, not the ones that shouldn't. Pattern "fix not tested on adjacent cases", again | `--reload-dir app`; probes for `.venv`, `tests`, `migrations` (0 reloads) and `app/` (1) |
 
+| 2026-10-15 | P1-01 | Validated timezones against `zoneinfo.available_timezones()` as "IANA zones" without looking at what it lists: `localtime` (host-dependent) and `Factory` passed | review round 1 (Claude), Medium | trusted a source's name instead of inspecting its output (same family as P0-04a's health signal) | excluded and tested; non-region names listed on host and image |
+| 2026-10-15 | P1-01 | Saw in my own mutation (M2) that `alembic check` ignores CHECK constraints, but added no test for model/DB check drift | review round 1 (Claude), Low | noted a gap in the evidence without closing it | two `pg_get_constraintdef` drift tests, proven by mutation |
+| 2026-10-15 | P1-01 | PR said model-level `@validates` "catches every write path"; Core/bulk/raw SQL bypass it | review round 1 (Claude), Low | claim ahead of evidence (promoted pattern, again) | wording fixed; follow-up for the buildings service |
+| 2026-10-15 | P1-01 | Round-trip test used `downgrade -1`, which would have broken on P1-02's migration and forced an edit to an existing (protected) test | review round 2 (Claude), Medium | wrote the test for today's repo, not for the next ticket's | pinned revisions; reproduced with a realistic next migration |
+| 2026-10-15 | P1-01 | Registry fitness test only globbed `models.py`; JSONB `config=None` stores JSON `null` past NOT NULL | review rounds 2 and 3 (Claude), Low ×2 | narrow glob; JSONB None semantics not considered | `models/` packages covered (mutation); JSONB null → follow-up |
+
 ## Promoted to rules / tests
 
 | Pattern | Promoted to | Date |

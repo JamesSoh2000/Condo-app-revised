@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P0-05 |
 | Replaces old | M2-T03 (finishes branch `M2-T03_Core-Tenant-Schema_James`), M2-T10 (timezone storage part) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
@@ -76,7 +76,8 @@ Tables `buildings`, `building_features`, `units` as above. Enum `Feature` in `ap
    zone raises `ValueError` before any SQL runs.
 7. `alembic upgrade head`, then `downgrade -1`, then `upgrade head` succeeds, and `alembic check` is clean.
    *(sharpened)* After `downgrade -1` none of the three tables exists; the test suite checks this in code, not
-   only by hand.
+   only by hand, with the revision ids pinned (`891dd631e5a1` → `989e5bd83064`) so later migrations don't
+   change what it tests (review round 2).
 8. *(added)* Two buildings with the same `slug`, or the same non-null `join_code`, give `IntegrityError`; two
    buildings with `join_code` NULL succeed.
 9. *(added, ADR-0005)* `UNIQUE (building_id, id)` works as a composite-FK target: a probe table with
