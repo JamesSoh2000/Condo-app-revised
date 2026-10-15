@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P1-01 |
 | Replaces old | M2-T04, M0-T04 (vocabulary) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
@@ -28,8 +28,8 @@ Roles live on the membership, never on the user.
     - `locale` String(10), default `'en'`
     - `is_active` bool, default true
     - `email_verified_at` timestamptz nullable
-    - Unique **functional index** on `lower(email)`. A Pydantic `EmailStr` in later schemas normalizes the
-      email to lower case on write.
+    - Unique **functional index** on `lower(email)`. The model lower-cases the email on write
+      (`@validates`); Pydantic `EmailStr` lower-cases only the domain (see Frame notes).
   - **`building_memberships`** (`app/memberships/models.py`):
     - `building_id` FK, `user_id` FK
     - `status` via `database_enum(MembershipStatus)`: `pending`, `active`, `denied`, `suspended`,

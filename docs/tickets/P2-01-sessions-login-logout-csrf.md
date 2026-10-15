@@ -113,6 +113,19 @@ Endpoints above. Cookie: `HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `s
 4. Why `SameSite=Lax` rather than `Strict` here?
 5. Why limit `last_seen_at` updates to once every 5 minutes?
 
+## Carried from P1-02 (decide while framing)
+
+From the P1-02 reviews (PR #44). `User` lower-cases `email` with Python's `str.lower()` on ORM writes; the
+database enforces uniqueness on Postgres `lower(email)` (`uq_users_lower_email`). Login (and later P4-02,
+P4-05) must:
+- look users up with `func.lower(User.email) == <normalised input>`, never `User.email == …`: Core
+  `insert()`/`update()` skip the model's lower-casing (L1);
+- use one normalisation on write and on lookup, because Python and Postgres `lower()` disagree on some
+  characters (`İ` → `i̇` in Python, `i` in Postgres under libc `en_US.utf8`; another collation provider would
+  differ again), and send mail only to the stored address, never the typed one (the dotless-i takeover
+  pattern) (L2, L5). Rejecting non-ASCII emails removes both problems;
+- check the length after normalising: lower-casing can lengthen a string past `String(320)` (L4).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
