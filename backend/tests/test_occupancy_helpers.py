@@ -977,3 +977,25 @@ async def test_start_occupancy_sees_the_callers_unflushed_rows(db: AsyncSession,
             relationship=TENANT,
             at=T1,
         )
+
+
+async def test_the_membership_lock_leaves_fk_checks_on_the_membership_unblocked(
+    engine: AsyncEngine, committed: dict[str, UUID]
+):
+    """ADR-0016: NO KEY UPDATE, so rows that reference the membership can still be written."""
+    ids = {"building_id": committed["a"], "membership_id": committed["m"]}
+    async with engine.connect() as c1, engine.connect() as c2:
+        holder = AsyncSessionLocal(bind=c1)
+        await transfer_occupancy(holder, new_unit_id=committed["u102"], relationship=TENANT, **ids)
+
+        # Fails fast instead of hanging if the FK's KEY SHARE lock has to wait for the holder.
+        await c2.execute(text("SET LOCAL lock_timeout = '2s'"))
+        await c2.execute(
+            text(
+                "INSERT INTO membership_roles (building_id, membership_id, role)"
+                " VALUES (:b, :m, 'resident')"
+            ),
+            {"b": committed["a"], "m": committed["m"]},
+        )
+        await c2.rollback()
+        await holder.rollback()
