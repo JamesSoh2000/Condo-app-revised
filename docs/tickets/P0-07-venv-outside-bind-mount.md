@@ -57,7 +57,8 @@ refers to the old path except the files above.
    packages: no venv copy survives the recreation. Shown with a package added only in the new image.
 3. **Given** the app container, **then** `python` and `uvicorn` come from `/opt/venv`, the app has no
    anonymous volume, `/api/health` and `/api/ready` answer 200, and `--reload` still picks up a change to
-   `backend/app/` (the bind mount still works).
+   `backend/app/` (the bind mount still works), while changes elsewhere under `backend/` (the host's
+   `.venv`, `tests/`, `migrations/`) don't restart the server (review round 1, Low 1).
 4. **Given** a machine still running the P0-06 stack (app with the `/app/.venv` volume), **when** it pulls
    this change and runs `make up`, **then** the app is recreated and healthy.
 5. **Given** the production image (`docker build backend`), **then** `docker run` of it serves
