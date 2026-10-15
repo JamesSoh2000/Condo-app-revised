@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P0-03a (same files: `App.jsx`, `Layout.jsx`, lint config) |
 | Replaces old | M0-T02 (hide deferred routes) |
-| Status | in progress |
+| Status | done |
 
 Split from [P0-03](./P0-03-frontend-quality-gates.md) (see there why).
 
@@ -24,6 +24,7 @@ The same-origin proxy removes CORS and makes local development behave like produ
 
 - In:
   - **Vite dev proxy:** `server.proxy['/api'] = { target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000', changeOrigin: false }`.
+    *(As built, PR #7 review round 1: key `'^/api(/|\\?|$)'` so `/apifoo` is not proxied; target read with `loadEnv`, so `frontend/.env*` also works; an empty value falls back to `:8000`.)*
   - **Route scope:**
     - `src/app/routeScope.ts` exports `DEMO_PAGES`, an allowlist of `pages.config.js` keys from
       [PRODUCT_SCOPE.md](../PRODUCT_SCOPE.md#base44-page--scope-map).
