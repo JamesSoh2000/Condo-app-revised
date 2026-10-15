@@ -15,6 +15,11 @@ import { Link } from 'react-router-dom';
 import BuildingUpdatesFeed from '@/components/BuildingUpdatesFeed';
 import PullToRefresh from '@/components/PullToRefresh';
 import { toast } from 'sonner';
+import { isDemoPage, isDemoViewRole } from '@/app/routeScope';
+
+// Renders its children only if `page` is in the demo scope (src/app/routeScope.ts), so the dashboard
+// never links to hidden pages.
+const InScope = ({ page, children }) => (isDemoPage(page) ? children : null);
 
 export default function Dashboard() {
   const { t } = useLanguage();
@@ -154,7 +159,9 @@ export default function Dashboard() {
   const isAdmin = user?.isAdmin || user?.management_role === 'board' || user?.app_role === 'board';
   // Read from URL param first (set by RoleSwitcher for instant updates), then fall back to localStorage
   const urlParams = new URLSearchParams(window.location.search);
-  const activeViewRole = isAdmin ? (urlParams.get('role') || localStorage.getItem('boardActiveViewRole') || 'resident') : null;
+  const requestedViewRole = isAdmin ? (urlParams.get('role') || localStorage.getItem('boardActiveViewRole') || 'resident') : null;
+  // Views outside the demo scope (financials) fall back to the resident view.
+  const activeViewRole = requestedViewRole && !isDemoViewRole(requestedViewRole) ? 'resident' : requestedViewRole;
   
   // Determine effective account type and role based on active view
   const effectiveAccountType = (isAdmin || user?.management_role === 'property_management' || user?.app_role === 'property_management') && activeViewRole
@@ -165,7 +172,7 @@ export default function Dashboard() {
   const canAccessFinancials = isAdmin || rawRole === 'property_management';
   const effectiveRole = (isAdmin && activeViewRole)
     ? activeViewRole
-    : (canAccessFinancials && urlParams.get('role') === 'financials' ? 'financials' : rawRole);
+    : (canAccessFinancials && urlParams.get('role') === 'financials' && isDemoViewRole('financials') ? 'financials' : rawRole);
 
   const accountType = effectiveAccountType;
   const role = effectiveRole;
@@ -244,6 +251,7 @@ export default function Dashboard() {
             </Card>
           </Link>
 
+          <InScope page="gameroom">
           <Link to={createPageUrl('gameroom')}>
             <Card className="group hover:shadow-lg transition-all duration-300 border-zinc-200/60 dark:border-zinc-700 bg-white/50 dark:bg-zinc-800/80 backdrop-blur-sm cursor-pointer">
               <CardContent className="p-6 flex flex-col items-center text-center space-y-4">
@@ -257,7 +265,9 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </Link>
+          </InScope>
 
+           <InScope page="speakeasy">
            <Link to={createPageUrl('speakeasy')}>
             <Card className="group hover:shadow-lg transition-all duration-300 border-zinc-200/60 dark:border-zinc-700 bg-white/50 dark:bg-zinc-800/80 backdrop-blur-sm cursor-pointer">
               <CardContent className="p-6 flex flex-col items-center text-center space-y-4">
@@ -271,6 +281,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </Link>
+           </InScope>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -288,6 +299,7 @@ export default function Dashboard() {
                    </Link>
                </CardContent>
            </Card>
+            <InScope page="SecurityReport">
             <Card className="group hover:shadow-lg hover:shadow-red-500/10 hover:border-red-200/50 dark:hover:border-red-900/50 transition-all duration-300 border-zinc-200/60 dark:border-zinc-700 bg-white/50 dark:bg-zinc-800/80 backdrop-blur-sm">
                <CardContent className="p-6">
                    <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 mb-4 flex items-center gap-2">
@@ -302,10 +314,11 @@ export default function Dashboard() {
                    </Link>
                </CardContent>
            </Card>
+            </InScope>
         </div>
 
-        {/* Board Oversight - only for board members in resident view */}
-        {isAdmin && (
+        {/* Board Oversight - only for board members in resident view (and only if BoardOverview is in scope) */}
+        {isAdmin && isDemoPage('BoardOverview') && (
          <Card className="group hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-200/50 transition-all duration-300 border-zinc-200/60 bg-white/50 backdrop-blur-sm">
            <CardContent className="p-6">
              <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -362,30 +375,38 @@ export default function Dashboard() {
                 Package Log
               </Button>
             </Link>
+            <InScope page="VisitorVerification">
             <Link to={createPageUrl('VisitorVerification')}>
               <Button variant="outline" className="w-full h-24 flex flex-col gap-2 bg-white hover:bg-zinc-50">
                 <UserCheck className="w-6 h-6 text-green-600" />
                 Visitor Verification
               </Button>
             </Link>
+            </InScope>
+            <InScope page="security-reports">
             <Link to={createPageUrl('security-reports')}>
               <Button variant="outline" className="w-full h-24 flex flex-col gap-2 bg-white hover:bg-zinc-50">
                 <ShieldAlert className="w-6 h-6 text-red-600" />
                 Reports
               </Button>
             </Link>
+            </InScope>
+            <InScope page="SecurityGameroom">
             <Link to={createPageUrl('SecurityGameroom')}>
               <Button variant="outline" className="w-full h-24 flex flex-col gap-2 bg-white hover:bg-zinc-50">
                 <Gamepad2 className="w-6 h-6 text-amber-600" />
                 Gameroom
               </Button>
             </Link>
+            </InScope>
+            <InScope page="SecuritySpeakeasy">
             <Link to={createPageUrl('SecuritySpeakeasy')}>
               <Button variant="outline" className="w-full h-24 flex flex-col gap-2 bg-white hover:bg-zinc-50">
                 <Wine className="w-6 h-6 text-purple-600" />
                 Speakeasy
               </Button>
             </Link>
+            </InScope>
           </div>
 
           <Card className="bg-white">
@@ -470,6 +491,7 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               </Link>
+              <InScope page="ManagementSpeakeasy">
               <Link to={createPageUrl('ManagementSpeakeasy')}>
                 <Card className="group hover:shadow-lg transition-all duration-300 border-zinc-200/60 bg-white cursor-pointer h-full">
                   <CardContent className="p-5 flex flex-col items-start gap-3">
@@ -483,6 +505,7 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               </Link>
+              </InScope>
               <Link to={createPageUrl('ManagementNotices')}>
                 <Card className="group hover:shadow-lg transition-all duration-300 border-zinc-200/60 bg-white cursor-pointer h-full">
                   <CardContent className="p-5 flex flex-col items-start gap-3">
@@ -563,7 +586,7 @@ export default function Dashboard() {
   }
 
   // Financials view (board or property_management selecting financials mode)
-  if (role === 'financials') {
+  if (role === 'financials' && isDemoViewRole('financials')) {
     return <Financials key="dashboard-financials" />;
   }
 
@@ -575,9 +598,11 @@ export default function Dashboard() {
             <h2 className="text-3xl font-bold tracking-tight">Board Oversight</h2>
             <div className="p-6 bg-white rounded-xl border border-zinc-200 text-center">
                 <p className="text-zinc-500">Welcome to the Board Dashboard. You have oversight access to all logs and calendars.</p>
+                <InScope page="BoardOverview">
                 <Link to={createPageUrl('BoardOverview')}>
                     <Button className="mt-4">View Operations Overview</Button>
                 </Link>
+                </InScope>
             </div>
             {/* Updates & Alerts on mobile */}
             <div className="lg:hidden">

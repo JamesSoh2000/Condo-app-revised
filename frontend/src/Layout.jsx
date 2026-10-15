@@ -25,6 +25,7 @@ import {
             } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
+import { isDemoPath, isDemoViewRole } from '@/app/routeScope';
 import { useRouteProtection } from '@/components/RouteProtection';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import EmergencyListener from '@/components/EmergencyListener';
@@ -191,7 +192,8 @@ export default function Layout({ children }) {
           const saved = localStorage.getItem('boardActiveViewRole');
           // Property management defaults to their own role, not 'resident'
           const defaultRole = isPropertyMgmt && !currentUser.isAdmin ? 'property_management' : 'resident';
-          setActiveViewRole(saved || defaultRole);
+          // A saved view outside the demo scope (e.g. financials) falls back to the default.
+          setActiveViewRole(saved && isDemoViewRole(saved) ? saved : defaultRole);
         }
       } catch (error) {
         setAuthReady(true);
@@ -520,7 +522,8 @@ export default function Layout({ children }) {
     return items;
   };
 
-  const navItems = getNavItems();
+  // Only demo-scope pages appear in navigation (src/app/routeScope.ts).
+  const navItems = getNavItems().filter((item) => isDemoPath(item.path));
 
   const getBgImage = () => {
     if (location.pathname === '/Dashboard' || location.pathname === '/') return "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6931cd960917c204b2b4808b/4a7987b35_image-02.jpg";
