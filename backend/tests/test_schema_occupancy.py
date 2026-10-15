@@ -1,7 +1,7 @@
 """P1-03: constraints on unit_occupancies, enforced by the database.
 
-Rows are inserted with raw SQL where the point is that the database alone rejects them, and through the
-models elsewhere. Criterion numbers refer to the ticket.
+Rows are inserted with raw SQL where the point is that the database alone rejects them, and through
+the models elsewhere. Criterion numbers refer to the ticket.
 """
 
 import asyncio
@@ -76,7 +76,14 @@ async def _insert(
 ) -> UUID:
     row_id = await db.scalar(
         INSERT_OCCUPANCY,
-        {"b": building_id, "u": unit_id, "m": membership_id, "rel": rel, "start": start, "end": end},
+        {
+            "b": building_id,
+            "u": unit_id,
+            "m": membership_id,
+            "rel": rel,
+            "start": start,
+            "end": end,
+        },
     )
     assert isinstance(row_id, UUID)
     return row_id
