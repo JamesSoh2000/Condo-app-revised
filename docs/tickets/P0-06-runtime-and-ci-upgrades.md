@@ -75,6 +75,10 @@ None. No API, schema or env var changes. Compose's db volume is renamed (`postgr
 9. (new) **Given** the app's UUID primary keys, **then** they are still version-7 UUIDs: with 3.14 they come
    from the standard library (`uuid.uuid7`), and the `uuid6` package is dropped. A test checks the version
    and the ordering.
+10. (new) **Given** a later bump that moves only some pins (Dependabot updates compose but not CI's
+    `services:`, the Dockerfile but not `.python-version`), **then** CI fails:
+    `scripts/check-version-pins.py` (docs job and `make check`) requires one Python patch/minor and one
+    Postgres major everywhere. Shown to fail on purpose (CLAUDE.md lesson).
 
 ## Test plan
 
@@ -85,6 +89,8 @@ None. No API, schema or env var changes. Compose's db volume is renamed (`postgr
 - `docker compose exec db postgres --version`; the old volume is left untouched (AC6).
 - CI run on the PR (AC3, AC7); `gh api` Dependabot config check after merge (AC8).
 - `git grep` for leftover 3.12 / postgres:16 pins (AC1).
+- `scripts/check-version-pins.py` clean, then four mutations (compose Postgres, CI Python patch,
+  Dockerfile minor, ruff target), each must exit 1 (AC10).
 
 ## Likely files
 
@@ -105,7 +111,8 @@ None. No API, schema or env var changes. Compose's db volume is renamed (`postgr
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened: AC6 (the old volume must not be opened by 18), AC9 (stdlib `uuid7`, found
-  while reading `app/models/mixins.py`, whose comment ties `uuid6` to 3.12).
+  while reading `app/models/mixins.py`, whose comment ties `uuid6` to 3.12), AC10 (a check that the pins
+  stay in step: the drift the P0-04b explanation warned about had no gate).
 - Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
   - Python 3.14.8, the newest patch that both `actions/setup-python` and the `python:3.14.8-slim` image
