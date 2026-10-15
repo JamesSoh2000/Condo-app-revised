@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P0-04a, P0-04b, P0-05 |
 | Replaces old | — |
-| Status | in progress |
+| Status | done |
 
 Added after the P0 gate, from James's answer to [HUMAN_INBOX](../HUMAN_INBOX.md) PRE-7 (2026-10-15, in
 session): do the Python, Postgres, GitHub Actions and SQLAlchemy upgrades that Dependabot proposed in

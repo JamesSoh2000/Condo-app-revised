@@ -34,6 +34,10 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 
 | 2026-10-15 | P0-05 | The shared-session `client` design also expired the test's ORM objects after any request (round 3 M1); the first regression test for it passed vacuously (flush-only setup gets expunged, not expired) | implementer, before the fix (mutation of the test against the old fixture) | wrote the reproduction from the finding's summary instead of its exact state | test rewritten to load the object by query and to flush a change; both red on the old fixture |
 
+| 2026-10-15 | P0-06 | Wrote `check-version-pins.py` with double-quote-only patterns and mutated only quoted values, so an unquoted `python-version: 3.14.7` in one CI step passed; Makefile/`s3-smoke.py` pins and the uv pin were not checked | review round 1 (Claude), Low ×3 | mutations chosen to match the regex, not the file's possible spellings. Pattern "fix not tested on adjacent cases", again after its lesson | quote-tolerant patterns, one pin per `setup-*` step, 11 mutations |
+| 2026-10-15 | P0-06 | Proved the Postgres 16 → 18 path on an existing machine but not the app container's: a recreated app kept its 3.12 `/app/.venv` anonymous volume and crashed (`ModuleNotFoundError`) on the first `make up` | review round 2 (Claude), Medium | ran the upgrade only on a stack already rebuilt during development, not from main's state | reproduced in a scratch compose project; `make up --renew-anon-volumes` (follow-up: venv outside `/app`) |
+| 2026-10-15 | P0-06 | Said Dependabot groups "one PR per ecosystem" with no group for docker/docker-compose; README claimed "uv 0.13 or newer" without testing 0.12 | review rounds 1 and 2 (Claude), Low ×2 | summary written ahead of the config / claim before evidence | groups added; README states only what was run |
+
 ## Promoted to rules / tests
 
 | Pattern | Promoted to | Date |
