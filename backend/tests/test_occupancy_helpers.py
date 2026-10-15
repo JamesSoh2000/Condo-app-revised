@@ -34,6 +34,7 @@ from app.memberships import occupancy
 from app.memberships.enums import OccupancyRelationship
 from app.memberships.models import BuildingMembership, UnitOccupancy
 from app.memberships.occupancy import (
+    WINDOW_ALIAS,
     OccupancyTimeError,
     current_occupants,
     end_occupancy,
@@ -859,9 +860,23 @@ async def test_window_clause_works_when_the_outer_query_joins_unit_occupancies(
 # --- review round 2 ------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("alias_outer", [False, True])
+# Outer table: plain; an anonymous alias; and named aliases that look like the names SQLAlchemy
+# gives anonymous aliases. The clause's own alias name is refused (test below); round 3 found it
+# shadowing an outer alias of the same name.
+OUTER_ALIASES = [
+    None,
+    "",
+    "unit_occupancies_1",
+    "unit_occupancies_2",
+    "anon_1",
+    "unit_occupancies",
+    "window_occupancy",
+]
+
+
+@pytest.mark.parametrize("alias_outer", OUTER_ALIASES)
 async def test_window_clause_uses_the_outer_queries_membership_column(
-    db: AsyncSession, turnover: Turnover, alias_outer: bool
+    db: AsyncSession, turnover: Turnover, alias_outer: str | None
 ):
     """Codex H1: a membership column from the outer query must stay an outer reference.
 
@@ -884,7 +899,9 @@ async def test_window_clause_uses_the_outer_queries_membership_column(
             {"unit_id": turnover.s.u101.id, "created_at": T2},  # current's time
         ],
     )
-    occupant = aliased(UnitOccupancy) if alias_outer else UnitOccupancy
+    occupant: Any = (
+        UnitOccupancy if alias_outer is None else aliased(UnitOccupancy, name=alias_outer or None)
+    )
     query = (
         select(records.c.created_at, occupant.membership_id)
         .join(occupant, occupant.unit_id == records.c.unit_id)
@@ -999,3 +1016,33 @@ async def test_the_membership_lock_leaves_fk_checks_on_the_membership_unblocked(
         )
         await c2.rollback()
         await holder.rollback()
+
+
+@pytest.mark.parametrize("argument", ["membership", "unit", "time"])
+@pytest.mark.parametrize("table", ["unit_occupancies", "records"])
+async def test_window_clause_refuses_an_argument_named_like_its_own_alias(
+    db: AsyncSession, turnover: Turnover, argument: str, table: str
+):
+    """Review round 3 (Codex H1): a qualifier equal to the clause's alias is shadowed by it."""
+    source: Any = (
+        aliased(UnitOccupancy, name=WINDOW_ALIAS)
+        if table == "unit_occupancies"
+        else Table(
+            WINDOW_ALIAS,
+            MetaData(),
+            Column("membership_id", Uuid()),
+            Column("unit_id", Uuid()),
+            Column("started_at", DateTime(timezone=True)),
+        )
+    )
+    columns = source if table == "unit_occupancies" else source.c
+    membership: Any = columns.membership_id if argument == "membership" else turnover.current.id
+    unit: Any = columns.unit_id if argument == "unit" else records_unit()
+    at: Any = columns.started_at if argument == "time" else literal(T2, DateTime(timezone=True))
+
+    with pytest.raises(ValueError, match=WINDOW_ALIAS):
+        occupancy_window_clause(membership, unit, at)
+
+
+def records_unit() -> Any:
+    return Table("some_records", MetaData(), Column("unit_id", Uuid())).c.unit_id
