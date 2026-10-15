@@ -61,7 +61,9 @@ async def _create_probe_item(session: AsyncSession, item_id: int, name: str) -> 
 async def test_service_rollback_after_an_error_keeps_the_test_transaction(
     db: AsyncSession, engine: AsyncEngine
 ):
-    await db.execute(text("CREATE TABLE _rollback_probe (id integer PRIMARY KEY, name text UNIQUE)"))
+    await db.execute(
+        text("CREATE TABLE _rollback_probe (id integer PRIMARY KEY, name text UNIQUE)")
+    )
     await db.commit()
 
     assert await _create_probe_item(db, 1, "a") is True

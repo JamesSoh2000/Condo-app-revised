@@ -19,10 +19,13 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from app.core.config import settings
+from app.core.database import AsyncSessionLocal
 from app.core.dependencies import get_db_session
 from app.main import app
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+# asyncpg lets these query parameters override the host/port/database parsed from the URL.
+_CONNECTION_OVERRIDE_PARAMS = frozenset({"database", "dbname", "host", "port", "dsn"})
 
 
 class UnsafeTestDatabaseError(RuntimeError):
@@ -33,6 +36,11 @@ def assert_safe_test_database_url(test_url: str, dev_url: str) -> None:
     """Refuse any test database that isn't clearly a separate, disposable `*_test` database."""
     test_db = make_url(test_url)
     dev_db = make_url(dev_url)
+    overrides = _CONNECTION_OVERRIDE_PARAMS.intersection(test_db.query)
+    if overrides:
+        raise UnsafeTestDatabaseError(
+            f"TEST_DATABASE_URL must not override the connection target via {sorted(overrides)}"
+        )
     if not test_db.database or not test_db.database.endswith("_test"):
         raise UnsafeTestDatabaseError(
             f"TEST_DATABASE_URL database {test_db.database!r} must end in '_test'"
@@ -59,7 +67,13 @@ async def _recreate_test_schema(test_url: str) -> None:
     engine = create_async_engine(url)
     try:
         async with engine.begin() as conn:
-            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            # Belt and braces: check the database the server actually connected us to.
+            connected_to = await conn.scalar(text("SELECT current_database()"))
+            if connected_to != url.database or not str(connected_to).endswith("_test"):
+                raise UnsafeTestDatabaseError(
+                    f"connected to {connected_to!r}, expected {url.database!r}; not dropping"
+                )
+            await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
             await conn.execute(text("CREATE SCHEMA public"))
     finally:
         await engine.dispose()
@@ -100,9 +114,8 @@ async def db(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
     """A session inside a transaction that is always rolled back, even after commit()."""
     async with engine.connect() as conn:
         trans = await conn.begin()
-        session = AsyncSession(
-            bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False
-        )
+        # The app's own session factory, so flush/expire behaviour matches production code.
+        session = AsyncSessionLocal(bind=conn, join_transaction_mode="create_savepoint")
         try:
             yield session
         finally:
