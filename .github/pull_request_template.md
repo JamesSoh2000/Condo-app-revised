@@ -1,4 +1,3 @@
-<!-- Copy to .github/pull_request_template.md in P0-04 -->
 ## <ticket-id>: <title>
 
 Ticket: docs/tickets/<file>.md · Risk tier: 1 / 2 / 3 · Non-test lines changed: <N> (limit ~400)

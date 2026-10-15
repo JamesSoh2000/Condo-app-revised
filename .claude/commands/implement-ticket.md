@@ -30,7 +30,7 @@ reviewer and the explainer can check the code against it.
 2. Tier 1–2 with user-reachable behaviour: run the journey on `make up` or `make prodlike` and paste the
    transcript (curl sequence or Playwright output) into the PR's evidence table.
 3. Rebase onto the latest `main` (`git fetch && git rebase origin/main`) and run `make check` again.
-4. Fill in the rest of `.github/pull_request_template.md` (`docs/templates/PULL_REQUEST.md` until P0-04)
+4. Fill in the rest of `.github/pull_request_template.md`
    with real evidence. Write "Decisions and alternatives" for a reader who wasn't in this conversation: the
    explainer gets the "why" only from there.
 5. Open or update the PR and wait for CI. An unrelated failure gets two retries, then its own fix PR, or a

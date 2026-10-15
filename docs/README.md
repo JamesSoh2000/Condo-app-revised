@@ -25,7 +25,7 @@ history in [archive/2026-10-legacy/](./archive/2026-10-legacy/README.md), along 
 | 9 | [PILOT_READINESS.md](./PILOT_READINESS.md) | What must be true before real residents (later) | skim |
 | — | [adr/](./adr/README.md) | 14 short decision records | as referenced |
 | — | [tickets/](./tickets/README.md) | 40 detailed tickets (P0–P5), 6 for milestone D (D-01…D-06), and stubs (P6–P7) | per ticket |
-| — | [templates/](./templates/) | Ticket, ADR, PR, explanation, review prompt, recap, mistakes log | when writing one |
+| — | [templates/](./templates/) | Ticket, ADR, explanation, review prompt, recap, mistakes log (the PR template is `.github/pull_request_template.md`) | when writing one |
 | — | [`CLAUDE.md`](../CLAUDE.md), [`.claude/commands/`](../.claude/README.md) | Agent context and the loop's slash commands | before your first ticket |
 | — | [explanations/](./explanations/), [recaps/](./recaps/), [AGENT_MISTAKES_LOG.md](./AGENT_MISTAKES_LOG.md) | What the loop leaves behind: one explanation per ticket (decisions, how it works, the code), one recap per phase, the mistakes reviewers caught | as they grow |
 
