@@ -57,7 +57,7 @@ instead of debugging them for the first time on a server.
   - **`compose.prodlike.yml`.** It is a standalone file, not an override, so no dev bind mounts or `--reload`
     leak in. Services:
     - `api`: the locally built image (`condo-api:<sha>`), gunicorn, no source mounts, **no published port**
-    - `db`: `postgres:16.x` (pinned minor) with its own volume, **no published port**
+    - `db`: `postgres:18.x` (pinned minor) with its own volume, **no published port**
     - `mailpit`
     - the S3 emulator
     - `caddy`: pinned `caddy:2.x` image with `deploy/Caddyfile`, `frontend/dist` mounted at

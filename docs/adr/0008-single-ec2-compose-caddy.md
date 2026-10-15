@@ -10,8 +10,8 @@
 ## Context
 
 The owner chose one EC2 instance with host Caddy (TLS, SPA, `/api` proxy), one API container, one worker
-container and PostgreSQL 16 on separate encrypted EBS. The aim is the lowest cost and a deployment the team
-fully understands. The original plan implemented every release-safety and recovery mechanism before the first
+container and PostgreSQL 18 (16 until P0-06) on separate encrypted EBS. The aim is the lowest cost and a
+deployment the team fully understands. The original plan implemented every release-safety and recovery mechanism before the first
 feature.
 
 ## Decision

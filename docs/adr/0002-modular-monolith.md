@@ -11,7 +11,8 @@ notifications and audit.
 
 ## Decision
 
-- **One deployable backend:** Python 3.12, FastAPI, SQLAlchemy 2 async + asyncpg, Alembic, PostgreSQL 16.
+- **One deployable backend:** Python 3.14, FastAPI, SQLAlchemy 2 async + asyncpg, Alembic, PostgreSQL 18
+  (versions updated from 3.12 and 16 in P0-06, 2026-10-15, James's call in the inbox, PRE-7).
 - **A separate worker process** runs from the same codebase and image (`python -m app.worker`).
 - **Code is organised by feature** (`app/packages/`, `app/notices/`, …). Each feature has `models.py`,
   `schemas.py`, `service.py` and `router.py`. Shared kernels live in `core/`, `tenancy/`, `audit/`, `jobs/`,

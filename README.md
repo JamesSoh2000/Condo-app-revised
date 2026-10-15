@@ -29,6 +29,17 @@ cd frontend && npm ci && npm run dev   # http://localhost:5173, /api proxied to 
 Pass the same free port to every target: `make up DB_PORT=55432`, `make migrate DB_PORT=55432`.
 More: [docs/README.md](docs/README.md), [ADR-0007](docs/adr/0007-private-s3-presigned-uploads.md) (the S3 emulator).
 
+### Database upgrades
+
+A new Postgres major can't open an older major's data directory, so a major bump gives compose's `db` a
+new volume, and `make up` starts with an empty database. Run `make migrate` again (dev data is only
+migrations and seed data). The old volume is kept until you remove it. After the 16 → 18 upgrade
+(P0-06):
+
+```bash
+docker volume rm building-website-local_postgres_data   # the Postgres 16 data, no longer used
+```
+
 ## Current State
 
 - The project follows the plan adopted on 2026-10-13: [docs/README.md](docs/README.md) is the single source of
@@ -55,12 +66,12 @@ Both developers should use the same toolchain in WSL2 Ubuntu:
 | Tool | Version | Notes |
 |---|---:|---|
 | WSL distro | Ubuntu 24.04 LTS | Use WSL2. Ubuntu 22.04 is workable only if the versions below match. |
-| Python | 3.12.13 | Backend runtime. Pinned in `.python-version` and `.tool-versions`. |
+| Python | 3.14.8 | Backend runtime. Pinned in `.python-version` and `.tool-versions`. |
 | Node.js | 24.16.0 | Frontend runtime. Pinned in `.nvmrc`, `.node-version`, and `.tool-versions`. |
 | npm | 11.x | Use npm, not yarn/pnpm, because `frontend/package-lock.json` is the lockfile. |
 | Backend framework | FastAPI | Version range lives in `backend/pyproject.toml`. |
 | Frontend framework | React 18 + Vite 6 | Version ranges live in `frontend/package.json`. |
-| Database | PostgreSQL 16 | Runs in Docker Compose (`make up`). |
+| Database | PostgreSQL 18 | Runs in Docker Compose (`make up`); CI runs the same major. |
 | Containers | Docker Desktop with WSL integration | `docker-compose.yml`: api, db, mailpit, s3 (LocalStack). |
 
 Recommended WSL version managers:
@@ -80,7 +91,7 @@ npm --version
 Expected major outputs:
 
 ```text
-Python 3.12.13
+Python 3.14.8
 v24.16.0
 11.x
 ```
@@ -115,7 +126,8 @@ Notes:
 ## Backend
 
 The backend setup lives in `backend/pyproject.toml`.
-Use Python 3.12.13.
+Use Python 3.14.8 (`pyenv install 3.14.8`, or `uv python install 3.14.8`, which needs uv 0.13 or newer;
+older uv versions don't know 3.14.8).
 
 ```bash
 cd backend

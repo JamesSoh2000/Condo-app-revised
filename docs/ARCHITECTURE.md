@@ -15,7 +15,7 @@ flowchart LR
     B -->|HTTPS same origin| CAD[Caddy]
     CAD -->|static files| FE[React build]
     CAD -->|/api/*| API[FastAPI app]
-    API --> PG[(PostgreSQL 16)]
+    API --> PG[(PostgreSQL 18)]
     W[Worker] --> PG
     API -->|presign| S3[(Private S3)]
     B -->|direct upload/download via presigned URL| S3
@@ -35,7 +35,7 @@ the CLI with `docker compose exec`.
 | Reverse proxy | Vite dev server proxies `/api` | Caddy container, same `deploy/Caddyfile`, plain http on `localhost:8080` | Caddy on host (TLS, SPA, `/api` proxy, headers) | Same as staging |
 | API | `api` container, uvicorn `--reload`, source mounted | the production image, gunicorn, 1 process, no mounts | `api` container from ECR, 1 process | Same |
 | Worker | `worker` container (`python -m app.worker`) | `worker` from the same image | `worker` container | Same |
-| Database | `db` postgres:16 container + volume | postgres:16 container, no published port | postgres:16 container on separate encrypted EBS | Same, plus PITR ([ADR-0009](./adr/0009-backups-staged.md)) |
+| Database | `db` postgres:18 container + volume | postgres:18 container, no published port | postgres:18 container on separate encrypted EBS | Same, plus PITR ([ADR-0009](./adr/0009-backups-staged.md)) |
 | Files | S3 emulator container | S3 emulator container | S3 bucket `…-staging-files` | Separate bucket |
 | Email | Mailpit (SMTP + web UI on :8025) | Mailpit | SES SMTP, restricted to verified recipients | SES production access |
 | Errors | console | console (JSON logs) | Sentry project `staging` | Sentry project `production` |

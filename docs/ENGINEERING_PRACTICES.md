@@ -88,7 +88,7 @@ index at their own pace; nothing waits on it.
 ## 5. Backend standards
 
 - **Python:**
-  - 3.12
+  - 3.14
   - type hints everywhere
   - `mypy --strict` on new modules; legacy files may be excluded at first
   - `ruff check` with rule sets `E, F, I, B, UP, S, ASYNC, SIM, RUF`
