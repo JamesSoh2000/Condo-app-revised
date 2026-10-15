@@ -96,8 +96,10 @@ open). *(sharpened)*
    the row current. A naive (timezone-less) `at` raises `ValueError`.
 10. *(added)* History is kept: deleting a unit or a membership that has occupancies gives `IntegrityError`
     (RESTRICT); moving such a unit or membership to another building gives `IntegrityError` (composite FK).
-11. *(added, tenant table row 10)* Two concurrent `transfer_occupancy` calls for M, in separate transactions:
-    exactly one commits; the other gets `IntegrityError`, and M ends with exactly one current occupancy.
+11. *(added, tenant table row 10)* Occupancy writes for M serialize: with a first `transfer_occupancy` for M
+    uncommitted, a second one in another transaction waits for it, then applies on top of it. M ends with
+    exactly one current occupancy (the second's unit) and three back-to-back rows. A move-out
+    (`end_occupancy`) racing a transfer the same way ends the transferred-to row, leaving none current.
 12. *(added)* `alembic upgrade` to this revision, `downgrade` to P1-02's (`2b2e5bcaf6b4`), then
     `upgrade head`, with revision ids pinned; after the downgrade `unit_occupancies` is gone; `alembic check`
     is clean. A new unit, membership and their occupancy can be flushed together in one `flush()`.
@@ -132,6 +134,11 @@ open). *(sharpened)*
 - Tenant table (ENGINEERING_PRACTICES §7): no endpoint. Row 7's storage-level counterpart is criterion 3,
   row 5's is criterion 7 (another membership's occupancy grants nothing), row 10's is criterion 11.
 - Criteria loosened (with reason; also listed in the inbox): none.
+- Changed during implementation: criterion 11 first said "exactly one commits; the other gets
+  `IntegrityError`". Writing it showed that, without a lock, a move-out racing a transfer silently misses
+  the row the transfer inserted. The helpers now lock the membership row, so concurrent writes serialize and
+  both succeed in order; criterion 11 asserts that, plus the move-out race. Not a loosening: the invariant
+  (one current row, no overlap) is unchanged, and a case was added. Basis: autonomous; ADR-0016.
 - Interface sharpened: `end_occupancy` and `transfer_occupancy` also take `building_id` (keyword), like
   `start_occupancy` and `current_occupants`, so every helper query is scoped to one building (CLAUDE.md
   rule 1). Basis: autonomous; it narrows what a caller can touch. P4-06 is the first caller.
@@ -145,6 +152,8 @@ open). *(sharpened)*
   - `start_occupancy` refuses to overlap M's own history (criterion 9) with a Python check, not a database
     exclusion constraint: that needs the `btree_gist` extension (new database infrastructure, CLAUDE.md
     rule 13). The partial unique index still guarantees one current row. Basis: autonomous; ADR-0016.
+  - Each write helper first locks the membership row (`FOR NO KEY UPDATE`), so writes for one membership
+    serialize (criterion 11). Basis: autonomous; ADR-0016.
   - The helpers raise `OccupancyTimeError` (a `ValueError`) for times out of order; P1-04's
     `app/core/errors.py` doesn't exist yet, so services map it when they call the helpers. Basis: default
     (reversible).
