@@ -4,8 +4,10 @@ from typing import Literal
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 AppEnv = Literal["dev", "test", "prod"]
+
+# Keeps the app bootable locally; validate_production_settings rejects it in production.
+LOCAL_DEV_SECRET_KEY = "change-me-in-local-dev-only"  # noqa: S105
 
 
 class Settings(BaseSettings):
@@ -31,7 +33,7 @@ class Settings(BaseSettings):
     # Security
     # Local default keeps the app bootable before real secrets are configured.
     # Production must override this.
-    secret_key: str = "change-me-in-local-dev-only"
+    secret_key: str = LOCAL_DEV_SECRET_KEY
 
     # CORS
     # Example: ALLOWED_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
@@ -47,7 +49,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # AWS config only. Do not create AWS clients yet.
-    aws_region: str = "us-east-1"
+    aws_region: str = "ca-central-1"
     s3_bucket_name: str = "condo-app-dev-files"
     ses_from_email: str = "noreply@example.com"
 
@@ -64,20 +66,25 @@ class Settings(BaseSettings):
         Keep local development easy, but prevent obvious unsafe production config.
         """
         if self.is_production:
-            if self.secret_key == "change-me-in-local-dev-only":
+            if self.secret_key == LOCAL_DEV_SECRET_KEY:
                 raise ValueError("SECRET_KEY must be changed in production")
 
             if not self.allowed_origins or "*" in self.allowed_origins:
                 raise ValueError("ALLOWED_ORIGINS must be explicit in production; do not use '*'")
 
-            if any(origin.startswith(("http://localhost", "http://127.0.0.1")) for origin in self.allowed_origins):
+            if any(
+                origin.startswith(("http://localhost", "http://127.0.0.1"))
+                for origin in self.allowed_origins
+            ):
                 raise ValueError("ALLOWED_ORIGINS must not use localhost origins in production")
 
             if self.s3_bucket_name in {"", "condo-app-dev-files"}:
                 raise ValueError("S3_BUCKET_NAME must be set to a production bucket in production")
 
             if self.ses_from_email in {"", "noreply@example.com"}:
-                raise ValueError("SES_FROM_EMAIL must be set to a real verified sender in production")
+                raise ValueError(
+                    "SES_FROM_EMAIL must be set to a real verified sender in production"
+                )
 
         return self
 
