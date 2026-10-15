@@ -19,8 +19,8 @@ class Building(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(63), unique=True)
     name: Mapped[str] = mapped_column(String(200))
     address: Mapped[str] = mapped_column(Text)
-    # IANA name, checked in Python (validate_timezone): the tz database lives on the app host, not in a
-    # constraint.
+    # IANA name, checked in Python (validate_timezone): the tz database lives on the app host, not
+    # in a constraint.
     timezone: Mapped[str] = mapped_column(String(64))
     locale: Mapped[str] = mapped_column(String(10), default="en", server_default="en")
     # NULL disables resident self-join.
@@ -39,7 +39,9 @@ class BuildingFeature(TimestampMixin, Base):
     building_id: Mapped[UUID] = mapped_column(
         ForeignKey("buildings.id", ondelete="CASCADE"), primary_key=True
     )
-    feature: Mapped[Feature] = mapped_column(database_enum(Feature, name="feature"), primary_key=True)
+    feature: Mapped[Feature] = mapped_column(
+        database_enum(Feature, name="feature"), primary_key=True
+    )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     config: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default=text("'{}'::jsonb")
