@@ -15,7 +15,6 @@ The next `/build-next` unblocks the ticket and moves the item to "Resolved".
 
 | # | Date | Ticket | What's needed | Options (agent's recommendation first) | Blocks |
 |---|---|---|---|---|---|
-| B-2 | 2026-10-15 | [P1-03](./tickets/P1-03-unit-occupancies-schema.md) (PR #45) | Stop rule 4: review didn't converge in 3 rounds. The bug class is `occupancy_window_clause` (the filter that hides a previous occupant's records) becoming always true when its SQL alias collides with an argument's. Round 2 (both reviewers, High) and round 3 (Codex High, Claude Medium) each found a variant of it in the previous round's fix. The round-3 fix (78b3fe6) gives the alias the fixed name `occupancy_window` and refuses any argument qualified by that name; 193 tests and `make check` pass, CI is green, **but no reviewer has seen it**. Needed: your go-ahead for a fourth round, or another option | **A (recommended):** a fourth review round (fresh Claude with the security pass + Codex) on PR #45 as it is; merge if both say `MERGE`. **B:** move the window test into a Postgres SQL function (`occupancy_window(membership, unit, at)`, defined in this ticket's unmerged migration), so no alias name can collide; costs a schema object `alembic check` doesn't compare and a deviation from the ticket's "returns an `exists()` clause"; then a fourth round. **C:** narrow the clause to a literal `membership_id` only; it doesn't remove collisions through the record columns, so not recommended | P1-05, P1-06, P5-01, and the critical path after P1-05 (P2-03 → …). Lane B (P1-04, P1-07, P1-08) is unaffected |
 
 ## Prerequisites coming up
 
@@ -78,4 +77,5 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | # | Ticket | Answer | Date |
 |---|---|---|---|
+| B-2 | [P1-03](./tickets/P1-03-unit-occupancies-schema.md) (PR #45) | James (in session): fix it with Claude. **Option A** (a fourth review round on PR #45), with Claude reviewers only because Codex is unavailable: a fresh Claude reviewer with the security pass, plus a second fresh Claude reviewer running only the Tier 1 security pass (the playbook's fallback). P1-03 is back to `in progress` | 2026-10-15 |
 | B-1 | [P0-05](./tickets/P0-05-database-test-infrastructure.md) (PR #4) | James (in session): **option A**: give each request its own session on the test's connection (`join_transaction_mode="create_savepoint"`), add the regression tests (write-then-`HTTPException`, caught DB error then the next request, an ORM object after a GET), then a **fourth** fresh review round. P0-05 is back to `todo`; the answer is also in the ticket's Frame notes on PR #4 | 2026-10-15 |
