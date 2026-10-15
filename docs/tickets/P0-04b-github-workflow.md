@@ -27,7 +27,9 @@ The GitHub repo enforces the PR workflow, and stale branches are gone.
   - `.github/pull_request_template.md` (from [the template](../templates/PULL_REQUEST.md)).
   - `.github/dependabot.yml` (uv, npm, github-actions, docker; weekly).
   - **Branches:** list `git branch -r --no-merged origin/main` and decide each case; delete merged or stale
-    remote branches after confirming nothing unmerged matters.
+    remote branches, including `develop`, `staging`, `starting` and `starting-james`, after confirming
+    nothing unmerged matters. The in-progress `M2-T03_Core-Tenant-Schema_James` work continues under P1-01
+    instead.
 - Out: the local stack (P0-04a).
 
 ## Acceptance criteria
