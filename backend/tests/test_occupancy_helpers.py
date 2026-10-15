@@ -26,6 +26,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.buildings.models import Building
 from app.core.database import AsyncSessionLocal
@@ -853,3 +854,126 @@ async def test_window_clause_works_when_the_outer_query_joins_unit_occupancies(
 
     rows = [tuple(r) for r in await db.execute(query)]
     assert rows == [(T2, turnover.former.id), (T2, turnover.current.id)]
+
+
+# --- review round 2 ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("alias_outer", [False, True])
+async def test_window_clause_uses_the_outer_queries_membership_column(
+    db: AsyncSession, turnover: Turnover, alias_outer: bool
+):
+    """Codex H1: a membership column from the outer query must stay an outer reference.
+
+    With the clause correlating everything but `unit_occupancies`, an outer
+    `UnitOccupancy.membership_id` became `membership_id = membership_id` inside the EXISTS (always
+    true), and the newcomer was shown the former occupant's record.
+    """
+    records = Table(
+        "occupancy_outer_member_records",
+        MetaData(),
+        Column("unit_id", Uuid()),
+        Column("created_at", DateTime(timezone=True)),
+        prefixes=["TEMPORARY"],
+    )
+    await db.run_sync(lambda sync: records.create(sync.connection()))
+    await db.execute(
+        records.insert(),
+        [
+            {"unit_id": turnover.s.u101.id, "created_at": T0 + SECOND},  # former's time
+            {"unit_id": turnover.s.u101.id, "created_at": T2},  # current's time
+        ],
+    )
+    occupant = aliased(UnitOccupancy) if alias_outer else UnitOccupancy
+    query = (
+        select(records.c.created_at, occupant.membership_id)
+        .join(occupant, occupant.unit_id == records.c.unit_id)
+        .where(
+            occupant.membership_id == turnover.current.id,
+            occupancy_window_clause(
+                occupant.membership_id, records.c.unit_id, records.c.created_at
+            ),
+        )
+        .order_by(records.c.created_at)
+    )
+
+    assert [tuple(r) for r in await db.execute(query)] == [(T2, turnover.current.id)]
+
+
+async def test_window_clause_with_every_argument_from_an_outer_unit_occupancies_query(
+    db: AsyncSession, turnover: Turnover
+):
+    """Neighbour of H1: all three arguments are columns of the outer `unit_occupancies` rows."""
+    query = (
+        select(UnitOccupancy.membership_id)
+        .where(
+            UnitOccupancy.unit_id == turnover.s.u101.id,
+            occupancy_window_clause(
+                UnitOccupancy.membership_id,
+                UnitOccupancy.unit_id,
+                literal(T2, DateTime(timezone=True)),
+            ),
+        )
+        .order_by(UnitOccupancy.started_at)
+    )
+
+    # Of 101's two occupants, only `current` occupied it at T2.
+    assert list(await db.scalars(query)) == [turnover.current.id]
+
+
+async def test_window_clause_with_an_outer_time_column_from_unit_occupancies(
+    db: AsyncSession, turnover: Turnover
+):
+    """Neighbour of H1: the record's time is the outer occupancy's own start."""
+    query = (
+        select(UnitOccupancy.membership_id)
+        .where(
+            UnitOccupancy.unit_id == turnover.s.u101.id,
+            occupancy_window_clause(
+                turnover.former.id, UnitOccupancy.unit_id, UnitOccupancy.started_at
+            ),
+        )
+        .order_by(UnitOccupancy.started_at)
+    )
+
+    # `former` held 101 at its own start (T0), not at `current`'s start (T1, the transfer instant).
+    assert list(await db.scalars(query)) == [turnover.former.id]
+
+
+async def test_start_occupancy_returns_a_fully_loaded_row(db: AsyncSession, setup: Setup):
+    """Review round 2, L2: no attribute of the returned row needs a lazy load."""
+    row = await start_occupancy(
+        db,
+        building_id=setup.a.id,
+        membership_id=setup.m.id,
+        unit_id=setup.u101.id,
+        relationship=TENANT,
+        at=T0,
+    )
+
+    assert row.created_at is not None
+    assert row.updated_at is not None
+
+
+async def test_start_occupancy_sees_the_callers_unflushed_rows(db: AsyncSession, setup: Setup):
+    """The overlap check must see an earlier occupancy the caller added but hasn't flushed."""
+    db.add(
+        UnitOccupancy(
+            building_id=setup.a.id,
+            unit_id=setup.u101.id,
+            membership_id=setup.m.id,
+            relationship=TENANT,
+            started_at=T0,
+            ended_at=T2,
+        )
+    )
+
+    with pytest.raises(OccupancyTimeError):
+        await start_occupancy(
+            db,
+            building_id=setup.a.id,
+            membership_id=setup.m.id,
+            unit_id=setup.u102.id,
+            relationship=TENANT,
+            at=T1,
+        )

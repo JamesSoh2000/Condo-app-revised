@@ -20,6 +20,7 @@ from uuid import UUID
 
 from sqlalchemy import SQLColumnExpression, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql.expression import Exists
 
 from app.memberships.enums import OccupancyRelationship
@@ -178,14 +179,18 @@ def occupancy_window_clause(
     membership makes it false. No building filter is needed: a unit id belongs to one building, and
     the composite FKs keep an occupancy's unit and membership in it (ADR-0005).
     """
+    # A private alias: an argument may itself be a column of an outer `unit_occupancies` query, and
+    # must then stay a reference to that outer row (`occupancy.membership_id = unit_occupancies.
+    # membership_id`), not collapse into a comparison of the subquery's row with itself.
+    occupancy = aliased(UnitOccupancy, name="window_occupancy")
     return (
         exists()
         .where(
-            UnitOccupancy.membership_id == membership_id,
-            UnitOccupancy.unit_id == record_unit_col,
-            UnitOccupancy.started_at <= record_time_col,
-            or_(UnitOccupancy.ended_at.is_(None), UnitOccupancy.ended_at > record_time_col),
+            occupancy.membership_id == membership_id,
+            occupancy.unit_id == record_unit_col,
+            occupancy.started_at <= record_time_col,
+            or_(occupancy.ended_at.is_(None), occupancy.ended_at > record_time_col),
         )
-        # Its own unit_occupancies, even when the outer query also selects from that table.
-        .correlate_except(UnitOccupancy)
+        # Every other table correlates with the outer query; the alias is always the subquery's own.
+        .correlate_except(occupancy)
     )
