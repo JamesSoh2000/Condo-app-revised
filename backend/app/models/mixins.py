@@ -1,10 +1,13 @@
+from datetime import datetime
 from uuid import UUID
-# built-in uuid requires python 3.14+ but this project is 3.12. So we need to install uuid6 package to use uuid7
+
+from sqlalchemy import DateTime, Uuid, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+# The standard library has uuid7 only from Python 3.14; this project is on 3.12, so it
+# comes from the uuid6 package.
 from uuid6 import uuid7
 
-from datetime import datetime
-from sqlalchemy import Uuid,DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column
 
 class UUIDPrimaryKeyMixin:
     id: Mapped[UUID] = mapped_column(
@@ -12,6 +15,7 @@ class UUIDPrimaryKeyMixin:
         primary_key=True,
         default=uuid7,
     )
+
 
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(

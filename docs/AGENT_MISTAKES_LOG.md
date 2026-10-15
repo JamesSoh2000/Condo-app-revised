@@ -8,6 +8,9 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | Date | Ticket | What the agent did | Caught by (CI / review round + reviewer / explainer / James after merge) | Root cause (missing context? ambiguous ticket? model habit?) | Prevention added |
 |---|---|---|---|---|---|
 | 2026-__-__ | P_-__ | e.g. queried packages by id without the building_id filter | review round 1 (Claude) | the ticket didn't restate the rule; no test for case #5 | fitness test `test_package_queries_scoped` + CLAUDE.md rule 3 wording |
+| 2026-10-14 | fix (PR #3) | Opened "unbreak main" after fixing two of three failures; the backend job still failed on `APP_ENV=test` | review round 1 (Claude) and CI; fixed before the verdict arrived | claimed the outcome before CI had run the whole job on the fix | — (pattern "claim before evidence", 1 of 2) |
+| 2026-10-14 | P0-02 | Claimed the modernised `script.py.mako` makes new revisions ruff-clean without generating one; it didn't (unused imports, quotes) | review round 1 (Claude), Low | claimed without running the thing | Alembic post-write hooks (PR #2). Pattern "claim before evidence", 2 of 2: promote next ticket |
+| 2026-10-14 | P0-02 | Removed the stub model imports from `migrations/env.py` via `ruff --fix` without noting it (autogenerate needs model imports) | review round 1 (Claude), Low | auto-fix output not read file by file | comment in `env.py` + P1-01 follow-up |
 
 ## Promoted to rules / tests
 

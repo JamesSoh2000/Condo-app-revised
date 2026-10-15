@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -13,7 +14,7 @@ logger = logging.getLogger("app.lifecycle")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("application_started", extra={"environment": settings.app_env})
     yield
     logger.info("application_stopped")

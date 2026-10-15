@@ -2,6 +2,7 @@ from enum import Enum as PythonEnum
 
 from sqlalchemy import Enum as SQLAlchemyEnum
 
+
 def database_enum(
     enum_class: type[PythonEnum],
     *,
@@ -13,7 +14,5 @@ def database_enum(
         native_enum=False,
         create_constraint=True,
         validate_strings=True,
-        values_callable=lambda members: [
-            member.value for member in members
-        ],
+        values_callable=lambda members: [member.value for member in members],
     )

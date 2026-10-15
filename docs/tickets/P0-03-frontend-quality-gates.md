@@ -42,7 +42,11 @@ The same-origin proxy removes CORS and makes local development behave like produ
     `src/app/**`.
   - **Investigate** `src/lib/VisualEditAgent.jsx`, `NavigationTracker.jsx` and the Base44 vite plugin for
     runtime network calls. Disable them in production builds if they phone home, and record the findings in
-    the PR.
+    the PR. Also check `VisualEditAgent.jsx`'s `postMessage(..., '*')` calls and its `message` handler, whose
+    `event.origin` check is commented out: any page that frames the app can drive edit mode and read page
+    text (found in the review of PR #3, which started tracking `src/lib/`).
+  - Extend the pre-commit formatting hooks (`.pre-commit-config.yaml`, scoped to `backend/` in P0-02) to
+    `frontend/`, fixing the whitespace/EOF findings they report.
 - Out:
   - migrating any page
   - removing dependencies (done per slice)

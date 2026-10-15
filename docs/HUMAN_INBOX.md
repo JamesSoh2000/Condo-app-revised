@@ -23,8 +23,9 @@ Human-only setup the plan will need soon. Agents add these ahead of time so noth
 
 | # | Needed by | What | Status |
 |---|---|---|---|
-| PRE-1 | the first autonomous merge (P0-01) | `gh auth login` in the environment where agents run, with a token that can merge PRs and edit branch protection (P0-04). Without it, agents can open PRs but not merge them | open |
+| PRE-1 | the first autonomous merge (P0-01) | `gh auth login` in the environment where agents run, with a token that can merge PRs and edit branch protection (P0-04). Without it, agents can open PRs but not merge them | partly done: PRs merge (#1–#3); branch-protection permission not yet verified (P0-04). Note: `main` has no branch protection today |
 | PRE-2 | P0-02 (Tier 1 reviews start at P1-02) | Codex CLI installed and logged in for the `codex-review` skill. Without it, Tier 1 falls back to a second Claude reviewer | open |
+| PRE-4 | P0-04 (`make up`), P0-05 (DB tests run locally) | Docker reachable from the WSL distro the agents run in (Docker Desktop → Settings → Resources → WSL integration). Today `docker` is "not found in this WSL 2 distro", so agents verify DB behaviour only in CI | open |
 | PRE-3 | milestone D (start ~week 8) | AWS account with MFA and budget alerts, a domain, SES domain verification ([D-01](./tickets/D-01-terraform-base.md)) | not yet |
 
 ## Decisions to audit
@@ -34,7 +35,10 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | Date | Ticket | Decision | Where recorded | Reversible? |
 |---|---|---|---|---|
-| — | — | — | — | — |
+| 2026-10-14 | fix (PR #3) | `main` was red since the initial commit. Fixed in its own PR: committed the 10 `frontend/src/lib/*` files from the local checkout (a Python `lib/` pattern in `.gitignore` had kept them out of git; reviewed: no secrets), pinned `astral-sh/setup-uv@v8.3.2` (no `v8` tag exists), and added `"test"` to `APP_ENV` (CI sets it; P1-06 widens it further) | PR #3 | yes |
+| 2026-10-14 | P0-02 | The merged baseline migration `989e5bd83064` is excluded from ruff and pre-commit by name rather than reformatted (CLAUDE.md rule 11); every new migration is linted | `backend/pyproject.toml`, PR #2 | yes |
+| 2026-10-14 | P0-02 | Alembic `post_write_hooks` run `ruff check --fix` and `ruff format` on every new revision. Side effect: an empty hand-written revision loses its unused `op`/`sa` imports | `backend/alembic.ini`, PR #2 | yes |
+| 2026-10-14 | P0-02 | Pre-commit formatting hooks cover `backend/` only. Run repo-wide they rewrote ~90 legacy frontend files and the protected `scripts/check-*.py`; P0-03 extends them to `frontend/` | `.pre-commit-config.yaml`, PR #2 | yes |
 
 ## Resolved
 
