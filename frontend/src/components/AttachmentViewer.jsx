@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { ZoomIn, ZoomOut, Maximize2, Download, RotateCcw, FileText, Image, File } from 'lucide-react';
+import { ZoomIn, ZoomOut, Download, RotateCcw, FileText, File } from 'lucide-react';
 
 function formatBytes(bytes) {
   if (!bytes) return '';

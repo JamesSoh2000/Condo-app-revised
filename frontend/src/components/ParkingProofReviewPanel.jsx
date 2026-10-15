@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Car, FileText, ExternalLink, CheckCircle, XCircle, Clock, User, Home, AlertCircle } from 'lucide-react';
+import { Car, FileText, ExternalLink, CheckCircle, XCircle, Clock, User, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 

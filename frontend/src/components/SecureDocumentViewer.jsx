@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { X, ZoomIn, ZoomOut, RotateCcw, Download, FileText, AlertCircle } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, RotateCcw, Download, FileText } from 'lucide-react';
 
 function getFileType(url) {
   if (!url) return 'unknown';

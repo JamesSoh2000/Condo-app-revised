@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Phone, Mail, MapPin, Car, ChevronUp, ChevronDown, X, User, Building2, Shield } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 
 export default function Contacts() {
   const [search, setSearch] = useState('');

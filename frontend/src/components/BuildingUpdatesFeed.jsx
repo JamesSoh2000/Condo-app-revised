@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
-import { Bell, AlertCircle, Package, ShieldAlert, Archive, ArchiveX, AlertTriangle, Zap, Paperclip, CheckCircle2 } from 'lucide-react';
+import { Bell, AlertCircle, Package, ShieldAlert, Archive, AlertTriangle, Zap, Paperclip, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import BuildingUpdateModal from './BuildingUpdateModal';
@@ -72,7 +72,6 @@ export default function BuildingUpdatesFeed({ onCountChange }) {
       } catch (_) {}
     };
     runCleanup();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

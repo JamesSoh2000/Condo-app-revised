@@ -3,7 +3,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Truck, Calendar, AlertCircle, CheckCircle2, Clock, Wine } from 'lucide-react';
-import { format } from 'date-fns';
 
 export default function AgendaCard({ item, onMarkComplete, onCardClick }) {
   const getConfig = () => {

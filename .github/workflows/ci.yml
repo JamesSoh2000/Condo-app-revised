@@ -70,7 +70,7 @@ jobs:
         run: uv run pytest
 
   frontend-checks:
-    name: Frontend build and lint baseline
+    name: Frontend lint, types, ratchet and build
     runs-on: ubuntu-24.04
 
     defaults:
@@ -97,32 +97,27 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # Proves the exported frontend can still produce a production Vite build.
+      # Lint, blocking (the 68-error baseline was fixed in P0-03a). Includes the ADR-0011 rule that bans
+      # Base44 imports under src/features and src/app.
+      - name: Lint
+        run: npm run lint
+
+      # Self-test of the Base44 import fence: lint passes vacuously while src/features and src/app are empty.
+      - name: ESLint fence self-test
+        run: bash ../scripts/check-eslint-fence.sh
+
+      # Type check (tsconfig.json: strict, allowJs, checkJs off, so only .ts/.tsx are checked).
+      - name: Type check
+        run: npm run typecheck
+
+      # Base44 ratchet: fails if Base44 references under frontend/src go up (ADR-0011).
+      - name: Base44 ratchet
+        run: bash ../scripts/base44-count.sh
+
+      # Proves the frontend still produces a production Vite build.
       - name: Build frontend
         run: npm run build
 
-      # Runs lint but does not fail the whole workflow yet.
-      # M1-T03 recorded the current exported-code lint baseline:
-      # 68 unused-import errors. Keep this advisory until the lint cleanup
-      # follow-up ticket is completed.
-      - name: Run frontend lint baseline
-        id: frontend-lint
-        continue-on-error: true
-        run: npm run lint
-
-      # Writes a visible note into the GitHub Actions step summary if lint fails.
-      # Because the previous step uses continue-on-error, the frontend job can
-      # still pass while preserving the lint output for review.
-      - name: Record known lint baseline
-        if: steps.frontend-lint.outcome == 'failure'
-        run: |
-          {
-            echo "### Frontend lint baseline"
-            echo ""
-            echo "The lint command failed, but this is currently advisory for M1-T05."
-            echo "M1-T03 recorded 68 unused-import errors from the exported frontend."
-            echo "Keep this non-blocking until the lint cleanup ticket is completed."
-          } >> "$GITHUB_STEP_SUMMARY"
   docs:
     name: Docs links and explanation references
     runs-on: ubuntu-24.04
