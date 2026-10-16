@@ -11,6 +11,10 @@ from app.core.errors import install_error_handlers
 from app.logging_config import configure_logging
 from app.middleware.request_logging import RequestLoggingMiddleware
 
+# Every model, so relationships can resolve their targets in the server process (the tests import
+# them all anyway; tests/test_app_imports.py checks the app alone).
+from app.models import registry as _registry  # noqa: F401
+
 configure_logging()
 logger = logging.getLogger("app.lifecycle")
 
