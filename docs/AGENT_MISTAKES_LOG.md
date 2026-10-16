@@ -28,6 +28,13 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | 2026-10-15 | P0-03b | Proxy key `/api` also matched `/apifoo`; `VITE_API_PROXY_TARGET` was ignored in `.env`; a hidden `mainPage` gave a blank `/`; `/Contacts` was routed unconditionally | review round 1 (Claude), Low ×4 | prefix match and `process.env` assumed, not tried | key `^/api(/\|\?\|$)`, `loadEnv`, fallbacks; journey boundary cases |
 | 2026-10-15 | P0-03b | The round-1 fix looked `?role=`/localStorage values up in an object literal, so `constructor` or `__proto__` crashed the app for board users | review round 2 (Claude), Medium | fixed the reported value, not malformed input: pattern "fix not tested on adjacent cases" again, **after** its `CLAUDE.md` lesson landed in this PR | `Map` lookup + 30 journey checks. The lesson alone did not stop it: consider a lint rule against indexing object literals with untrusted strings |
 
+| 2026-10-16 | P1-07 | A `200 text/html` (SPA fallback) made `api.get` reject with a bare `SyntaxError`, not the `ApiError` every caller and `shouldRetry` expect | review round 1 (Claude, Sonnet), Low (L1) | covered error statuses only; didn't ask what a 2xx with the wrong body does | `assertJsonBody` in the response middleware + 2 tests |
+| 2026-10-16 | P1-07 | The `X-Request-ID` fallback for a problem body without `request_id` was untested (deleting it left 32 tests green) | review round 1 (Claude, Sonnet), Low (L2) | wrote the branch, tested only the main path | test "takes requestId from X-Request-ID…" + mutation |
+| 2026-10-16 | P1-07 | The L1 fix checked every 2xx body as JSON, so `parseAs: 'text'`/`'blob'` callers got `ApiError` for a valid CSV or PDF | review round 2 (Claude, Sonnet), Low (L4) | pattern "fix not tested on adjacent cases" again, with its `CLAUDE.md` lesson in place (the error-path neighbours were tested; the caller-options neighbour wasn't) | `options.parseAs` guard + 3 tests. See the note under "Promoted patterns" |
+| 2026-10-16 | P1-07 | An empty non-204 2xx resolves `undefined` from `api.get` under a non-nullable type | review round 3 (Claude, Sonnet), Low (L5), not fixed (last round) | same blind spot as L1: the 2xx body shapes | carried to P2-06's ticket |
+| 2026-10-16 | P1-07 | The PR and Frame notes said decisions were "listed in the inbox" and L5 was "tracked in the P2-06 ticket" before the bookkeeping commit existed (third time, after P1-04 and P1-05) | review round 1 (L3), explainer | wrote the record of a future step as done; the pending promotion below hadn't happened | entries added in the bookkeeping commit; lesson promoted to `CLAUDE.md` in this PR |
+| 2026-10-16 | P1-07 | The "no footer in production" test asserted before React Query could fetch, so it passed with the `DEV` guard removed; the extended Base44 fence first missed `./base44Client` inside `src/api` | the implementer, by mutation and probe before review | pattern "check passes vacuously" (promoted; the lesson's mutation step is what caught both) | test waits 50 ms with a 404 mocked; sibling-path regex |
+
 | 2026-10-15 | P0-04a | Wrote an s3 healthcheck ("healthy only after the bucket exists") from LocalStack's `"completed": true` without trying a failing init script; LocalStack reports completed on ERROR too | review round 1 (Claude), Medium | trusted a health signal's name instead of proving its failure case | the check also fails on `"state": "ERROR"`, proven on a failing script (e257048) |
 | 2026-10-15 | P0-04a | The Makefile's DB URL used `localhost` while its own `db-guard` checked `127.0.0.1`, so an IPv6-only stray server could still be migrated | review round 1 (Claude), Low | guard and guarded value written separately | one address in both (e878bb4) |
 | 2026-10-15 | P0-04a | Split P0-04 and dropped the named stale branches from P0-04b's scope while the split note said nothing was dropped | review round 1 (Claude), Low | summarised scope while splitting | restored (bd77038) |
@@ -75,7 +82,12 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | Fix not tested on adjacent cases (P0-05 round 3, P0-03a round 2) | `CLAUDE.md` lesson "When fixing a review finding, also test the fix on its neighbours" (P0-03b) | 2026-10-14 |
 | Claim before evidence (fix PR #3, P0-02) | `CLAUDE.md` lesson "Don't claim an effect … until you have run the thing" (P0-05) | 2026-10-14 |
 | A gate or health signal that passes vacuously (P0-03a, P0-03b, P0-04a, P0-05) | `CLAUDE.md` lesson "Prove a gate … can fail before trusting it" (P0 recap) | 2026-10-15 |
+| Recording a future step as done (P1-04, P1-05, P1-07) | `CLAUDE.md` lesson "Write in the PR only what is already on the branch" (P1-07) | 2026-10-16 |
+| Mutating uncommitted files (P1-03, P1-05) | `CLAUDE.md` lesson "Commit before mutation probes" (P1-07) | 2026-10-16 |
 
-Pending promotion (first follow-up of the next ticket, from P1-05):
-- **Mutating uncommitted files** (P1-03, P1-05): a `CLAUDE.md` lesson "commit before mutation probes; restore with `git checkout` only tracked files, and re-run M0 (clean) after each".
-- **Recording a future step as done** (P1-04, P1-05): a `CLAUDE.md` lesson "write in the PR only what is already on the branch; say 'will be added in <step>' otherwise".
+Both P1-05 pending promotions were done in P1-07 (above); P1-06 hadn't picked them up.
+
+Recurring after promotion: **fix not tested on adjacent cases** came back in P1-07 round 2 (L4) with its
+lesson in place, as it did in P0-03b round 2. The lesson's examples (error paths, malformed input, one notch
+weaker) didn't cover "other caller options of the same function". Follow-up for the next ticket: widen the
+lesson's wording to "every input and option the changed code path sees", or find a check that enforces it.

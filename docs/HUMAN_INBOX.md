@@ -37,6 +37,11 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | Date | Ticket | Decision | Where recorded | Reversible? |
 |---|---|---|---|---|
+| 2026-10-16 | P1-07 | Every 401 response calls the `onUnauthenticated()` listeners (a module-level `EventTarget` in `src/api/client.ts`, not a `window` event), including a future login endpoint's wrong-password 401; P2-06 must not treat that as a lost session (carried to its ticket) | PR #52 D1 | yes |
+| 2026-10-16 | P1-07 | Every failed call throws `ApiError`. Error bodies that aren't problem+json (a proxy's HTML 502, an empty 500), and 2xx bodies that aren't JSON when the caller parses JSON, get the client-only code `http_error`; `requestId` falls back to the `X-Request-ID` header | PR #52 D4, D7 | yes |
+| 2026-10-16 | P1-07 | Queries retry at most twice (3 requests), only on a `TypeError` (network) or a 5xx `ApiError`; never a 4xx. The defaults (also `staleTime` 30 s, refetch on focus) apply to the legacy Base44 queries too, which no longer retry (were `retry: 1`) | PR #52 D3; `src/app/queryClient.ts` | yes |
+| 2026-10-16 | P1-07 | The Base44 import fence now also covers `src/api/**/*.{ts,tsx}`, with a pattern for sibling imports (`./base44Client`); its rules moved into `base44Fence()` in `eslint.config.js` (unchanged for `src/features`, `src/app`) | PR #52 D6 | yes |
+| 2026-10-16 | P1-07 | The OpenAPI drift check runs in the frontend CI job (Python + uv added there) and in `make check`; both fail on any uncommitted change to `schema.d.ts`, so commit the regenerated file before `make check` | PR #52 D5, D8 | yes |
 | 2026-10-16 | P1-06 | `APP_ENV=staging` gets the settings checks that keep dev values out, including the dev `SECRET_KEY` (stricter than the ticket, which asked only for origins and bucket); https origins, no S3 emulator and a real SES sender stay prod-only | PR #51 D4; `app/core/config.py::Settings.validate_production_settings` | yes |
 | 2026-10-16 | P1-06 | `seed --reset` (dev only) truncates every table in `Base.metadata`, so tables later slices add (sessions, jobs, audit) are wiped too, not only "domain" tables | PR #51 D3 | yes |
 | 2026-10-16 | P1-06 | Open for P2-01: its Scope gives staging seed users the public password `DevPassword!2026`; P1-06 review flagged it. P2-01 decides while framing | P2-01 "Carried from P1-06" | yes |

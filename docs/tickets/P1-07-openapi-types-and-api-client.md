@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P1-04, P0-03 |
 | Replaces old | M4-T01, M4-T03, M4-T04 (conventions part) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
@@ -117,8 +117,8 @@ is no `HTTPValidationError`). Paged responses appear as `Page_<Item>_`. Operatio
   proxy transcript); added AC7 (401 event), AC8 (non-problem errors), AC9 (no footer in production), AC10
   (old query client removed, defaults, tests in CI).
 - Criteria loosened (with reason; also listed in the inbox): none. AC6's "footer shows the version" is
-  checked by a component test plus the proxy transcript, not a browser screenshot (no browser in the agent
-  environment); this is recorded under "not verified" rather than counted as loosening.
+  checked by a component test plus the proxy transcript. (Written before implementing, expecting no browser;
+  Playwright's cached headless Chromium turned out to be available, so the PR also has the rendered footer.)
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
   - "At most 2 attempts" read as at most 2 retries, per AC5 (ticket).
   - `openapi.json` is written to the repo root (the ticket's `../openapi.json`) and gitignored; only

@@ -95,6 +95,22 @@ Consumes `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` and
 3. Why are frontend guards "UX only"? Which server mechanism actually protects the data?
 4. Why does council "view as" never change API permissions?
 
+## Carried from P1-07 (do while framing)
+
+- **The 401 event fires on the login endpoint's own 401.** `src/api/client.ts::onUnauthenticated` calls its
+  listeners after **every** 401 (PR #52 D1), and P2-01 makes a wrong password a 401 `invalid_credentials`.
+  The listener this ticket adds (clear the cache, go to login) must not treat a failed login as a lost session:
+  ignore it on the login page or for the login call, and test that case.
+- **An empty non-204 2xx resolves `undefined`** from `api.get/post` under a non-nullable type (PR #52 review
+  round 3, L5). If `/api/me` or the login call can return an empty 200, make `unwrap` throw
+  `ApiError(http_error)` when `data` is `undefined` and the status isn't 204, test-first.
+- **Pass React Query's `signal`:** `queryFn: ({ signal }) => api.get(path, { signal })`, so a superseded
+  query is aborted (round 2 residual risk). Document it in `src/api/README.md` with the first hook here.
+- **ADR-0015 "Revisit when" fires now** (P1-07 merged `src/api`): decide on `recommendedTypeChecked` and
+  `react-hooks/exhaustive-deps` for `src/**/*.{ts,tsx}`, as an ADR-0015 update or a new ADR.
+- Optional hardening: add `src/api` cases to `scripts/check-eslint-fence.sh` (the `src/api` fence block from
+  PR #52 D6 was probed by hand only).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

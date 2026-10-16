@@ -160,6 +160,13 @@ From the P1-04 reviews (PR #49; `docs/explanations/P1-04-api-conventions.md`):
 - `python -m app.cli` has a `seed` command whose user upsert sets `full_name` and `is_active`; setting the
   password goes in `backend/app/seed.py` too.
 
+## Carried from P1-07 (do while framing)
+
+- Every request from the typed client (`src/api/client.ts`) carries `X-Requested-With: fetch` (PR #52); the
+  legacy Base44 calls don't. The CSRF check may rely on the header for the SPA's own calls.
+- A wrong-password 401 also fires the frontend's `auth:unauthenticated` event (P2-06 handles it; see its
+  "Carried from P1-07").
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
