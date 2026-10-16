@@ -4,7 +4,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AppEnv = Literal["dev", "test", "staging", "prod"]
@@ -75,6 +75,10 @@ class Settings(BaseSettings):
 
     readiness_check_database: bool = False
 
+    # The password `seed` gives demo users in staging (P2-01a). Dev and test use the public
+    # DevPassword!2026 (README); staging must not, because it is reachable.
+    seed_password: SecretStr | None = None
+
     @model_validator(mode="after")
     def validate_production_settings(self) -> Settings:
         """
@@ -117,6 +121,13 @@ class Settings(BaseSettings):
                 f"trailing slash: {malformed}"
             )
 
+        default_ports = [origin for origin in self.trusted_origins if _has_default_port(origin)]
+        if default_ports:
+            raise ValueError(
+                "TRUSTED_ORIGINS entries must not name the scheme's default port (browsers omit "
+                f"it from Origin, so they would never match): {default_ports}"
+            )
+
         return self
 
     @property
@@ -132,6 +143,11 @@ def _is_origin(origin: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _has_default_port(origin: str) -> bool:
+    parts = urlsplit(origin)
+    return parts.port is not None and parts.port == {"http": 80, "https": 443}[parts.scheme]
 
 
 def _is_loopback(origin: str) -> bool:

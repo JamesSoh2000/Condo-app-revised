@@ -230,3 +230,40 @@ def test_staging_allows_what_only_prod_forbids():
 def test_prod_still_rejects_the_dev_secret_key():
     with pytest.raises(ValidationError, match="SECRET_KEY must be changed in production"):
         Settings(_env_file=None, **(PROD | {"secret_key": LOCAL_DEV_SECRET_KEY}))
+
+
+# P2-01a criterion 11 (carried from P1-04 round 3 L1): browsers omit a default port from `Origin`,
+# so an origin listed with one could never match the CSRF check.
+
+
+@pytest.mark.parametrize(
+    ("origin", "app_env"),
+    [
+        ("https://condo.example.org:443", "prod"),
+        ("http://localhost:80", "dev"),
+        ("https://localhost:443", "dev"),
+    ],
+)
+def test_trusted_origins_reject_an_explicit_default_port(origin, app_env):
+    with pytest.raises(ValidationError, match="default port"):
+        Settings(_env_file=None, **{**PROD, "app_env": app_env}, trusted_origins=[origin])
+
+
+def test_trusted_origins_accept_non_default_ports():
+    settings = Settings(
+        _env_file=None, trusted_origins=["http://localhost:8080", "https://x.test:80"]
+    )
+
+    assert settings.trusted_origins == ["http://localhost:8080", "https://x.test:80"]
+
+
+def test_seed_password_is_a_secret_and_unset_by_default(monkeypatch):
+    monkeypatch.delenv("SEED_PASSWORD", raising=False)
+    assert Settings(_env_file=None).seed_password is None
+
+    monkeypatch.setenv("SEED_PASSWORD", "staging-demo-pass-2026")
+    settings = Settings(_env_file=None)
+
+    assert settings.seed_password is not None
+    assert settings.seed_password.get_secret_value() == "staging-demo-pass-2026"
+    assert "staging-demo-pass-2026" not in repr(settings)

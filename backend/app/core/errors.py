@@ -25,6 +25,7 @@ from app.logging_config import request_id_ctx
 PROBLEM_MEDIA_TYPE = "application/problem+json"
 _MEMBERS = frozenset({"type", "title", "status", "code", "detail", "request_id", "errors"})
 _PROBLEM_CONTENT = {PROBLEM_MEDIA_TYPE: {"schema": {"$ref": "#/components/schemas/Problem"}}}
+_SNAKE_CASE = re.compile(r"[a-z][a-z0-9]*(_[a-z0-9]+)*")
 
 
 class DomainError(Exception):
@@ -42,6 +43,8 @@ class DomainError(Exception):
         detail: str | None = None,
         extra: dict[str, Any] | None = None,
     ) -> None:
+        if not _SNAKE_CASE.fullmatch(code):
+            raise ValueError(f"code must be snake_case: {code!r}")
         reserved = _MEMBERS.intersection(extra or {})
         if reserved:
             raise ValueError(f"extra must not overwrite problem members: {sorted(reserved)}")
@@ -55,16 +58,22 @@ class DomainError(Exception):
 
 
 class _StatusError(DomainError):
-    """A `DomainError` whose subclass fixes the status and gives the default code and title."""
+    """A `DomainError` whose subclass fixes the status and gives the default code and title.
+
+    Keyword-only, so `NotFound("Package not found")` can't make a message the code.
+    """
 
     def __init__(
         self,
+        *,
         code: str | None = None,
         title: str | None = None,
         detail: str | None = None,
         extra: dict[str, Any] | None = None,
     ) -> None:
-        super().__init__(code or self.code, self.status, title or self.title, detail, extra)
+        super().__init__(
+            self.code if code is None else code, self.status, title or self.title, detail, extra
+        )
 
 
 class BadRequest(_StatusError):
@@ -93,12 +102,18 @@ class RateLimited(_StatusError):
     def __init__(
         self,
         retry_after: int,
+        *,
         code: str | None = None,
         title: str | None = None,
         detail: str | None = None,
         extra: dict[str, Any] | None = None,
     ) -> None:
-        super().__init__(code, title, detail, {**(extra or {}), "retry_after": retry_after})
+        super().__init__(
+            code=code,
+            title=title,
+            detail=detail,
+            extra={**(extra or {}), "retry_after": retry_after},
+        )
         self.headers["Retry-After"] = str(retry_after)
 
 
