@@ -43,20 +43,31 @@ print(sum(b"gunicorn" in c and app.encode() in c for c in (p.read_bytes() for p 
 }
 check "api runs one gunicorn worker (master + 1)" test "$(gunicorns)" = 2
 
-# Criterion 9: a spoofed X-Forwarded-For through Caddy, and one sent to the API directly from another
-# container, must not become the client address in the server's access log.
+# Criterion 9: gunicorn takes the client address from X-Forwarded-For only when Caddy sends it. Through
+# Caddy, the logged client is the real peer: not Caddy (header ignored) and not a spoofed value (Caddy
+# replaces it). Sent straight to api:8000 from another container, the header is ignored.
+caddy_ip=10.213.208.10
 marker="xff-probe-$$-$RANDOM"
-curl -sS -o /dev/null -H "X-Forwarded-For: 203.0.113.9" "$base/api/health?$marker-caddy"
-"${compose[@]}" exec -T s3 curl -sS -o /dev/null -H "X-Forwarded-For: 203.0.113.10" \
-  "http://api:8000/api/health?$marker-direct"
+curl -sS -o /dev/null -A "$marker-caddy" -H "X-Forwarded-For: 203.0.113.9" "$base/api/health"
+s3_ip="$("${compose[@]}" exec -T s3 hostname -i | tr -d '\r' | awk '{print $1}')"
+"${compose[@]}" exec -T s3 curl -sS -o /dev/null -A "$marker-direct" -H "X-Forwarded-For: 203.0.113.10" \
+  http://api:8000/api/health
 sleep 1
-logs="$("${compose[@]}" logs --no-color api)"
-logged() { grep -F "$marker-$1" <<<"$logs" | grep -q "$2"; }
-not_logged() { ! logged "$@"; }
-check "Caddy's request is in the access log" logged caddy "GET /api/health"
-check "a spoofed X-Forwarded-For via Caddy is not the client" not_logged caddy 203.0.113.9
-check "X-Forwarded-For sent around Caddy is not trusted" logged direct "GET /api/health"
-check "X-Forwarded-For sent around Caddy is not the client" not_logged direct 203.0.113.10
+logs="$("${compose[@]}" logs --no-color --no-log-prefix api)"
+client_of() { # the client_ip logged for the request whose User-Agent is $marker-$1
+  python3 -c '
+import json, sys
+for line in sys.stdin:
+    if line.startswith("{") and json.loads(line).get("user_agent") == sys.argv[1]:
+        print(json.loads(line)["client_ip"])' "$marker-$1" <<<"$logs"
+}
+via_caddy="$(client_of caddy)"
+direct="$(client_of direct)"
+echo "      logged client via Caddy: ${via_caddy:-none}; direct from s3 ($s3_ip): ${direct:-none}"
+check "a request through Caddy is logged" test -n "$via_caddy"
+check "through Caddy, the client is not Caddy (forwarded header trusted)" test "$via_caddy" != "$caddy_ip"
+check "through Caddy, a spoofed X-Forwarded-For is not the client" test "$via_caddy" != 203.0.113.9
+check "around Caddy, X-Forwarded-For is ignored (client is the sender)" test "$direct" = "$s3_ip"
 
 # Criterion 11.
 setting() { "${compose[@]}" exec -T api python -c "from app.core.config import settings; print(settings.$1)"; }

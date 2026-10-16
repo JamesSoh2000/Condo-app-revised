@@ -1,0 +1,147 @@
+# The production-like local stack (P1-08, ADR-0013): the API image and the built SPA that staging will run,
+# behind the shared deploy/Caddyfile on http://localhost:8080. Standalone, not an override of
+# docker-compose.yml, so no dev bind mount or --reload leaks in. `make prodlike` builds the image and the
+# SPA, migrates, then starts it; `make prodlike-down` stops it. It publishes the same Mailpit and S3 ports
+# as the dev stack, so run `make down` first.
+#
+# Dev values only (APP_ENV=dev, plain http, local secrets). What needs HTTPS or real AWS is checked on
+# staging (D-06).
+
+name: building-website-prodlike
+
+services:
+  api:
+    # Built by `make prodlike` (or CI) as condo-api:<git sha>; never pulled from a registry.
+    image: condo-api:${API_IMAGE_TAG:?set API_IMAGE_TAG, or use make prodlike}
+    pull_policy: never
+    # Inline instead of backend/.env.dev: that file sets GIT_SHA=local, which would hide the image's own
+    # build metadata.
+    environment:
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      TRUSTED_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
+      DATABASE_URL: postgresql+asyncpg://postgres:prodlikepassword@db:5432/condo
+      READINESS_CHECK_DATABASE: "true"
+      AWS_REGION: ca-central-1
+      S3_BUCKET_NAME: condo-app-dev-files
+      S3_ENDPOINT_URL: http://s3:4566
+      S3_PUBLIC_ENDPOINT_URL: http://localhost:4566
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      # Caddy is the only proxy whose X-Forwarded-* headers gunicorn trusts (127.0.0.1 on staging).
+      FORWARDED_ALLOW_IPS: 10.213.208.10
+    # No ports: only Caddy reaches the API, as on staging.
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=3).read()",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    networks:
+      - prodlike_net
+
+  db:
+    # Same major as docker-compose.yml and CI (scripts/check-version-pins.py); a pinned minor, like staging.
+    image: postgres:18.6
+    environment:
+      POSTGRES_DB: condo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: prodlikepassword
+    # No ports: tests and tools use the dev stack's database.
+    volumes:
+      - prodlike_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d condo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - prodlike_net
+
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    ports:
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # web UI (the E2E suite reads mail here, P4-09)
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - prodlike_net
+
+  # Published because the browser uploads to and downloads from presigned URLs on localhost:4566.
+  s3:
+    image: localstack/localstack:4.14.0
+    environment:
+      SERVICES: s3
+      AWS_DEFAULT_REGION: ca-central-1
+    ports:
+      - "127.0.0.1:4566:4566"
+    volumes:
+      - ./docker/s3-init/create-bucket.sh:/etc/localstack/init/ready.d/create-bucket.sh:ro
+    healthcheck:
+      # As in docker-compose.yml: healthy only once the init script has run without an error.
+      test:
+        - CMD-SHELL
+        - >-
+          r=$$(curl -fsS http://localhost:4566/_localstack/init/ready)
+          && echo "$$r" | grep -q '"completed": true'
+          && ! echo "$$r" | grep -q '"state": "ERROR"'
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - prodlike_net
+
+  caddy:
+    image: caddy:2.11.7
+    environment:
+      SITE_ADDRESS: ":8080"
+      API_UPSTREAM: api:8000
+      S3_PUBLIC_ORIGIN: http://localhost:4566
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # The layout deploy.sh creates on staging (D-03): the live build, and the hashed assets beside it.
+      - ./frontend/dist:/srv/app/frontend/current:ro
+      - ./frontend/dist/assets:/srv/app/frontend/assets:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      prodlike_net:
+        ipv4_address: 10.213.208.10
+
+volumes:
+  prodlike_pgdata:
+
+networks:
+  # A fixed subnet so Caddy has a fixed address for FORWARDED_ALLOW_IPS. Outside Docker's default pools
+  # (172.17.0.0/12, 192.168.0.0/16); change both addresses if it clashes with a local network or VPN.
+  prodlike_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.213.208.0/24
