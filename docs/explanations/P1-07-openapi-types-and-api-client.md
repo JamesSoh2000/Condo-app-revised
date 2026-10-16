@@ -7,6 +7,10 @@
 > before merge. This describes the PR's changes at the source revision. Commits after it (bookkeeping) and
 > the squash merge are not described here, and a rebase after it gives the same changes new SHAs. The branch
 > is rebased onto `origin/main` (`git merge-base --is-ancestor origin/main HEAD` succeeds).
+> **Updated** (pre-merge, same code): after the bookkeeping commit `108d410` was also read. It changes docs and
+> CLAUDE.md only (`git diff f76a219 108d410 --stat`), so the code described is still `f76a219`. The update adds
+> D8 (recorded in the PR after this explanation asked for it) and points §7's follow-ups to where `108d410`
+> now tracks them.
 > This is a snapshot: if the code changes later, write a new explanation; do not update this one. Lasting
 > decisions live in ADRs.
 > Form: full. Tier: 2. Walkthrough variant: B (the dev footer loading the backend version), with a variant C
@@ -134,6 +138,25 @@ The decisions that matter most: the retry policy (D3), how non-JSON and non-prob
   JSON). An *empty* non-204 2xx passes the check and resolves `undefined` (round 3 L5, §7).
 - **Basis:** review findings. **Source:** recorded (PR D7, review rounds 1–2).
 
+### D8. `make check` fails while a regenerated `schema.d.ts` is uncommitted *(autonomous; rationale recorded after the explainer asked)*
+
+- **Problem or constraint:** `make check` is meant to be "everything CI checks" (its help text in
+  `Makefile::check:`), and CI compares the regenerated file against the commit (D5).
+- **Chosen:** `make check` runs `gen-api`, then fails if `git status --porcelain --
+  frontend/src/api/schema.d.ts` is non-empty, printing "was stale and has been regenerated; commit it". A
+  correct but uncommitted regeneration also fails until it is committed.
+- **Alternatives rejected:** comparing against the working tree (regenerate to a temp file and diff it with
+  `schema.d.ts`): would pass locally with a regenerated but uncommitted file that then fails in CI, which is
+  the case the check exists to catch. Not running the drift check in `make check`: it would pass on a branch
+  whose CI fails.
+- **Tradeoffs and accepted limitations:** the workflow is "`make gen-api`, commit, `make check`". The
+  regeneration is left in the working tree, so the fix is one `git add`.
+- **Basis:** autonomous; mirrors the CI step (D5). Listed in the inbox's "Decisions to audit" (row citing
+  "PR #52 D5, D8"). **Source:** recorded (PR D8), but written after the first version of this explanation
+  reported the rationale missing; the PR labels it "rationale added after the explainer asked" and says it is
+  what the implementer chose at the time. The code matches it: the `Makefile::check:` recipe at `f76a219`
+  does exactly this.
+
 Smaller decisions:
 
 | Decision | Alternative rejected | Why | Basis | Source |
@@ -145,7 +168,7 @@ Smaller decisions:
 | Vitest 4.1.12, not 5 | Vitest 5 | 5 needs Vite ≥ 6.4; the lock has 6.3.6 and a Vite bump is out of scope | autonomous | PR table |
 | Tests run in Node; jsdom only per component file | jsdom everywhere | openapi-fetch's `Request`/`AbortSignal` are Node's; jsdom globally risks realm mismatches | autonomous | PR table |
 | Footer is a new `frontend/src/app/DevVersionFooter.tsx` rendered from `App.jsx` | extend legacy `Layout.jsx` | CLAUDE.md: don't extend legacy JSX | CLAUDE.md | PR table |
-| `make check` also runs Vitest and the drift check | leave them CI-only | `make check` is "everything CI checks" | CLAUDE.md | PR table |
+| `make check` also runs Vitest and the drift check (how it detects drift: D8) | leave them CI-only | `make check` is "everything CI checks" | CLAUDE.md | PR table |
 | Version query key `['version']` | `['b', …]` | global data; the README lists `[name]` for global data | ticket convention | PR table |
 | `@testing-library/dom` added explicitly | rely on a transitive copy | peer dependency of `@testing-library/react` 16 | npm peer deps | PR table |
 
@@ -154,7 +177,7 @@ field including a 422; GET and POST through both paths; retry counts per status 
 component test + proxy transcript). AC7 (401 event), AC8 (non-problem errors), AC9 (no footer in production)
 and AC10 (old query client removed, defaults, Vitest in CI) added. Nothing loosened. The Frame note's "no
 browser" turned out wrong: a headless Chrome run was done (PR AC6 transcript), but the ticket file at the
-source revision still says otherwise.
+source revision still says otherwise (corrected in bookkeeping commit `108d410`).
 
 ## 3. How it is implemented
 
@@ -210,7 +233,7 @@ flowchart LR
 2. **Backend job:** unaffected unless a test pins the schema (`backend/tests/test_export_openapi.py::test_version_response_is_a_typed_object` pins the *required* field set, so a rename or removal fails there too; an added optional field doesn't).
 3. **Frontend job**, in order: lint, type check (passes: it checks the *committed*, now stale, types), "Unit tests", then "Generated API types are up to date": `uv sync --locked`; export into `openapi.json` one level above `frontend/`; `npm run gen:api` overwrites `schema.d.ts`; `git status --porcelain -- src/api/schema.d.ts` is non-empty, so the step prints the diff and `::error file=frontend/src/api/schema.d.ts::Stale API types: run \`make gen-api\` and commit the result.` and exits 1.
 4. **Recovery:** run `make gen-api` locally, run `npm run typecheck` (now against the new types, it flags every call site using a renamed or removed field), fix them, commit both.
-5. **Locally**, `make check` runs the same regeneration and status test. Note that it fails whenever `schema.d.ts` has *any* uncommitted change, even a correct freshly regenerated one (`Makefile::check:`); commit the file before running `make check`.
+5. **Locally**, `make check` runs the same regeneration and status test. Note that it fails whenever `schema.d.ts` has *any* uncommitted change, even a correct freshly regenerated one (`Makefile::check:`); commit the file before running `make check`. This is deliberate (D8): a working-tree comparison would pass locally on a file CI then rejects.
 
 </details>
 
@@ -469,7 +492,7 @@ Acceptance criteria → tests:
 
 | Round | Reviewer | Commit reviewed | Verdict | Findings | Outcome |
 |---|---|---|---|---|---|
-| 1 | fresh Claude (Sonnet 5.5, high) | `62afad3` | MERGE | L1: non-JSON 2xx rejects with `SyntaxError`; L2: header request-id fallback untested; L3: inbox/index not updated | L1 fixed in `4b7d38a` (D7); L2 test added in `4b7d38a`; L3 deferred to the bookkeeping commit |
+| 1 | fresh Claude (Sonnet 5.5, high) | `62afad3` | MERGE | L1: non-JSON 2xx rejects with `SyntaxError`; L2: header request-id fallback untested; L3: inbox/index not updated | L1 fixed in `4b7d38a` (D7); L2 test added in `4b7d38a`; L3 done in bookkeeping commit `108d410` |
 | 2 | fresh Claude (Sonnet 5.5, high) | `4b7d38a` | MERGE | L4: the L1 fix broke `parseAs: 'text'/'blob'` | fixed in `f76a219` |
 | 3 | fresh Claude (Sonnet 5.5, high) | `f76a219` | MERGE | L5: empty non-204 2xx resolves `undefined` | not fixed; follow-up (§7) |
 
@@ -498,31 +521,32 @@ Not verified:
 - `vitest.config.ts` sits outside `tsconfig.json`'s `include`, so `tsc` does not type-check it (Vitest still
   loads it).
 
-Accepted risks and follow-ups. The PR body lists all of these, and says the bookkeeping commit (step 6)
-will carry them into the ticket index, the inbox and the P2-06 ticket. At the source revision none of them is
-in the repo yet:
+Accepted risks and follow-ups. The PR body lists all of these. At the source revision none was in the repo;
+the bookkeeping commit `108d410` now tracks most of them in the tickets that will act on them and in the
+inbox. The rest are accepted risks recorded only in the PR and this explanation:
 
-| Item | Where tracked at the source revision |
+| Item | Where tracked (as of `108d410`) |
 |---|---|
-| `onUnauthenticated` fires on a login wrong-password 401 (P2-01 specifies 401 `invalid_credentials`); P2-06 must decide whether to ignore it on the login page (D1) | PR only. `docs/tickets/P2-06-frontend-auth-shell.md` does not mention it |
-| Empty non-204 2xx resolves `undefined` (round 3 L5); `unwrap` could throw `http_error` when `data` is `undefined` and status ≠ 204 | PR says "tracked in the P2-06 ticket"; that ticket does not mention it |
-| `api.get/post` don't forward React Query's `signal`, so superseded queries aren't aborted (round 2) | PR only |
-| Legacy Base44 queries lose `retry: 1` and now refetch on focus (round 1) | PR only (accepted) |
-| `fetch` wrapper drops openapi-fetch's `init` argument; matters only for streaming request bodies (round 1) | PR only |
-| `api.post` has no typed paths until a POST route exists | PR only |
-| Fence self-test doesn't cover `src/api` (D6) | PR only |
-| P2-01 can rely on `X-Requested-With: fetch` from the typed client; legacy Base44 calls don't send it | PR only (`docs/tickets/P2-01-sessions-login-logout-csrf.md` requires the header, but doesn't note the legacy gap) |
-| ADR-0015's "Revisit when": P1-07's merge triggers the decision on type-aware ESLint rules and `react-hooks/exhaustive-deps` | the ADR itself; the PR doesn't address it |
-| Decisions D1, D4, D6 "listed in the inbox" | `docs/HUMAN_INBOX.md` has no P1-07 entry yet |
+| `onUnauthenticated` fires on a login wrong-password 401 (P2-01 specifies 401 `invalid_credentials`); P2-06 must decide whether to ignore it on the login page (D1) | `docs/tickets/P2-06-frontend-auth-shell.md` "Carried from P1-07" (ignore it on the login page or call, and test it); cross-referenced from `docs/tickets/P2-01-sessions-login-logout-csrf.md` "Carried from P1-07"; inbox row for D1 |
+| Empty non-204 2xx resolves `undefined` (round 3 L5); `unwrap` could throw `http_error` when `data` is `undefined` and status ≠ 204 | P2-06 "Carried from P1-07" |
+| `api.get/post` don't forward React Query's `signal`, so superseded queries aren't aborted (round 2) | P2-06 "Carried from P1-07" (pass `{ signal }` with the first hook, document it in `frontend/src/api/README.md`) |
+| Legacy Base44 queries lose `retry: 1` and now refetch on focus (round 1) | Accepted; inbox row for D3 states it |
+| A `TypeError` thrown by a bug in a `queryFn` is retried like a network error (D3) | Accepted; PR and this explanation only (the inbox's D3 row doesn't mention it) |
+| `fetch` wrapper drops openapi-fetch's `init` argument; matters only for streaming request bodies (round 1) | Accepted; PR and this explanation only |
+| `api.post` has no typed paths until a POST route exists | PR and this explanation only (resolves itself with the first POST route) |
+| Fence self-test doesn't cover `src/api` (D6) | P2-06 "Carried from P1-07", as optional hardening |
+| P2-01 can rely on `X-Requested-With: fetch` from the typed client; legacy Base44 calls don't send it | P2-01 "Carried from P1-07" |
+| ADR-0015's "Revisit when": P1-07's merge triggers the decision on type-aware ESLint rules and `react-hooks/exhaustive-deps` | P2-06 "Carried from P1-07" (decide as an ADR-0015 update or a new ADR) |
+| Decisions to audit | `docs/HUMAN_INBOX.md` "Decisions to audit": five P1-07 rows covering D1, D3, D4/D7, D5/D8 and D6 |
 
 ## 8. How to change this safely
 
 - **A new endpoint or changed model:** change the backend, run `make gen-api`, run `npm run typecheck` to find
   broken call sites, commit `schema.d.ts` with the change, then run `make check` (it fails on an *uncommitted*
-  `schema.d.ts`). CI's drift step catches a forgotten regeneration.
+  `schema.d.ts`, by design: D8). CI's drift step catches a forgotten regeneration.
 - **A new domain hook:** put it in `src/features/<domain>/`, use `api.get/post`, key building data
   `['b', buildingId, domain, params]` (`frontend/src/api/README.md`), and pass React Query's `signal` through
-  `init` (follow-up above).
+  `init` (follow-up above, carried to P2-06).
 - **Changing error mapping:** `frontend/src/api/errors.ts::toApiError`; the "criterion 3" and "criterion 8"
   blocks in `client.test.ts` will tell you what broke. Keep "every failure is an `ApiError`" true, or
   `shouldRetry` misclassifies it.
