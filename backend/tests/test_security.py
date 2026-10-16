@@ -44,11 +44,16 @@ def test_same_password_hashes_differently_each_time():
         "",
         "$2b$12$C6UzMDM.H6dfI/f/IKcEeO5YrWgxi2TfiN3ZQe4VuqUZ7NWEJdgJW",  # bcrypt
         "$argon2id$v=19$m=65536,t=3,p=4$garbage",
+        # Review round 1 M1 (Codex, Claude): argon2 encodes the hash as ASCII before parsing it.
+        "not-a-hash-é",
+        "$argon2id$v=19$m=65536,t=3,p=4$é$invalid",
     ],
-    ids=["text", "empty", "bcrypt", "truncated-argon2"],
+    ids=["text", "empty", "bcrypt", "truncated-argon2", "non-ascii", "non-ascii-argon2"],
 )
 def test_verify_returns_false_for_a_hash_it_cannot_parse(stored):
     assert verify_password(PASSWORD, stored) is False
+    # Review round 1 L1: and it needs replacing, rather than raising.
+    assert needs_rehash(stored) is True
 
 
 def test_weaker_parameters_need_a_rehash_and_current_ones_do_not():

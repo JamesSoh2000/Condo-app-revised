@@ -5,7 +5,10 @@ loop, which can't share the test's connection, so the CLI tests cover the refusa
 session) and the runner's commit with a fake session; `make seed` is run on the stack in the PR.
 """
 
+import asyncio
+
 import pytest
+from argon2 import PasswordHasher
 from pydantic import SecretStr
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +18,7 @@ from app import cli
 from app.buildings.enums import Feature
 from app.buildings.models import Building, BuildingFeature
 from app.core.config import Settings
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password, needs_rehash, verify_password
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
 from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
 from app.memberships.occupancy import end_occupancy
@@ -162,6 +165,21 @@ async def test_seed_twice_keeps_every_password_hash(db: AsyncSession) -> None:
     assert all(first.values())
 
 
+async def test_seed_replaces_a_hash_made_with_weaker_parameters(db: AsyncSession) -> None:
+    # Review round 1 L3: a hash that verifies but needs_rehash is upgraded.
+    await seed(db, app_env="dev")
+    user = (await db.scalars(select(User).where(User.email == "resident1@example.test"))).one()
+    weak = PasswordHasher(time_cost=1, memory_cost=8 * 1024, parallelism=1).hash(DEV_SEED_PASSWORD)
+    user.password_hash = weak
+    await db.flush()
+
+    await seed(db, app_env="dev")
+
+    assert user.password_hash != weak
+    assert verify_password(DEV_SEED_PASSWORD, user.password_hash or "")
+    assert not needs_rehash(user.password_hash or "")
+
+
 async def test_seed_restores_a_changed_password(db: AsyncSession) -> None:
     await seed(db, app_env="dev")
     user = (await db.scalars(select(User).where(User.email == "resident1@example.test"))).one()
@@ -259,6 +277,27 @@ def test_cli_seed_in_staging_without_a_valid_seed_password_opens_no_session(
     assert result.exit_code == 1
     assert "SEED_PASSWORD" in result.output
     assert opened == []
+
+
+def test_cli_seed_in_staging_passes_seed_password_to_seed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Review round 1 L2: the success path's wiring, not only the refusals.
+    _cli_settings(monkeypatch, "staging", STAGING_PASSWORD)
+    received: list[tuple[str, str | None]] = []
+
+    async def fake_seed(db, *, app_env, reset, seed_password):
+        received.append((app_env, seed_password))
+
+    async def no_commit_session(work):
+        await work(None)
+
+    monkeypatch.setattr(cli, "seed", fake_seed)
+    monkeypatch.setattr(cli, "run_in_session", lambda work: asyncio.run(no_commit_session(work)))
+
+    result = runner.invoke(cli.app, ["seed"])
+
+    assert result.exit_code == 0, result.output
+    assert received == [("staging", STAGING_PASSWORD)]
+    assert STAGING_PASSWORD not in result.output
 
 
 # Criterion 4

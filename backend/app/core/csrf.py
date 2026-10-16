@@ -30,6 +30,8 @@ class CSRFMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # Only HTTP: there are no WebSocket routes (CLAUDE.md rule 13). One that reads the session
+        # cookie must check `Origin` itself (review round 1 L4).
         if scope["type"] != "http" or scope["method"] in SAFE_METHODS:
             await self.app(scope, receive, send)
             return

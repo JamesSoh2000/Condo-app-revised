@@ -29,13 +29,18 @@ def verify_password(password: str, password_hash: str) -> bool:
     """True only if `password` matches; False for a mismatch or a hash that can't be parsed."""
     try:
         return _hasher.verify(password_hash, password)
-    except VerificationError, InvalidHashError:
+    # UnicodeEncodeError: argon2 encodes the hash as ASCII before parsing it (review round 1 M1).
+    except VerificationError, InvalidHashError, UnicodeEncodeError:
         return False
 
 
 def needs_rehash(password_hash: str) -> bool:
-    """True if the hash was made with other parameters than `hash_password` uses now."""
-    return _hasher.check_needs_rehash(password_hash)
+    """True if the hash was made with other parameters than `hash_password` uses now, or can't
+    be parsed at all (it needs replacing either way)."""
+    try:
+        return _hasher.check_needs_rehash(password_hash)
+    except InvalidHashError, UnicodeEncodeError:
+        return True
 
 
 # Verified against when there is no hash to check (unknown email, no password set), so that path
