@@ -74,6 +74,11 @@ async def domain_error(name: str) -> None:
     raise DOMAIN_ERRORS[name]()
 
 
+@router.get("/extra-named/{key}")
+async def extra_named(key: str) -> None:
+    raise Conflict(code="x_conflict", extra={key: "r-1"})
+
+
 @router.get("/rate-limited")
 async def rate_limited() -> None:
     raise RateLimited(retry_after=30)
@@ -199,6 +204,17 @@ async def test_extra_with_uuid_and_datetime_values_is_still_the_domain_error(app
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("key", ["request", "headers", "members", "status_code", "media_type"])
+async def test_extra_named_like_a_parameter_is_still_the_domain_error(app_client, key):
+    # Review round 2, F1: extra keys reached problem_response() as keyword arguments.
+    async with app_client(router) as c:
+        response = await c.get(f"/api/probe/extra-named/{key}")
+
+    body = assert_problem(response, 409, "x_conflict")
+    assert body[key] == "r-1"
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("name", "status"),
     [("not_found", 404), ("forbidden", 403), ("unauthorized", 401), ("bad_request", 400)],
@@ -262,6 +278,19 @@ async def test_http_exception_5xx_drops_its_detail(app_client):
     body = assert_problem(response, 503, "service_unavailable")
     assert "detail" not in body
     assert "custom detail" not in response.text
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("status", [204, 304])
+async def test_http_exception_without_a_body_status_sends_no_body(app_client, status):
+    # Review round 2, F2: 204 and 304 must not carry a body (Starlette's default handler agrees).
+    async with app_client(router) as c:
+        response = await c.get(f"/api/probe/http/{status}")
+
+    assert response.status_code == status
+    assert response.content == b""
+    assert "content-type" not in response.headers
+    assert response.headers["X-Request-ID"]
 
 
 # Criterion 4

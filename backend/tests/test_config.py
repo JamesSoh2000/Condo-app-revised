@@ -119,6 +119,14 @@ PROD = {
         "ftp://condo.example.org",
         "https://condo.example.org?x=1",
         " https://condo.example.org",
+        # Review round 2, F5: a trailing dot, an empty or dash-edged label, a port out of range.
+        "https://condo.example.org.",
+        "https://localhost.",
+        "https://condo..example.org",
+        "https://-",
+        "https://-condo.example.org",
+        "https://condo.example.org:99999",
+        "https://condo.example.org:0",
     ],
 )
 @pytest.mark.parametrize("app_env", ["dev", "prod"])

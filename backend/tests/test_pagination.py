@@ -124,7 +124,7 @@ async def test_no_limit_means_25(app_client, db):
 async def test_paginate_replaces_the_callers_order_and_limit(db):
     expected = await add_buildings(db, 6)
 
-    stmt = select(Building).order_by(Building.slug).limit(2)
+    stmt = select(Building).order_by(Building.slug).limit(2).offset(3)
     page = await paginate(db, stmt, Building.id, CursorParams(limit=4), BuildingItem.model_validate)
 
     assert [item.id for item in page.items] == expected[:4]

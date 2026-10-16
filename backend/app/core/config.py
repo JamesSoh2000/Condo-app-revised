@@ -11,8 +11,10 @@ AppEnv = Literal["dev", "test", "prod"]
 
 # Keeps the app bootable locally; validate_production_settings rejects it in production.
 LOCAL_DEV_SECRET_KEY = "change-me-in-local-dev-only"  # noqa: S105
-# What a browser sends in `Origin`: lowercase scheme://host[:port], no path or trailing slash.
-_ORIGIN = re.compile(r"https?://[a-z0-9.-]+(:[0-9]{1,5})?")
+# What a browser sends in `Origin`: lowercase scheme://host[:port], no path or trailing slash; host
+# labels are letters, digits and inner dashes, with no trailing dot.
+_LABEL = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+_ORIGIN = re.compile(rf"https?://{_LABEL}(\.{_LABEL})*(:[1-9][0-9]{{0,4}})?")
 
 
 class Settings(BaseSettings):
@@ -104,7 +106,7 @@ class Settings(BaseSettings):
                     "SES_FROM_EMAIL must be set to a real verified sender in production"
                 )
 
-        malformed = [origin for origin in self.trusted_origins if not _ORIGIN.fullmatch(origin)]
+        malformed = [origin for origin in self.trusted_origins if not _is_origin(origin)]
         if malformed:
             raise ValueError(
                 f"TRUSTED_ORIGINS entries must be lowercase scheme://host[:port], with no path or "
@@ -116,6 +118,16 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "prod"
+
+
+def _is_origin(origin: str) -> bool:
+    if not _ORIGIN.fullmatch(origin):
+        return False
+    try:
+        urlsplit(origin).port  # noqa: B018 (raises ValueError above 65535)
+    except ValueError:
+        return False
+    return True
 
 
 def _is_loopback(origin: str) -> bool:

@@ -9,12 +9,13 @@ import copy
 import json
 import re
 import uuid
+from collections.abc import Mapping
 from http import HTTPStatus
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict
 from pydantic_core import to_jsonable_python
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -137,7 +138,7 @@ def problem_response(
     title: str,
     detail: str | None = None,
     headers: dict[str, str] | None = None,
-    **members: Any,
+    members: Mapping[str, Any] | None = None,
 ) -> JSONResponse:
     # Set by RequestLoggingMiddleware. request.state survives to the 500 handler, which runs outside
     # the middleware, after the context variable is reset.
@@ -152,7 +153,7 @@ def problem_response(
     }
     if detail is not None:
         body["detail"] = detail
-    body.update(members)
+    body.update(members or {})
     body["request_id"] = request_id
     return JSONResponse(
         # extra members are often UUIDs and datetimes; encoded as response models are (UTC as `Z`).
@@ -171,7 +172,8 @@ async def _domain_error(request: Request, exc: DomainError) -> JSONResponse:
         title=exc.title,
         detail=exc.detail,
         headers=exc.headers,
-        **exc.extra,
+        # A dict, not keywords: an extra named like a parameter (`request`, `headers`) can't clash.
+        members=exc.extra,
     )
 
 
@@ -179,11 +181,18 @@ async def _validation_error(request: Request, exc: RequestValidationError) -> JS
     # Only loc/msg/type: pydantic's `input` and `ctx` would echo submitted values (passwords).
     errors = [{"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]} for e in exc.errors()]
     return problem_response(
-        request, status=422, code="validation_error", title="Validation Error", errors=errors
+        request,
+        status=422,
+        code="validation_error",
+        title="Validation Error",
+        members={"errors": errors},
     )
 
 
-async def _http_exception(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def _http_exception(request: Request, exc: StarletteHTTPException) -> Response:
+    if exc.status_code in {204, 304}:
+        # These statuses carry no body (Starlette's default handler does the same).
+        return Response(status_code=exc.status_code, headers=dict(exc.headers or {}))
     title = _phrase(exc.status_code)
     code = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_") or "http_error"
     # A 5xx detail may describe internals; below 500 it is a message the code chose to send.
