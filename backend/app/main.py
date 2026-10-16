@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
 from app.core.config import settings
+from app.core.csrf import CSRFMiddleware
 from app.core.errors import install_error_handlers
 from app.logging_config import configure_logging
 from app.middleware.request_logging import RequestLoggingMiddleware
@@ -45,7 +46,9 @@ def create_app() -> FastAPI:
     )
 
     # No CORSMiddleware: the SPA and /api share an origin everywhere (ADR-0003), so browsers never
-    # make a cross-origin API call. CSRF protection (P2-01) checks settings.trusted_origins.
+    # make a cross-origin API call. CSRF protection checks settings.trusted_origins.
+    # The last added runs first: request logging wraps the CSRF check, so a rejection is logged.
+    app.add_middleware(CSRFMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
     install_error_handlers(app)
 

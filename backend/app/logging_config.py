@@ -38,6 +38,7 @@ class JsonFormatter(logging.Formatter):
             "user_agent",
             "error_type",
             "error_message",
+            "reason",
         ]
 
         for field in extra_fields:
