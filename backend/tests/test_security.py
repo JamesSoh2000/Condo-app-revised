@@ -63,6 +63,17 @@ def test_weaker_parameters_need_a_rehash_and_current_ones_do_not():
     assert needs_rehash(hash_password(PASSWORD)) is False
 
 
+@pytest.mark.parametrize("bad", ["!", "é", "="])
+def test_hash_with_current_parameters_but_a_garbage_payload_needs_replacing(bad):
+    # Review round 2 (Codex, Low): the library compares parameters and lengths only.
+    parts = DUMMY_HASH.split("$")
+    parts[-1] = bad * len(parts[-1])
+    malformed = "$".join(parts)
+
+    assert verify_password(PASSWORD, malformed) is False
+    assert needs_rehash(malformed) is True
+
+
 def test_dummy_hash_costs_what_a_real_hash_costs():
     # The unknown-email path verifies against DUMMY_HASH: it must be a real argon2id hash with the
     # current parameters, or that path would be measurably faster than a wrong password.
@@ -134,6 +145,18 @@ def test_common_list_has_1000_unique_lowercase_entries_that_meet_the_length_rule
     assert len(entries) == 1000
     assert len(set(entries)) == 1000
     assert all(e == e.lower() and 12 <= len(e) <= 128 for e in entries)
+
+
+@pytest.mark.parametrize("password", ["\ud800" * 12, "valid-prefix-\udfff"])
+def test_policy_rejects_a_password_that_is_not_valid_unicode(password):
+    # Review round 2 M1: JSON can carry lone surrogates; argon2 can't encode them, so the policy
+    # must reject them before hash_password raises.
+    with pytest.raises(UnicodeEncodeError):
+        hash_password(password)
+    with pytest.raises(WeakPasswordError) as excinfo:
+        check_password_policy(password)
+
+    assert excinfo.value.reason == "invalid_characters"
 
 
 def test_policy_counts_characters_not_bytes():

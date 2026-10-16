@@ -244,6 +244,33 @@ async def test_rejection_is_a_logged_403_not_a_500(app_client, caplog):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("headers", "reason"),
+    [
+        ([("Origin", TRUSTED)], "x_requested_with"),
+        ([("X-Requested-With", "fetch"), ("Origin", "https://evil.example")], "origin"),
+        ([("X-Requested-With", "fetch")], "no_origin"),
+    ],
+)
+async def test_rejection_is_logged_with_its_reason_and_no_header_values(
+    app_client, caplog, headers, reason
+):
+    # Review round 2 M2.
+    with caplog.at_level(logging.INFO, logger="app.csrf"):
+        async with app_client(router) as c:
+            response = await send(c, "POST", "/api/csrf-probe/write", headers)
+
+    assert_csrf_rejected(response)
+    [record] = [r for r in caplog.records if r.getMessage() == "csrf_rejected"]
+    assert (record.levelno, record.reason, record.path) == (
+        logging.WARNING,
+        reason,
+        "/api/csrf-probe/write",
+    )
+    assert "evil.example" not in str(record.__dict__)
+
+
+@pytest.mark.anyio
 async def test_rejection_does_not_read_the_request_body(app_client):
     received: list[bytes] = []
 

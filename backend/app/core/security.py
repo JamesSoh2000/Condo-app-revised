@@ -6,6 +6,7 @@ of the database.
 """
 
 import hashlib
+import re
 import secrets
 from functools import cache
 from importlib import resources
@@ -34,9 +35,17 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+# A PHC string ends in `$<salt>$<digest>`, both unpadded standard base64. argon2-cffi's
+# check_needs_rehash reads only the parameters and lengths, not these (review round 2).
+_PHC_SALT_AND_DIGEST = re.compile(r"\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+")
+
+
 def needs_rehash(password_hash: str) -> bool:
-    """True if the hash was made with other parameters than `hash_password` uses now, or can't
-    be parsed at all (it needs replacing either way)."""
+    """True if the hash was made with other parameters than `hash_password` uses now, or any part
+    of it can't be parsed (it needs replacing either way)."""
+    salt_and_digest = "$" + "$".join(password_hash.split("$")[-2:])
+    if not _PHC_SALT_AND_DIGEST.fullmatch(salt_and_digest):
+        return True
     try:
         return _hasher.check_needs_rehash(password_hash)
     except InvalidHashError, UnicodeEncodeError:
@@ -58,7 +67,7 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-type WeakPasswordReason = Literal["too_short", "too_long", "too_common"]
+type WeakPasswordReason = Literal["too_short", "too_long", "too_common", "invalid_characters"]
 
 
 class WeakPasswordError(ValueError):
@@ -72,6 +81,11 @@ def check_password_policy(password: str) -> None:
 
     No composition rules (NIST SP 800-63B). Length counts characters, not bytes.
     """
+    try:
+        password.encode()
+    except UnicodeEncodeError:
+        # A lone surrogate (JSON can carry one): it can't be hashed (review round 2 M1).
+        raise WeakPasswordError("invalid_characters") from None
     if len(password) < PASSWORD_MIN_LENGTH:
         raise WeakPasswordError("too_short")
     if len(password) > PASSWORD_MAX_LENGTH:
