@@ -129,6 +129,20 @@ schema adds it.
 - A wrong-password 401 also fires the frontend's `auth:unauthenticated` event (P2-06 handles it; see its
   "Carried from P1-07").
 
+## Carried from P2-01a (do while framing)
+
+From the P2-01a reviews (PR #56; `docs/explanations/P2-01a-csrf-and-password-hashing.md` §7):
+- Verify the submitted password against `DUMMY_HASH` when the user is unknown, has a NULL hash **or** a hash
+  `verify_password` can't parse (it returns False at once for one, which is faster than a real verify;
+  review round 2 L2).
+- Cap the password length in the login schema (`max_length`) before it reaches argon2 (round 1 L5, round 2 L3).
+- Run `verify_password`/`hash_password` off the event loop (`anyio.to_thread.run_sync`): argon2 is CPU-bound.
+- `needs_rehash` doesn't decode the salt and digest: a non-canonical last base64 character returns False
+  (round 3 Low). Login calls it only after a successful verify, so it is safe there; make it decode
+  canonically (decode, re-encode, compare) and test that case.
+- Every unsafe request needs `X-Requested-With: fetch` and a trusted `Origin`; curl transcripts must send
+  both (`docs/ARCHITECTURE.md` §6).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

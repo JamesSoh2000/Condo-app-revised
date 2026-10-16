@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P1-02, P1-04, P1-06 |
 | Replaces old | M3-T01 (redesigned per ADR-0003) |
-| Status | in progress |
+| Status | done |
 
 Split from [P2-01](./P2-01-sessions-login-logout-csrf.md) (see there why). Sessions, login and logout are
 [P2-01b](./P2-01b-sessions-login-logout.md).

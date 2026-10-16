@@ -100,6 +100,12 @@ built and smoke-tested by the `prodlike` CI job (P1-08).
   settings checks. Set `APP_ENV=staging` explicitly in the staging env, and consider making deployed images
   fail without it (P1-06 review L2).
 
+## Carried from P2-01a
+
+- `make seed` refuses to run in staging unless `SEED_PASSWORD` is set (a secret: 12–128 characters, passes
+  the password policy, not the public `DevPassword!2026`). Put it in the staging env (`/srv/app/.env`) with
+  the other secrets; D-06 logs in with it. See `backend/app/seed.py::seed_password_for` and PR #56 D2.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
