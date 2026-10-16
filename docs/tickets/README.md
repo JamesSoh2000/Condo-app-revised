@@ -49,11 +49,12 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P1-06](./P1-06-seed-and-cli.md) | Seed data and operator CLI skeleton | A | 3 | P1-03 | done | — |
 | [P1-07](./P1-07-openapi-types-and-api-client.md) | OpenAPI → TypeScript types and API client | B | 2 | P1-04, P0-03a, P0-03b | done | — |
 | [P1-08](./P1-08-production-like-local-stack.md) | Production-like local stack (local walking skeleton) | B | 2 | P0-04a, P0-02, P0-03a, P0-03b | done | — |
-| [P2-01](./P2-01-sessions-login-logout-csrf.md) | Password hashing, sessions, login/logout and CSRF | A | 1 | P1-02, P1-04 | todo | — |
-| [P2-02](./P2-02-me-and-session-management.md) | Current-user API and session management | A | 1 | P2-01 | todo | — |
+| [P2-01a](./P2-01a-csrf-and-password-hashing.md) | CSRF protection and password hashing (split from [P2-01](./P2-01-sessions-login-logout-csrf.md)) | A | 1 | P1-02, P1-04, P1-06 | in progress | — |
+| [P2-01b](./P2-01b-sessions-login-logout.md) | Sessions, login and logout | A | 1 | P2-01a, P1-02, P1-05 | todo | — |
+| [P2-02](./P2-02-me-and-session-management.md) | Current-user API and session management | A | 1 | P2-01b | todo | — |
 | [P2-03](./P2-03-tenant-context-guards-fitness.md) | Tenant context, guards and fitness tests | A | 1 | P2-02, P1-05 | todo | — |
 | [P2-04](./P2-04-audit-events.md) | Audit events | A | 1 | P2-03 | todo | — |
-| [P2-05](./P2-05-rate-limiting.md) | Rate limiting | B | 1 | P2-01 | todo | — |
+| [P2-05](./P2-05-rate-limiting.md) | Rate limiting | B | 1 | P2-01b | todo | — |
 | [P2-06](./P2-06-frontend-auth-shell.md) | Frontend auth shell, guards and building picker | B | 1 | P2-02, P1-07 | todo | — |
 | [P3-01](./P3-01-job-queue-and-worker.md) | Job queue and worker | B | 1 | P1-04, P0-05 | todo | — |
 | [P3-02](./P3-02-transactional-email.md) | Transactional email | B | 2 | P3-01 | todo | — |
@@ -92,7 +93,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 
 ```text
 P0-02 → P0-05 → P1-01 → P1-02 → P1-03 → P1-05 → P2-03 → P2-04 → P4-01 → P4-05 → P4-06 → P4-08 → P4-09 → P5-05
-                         P1-02 → P2-01 → P2-02 ↗                   P3-01 → P3-03 ↗
+                         P1-02 → P2-01a → P2-01b → P2-02 ↗         P3-01 → P3-03 ↗
 ```
 
 The data and identity chain (lane A) is the critical path. Its tickets must merge one after another, so the

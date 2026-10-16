@@ -1,4 +1,4 @@
-# P2-01 — Password hashing, sessions, login/logout and CSRF
+# P2-01 — Password hashing, sessions, login/logout and CSRF (split)
 
 | Field | Value |
 |---|---|
@@ -6,19 +6,40 @@
 | Risk tier | 1 |
 | Depends on | P1-02, P1-04 |
 | Replaces old | M3-T01, M3-T02 (redesigned per ADR-0003) |
-| Status | todo |
+| Status | split into [P2-01a](./P2-01a-csrf-and-password-hashing.md), [P2-01b](./P2-01b-sessions-login-logout.md) |
 
-## Goal
+Split while framing (2026-10-16). "P2-01" in other tickets' text means both parts; the
+[ticket index](./README.md) lists which part each dependent actually needs (P2-02 and P2-05 need P2-01b,
+which depends on P2-01a).
+
+| Part | Scope | Acceptance criteria (original numbers) |
+|---|---|---|
+| [P2-01a](./P2-01a-csrf-and-password-hashing.md) | CSRF middleware and the test clients' default headers; `app/core/security.py` (argon2id hashing, tokens, `DUMMY_HASH`); the password policy; seed passwords; the "Carried from P1-04" fixes (keyword-only `DomainError` arguments, default ports in `TRUSTED_ORIGINS`) | 7, 8 |
+| [P2-01b](./P2-01b-sessions-login-logout.md) | `sessions` table, session settings, clock, login/logout endpoints, `get_current_session`/`get_current_user`, `login_as`/`as_user` test helpers | 1, 2, 3, 4, 5, 6 |
+
+## Why split
+
+- Size: the estimate for the whole ticket was ~540 non-test lines (CSRF ~55, security and policy ~60, seed
+  ~30, the P1-04 carries ~30, session model and migration ~90, settings ~30, auth service/deps/router/schemas
+  ~210, clock, wiring and docs ~35), well over ~400.
+- Order: CSRF goes first, so the login and logout endpoints never exist on `main` without it. Hashing goes
+  with it because it has no dependency on sessions, and P2-01b then holds only the session lifecycle.
+- No criterion was dropped or loosened: AC7 and AC8 are in P2-01a (both sharpened), AC1–AC6 in P2-01b.
+  "Must explain" questions 1–3 are answered by P2-01a's explanation, 4–5 by P2-01b's.
+
+## Original ticket (for reference)
+
+### Goal
 
 Users log in with email and password and receive an HttpOnly session cookie backed by a hashed server-side
 session. They can log out. State-changing requests are protected against CSRF.
 
-## Why
+### Why
 
 This is the foundation of every authorization check. The design is deliberately simpler than the old JWT
 plan ([ADR-0003](../adr/0003-same-origin-server-side-sessions.md)).
 
-## Scope
+### Scope
 
 - In:
   - **`app/core/security.py`:**
@@ -70,12 +91,12 @@ plan ([ADR-0003](../adr/0003-same-origin-server-side-sessions.md)).
   - password reset (P4-04)
   - MFA (pilot)
 
-## Interfaces
+### Interfaces
 
 Endpoints above. Cookie: `HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `session_cookie_secure`, and no
 `Domain` attribute.
 
-## Acceptance criteria
+### Acceptance criteria
 
 1. **Given** seeded `resident1` and the correct password, **when** logging in, **then** 204, and the cookie
    has HttpOnly, SameSite=Lax and Path=/ (and Secure in the staging config).
@@ -91,20 +112,20 @@ Endpoints above. Cookie: `HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `s
    `csrf_failed`, and the handler does not run. GET requests are unaffected.
 8. **Given** a stored hash, **then** it starts with `$argon2id$`.
 
-## Test plan
+### Test plan
 
 - `tests/auth/test_login.py`, `tests/auth/test_sessions.py`, `tests/test_csrf.py`, covering each criterion.
 - Use a clock helper (`app/core/clock.py` `now()`) so tests can freeze time.
 - Commands: `make test`. Manual: log in on the prod-like stack (`make prodlike`) with curl and inspect
   `Set-Cookie`. The `__Host-`/`Secure` cookie over HTTPS is checked on staging in D-06.
 
-## Likely files
+### Likely files
 
 `backend/app/core/{security,csrf,clock}.py`, `backend/app/auth/{models,router,deps,service,schemas}.py`,
 `backend/app/main.py`, `backend/app/seed.py`, `backend/app/core/config.py`, `backend/.env.example`,
 `backend/migrations/versions/<new>.py`, `backend/tests/auth/*`, `backend/tests/helpers/auth.py`.
 
-## Must explain (learning checkpoint)
+### Must explain (learning checkpoint)
 
 1. Why argon2id for passwords but plain sha256 for session tokens?
 2. What does `DUMMY_HASH` prevent?
@@ -113,7 +134,7 @@ Endpoints above. Cookie: `HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `s
 4. Why `SameSite=Lax` rather than `Strict` here?
 5. Why limit `last_seen_at` updates to once every 5 minutes?
 
-## Carried from P1-02 (decide while framing)
+### Carried from P1-02 (decide while framing)
 
 From the P1-02 reviews (PR #44). `User` lower-cases `email` with Python's `str.lower()` on ORM writes; the
 database enforces uniqueness on Postgres `lower(email)` (`uq_users_lower_email`). Login (and later P4-02,
@@ -130,7 +151,7 @@ The database also accepts `''` and space-padded values for `email` and `full_nam
 schemas that write users must reject them. `email-validator` isn't a dependency yet; the first `EmailStr`
 schema adds it.
 
-## Carried from P1-04 (do while framing)
+### Carried from P1-04 (do while framing)
 
 From the P1-04 reviews (PR #49; `docs/explanations/P1-04-api-conventions.md`):
 - **The CSRF middleware must return `problem_response(...)` (403 `csrf_failed`), not raise `Forbidden`.**
@@ -144,13 +165,13 @@ From the P1-04 reviews (PR #49; `docs/explanations/P1-04-api-conventions.md`):
 - The CSRF check compares `Origin` exactly against `settings.trusted_origins`, which are already validated
   as lowercase `scheme://host[:port]` (`app/core/config.py::_is_origin`).
 
-## Carried from P1-05 (do while framing)
+### Carried from P1-05 (do while framing)
 
 - The test world's users (`tests/world.py`) all have `password_hash` NULL. `as_user` should create the
   session directly (or set a password), and login must treat a NULL hash as "cannot log in" (also a P1-02
   residual risk). Wire `as_user` into the TODO in `backend/tests/README.md` ("The 10 cases with the world").
 
-## Carried from P1-06 (decide while framing)
+### Carried from P1-06 (decide while framing)
 
 - `make seed` (P1-06) also runs in staging (`APP_ENV=staging`), and the seeded emails are public in the
   README. This ticket's Scope gives dev **and staging** seed users `DevPassword!2026`, which makes the staging
@@ -160,16 +181,13 @@ From the P1-04 reviews (PR #49; `docs/explanations/P1-04-api-conventions.md`):
 - `python -m app.cli` has a `seed` command whose user upsert sets `full_name` and `is_active`; setting the
   password goes in `backend/app/seed.py` too.
 
-## Carried from P1-07 (do while framing)
+### Carried from P1-07 (do while framing)
 
 - Every request from the typed client (`src/api/client.ts`) carries `X-Requested-With: fetch` (PR #52); the
   legacy Base44 calls don't. The CSRF check may rely on the header for the SPA's own calls.
 - A wrong-password 401 also fires the frontend's `auth:unauthenticated` event (P2-06 handles it; see its
   "Carried from P1-07").
 
-## Frame notes (filled by the agent in step 1)
+### Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+- Split (2026-10-16): into P2-01a and P2-01b; see the table at the top. Each part has its own Frame notes.

@@ -4,7 +4,7 @@
 |---|---|
 | Phase / lane | P2 / B (moved from A: off the critical path) |
 | Risk tier | 1 |
-| Depends on | P2-01 |
+| Depends on | P2-01b |
 | Replaces old | M3-T11 |
 | Status | todo |
 
