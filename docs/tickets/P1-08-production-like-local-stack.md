@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P0-04 (compose, Makefile, S3 emulator), P0-02, P0-03 (CI jobs) |
 | Replaces old | — (new by [ADR-0013](../adr/0013-local-first-deployment-milestone.md); takes the Dockerfile and Caddyfile work from D-02) |
-| Status | todo |
+| Status | in progress |
 
 ## Goal
 
@@ -111,6 +111,22 @@ instead of debugging them for the first time on a server.
    **then** it succeeds (migrations are in the image).
 6. **Given** a PR, **then** the `prodlike` job runs and is required. A PR that removes the migrations
    `COPY`, or breaks the Caddyfile, fails it.
+7. *(added in framing)* **Given** the prod-like stack, **when** requesting a hashed asset that does not exist
+   (`/assets/missing-0000.js`), **then** the response is a 404 that is not `index.html` and has no `immutable`
+   cache header. A deploy that pruned an asset must not cache an HTML page as JavaScript for a year.
+8. *(added in framing)* **Given** the prod-like stack, **then** `/api` and `/api/*` reach the API (the same
+   paths as the Vite proxy of P0-03b, `^/api(/|\?|$)`), so `/api/does-not-exist` returns the API's
+   `application/problem+json` 404, not the SPA; `/apifoo` is an SPA route.
+9. *(added in framing)* **Given** the prod-like stack, **when** a client sends a spoofed
+   `X-Forwarded-For: 203.0.113.9` through Caddy, **then** the API's server sees the real peer address, not
+   `203.0.113.9`; and a container on the compose network other than Caddy that sends `X-Forwarded-For`
+   straight to `api:8000` is not trusted. Gunicorn trusts forwarded headers from Caddy's address only; the
+   image's default `FORWARDED_ALLOW_IPS` is `127.0.0.1` (staging's value).
+10. *(added in framing)* **Given** `scripts/smoke.sh` against the stack with a wrong SHA, **then** it exits
+    non-zero and names the failed check (the smoke test is shown to fail before it is trusted).
+11. *(added in framing)* **Given** the prod-like stack, **then** the API's `TRUSTED_ORIGINS` contains
+    `http://localhost:8080` (carried from P1-04), and `/api/version` reports `image_tag` and `build_time`
+    from the build args, not `local`.
 
 ## Test plan
 
@@ -143,6 +159,23 @@ traceback for a 500 next to the `request_failed` line (P1-04 D1, unverified).
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+  - 7 (missing hashed asset is a plain 404, never `index.html` with an immutable header), 8 (`/api` path
+    matching the dev proxy; unknown API paths stay API 404s), 9 (forwarded headers trusted from Caddy only;
+    spoofed `X-Forwarded-For` doesn't reach the server as the client address), 10 (smoke test proven to
+    fail), 11 (`TRUSTED_ORIGINS` and the build metadata, carried from P1-04).
+  - The 10-case tenant table does not apply: this ticket adds no endpoint.
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - S3 emulator CORS already allows `http://localhost:8080` (`docker/s3-init/create-bucket.sh`, done in
+    P0-04a); nothing to change (code).
+  - `compose.prodlike.yml` sets the API's environment inline instead of loading `backend/.env.dev`, whose
+    `GIT_SHA=local` would override the image's build-arg value and break criterion 1 (code; autonomous).
+  - Caddy gets a fixed address on the prod-like network so `FORWARDED_ALLOW_IPS` names one IP, the way
+    staging names `127.0.0.1` (ADR-0008 single proxy; autonomous). Details in the PR.
+  - The CSP follows the ticket (`'self'` plus the S3 origin). Legacy Base44 pages that load images or fonts
+    from other hosts lose them on the prod-like stack; measured and recorded in the PR, not widened
+    (ticket; autonomous).
+  - Pins: `caddy:2.11.7`, `postgres:18.6` (latest patch tags on Docker Hub, 2026-10-16).
+  - `check-version-pins.py` also checks `compose.prodlike.yml`'s Postgres major (adds to a gate).
+- Split: none. Estimate about 330 non-test lines (Caddyfile, compose file, smoke script, Makefile, CI job,
+  Dockerfile, README).
