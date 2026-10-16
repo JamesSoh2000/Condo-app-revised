@@ -3,6 +3,7 @@
 Criterion numbers refer to the ticket's acceptance criteria and Frame notes.
 """
 
+import gc
 import time
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -267,6 +268,46 @@ async def test_assert_integrity_error_lets_other_errors_through(db: AsyncSession
     with pytest.raises(RuntimeError, match="not a constraint"):
         await assert_integrity_error(db, boom(), constraint="anything")
     assert await db.scalar(select(func.count()).select_from(Unit)) == 4
+
+
+async def test_a_violation_in_pending_setup_is_not_taken_for_the_expected_one(
+    db: AsyncSession, world: World
+):
+    # Review round 1 (Codex): begin_nested() flushes pending rows before the savepoint exists, so
+    # this setup error was caught as the expected violation and the operation never ran.
+    db.add(Unit(building_id=world.a.id, label="101"))  # duplicate A-101, pending
+    ran = False
+
+    async def operation() -> None:
+        nonlocal ran
+        ran = True
+        await db.flush()
+
+    with pytest.raises(IntegrityError, match="uq_units_building_id_tower_label"):
+        await assert_integrity_error(db, operation(), constraint="uq_units_building_id_tower_label")
+    assert not ran
+
+
+async def test_assert_integrity_error_never_leaves_an_unawaited_coroutine(
+    db: AsyncSession, world: World, recwarn: pytest.WarningsRecorder
+):
+    db.add(Unit(building_id=world.a.id, label="101"))
+    with pytest.raises(IntegrityError):
+        await assert_integrity_error(db, make_unit(db, world.a, label="777"), constraint="anything")
+    gc.collect()
+    assert not [w for w in recwarn if "was never awaited" in str(w.message)]
+
+
+async def test_pending_valid_setup_survives_the_rolled_back_savepoint(
+    db: AsyncSession, world: World
+):
+    pending = Unit(building_id=world.a.id, label="401")
+    db.add(pending)  # not flushed yet
+    await assert_integrity_error(
+        db, make_unit(db, world.a, label="101"), constraint="uq_units_building_id_tower_label"
+    )
+    assert await db.get(Unit, pending.id) is pending
+    assert await db.scalar(select(func.count()).select_from(Unit)) == 5
 
 
 # --- 7: factories go through the occupancy helpers -----------------------------------------------

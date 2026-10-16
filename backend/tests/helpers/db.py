@@ -20,16 +20,21 @@ async def assert_integrity_error(
     """
     started = False
     try:
-        async with db.begin_nested():
-            started = True
-            await awaitable
-    except IntegrityError as exc:
-        # asyncpg's own exception, behind SQLAlchemy's DBAPI adapter, names the constraint.
-        name = getattr(exc.orig.__cause__, "constraint_name", None) if exc.orig else None
-        if name != constraint:
-            pytest.fail(f"expected an IntegrityError on {constraint!r}, got one on {name!r}")
-        return exc
+        # begin_nested() flushes pending rows before the savepoint exists. Flush them here, outside
+        # the `except`, so a violation in the caller's setup propagates instead of passing as the
+        # expected one (review round 1). Add the invalid row inside `awaitable`.
+        await db.flush()
+        try:
+            async with db.begin_nested():
+                started = True
+                await awaitable
+        except IntegrityError as exc:
+            # asyncpg's own exception, behind SQLAlchemy's DBAPI adapter, names the constraint.
+            name = getattr(exc.orig.__cause__, "constraint_name", None) if exc.orig else None
+            if name != constraint:
+                pytest.fail(f"expected an IntegrityError on {constraint!r}, got one on {name!r}")
+            return exc
     finally:
         if not started and inspect.iscoroutine(awaitable):
-            awaitable.close()  # begin_nested() failed: don't leave a never-awaited coroutine
+            awaitable.close()  # never awaited: don't leave a "never awaited" warning behind
     pytest.fail(f"no IntegrityError raised (expected one on {constraint!r})")

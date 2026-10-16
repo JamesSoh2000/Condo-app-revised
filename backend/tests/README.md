@@ -74,7 +74,9 @@ await assert_integrity_error(
 # `db` still works here: the insert ran in a savepoint that was rolled back.
 ```
 
-It fails the test if nothing is raised or another constraint is violated.
+It fails the test if nothing is raised or another constraint is violated. Create the invalid row inside the
+awaitable, not with `db.add()` before the call: rows pending before it are flushed first, outside the
+savepoint, so their violation is raised as a plain error.
 
 ## Migration tests
 
