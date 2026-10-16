@@ -103,7 +103,7 @@ prodlike prodlike-smoke prodlike-down: export API_IMAGE_TAG ?= $(GIT_SHA)$(if $(
 prodlike: ## Build the image and SPA, migrate, start the prod-like stack on :8080 (run `make down` first)
 	docker build -t condo-api:$(API_IMAGE_TAG) --build-arg GIT_SHA=$(GIT_SHA) \
 	  --build-arg IMAGE_TAG=$(API_IMAGE_TAG) --build-arg BUILD_TIME=$$(date -u +%Y-%m-%dT%H:%M:%SZ) backend
-	$(FRONTEND) VITE_RELEASE=$(GIT_SHA) npm run build
+	$(FRONTEND) npm ci --no-audit --no-fund && VITE_RELEASE=$(GIT_SHA) npm run build
 	# The order deploy.sh will use (D-03): migrate from the new image, then start it.
 	$(PRODLIKE) run --rm api alembic upgrade head
 	# --force-recreate caddy: the build replaced frontend/dist/assets, and a running container's bind mount
@@ -112,7 +112,9 @@ prodlike: ## Build the image and SPA, migrate, start the prod-like stack on :808
 	$(PRODLIKE) up -d --wait --no-deps --force-recreate caddy
 
 prodlike-smoke: ## Smoke-test the prod-like stack (scripts/smoke.sh) and check its wiring
-	bash scripts/smoke.sh http://localhost:8080 $(GIT_SHA)
+	@# A later `npm run build` (make check does one) replaces frontend/dist/assets under the running Caddy.
+	bash scripts/smoke.sh http://localhost:8080 $(GIT_SHA) || { echo "prodlike-smoke: if frontend/dist was rebuilt \
+	  after make prodlike (make check does that), Caddy still serves the old assets: re-run make prodlike"; exit 1; }
 	bash scripts/prodlike-checks.sh http://localhost:8080
 
 prodlike-down: ## Stop the prod-like stack (its database volume is kept)

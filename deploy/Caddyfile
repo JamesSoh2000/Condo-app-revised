@@ -6,9 +6,9 @@
 # Releases: /srv/app/frontend/current is the live build; /srv/app/frontend/assets holds the hashed assets
 # of recent releases, so a page loaded before a deploy can still fetch its chunks (D-03).
 
-{$SITE_ADDRESS} {
-	encode zstd gzip
-
+# Security headers on every response, including the error responses of handle_errors (which replaces
+# the headers set before the error).
+(security_headers) {
 	header {
 		# Browsers ignore HSTS over plain http, so it is harmless locally.
 		Strict-Transport-Security "max-age=31536000"
@@ -21,6 +21,12 @@
 		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: {$S3_PUBLIC_ORIGIN}; connect-src 'self' {$S3_PUBLIC_ORIGIN}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		-Server
 	}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	import security_headers
 
 	# The same paths the Vite dev proxy forwards (P0-03b): /api, /api/… and /api?…, not /apifoo.
 	@api path /api /api/*
@@ -46,6 +52,7 @@
 	}
 
 	handle_errors {
+		import security_headers
 		header Cache-Control "no-store"
 		respond "{err.status_code} {err.status_text}"
 	}

@@ -83,7 +83,7 @@ fetch apifoo /apifoo
 check "/apifoo is an SPA route" is_spa apifoo
 
 # Security headers, on the SPA and on an API response.
-for page in root version; do
+for page in root version missing; do
   check "$page: X-Content-Type-Options nosniff" header_has "$page" x-content-type-options nosniff
   check "$page: Referrer-Policy" header_has "$page" referrer-policy strict-origin-when-cross-origin
   check "$page: Permissions-Policy" header_has "$page" permissions-policy "camera=(self)"
