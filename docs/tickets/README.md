@@ -50,7 +50,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P1-07](./P1-07-openapi-types-and-api-client.md) | OpenAPI → TypeScript types and API client | B | 2 | P1-04, P0-03a, P0-03b | done | — |
 | [P1-08](./P1-08-production-like-local-stack.md) | Production-like local stack (local walking skeleton) | B | 2 | P0-04a, P0-02, P0-03a, P0-03b | done | — |
 | [P2-01a](./P2-01a-csrf-and-password-hashing.md) | CSRF protection and password hashing (split from [P2-01](./P2-01-sessions-login-logout-csrf.md)) | A | 1 | P1-02, P1-04, P1-06 | done | — |
-| [P2-01b](./P2-01b-sessions-login-logout.md) | Sessions, login and logout | A | 1 | P2-01a, P1-02, P1-05 | in progress | — |
+| [P2-01b](./P2-01b-sessions-login-logout.md) | Sessions, login and logout | A | 1 | P2-01a, P1-02, P1-05 | done | — |
 | [P2-02](./P2-02-me-and-session-management.md) | Current-user API and session management | A | 1 | P2-01b | todo | — |
 | [P2-03](./P2-03-tenant-context-guards-fitness.md) | Tenant context, guards and fitness tests | A | 1 | P2-02, P1-05 | todo | — |
 | [P2-04](./P2-04-audit-events.md) | Audit events | A | 1 | P2-03 | todo | — |

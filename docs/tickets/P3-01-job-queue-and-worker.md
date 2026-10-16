@@ -104,6 +104,12 @@ This solves the dual-write problem for email and powers all background work with
 3. Why jitter in the backoff?
 4. Why does each job run in its own transaction rather than one per batch?
 
+## Carried from P2-01b (do while framing)
+
+- Expired and revoked `sessions` rows are never deleted, and there is no per-user cap on live sessions
+  (PR #57 review round 2 L3). Add a periodic job that deletes rows past `expires_at`/`idle_expires_at` or
+  revoked for some retention period, and decide on a cap.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

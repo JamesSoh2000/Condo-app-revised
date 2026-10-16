@@ -109,6 +109,14 @@ matches the existing Base44 UI ([01 §Onboarding](../PRODUCT_SCOPE.md#onboarding
 4. Signup returns `email_in_use`, while password reset hides account existence. Why is that trade-off
    acceptable here?
 
+## Carried from P2-01b (do while framing)
+
+- The P1-02 email items (see `P2-01b-sessions-login-logout.md` "Carried from P1-02"): login only *reads*
+  emails, so the first schemas that *write* them do these: reject non-ASCII (or normalise once, the same way
+  on write and lookup); check the length after lowering; reject empty and space-padded values; look users up
+  with `func.lower(User.email) == func.lower(:input)`; send mail only to the stored address. `EmailStr` adds
+  `email-validator` as a dependency.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

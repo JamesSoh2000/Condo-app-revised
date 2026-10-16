@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P2-01a, P1-02, P1-05 |
 | Replaces old | M3-T02 (redesigned per ADR-0003) |
-| Status | in progress |
+| Status | done |
 
 Split from [P2-01](./P2-01-sessions-login-logout-csrf.md) (see there why). CSRF, password hashing, the
 password policy and seed passwords are [P2-01a](./P2-01a-csrf-and-password-hashing.md). Re-frame this part

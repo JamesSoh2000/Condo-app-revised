@@ -96,6 +96,18 @@ security interview topic.
 3. Why must an existing account log in before accepting, rather than setting a password through the invite?
 4. Where do the roles come from at accept time, and why never from the request?
 
+## Carried from P2-01b (do while framing)
+
+- Password fields must not be stripped: `InputModel` strips strings, so declare them
+  `Annotated[str, StringConstraints(strip_whitespace=False, max_length=PASSWORD_MAX_LENGTH)]` as
+  `app/auth/schemas.py::LoginIn` does (PR #57 D5), and call `check_password_policy`, mapping
+  `WeakPasswordError.reason` to a 422 without echoing the password.
+- The P1-02 email items (see `P2-01b-sessions-login-logout.md` "Carried from P1-02"): login only *reads*
+  emails, so the first schemas that *write* them do these: reject non-ASCII (or normalise once, the same way
+  on write and lookup); check the length after lowering; reject empty and space-padded values; look users up
+  with `func.lower(User.email) == func.lower(:input)`; send mail only to the stored address. `EmailStr` adds
+  `email-validator` as a dependency.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

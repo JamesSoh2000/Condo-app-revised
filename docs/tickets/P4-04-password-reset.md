@@ -81,6 +81,15 @@ This completes demo journey 7, and it is one of the most commonly attacked flows
 3. Why is the token valid for 1 hour, while invitations last 7 days?
 4. Why scrub the link from the job payload after sending?
 
+## Carried from P2-01b (do while framing)
+
+- Password fields must not be stripped: `InputModel` strips strings, so declare them
+  `Annotated[str, StringConstraints(strip_whitespace=False, max_length=PASSWORD_MAX_LENGTH)]` as
+  `app/auth/schemas.py::LoginIn` does (PR #57 D5), and call `check_password_policy`, mapping
+  `WeakPasswordError.reason` to a 422 without echoing the password.
+- Revoke all the user's sessions on reset (`UPDATE sessions SET revoked_at = now WHERE user_id = … AND
+  revoked_at IS NULL`, index `ix_sessions_user_id_live`); `resolve_session` needs no change.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
