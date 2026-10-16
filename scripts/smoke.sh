@@ -77,6 +77,10 @@ check "a missing asset is not cached as immutable" header_lacks missing cache-co
 fetch apimiss /api/smoke-does-not-exist
 check "/api/smoke-does-not-exist is the API's 404" status_is apimiss 404
 check "/api/smoke-does-not-exist is problem+json" header_has apimiss content-type application/problem+json
+fetch apibare /api
+check "/api (no slash) is the API's, not the SPA" header_has apibare content-type application/problem+json
+fetch apifoo /apifoo
+check "/apifoo is an SPA route" is_spa apifoo
 
 # Security headers, on the SPA and on an API response.
 for page in root version; do
