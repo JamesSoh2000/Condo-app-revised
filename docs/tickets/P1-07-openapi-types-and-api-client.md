@@ -77,6 +77,12 @@ generated types, a backend change that breaks the UI fails `tsc` instead of fail
 2. Why should the client never retry 4xx responses?
 3. Why include `buildingId` in query keys? What bug happens without it?
 
+## Carried from P1-04
+
+Every error is documented as the `Problem` schema under `application/problem+json` (422s included; there
+is no `HTTPValidationError`). Paged responses appear as `Page_<Item>_`. Operation ids are
+`<tag>_<function name>` (`health_ready`).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

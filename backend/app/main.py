@@ -3,9 +3,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.routing import APIRoute
 
 from app.core.config import settings
+from app.core.errors import install_error_handlers
 from app.logging_config import configure_logging
 from app.middleware.request_logging import RequestLoggingMiddleware
 
@@ -20,24 +21,39 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("application_stopped")
 
 
-app = FastAPI(
-    title=settings.project_name,
-    lifespan=lifespan,
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
-    redoc_url=None,
-)
+def operation_id(route: APIRoute) -> str:
+    """`<first tag>_<function name>` (`packages_create`): stable names for the generated client."""
+    if not route.tags:
+        raise ValueError(
+            f"route {route.name!r} ({route.path}) has no tag; its operation id needs one"
+        )
+    return f"{route.tags[0]}_{route.name}"
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.allowed_origins,
-    allow_credentials=settings.cors_allow_credentials,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.add_middleware(RequestLoggingMiddleware)
 
-from app.routers import health, version  # noqa: E402
+def create_app() -> FastAPI:
+    """Build the API: middleware, error handlers, OpenAPI conventions and routers.
 
-app.include_router(health.router, prefix="/api")
-app.include_router(version.router, prefix="/api")
+    Tests call it to get an app of their own to add test-only routers to.
+    """
+    app = FastAPI(
+        title=settings.project_name,
+        lifespan=lifespan,
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+        redoc_url=None,
+        generate_unique_id_function=operation_id,
+    )
+
+    # No CORSMiddleware: the SPA and /api share an origin everywhere (ADR-0003), so browsers never
+    # make a cross-origin API call. CSRF protection (P2-01) checks settings.trusted_origins.
+    app.add_middleware(RequestLoggingMiddleware)
+    install_error_handlers(app)
+
+    from app.routers import health, version
+
+    app.include_router(health.router, prefix="/api")
+    app.include_router(version.router, prefix="/api")
+    return app
+
+
+app = create_app()

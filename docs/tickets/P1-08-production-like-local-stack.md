@@ -134,6 +134,12 @@ instead of debugging them for the first time on a server.
    compose network safe here?
 5. What does the prod-like stack still *not* prove about staging? Where is each of those checked (D-06)?
 
+## Carried from P1-04
+
+`TRUSTED_ORIGINS` (renamed from `ALLOWED_ORIGINS` in P1-04; the CSRF check of P2-01 reads it) must include
+`http://localhost:8080` for the prod-like stack. Check whether uvicorn/gunicorn logs a second, unstructured
+traceback for a 500 next to the `request_failed` line (P1-04 D1, unverified).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

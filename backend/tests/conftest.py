@@ -8,12 +8,14 @@ savepoint (docs/ARCHITECTURE.md §14).
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi import APIRouter
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -22,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, c
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.dependencies import get_db_session
-from app.main import app
+from app.main import app, create_app
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 # asyncpg lets these query parameters override the host/port/database parsed from the URL.
@@ -151,6 +153,19 @@ async def client(db_connection: AsyncConnection) -> AsyncIterator[AsyncClient]:
       an aborted test savepoint makes every later request fail.
     """
 
+    app.dependency_overrides[get_db_session] = _request_sessions_on(db_connection)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.pop(get_db_session, None)
+
+
+def _request_sessions_on(
+    db_connection: AsyncConnection,
+) -> Callable[[], AsyncIterator[AsyncSession]]:
+    """A `get_db_session` override: a session per request, on a savepoint of `db_connection`."""
+
     async def override_get_db_session() -> AsyncIterator[AsyncSession]:
         session = AsyncSessionLocal(bind=db_connection, join_transaction_mode="create_savepoint")
         try:
@@ -160,12 +175,34 @@ async def client(db_connection: AsyncConnection) -> AsyncIterator[AsyncClient]:
             # request's savepoint, discarding uncommitted work, even when the endpoint raised.
             await session.close()
 
-    app.dependency_overrides[get_db_session] = override_get_db_session
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    return override_get_db_session
+
+
+type AppClientFactory = Callable[..., AbstractAsyncContextManager[AsyncClient]]
+
+
+@pytest.fixture
+def app_client(db_connection: AsyncConnection) -> AppClientFactory:
+    """Client for a fresh `create_app()` with test-only routers under `/api`.
+
+    `async with app_client(router) as c:` gives the same middleware, exception handlers and OpenAPI
+    setup as the real app, with requests on the test's connection like `client`. Pass
+    `raise_app_exceptions=False` to receive the 500 response instead of the re-raised exception.
+    """
+
+    @asynccontextmanager
+    async def _client(
+        *routers: APIRouter, raise_app_exceptions: bool = True
+    ) -> AsyncIterator[AsyncClient]:
+        test_app = create_app()
+        for router in routers:
+            test_app.include_router(router, prefix="/api")
+        test_app.dependency_overrides[get_db_session] = _request_sessions_on(db_connection)
+        transport = ASGITransport(app=test_app, raise_app_exceptions=raise_app_exceptions)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac
-    finally:
-        app.dependency_overrides.pop(get_db_session, None)
+
+    return _client
 
 
 @pytest.fixture(autouse=True)

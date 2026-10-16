@@ -1,5 +1,8 @@
+import ipaddress
+import re
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,6 +11,10 @@ AppEnv = Literal["dev", "test", "prod"]
 
 # Keeps the app bootable locally; validate_production_settings rejects it in production.
 LOCAL_DEV_SECRET_KEY = "change-me-in-local-dev-only"  # noqa: S105
+# What a browser sends in `Origin`: lowercase scheme://host[:port], no path or trailing slash; host
+# labels are letters, digits and inner dashes, with no trailing dot.
+_LABEL = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+_ORIGIN = re.compile(rf"https?://{_LABEL}(\.{_LABEL})*(:[1-9][0-9]{{0,4}})?")
 
 
 class Settings(BaseSettings):
@@ -35,9 +42,10 @@ class Settings(BaseSettings):
     # Production must override this.
     secret_key: str = LOCAL_DEV_SECRET_KEY
 
-    # CORS
-    # Example: ALLOWED_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
-    allowed_origins: list[str] = [
+    # The origins the app is served from. The CSRF check (P2-01) accepts unsafe requests only from
+    # these. Not CORS: the SPA and /api share one origin, so there is no CORS middleware.
+    # Example: TRUSTED_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
+    trusted_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
@@ -76,14 +84,14 @@ class Settings(BaseSettings):
             if self.secret_key == LOCAL_DEV_SECRET_KEY:
                 raise ValueError("SECRET_KEY must be changed in production")
 
-            if not self.allowed_origins or "*" in self.allowed_origins:
-                raise ValueError("ALLOWED_ORIGINS must be explicit in production; do not use '*'")
+            if not self.trusted_origins or "*" in self.trusted_origins:
+                raise ValueError("TRUSTED_ORIGINS must be explicit in production; do not use '*'")
 
-            if any(
-                origin.startswith(("http://localhost", "http://127.0.0.1"))
-                for origin in self.allowed_origins
-            ):
-                raise ValueError("ALLOWED_ORIGINS must not use localhost origins in production")
+            if any(_is_loopback(origin) for origin in self.trusted_origins):
+                raise ValueError("TRUSTED_ORIGINS must not use localhost origins in production")
+
+            if any(not origin.startswith("https://") for origin in self.trusted_origins):
+                raise ValueError("TRUSTED_ORIGINS must all be https:// in production")
 
             if self.s3_bucket_name in {"", "condo-app-dev-files"}:
                 raise ValueError("S3_BUCKET_NAME must be set to a production bucket in production")
@@ -98,18 +106,40 @@ class Settings(BaseSettings):
                     "SES_FROM_EMAIL must be set to a real verified sender in production"
                 )
 
+        malformed = [origin for origin in self.trusted_origins if not _is_origin(origin)]
+        if malformed:
+            raise ValueError(
+                f"TRUSTED_ORIGINS entries must be lowercase scheme://host[:port], with no path or "
+                f"trailing slash: {malformed}"
+            )
+
         return self
 
     @property
     def is_production(self) -> bool:
         return self.app_env == "prod"
 
-    @property
-    def cors_allow_credentials(self) -> bool:
-        """
-        FastAPI/Starlette should not use allow_credentials=True with wildcard origins.
-        """
-        return "*" not in self.allowed_origins
+
+def _is_origin(origin: str) -> bool:
+    if not _ORIGIN.fullmatch(origin):
+        return False
+    try:
+        urlsplit(origin).port  # noqa: B018 (raises ValueError above 65535)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_loopback(origin: str) -> bool:
+    """localhost, *.localhost, 127.0.0.0/8, ::1 or 0.0.0.0, whatever the scheme or port."""
+    host = urlsplit(origin).hostname or ""
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
 
 
 @lru_cache
