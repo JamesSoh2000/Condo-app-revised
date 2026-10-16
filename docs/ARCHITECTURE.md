@@ -45,7 +45,8 @@ use plain http, so the `Secure`/`__Host-` cookie, real S3 and SES are first exer
 listed as checks in [D-06](./tickets/D-06-staging-verification-gate.md).
 
 Same origin everywhere: the browser always calls the relative path `/api/...`, so no CORS is needed in any
-environment. The current `CORSMiddleware` in `app/main.py` can be removed once the Vite proxy lands (P0-03).
+environment, and the API has no CORS middleware (removed in P1-04). `TRUSTED_ORIGINS` lists the origins the app
+is served from, for the CSRF check (§6).
 
 ## 3. Backend layout (modular monolith, package by feature)
 

@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 from typing import Literal
 
@@ -8,6 +9,8 @@ AppEnv = Literal["dev", "test", "prod"]
 
 # Keeps the app bootable locally; validate_production_settings rejects it in production.
 LOCAL_DEV_SECRET_KEY = "change-me-in-local-dev-only"  # noqa: S105
+# What a browser sends in `Origin`: lowercase scheme://host[:port], no path or trailing slash.
+_ORIGIN = re.compile(r"https?://[a-z0-9.-]+(:[0-9]{1,5})?")
 
 
 class Settings(BaseSettings):
@@ -35,9 +38,10 @@ class Settings(BaseSettings):
     # Production must override this.
     secret_key: str = LOCAL_DEV_SECRET_KEY
 
-    # CORS
-    # Example: ALLOWED_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
-    allowed_origins: list[str] = [
+    # The origins the app is served from. The CSRF check (P2-01) accepts unsafe requests only from
+    # these. Not CORS: the SPA and /api share one origin, so there is no CORS middleware.
+    # Example: TRUSTED_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
+    trusted_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
@@ -76,14 +80,17 @@ class Settings(BaseSettings):
             if self.secret_key == LOCAL_DEV_SECRET_KEY:
                 raise ValueError("SECRET_KEY must be changed in production")
 
-            if not self.allowed_origins or "*" in self.allowed_origins:
-                raise ValueError("ALLOWED_ORIGINS must be explicit in production; do not use '*'")
+            if not self.trusted_origins or "*" in self.trusted_origins:
+                raise ValueError("TRUSTED_ORIGINS must be explicit in production; do not use '*'")
 
             if any(
                 origin.startswith(("http://localhost", "http://127.0.0.1"))
-                for origin in self.allowed_origins
+                for origin in self.trusted_origins
             ):
-                raise ValueError("ALLOWED_ORIGINS must not use localhost origins in production")
+                raise ValueError("TRUSTED_ORIGINS must not use localhost origins in production")
+
+            if any(not origin.startswith("https://") for origin in self.trusted_origins):
+                raise ValueError("TRUSTED_ORIGINS must all be https:// in production")
 
             if self.s3_bucket_name in {"", "condo-app-dev-files"}:
                 raise ValueError("S3_BUCKET_NAME must be set to a production bucket in production")
@@ -98,18 +105,18 @@ class Settings(BaseSettings):
                     "SES_FROM_EMAIL must be set to a real verified sender in production"
                 )
 
+        malformed = [origin for origin in self.trusted_origins if not _ORIGIN.fullmatch(origin)]
+        if malformed:
+            raise ValueError(
+                f"TRUSTED_ORIGINS entries must be lowercase scheme://host[:port], with no path or "
+                f"trailing slash: {malformed}"
+            )
+
         return self
 
     @property
     def is_production(self) -> bool:
         return self.app_env == "prod"
-
-    @property
-    def cors_allow_credentials(self) -> bool:
-        """
-        FastAPI/Starlette should not use allow_credentials=True with wildcard origins.
-        """
-        return "*" not in self.allowed_origins
 
 
 @lru_cache

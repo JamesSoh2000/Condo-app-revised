@@ -4,28 +4,28 @@ from pydantic import ValidationError
 from app.core.config import Settings
 
 
-def test_dev_settings_parse_json_allowed_origins(monkeypatch):
+def test_dev_settings_parse_json_trusted_origins(monkeypatch):
     monkeypatch.setenv("APP_ENV", "dev")
     monkeypatch.setenv(
-        "ALLOWED_ORIGINS",
+        "TRUSTED_ORIGINS",
         '["http://localhost:5173","http://127.0.0.1:5173"]',
     )
 
     settings = Settings(_env_file=None)
 
     assert settings.app_env == "dev"
-    assert settings.allowed_origins == [
+    assert settings.trusted_origins == [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
 
 
-def test_prod_rejects_localhost_allowed_origins():
+def test_prod_rejects_localhost_trusted_origins():
     with pytest.raises(ValidationError, match="localhost origins"):
         Settings(
             _env_file=None,
             app_env="prod",
-            allowed_origins=["http://localhost:5173"],
+            trusted_origins=["http://localhost:5173"],
             secret_key="not-the-default-secret",  # noqa: S106 (test fixture, not a real secret)
             s3_bucket_name="condo-app-prod-files",
             ses_from_email="noreply@example.org",
@@ -80,7 +80,7 @@ def test_prod_rejects_s3_emulator_endpoints(field):
         Settings(
             _env_file=None,
             app_env="prod",
-            allowed_origins=["https://condo.example.org"],
+            trusted_origins=["https://condo.example.org"],
             secret_key="not-the-default-secret",  # noqa: S106 (test fixture, not a real secret)
             s3_bucket_name="condo-app-prod-files",
             ses_from_email="noreply@example.org",
@@ -92,10 +92,62 @@ def test_prod_accepts_settings_without_s3_endpoints():
     settings = Settings(
         _env_file=None,
         app_env="prod",
-        allowed_origins=["https://condo.example.org"],
+        trusted_origins=["https://condo.example.org"],
         secret_key="not-the-default-secret",  # noqa: S106 (test fixture, not a real secret)
         s3_bucket_name="condo-app-prod-files",
         ses_from_email="noreply@example.org",
     )
 
     assert settings.s3_endpoint_url is None
+
+
+PROD = {
+    "app_env": "prod",
+    "secret_key": "not-the-default-secret",  # (test fixture, not a real secret)
+    "s3_bucket_name": "condo-app-prod-files",
+    "ses_from_email": "noreply@example.org",
+}
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://condo.example.org/",
+        "https://condo.example.org/app",
+        "condo.example.org",
+        "https://",
+        "ftp://condo.example.org",
+        "https://condo.example.org?x=1",
+        " https://condo.example.org",
+    ],
+)
+@pytest.mark.parametrize("app_env", ["dev", "prod"])
+def test_trusted_origins_must_be_bare_origins_in_every_env(origin, app_env):
+    with pytest.raises(ValidationError, match="TRUSTED_ORIGINS"):
+        Settings(_env_file=None, **{**PROD, "app_env": app_env}, trusted_origins=[origin])
+
+
+@pytest.mark.parametrize(
+    ("origins", "message"),
+    [
+        ([], "explicit"),
+        (["*"], "explicit"),
+        (["http://condo.example.org"], "https"),
+        (["https://condo.example.org", "http://127.0.0.1:8080"], "localhost"),
+    ],
+)
+def test_prod_rejects_unsafe_trusted_origins(origins, message):
+    with pytest.raises(ValidationError, match=message):
+        Settings(_env_file=None, **PROD, trusted_origins=origins)
+
+
+def test_trusted_origins_accept_ports_in_dev_and_https_in_prod():
+    dev = Settings(_env_file=None, trusted_origins=["http://localhost:8080"])
+    prod = Settings(_env_file=None, **PROD, trusted_origins=["https://condo.example.org:8443"])
+
+    assert dev.trusted_origins == ["http://localhost:8080"]
+    assert prod.trusted_origins == ["https://condo.example.org:8443"]
+
+
+def test_old_allowed_origins_setting_is_gone():
+    assert "allowed_origins" not in Settings.model_fields
