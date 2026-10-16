@@ -182,4 +182,8 @@ def occupancy_window_clause(
     caller's query can resolve to the occupancies table instead of the record. Review rounds 2-4
     found three such shapes in subquery versions.
     """
-    return func.occupancy_window(membership_id, record_unit_col, record_time_col, type_=Boolean)
+    # Schema-qualified: an unqualified call is resolved through the search path, where an earlier
+    # schema's function of the same signature would win (review round 5).
+    return func.public.occupancy_window(
+        membership_id, record_unit_col, record_time_col, type_=Boolean
+    )

@@ -116,7 +116,9 @@ def upgrade() -> None:
     # STABLE (reads the table); not STRICT, so a NULL argument gives false.
     op.execute(
         """
-        CREATE FUNCTION occupancy_window(p_membership_id uuid, p_unit_id uuid, p_at timestamptz)
+        CREATE FUNCTION public.occupancy_window(
+            p_membership_id uuid, p_unit_id uuid, p_at timestamptz
+        )
         RETURNS boolean
         LANGUAGE sql
         STABLE
@@ -136,7 +138,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     # First: the function's body depends on the table.
-    op.execute("DROP FUNCTION occupancy_window(uuid, uuid, timestamptz)")
+    op.execute("DROP FUNCTION public.occupancy_window(uuid, uuid, timestamptz)")
     op.drop_index(
         "uq_unit_occupancies_current_membership",
         table_name="unit_occupancies",

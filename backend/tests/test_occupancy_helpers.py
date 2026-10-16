@@ -1162,3 +1162,35 @@ async def test_ending_at_the_instant_it_started_is_allowed(db: AsyncSession, set
 
     assert ended is not None
     assert ended.ended_at == T1
+
+
+# --- review round 5 ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("shadow", ["function", "table"])
+async def test_window_clause_ignores_look_alikes_earlier_on_the_search_path(
+    db: AsyncSession, turnover: Turnover, shadow: str
+):
+    """Codex round 5 (M1): an earlier schema on the search path must not replace the real test."""
+    await db.execute(text("CREATE SCHEMA occupancy_shadow"))
+    if shadow == "function":
+        await db.execute(
+            text(
+                "CREATE FUNCTION occupancy_shadow.occupancy_window(uuid, uuid, timestamptz)"
+                " RETURNS boolean LANGUAGE sql STABLE RETURN true"
+            )
+        )
+    else:
+        await db.execute(
+            text(
+                "CREATE TABLE occupancy_shadow.unit_occupancies AS SELECT"
+                " CAST(:m AS uuid) AS membership_id, CAST(:u AS uuid) AS unit_id,"
+                " '-infinity'::timestamptz AS started_at, NULL::timestamptz AS ended_at"
+            ),
+            {"m": turnover.current.id, "u": turnover.s.u101.id},
+        )
+    await db.execute(text("SET LOCAL search_path = occupancy_shadow, public"))
+
+    u101 = turnover.s.u101.id
+    assert await _in_window(db, turnover.current.id, u101, T1 - SECOND) is False  # before move-in
+    assert await _in_window(db, turnover.current.id, u101, T2) is True
