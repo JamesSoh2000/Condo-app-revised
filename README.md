@@ -39,7 +39,9 @@ tests it and `make prodlike-down` stops it. Keep `make up` for everyday work: it
 `make seed` (`python -m app.cli seed`, [P1-06](docs/tickets/P1-06-seed-and-cli.md)) creates two buildings and
 the accounts below, and puts back any seeded value you changed; it leaves other rows alone. It refuses to run
 with `APP_ENV=prod`. `make seed reset=1` first deletes every domain row, and runs only with `APP_ENV=dev`.
-Passwords arrive in P2-01: until then the accounts can't log in.
+Every account's password is `DevPassword!2026` in dev and test (`make seed` also puts it back if you changed
+it). Login arrives in [P2-01b](docs/tickets/P2-01b-sessions-login-logout.md). Staging uses the secret
+`SEED_PASSWORD` instead, and `seed` refuses to run there without a valid one.
 
 | Email (`@example.test`) | Building | Membership | Roles | Unit (relationship) |
 |---|---|---|---|---|

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, dispose_database_engine
-from app.seed import SeedRefusedError, check_seed_allowed, seed
+from app.seed import SeedRefusedError, check_seed_allowed, seed, seed_password_for
 
 app = typer.Typer(help="Condo management operator commands.", no_args_is_help=True)
 
@@ -40,15 +40,18 @@ def seed_command(
 ) -> None:
     """Create or restore the demo buildings and accounts (README, "Seeded accounts")."""
     app_env = settings.app_env
+    secret = settings.seed_password
+    seed_password = secret.get_secret_value() if secret is not None else None
     try:
         # Before any session: a refused seed must not touch the database at all.
         check_seed_allowed(app_env, reset=reset)
+        seed_password_for(app_env, seed_password)
     except SeedRefusedError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
     async def work(db: AsyncSession) -> None:
-        await seed(db, app_env=app_env, reset=reset)
+        await seed(db, app_env=app_env, reset=reset, seed_password=seed_password)
 
     run_in_session(work)
     typer.echo(f"seeded{' after reset' if reset else ''} (APP_ENV={app_env})")
