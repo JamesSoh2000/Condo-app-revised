@@ -130,6 +130,20 @@ The database also accepts `''` and space-padded values for `email` and `full_nam
 schemas that write users must reject them. `email-validator` isn't a dependency yet; the first `EmailStr`
 schema adds it.
 
+## Carried from P1-04 (do while framing)
+
+From the P1-04 reviews (PR #49; `docs/explanations/P1-04-api-conventions.md`):
+- **The CSRF middleware must return `problem_response(...)` (403 `csrf_failed`), not raise `Forbidden`.**
+  A `DomainError` raised in a middleware runs outside Starlette's `ExceptionMiddleware`, so it becomes a
+  500 `internal_error` (round 3 residual). Test the rejection's status, code and media type.
+- Make `code`, `title`, `detail` and `extra` keyword-only on the `DomainError` subclasses, and check
+  `code` is snake_case in `DomainError.__init__` (`ValueError`, like the reserved-`extra` check):
+  `NotFound("Package not found")` gives `code="Package not found"` today (round 3 M1).
+- Reject explicit default ports in `TRUSTED_ORIGINS` (`https://host:443`, `http://host:80`): browsers omit
+  them from `Origin`, so the CSRF comparison could never match (round 3 L1).
+- The CSRF check compares `Origin` exactly against `settings.trusted_origins`, which are already validated
+  as lowercase `scheme://host[:port]` (`app/core/config.py::_is_origin`).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

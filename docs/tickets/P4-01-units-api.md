@@ -73,6 +73,14 @@ CLI `import-units`.
 2. Why block deactivating an occupied unit rather than cascading?
 3. What makes the CSV import safe to re-run?
 
+## Carried from P1-04
+
+- List routes add `problem_responses(400)` themselves to document `invalid_cursor` (OpenAPI doesn't pick
+  it up from `CursorParams`).
+- `paginate` reads `db.scalars(stmt)`, so `stmt` selects one entity (`select(Unit).where(...)`).
+- Operation ids are `<first tag>_<function name>`: name handlers by the verb (`def list`, `def create`
+  under tag `units`) to get `units_list`, not `units_list_units`.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
