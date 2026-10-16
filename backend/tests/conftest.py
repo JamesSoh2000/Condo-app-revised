@@ -8,6 +8,7 @@ savepoint (docs/ARCHITECTURE.md §14).
 """
 
 import asyncio
+import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
@@ -25,6 +26,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.dependencies import get_db_session
 from app.main import app, create_app
+from tests.world import World, build_world
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 # asyncpg lets these query parameters override the host/port/database parsed from the URL.
@@ -106,6 +108,33 @@ def migrated_test_database() -> str:
     return test_url
 
 
+@pytest.fixture
+def scratch_database_url() -> Iterator[str]:
+    """An empty database of this process's own, for tests that run migrations up and down.
+
+    Named per process, so concurrent test runs on one server (worktrees, reviewers) don't share it,
+    and dropped afterwards.
+    """
+    url = make_url(settings.test_database_url).set(database=f"condo_migrations_{os.getpid()}_test")
+    scratch = url.render_as_string(hide_password=False)
+    assert_safe_test_database_url(scratch, settings.database_url)
+    asyncio.run(_recreate_test_schema(scratch))
+    try:
+        yield scratch
+    finally:
+        asyncio.run(_drop_database(scratch))
+
+
+async def _drop_database(test_url: str) -> None:
+    url = make_url(test_url)
+    admin = create_async_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    try:
+        async with admin.connect() as conn:
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{url.database}" WITH (FORCE)'))
+    finally:
+        await admin.dispose()
+
+
 @pytest.fixture(scope="session")
 async def engine(migrated_test_database: str) -> AsyncIterator[AsyncEngine]:
     test_engine = create_async_engine(migrated_test_database)
@@ -133,6 +162,15 @@ async def db(db_connection: AsyncConnection) -> AsyncIterator[AsyncSession]:
         yield session
     finally:
         await session.close()
+
+
+@pytest.fixture
+async def world(db: AsyncSession) -> World:
+    """Two buildings with every persona the 10-case table needs (tests/world.py, tests/README.md).
+
+    Built in the test's transaction, so it is rolled back with everything else.
+    """
+    return await build_world(db)
 
 
 @pytest.fixture

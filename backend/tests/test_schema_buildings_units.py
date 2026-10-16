@@ -14,16 +14,14 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import delete, func, inspect, select, text
-from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.buildings.enums import Feature
 from app.buildings.models import Building, BuildingFeature
-from app.core.config import settings
 from app.core.time import validate_timezone
 from app.units.models import Unit
-from tests.conftest import BACKEND_DIR, _recreate_test_schema, assert_safe_test_database_url
+from tests.conftest import BACKEND_DIR
 
 pytestmark = pytest.mark.anyio
 
@@ -367,12 +365,9 @@ async def _table_names(url: str) -> set[str]:
         await engine.dispose()
 
 
-def test_migration_upgrades_downgrades_and_upgrades_again():
+def test_migration_upgrades_downgrades_and_upgrades_again(scratch_database_url: str):
     # A scratch database, so dropping tables never disturbs the session's test schema.
-    url = make_url(settings.test_database_url).set(database="condo_migrations_test")
-    scratch = url.render_as_string(hide_password=False)
-    assert_safe_test_database_url(scratch, settings.database_url)
-    asyncio.run(_recreate_test_schema(scratch))
+    scratch = scratch_database_url
 
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
