@@ -339,3 +339,36 @@ async def test_well_formed_client_request_id_is_kept_up_to_128_chars(client):
     response = await client.get("/api/health", headers={"X-Request-ID": request_id})
 
     assert response.headers["X-Request-ID"] == request_id
+
+
+# P2-01a criterion 10 (carried from P1-04 round 3 M1): no positional code, snake_case only
+
+
+@pytest.mark.parametrize("error", [*DOMAIN_ERRORS.values()])
+def test_domain_error_subclasses_take_no_positional_arguments(error):
+    with pytest.raises(TypeError):
+        error("Package not found")
+
+
+def test_rate_limited_takes_retry_after_first_and_the_rest_by_keyword():
+    with pytest.raises(TypeError):
+        RateLimited(30, "too_many")  # type: ignore[misc]
+
+    assert RateLimited(retry_after=30, code="login_rate_limited").code == "login_rate_limited"
+    assert RateLimited(30).headers["Retry-After"] == "30"
+
+
+@pytest.mark.parametrize(
+    "code",
+    ["Not Snake", "not-snake", "Package not found", "_leading", "trailing_", "a__b", "", "1st"],
+)
+def test_domain_error_code_must_be_snake_case(code):
+    with pytest.raises(ValueError, match="snake_case"):
+        Conflict(code=code)
+    with pytest.raises(ValueError, match="snake_case"):
+        DomainError(code, 418, "I'm a teapot")
+
+
+@pytest.mark.parametrize("code", ["x_conflict", "csrf_failed", "teapot", "error_2fa"])
+def test_snake_case_codes_are_accepted(code):
+    assert Conflict(code=code).code == code

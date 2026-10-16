@@ -222,10 +222,11 @@ class Package(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 - **Logout** revokes the current session. **Logout-all** and **password reset** revoke every session of the user.
 - **Account state is checked on every request.** Deactivating a user, or changing a role or membership,
   applies on the next request because nothing is cached in a token.
-- **CSRF** (`core/csrf.py` middleware) applies to `POST/PUT/PATCH/DELETE` under `/api/`. It rejects with 403
-  unless:
-  - `Origin` is in `settings.trusted_origins` (or absent with `Sec-Fetch-Site: same-origin`), **and**
-  - the `X-Requested-With: fetch` header is present.
+- **CSRF** (`core/csrf.py` middleware) applies to every method except `GET`, `HEAD` and `OPTIONS`, on every
+  path (P2-01a). It rejects with 403 `csrf_failed`, before routing, unless:
+  - exactly one `Origin` equals an entry of `settings.trusted_origins` (or there is no `Origin` and
+    `Sec-Fetch-Site: same-origin`), **and**
+  - exactly one `X-Requested-With` header has the value `fetch`.
 
   Cross-site forms cannot set custom headers, and cross-site `fetch` with a custom header needs a CORS
   preflight that the API never approves.

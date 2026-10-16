@@ -4,7 +4,7 @@
 |---|---|
 | Phase / lane | P2 / A |
 | Risk tier | 1 |
-| Depends on | P2-01 |
+| Depends on | P2-01b |
 | Replaces old | M3-T03 |
 | Status | todo |
 

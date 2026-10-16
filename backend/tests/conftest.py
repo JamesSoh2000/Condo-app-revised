@@ -29,6 +29,9 @@ from app.main import app, create_app
 from tests.world import World, build_world
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+# What the SPA sends with every unsafe request, so the CSRF check (app/core/csrf.py) passes. Tests
+# of the check itself send their own headers (tests/test_csrf.py).
+CSRF_HEADERS = {"X-Requested-With": "fetch", "Origin": settings.trusted_origins[0]}
 # asyncpg lets these query parameters override the host/port/database parsed from the URL.
 _CONNECTION_OVERRIDE_PARAMS = frozenset({"database", "dbname", "host", "port", "dsn"})
 
@@ -177,6 +180,8 @@ async def world(db: AsyncSession) -> World:
 async def client(db_connection: AsyncConnection) -> AsyncIterator[AsyncClient]:
     """Async test client that hits the FastAPI app directly, on the test's connection.
 
+    It sends `CSRF_HEADERS` with every request, as the SPA does.
+
     Each request gets its own session, like production (`get_db_session`), on a savepoint of the
     test's connection. It sees the test's setup, committed or only flushed. What the request
     commits stays visible to the test; what it doesn't commit is discarded when the request ends,
@@ -193,7 +198,10 @@ async def client(db_connection: AsyncConnection) -> AsyncIterator[AsyncClient]:
 
     app.dependency_overrides[get_db_session] = _request_sessions_on(db_connection)
     try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=CSRF_HEADERS
+        ) as ac:
             yield ac
     finally:
         app.dependency_overrides.pop(get_db_session, None)
@@ -237,7 +245,9 @@ def app_client(db_connection: AsyncConnection) -> AppClientFactory:
             test_app.include_router(router, prefix="/api")
         test_app.dependency_overrides[get_db_session] = _request_sessions_on(db_connection)
         transport = ASGITransport(app=test_app, raise_app_exceptions=raise_app_exceptions)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=CSRF_HEADERS
+        ) as ac:
             yield ac
 
     return _client

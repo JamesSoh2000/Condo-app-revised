@@ -4,6 +4,10 @@
 test runs inside one transaction that is rolled back at the end; see the docstring of `tests/conftest.py`
 for the rules (`commit()` only releases a savepoint, requests must not run concurrently).
 
+The `client` and `app_client` fixtures send `X-Requested-With: fetch` and a trusted `Origin` with every
+request, as the SPA does, so unsafe requests pass the CSRF check (`app/core/csrf.py`). To test a request
+without them, build it and replace its headers (`tests/test_csrf.py::send`).
+
 ## The world
 
 The `world` fixture (`tests/world.py`) builds two buildings inside the test's transaction. Use it instead of
@@ -38,7 +42,7 @@ unit-addressed route only its 404 rules out the occupancy filter (`a_pending` ha
 ## The 10 cases with the world
 
 The table is in [docs/ENGINEERING_PRACTICES.md §7](../../docs/ENGINEERING_PRACTICES.md#7-testing-standards).
-The HTTP helpers arrive with auth: `as_user` in P2-01 and `assert_cross_building_404` and the other tenant
+The HTTP helpers arrive with auth: `as_user` in P2-01b and `assert_cross_building_404` and the other tenant
 helpers in `tests/helpers/tenancy.py` in P2-03
 ([P2-03](../../docs/tickets/P2-03-tenant-context-guards-fitness.md)). Until then the persona is the whole
 recipe:
@@ -46,7 +50,7 @@ recipe:
 | # | Case | Who |
 |---|---|---|
 | 1 | Happy path per allowed role | `a_manager`, `a_security`, `a_resident1`, … |
-| 2 | Unauthenticated | no session (TODO P2-01: the client without `as_user`) |
+| 2 | Unauthenticated | no session (TODO P2-01b: the client without `as_user`) |
 | 3 | Member of another building | `b_manager` or `b_resident1` on a building-A route; `multi` with the wrong building's role |
 | 4 | Same building, wrong role | `a_security` on a management route, `a_resident1` on a staff route |
 | 5 | Same building, another resident's record | `a_resident2` on `a_resident1`'s record; `a_former` on a record in 101 after `T1` |
