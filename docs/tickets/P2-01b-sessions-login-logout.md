@@ -6,11 +6,12 @@
 | Risk tier | 1 |
 | Depends on | P2-01a, P1-02, P1-05 |
 | Replaces old | M3-T02 (redesigned per ADR-0003) |
-| Status | todo |
+| Status | done |
 
 Split from [P2-01](./P2-01-sessions-login-logout-csrf.md) (see there why). CSRF, password hashing, the
 password policy and seed passwords are [P2-01a](./P2-01a-csrf-and-password-hashing.md). Re-frame this part
-before starting: its criteria are the original ticket's, moved here unchanged.
+before starting: its criteria are the original ticket's, moved here unchanged. Re-framed 2026-10-16 (Frame
+notes below; AC1–AC6 sharpened, AC7–AC11 added).
 
 ## Goal
 
@@ -68,16 +69,48 @@ Endpoints above. Cookie: `HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `s
 
 ## Acceptance criteria
 
-1. **Given** seeded `resident1` and the correct password, **when** logging in, **then** 204, and the cookie
-   has HttpOnly, SameSite=Lax and Path=/ (and Secure in the staging config).
-2. **Given** a successful login, **then** the DB stores `sha256(token)` only. The raw cookie value appears
-   nowhere in the DB or logs.
-3. **Given** a wrong password, an unknown email, or an inactive user, **then** the responses are
-   byte-identical 401 bodies.
-4. **Given** logout, **when** the old cookie is reused, **then** 401.
-5. **Given** a session past `expires_at` or `idle_expires_at` (frozen clock), **then** 401.
-6. **Given** two requests 1 minute apart, **then** `last_seen_at` is updated once. Six minutes apart, it is
-   updated twice.
+The original six, sharpened (the original wording is kept in the parent ticket), then the added ones.
+
+1. **Given** the seeded `resident1` (`make seed`, dev) and `DevPassword!2026`, **when** `POST /api/auth/login`
+   (also with the email in another letter case, `Resident1@Example.TEST`), **then** 204 with an empty body and
+   one `Set-Cookie: session=<token>` with `HttpOnly`, `SameSite=lax`, `Path=/`, `Max-Age` = 30 days, no
+   `Domain` and no `Secure`. **Given** the staging settings, **then** the cookie is `__Host-session` with
+   `Secure`; settings for staging/prod refuse `SESSION_COOKIE_SECURE=false` or a name without `__Host-`, and
+   any environment refuses a `__Host-` name without `Secure`.
+2. **Given** a successful login, **then** the new `sessions` row's `token_hash` is `sha256(token)` hex, no
+   `sessions` column holds the token (`row::text`), no log record emitted during the login holds it, and the
+   database refuses a `token_hash` that isn't 64 lowercase hex characters (check constraint).
+3. **Given** a wrong password, an unknown email, a user whose `password_hash` is NULL, a user whose hash can't
+   be parsed, or an inactive user with the right password, **then** each answers 401 `invalid_credentials`,
+   the bodies are byte-identical when sent with the same `X-Request-ID`, no cookie is set and no session row
+   is written. Each path runs exactly one password verification, against the user's hash or `DUMMY_HASH`
+   (unknown, NULL, unparsable).
+4. **Given** a logged-in client, **when** it logs out, **then** 204, the session's `revoked_at` is set, the
+   response deletes the cookie (`Max-Age=0`, same name, `Path` and flags), and the old cookie on a
+   protected route gives 401 `not_authenticated`. Logout without a cookie, with an unknown cookie, or twice,
+   is also 204.
+5. **Given** a session and a frozen clock, **when** the clock passes `expires_at`, or passes
+   `idle_expires_at`, **then** a protected route gives 401 `not_authenticated`; one second before either, 200.
+   A revoked session, a deactivated user, a garbage cookie and no cookie also give 401 `not_authenticated`.
+6. **Given** a session last seen at `T`, **when** requests arrive at `T+1 min`, `T+5 min` and `T+6 min`,
+   **then** `last_seen_at` stays `T` after the first, becomes `T+5 min` after the second (and
+   `idle_expires_at` moves to `T+5 min` + the idle window), and stays `T+5 min` after the third: at most one
+   write per 5 minutes. (Sharpened: the original "1 minute apart → updated once; six minutes → twice" counted
+   from an unstated start.)
+7. **Given** a user with an active membership holding a staff role (`security`, `property_management`,
+   `council`), **then** login sets `idle_expires_at` = now + 12 h; a resident-only user, or one whose staff role
+   is on a pending or suspended membership, gets now + 7 days; `expires_at` is now + 30 days for both. The
+   refresh in AC6 recomputes the window from the current memberships. (Added.)
+8. **Given** a login body with a missing or extra field, an empty email, or a password over 128 characters,
+   **then** 422 (`validation_error`) and no password is verified. (Added.)
+9. **Given** a user whose hash was made with weaker argon2 parameters, **when** they log in, **then** 204 and
+   the stored hash is replaced by one that verifies and doesn't need a rehash. `needs_rehash` is True for a
+   hash whose salt or digest isn't canonical base64 (Carried from P2-01a). (Added.)
+10. **Given** `POST /api/auth/login` or `/logout` without `X-Requested-With`, **then** 403 `csrf_failed`, no
+    session row written or revoked. (Added: the 10-case table's case 2 for these routes is "no session",
+    covered by AC4/AC5.)
+11. **Given** the test helper `login_as(db, client, user)`, **then** the client is authenticated as that user
+    on the next request, with no password involved (the world's users have none). (Added.)
 
 ## Test plan
 
@@ -145,7 +178,37 @@ From the P2-01a reviews (PR #56; `docs/explanations/P2-01a-csrf-and-password-has
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Criteria added or sharpened: AC1–AC6 sharpened (exact cookie attributes and `Max-Age`; case-insensitive
+  email; the settings guards for `__Host-`/`Secure`; the token-hash check constraint; NULL and unparsable
+  hashes in the 401 set, one verification per path; the logout cookie deletion and idempotency; the
+  revoked/deactivated/garbage cases; AC6's timeline made exact). AC7–AC11 added (staff idle window, 422s,
+  rehash on login, CSRF on the auth routes, `login_as`).
+- Criteria loosened: none.
+- Decisions taken:
+  - **Email lookup** (Carried from P1-02): `func.lower(User.email) == func.lower(:email)`, both sides lowered
+    by Postgres, so the lookup uses the same function as `uq_users_lower_email` and Python's `lower()` never
+    takes part. Login writes no email, so the length-after-lowering and non-ASCII rejection items stay with
+    P4-02/P4-05 (the first schemas that write users), as does `email-validator`: the login body's `email` is a
+    plain string (1–320 characters); a malformed one is just an unknown email (401). Basis: autonomous.
+  - **Unparsable hashes cost a full verification:** a new `is_valid_hash()` (argon2 PHC string with canonical
+    base64 salt and digest) decides whether login verifies against the user's hash or `DUMMY_HASH`;
+    `needs_rehash` uses it too (the P2-01a carry). Basis: P2-01a review follow-up.
+  - **Idle window recomputed on refresh** (at most every 5 minutes) from current memberships, not frozen at
+    login: a role change applies within one refresh, consistent with ADR-0003's "permissions are never
+    stale". Costs one indexed query per refresh. Basis: autonomous.
+  - **Persistent cookie** with `Max-Age` = the absolute lifetime (30 days), so a resident's 7-day idle window
+    survives a browser restart; the server-side expiry is what counts. Alternative: a browser-session cookie
+    (logs residents out on every browser restart, contradicting the 7-day idle design). Basis: autonomous.
+  - **Cookie settings:** `session_cookie_name`/`session_cookie_secure` default per environment
+    (`session`/false in dev and test, `__Host-session`/true in staging and prod) and can be overridden.
+    Basis: ticket + ADR-0003.
+  - **`sessions.user_id` ON DELETE CASCADE:** a session is a credential, not history; deleting a user must
+    not be blocked by, or leave, its sessions. Users are deactivated, not deleted (P1-02), so this is only a
+    backstop. Basis: autonomous.
+  - **Touching the session commits** in `service.touch_session`, a use-case of its own (CLAUDE.md rule 5),
+    called by `get_current_session` before the endpoint runs. Basis: rule 5.
+  - **argon2 off the event loop** (`anyio.to_thread.run_sync`) for verify and rehash (Carried from P2-01a).
+  - **`login_as`**, not `as_user`: P2-03 owns the `as_user` client helper (its ticket) and builds it on
+    `login_as`. The `tests/README.md` TODO for case 2 is updated here. Basis: P2-03 ticket.
+  - The P1-07 carry (a wrong-password 401 fires the frontend's event) needs nothing here; P2-06 handles it.
 - Split: second part of P2-01 (see the parent ticket).

@@ -55,6 +55,8 @@ EXPECTED_ROW_COUNTS = {
     "building_memberships": 12,
     "membership_roles": 13,
     "unit_occupancies": 8,
+    # P2-01b: the world logs nobody in.
+    "sessions": 0,
 }
 
 

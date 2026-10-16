@@ -82,6 +82,13 @@ process restarts. Postgres meets that without Redis.
 3. Why hash the email in the key?
 4. Why can't we trust `X-Forwarded-For` from anyone?
 
+## Carried from P2-01b (do while framing)
+
+- Until this ticket, nothing bounds password guessing on `POST /api/auth/login`, or the memory a login flood
+  uses: up to 40 concurrent argon2 verifications (AnyIO's thread pool), 64 MiB each. Login no longer holds a
+  database connection while verifying (PR #57 review round 2). Limit per IP and per target email, and keep
+  the limited answer from revealing whether the email exists.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

@@ -89,6 +89,11 @@ something that did.
   `cli: ; $(COMPOSE) exec app python -m app.cli $(args)`), or use `docker compose exec app python -m app.cli
   audit …`. `audit` is a placeholder in `backend/app/cli.py` that exits 1 until this ticket replaces it.
 
+## Carried from P2-01b (do while framing)
+
+- Wire the `auth.*` events into `app/auth/service.py::login` and `logout` (no audit there yet). A failed login
+  must log no password and should not record whether the email exists in anything a client can read.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

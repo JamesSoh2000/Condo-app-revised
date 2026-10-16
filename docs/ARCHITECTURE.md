@@ -204,20 +204,22 @@ class Package(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 ## 6. Identity and sessions ([ADR-0003](./adr/0003-same-origin-server-side-sessions.md))
 
-- **Passwords:** argon2id (via `pwdlib[argon2]` or `argon2-cffi`), with a minimum length of 12 and a
-  common-password check against a small embedded list.
+- **Passwords:** argon2id (`argon2-cffi`, `core/security.py`), 12–128 characters, not one of the 1,000 most
+  common passwords of that length (P2-01a).
 - **Login** (`POST /api/auth/login`):
-  - Verifies the credentials with a constant-time path for unknown emails.
+  - Verifies the credentials with one argon2 verification on every path: against `DUMMY_HASH` for an unknown
+    email or a missing or unparsable hash, so the timing doesn't reveal which emails have accounts.
   - Creates a session with a random 32-byte token (`secrets.token_urlsafe(32)`).
   - Stores `sha256(token)`.
   - Sets the cookie.
 - **Cookie:**
   - `__Host-session` in staging/prod: `Secure; HttpOnly; Path=/; SameSite=Lax`, no `Domain`.
   - `session` without `Secure` locally over http.
-  - The name comes from settings.
+  - The name comes from settings. `Max-Age` is the absolute lifetime; the server-side expiry is what counts.
 - **Expiry:**
   - absolute 30 days
-  - idle 7 days for residents, 12 hours if the user has any staff role
+  - idle 7 days for residents, 12 hours if the user has a staff role on an active membership (recomputed at
+    each refresh)
   - `last_seen_at` and the idle expiry are refreshed at most once every 5 minutes, to limit writes
 - **Logout** revokes the current session. **Logout-all** and **password reset** revoke every session of the user.
 - **Account state is checked on every request.** Deactivating a user, or changing a role or membership,

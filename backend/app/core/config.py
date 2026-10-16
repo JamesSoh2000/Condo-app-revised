@@ -1,10 +1,10 @@
 import ipaddress
 import re
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AppEnv = Literal["dev", "test", "staging", "prod"]
@@ -79,6 +79,23 @@ class Settings(BaseSettings):
     # DevPassword!2026 (README); staging must not, because it is reachable.
     seed_password: SecretStr | None = None
 
+    # Sessions (ADR-0003). The cookie's name and Secure flag default per environment in
+    # `_session_cookie_defaults`: `session` on local http, `__Host-session` + Secure when deployed.
+    session_cookie_name: str = Field("session", min_length=1)
+    session_cookie_secure: bool = False
+    session_absolute_days: int = Field(30, gt=0)
+    session_idle_resident_days: int = Field(7, gt=0)
+    session_idle_staff_hours: int = Field(12, gt=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _session_cookie_defaults(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            deployed = data.get("app_env", "dev") in {"staging", "prod"}
+            data.setdefault("session_cookie_name", "__Host-session" if deployed else "session")
+            data.setdefault("session_cookie_secure", deployed)
+        return data
+
     @model_validator(mode="after")
     def validate_production_settings(self) -> Settings:
         """
@@ -100,6 +117,12 @@ class Settings(BaseSettings):
             if self.s3_bucket_name in {"", "condo-app-dev-files"}:
                 raise ValueError(f"S3_BUCKET_NAME must be set to a real bucket {where}")
 
+            if not self.session_cookie_secure or not self.session_cookie_name.startswith("__Host-"):
+                raise ValueError(
+                    f"SESSION_COOKIE_SECURE must be true and SESSION_COOKIE_NAME start with "
+                    f"__Host- {where}"
+                )
+
         if self.is_production:
             if any(not origin.startswith("https://") for origin in self.trusted_origins):
                 raise ValueError("TRUSTED_ORIGINS must all be https:// in production")
@@ -120,6 +143,10 @@ class Settings(BaseSettings):
                 f"TRUSTED_ORIGINS entries must be lowercase scheme://host[:port], with no path or "
                 f"trailing slash: {malformed}"
             )
+
+        if self.session_cookie_name.startswith("__Host-") and not self.session_cookie_secure:
+            # Browsers drop a __Host- cookie that isn't Secure, so login would silently not stick.
+            raise ValueError("a __Host- SESSION_COOKIE_NAME needs SESSION_COOKIE_SECURE=true")
 
         default_ports = [origin for origin in self.trusted_origins if _has_default_port(origin)]
         if default_ports:

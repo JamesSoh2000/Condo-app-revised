@@ -11,6 +11,10 @@ from app.core.errors import install_error_handlers
 from app.logging_config import configure_logging
 from app.middleware.request_logging import RequestLoggingMiddleware
 
+# Every model, so relationships can resolve their targets in the server process (the tests import
+# them all anyway; tests/test_app_imports.py checks the app alone).
+from app.models import registry as _registry  # noqa: F401
+
 configure_logging()
 logger = logging.getLogger("app.lifecycle")
 
@@ -52,8 +56,10 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
     install_error_handlers(app)
 
+    from app.auth import router as auth
     from app.routers import health, version
 
+    app.include_router(auth.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(version.router, prefix="/api")
     return app

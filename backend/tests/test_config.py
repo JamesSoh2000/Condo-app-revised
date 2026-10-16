@@ -267,3 +267,71 @@ def test_seed_password_is_a_secret_and_unset_by_default(monkeypatch):
     assert settings.seed_password is not None
     assert settings.seed_password.get_secret_value() == "staging-demo-pass-2026"
     assert "staging-demo-pass-2026" not in repr(settings)
+
+
+# P2-01b criterion 1: the session cookie's name and Secure flag follow the environment
+
+STAGING = {**PROD, "app_env": "staging", "trusted_origins": ["https://staging.example.org"]}
+
+
+@pytest.mark.parametrize(
+    ("values", "name", "secure"),
+    [
+        ({}, "session", False),
+        ({"app_env": "test"}, "session", False),
+        (STAGING, "__Host-session", True),
+        ({**PROD, "trusted_origins": ["https://condo.example.org"]}, "__Host-session", True),
+    ],
+    ids=["dev", "test", "staging", "prod"],
+)
+def test_session_cookie_defaults_follow_the_environment(values, name, secure):
+    settings = Settings(_env_file=None, **values)
+
+    assert (settings.session_cookie_name, settings.session_cookie_secure) == (name, secure)
+    assert settings.session_absolute_days == 30
+    assert settings.session_idle_resident_days == 7
+    assert settings.session_idle_staff_hours == 12
+
+
+def test_session_cookie_settings_load_from_env(monkeypatch):
+    monkeypatch.setenv("SESSION_COOKIE_NAME", "__Host-session")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
+
+    settings = Settings(_env_file=None)
+
+    assert (settings.session_cookie_name, settings.session_cookie_secure) == (
+        "__Host-session",
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    "override",
+    [{"session_cookie_secure": False}, {"session_cookie_name": "session"}],
+    ids=["not-secure", "no-host-prefix"],
+)
+def test_staging_refuses_an_insecure_session_cookie(override):
+    with pytest.raises(ValidationError, match="SESSION_COOKIE"):
+        Settings(_env_file=None, **STAGING, **override)
+
+
+def test_host_prefixed_cookie_needs_secure_in_every_env():
+    with pytest.raises(ValidationError, match="__Host-"):
+        Settings(_env_file=None, session_cookie_name="__Host-session", session_cookie_secure=False)
+
+
+# P2-01b review round 2 L4
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"session_cookie_name": ""},
+        {"session_absolute_days": 0},
+        {"session_idle_resident_days": -1},
+        {"session_idle_staff_hours": 0},
+    ],
+)
+def test_session_settings_must_be_usable(override):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **override)

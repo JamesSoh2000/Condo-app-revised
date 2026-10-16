@@ -5,14 +5,15 @@ tokens are 32 random bytes, so a fast sha256 is enough to keep the stored value 
 of the database.
 """
 
+import base64
+import binascii
 import hashlib
-import re
 import secrets
 from functools import cache
 from importlib import resources
 from typing import Literal
 
-from argon2 import PasswordHasher
+from argon2 import PasswordHasher, extract_parameters
 from argon2.exceptions import InvalidHashError, VerificationError
 
 # argon2-cffi's defaults: RFC 9106's low-memory profile (argon2id, t=3, m=64 MiB, p=4).
@@ -35,25 +36,57 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-# A PHC string ends in `$<salt>$<digest>`, both unpadded standard base64. argon2-cffi's
-# check_needs_rehash reads only the parameters and lengths, not these (review round 2).
-_PHC_SALT_AND_DIGEST = re.compile(r"\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+")
+def is_valid_hash(password_hash: str) -> bool:
+    """True if `password_hash` is an argon2 hash in the exact form argon2 writes, with parameters a
+    real verification would run. Login verifies against `DUMMY_HASH` otherwise.
+
+    The point is timing: a hash libargon2 refuses fails in microseconds, so an account with a
+    corrupt hash would answer faster than an unknown email. argon2-cffi's `extract_parameters`
+    parses more than libargon2 runs (review rounds: P2-01a 2-3, P2-01b 1-2), so instead of
+    listing bad inputs this rebuilds the canonical string from what was parsed and requires an
+    exact match (ruling out leading zeros, signs, reordered or extra fields, non-canonical
+    base64), then bounds every parameter.
+    """
+    try:
+        params = extract_parameters(password_hash)
+    except InvalidHashError, UnicodeEncodeError:
+        return False
+    *_, salt, digest = password_hash.split("$")
+    canonical = (
+        f"$argon2{params.type.name.lower()}$v={params.version}"
+        f"$m={params.memory_cost},t={params.time_cost},p={params.parallelism}${salt}${digest}"
+    )
+    # Lower bounds: libargon2's minimums (argon2.h). Upper bounds: ours, far above what
+    # hash_password writes (t=3, m=64 MiB, p=4, 16-byte salt, 32-byte digest); past them a
+    # verification could fail fast on allocation, or isn't a hash this app would accept.
+    within_bounds = (
+        params.version in {16, 19}
+        and 8 <= params.salt_len <= 64
+        and 4 <= params.hash_len <= 64
+        and 1 <= params.time_cost <= 16
+        and 1 <= params.parallelism <= 16
+        and 8 * params.parallelism <= params.memory_cost <= 1024 * 1024
+    )
+    return (
+        password_hash == canonical
+        and within_bounds
+        and _is_canonical_b64(salt)
+        and _is_canonical_b64(digest)
+    )
+
+
+def _is_canonical_b64(field: str) -> bool:
+    try:
+        raw = base64.b64decode(field + "=" * (-len(field) % 4), validate=True)
+    except binascii.Error, ValueError:
+        return False
+    return base64.b64encode(raw).decode().rstrip("=") == field
 
 
 def needs_rehash(password_hash: str) -> bool:
-    """True if the hash was made with other parameters than `hash_password` uses now, or its
-    parameters can't be read, or its salt or digest holds a non-base64 character.
-
-    It doesn't decode the salt and digest (a non-canonical last character passes, review round 3),
-    so call it only on a hash `verify_password` accepted: that one is well-formed.
-    """
-    salt_and_digest = "$" + "$".join(password_hash.split("$")[-2:])
-    if not _PHC_SALT_AND_DIGEST.fullmatch(salt_and_digest):
-        return True
-    try:
-        return _hasher.check_needs_rehash(password_hash)
-    except InvalidHashError, UnicodeEncodeError:
-        return True
+    """True if the hash was made with other parameters than `hash_password` uses now, or isn't a
+    valid hash at all (it needs replacing either way)."""
+    return not is_valid_hash(password_hash) or _hasher.check_needs_rehash(password_hash)
 
 
 # Verified against when there is no hash to check (unknown email, no password set), so that path
