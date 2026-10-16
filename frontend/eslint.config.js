@@ -10,23 +10,29 @@ import tseslint from "typescript-eslint";
 // (`@/`, `../`) and with or without a file extension.
 const BASE44_SOURCE = "^(@base44/|(.*/)?api/(base44Client|entities|integrations)(\\.[cm]?[jt]sx?)?$)";
 const BASE44_MESSAGE = "New code uses the typed client in src/api, not Base44 (ADR-0011).";
-const noBase44Imports = ["error", { patterns: [{ regex: BASE44_SOURCE, message: BASE44_MESSAGE }] }];
-// no-restricted-imports only sees static imports/exports; dynamic import() and require() need this.
-// esquery regex literals can't contain "/", even escaped, so it is written as \x2F.
-const esqueryBase44 = `/${BASE44_SOURCE.replaceAll("/", "\\x2F")}/`;
-const noBase44DynamicImports = [
-  "error",
-  { selector: `ImportExpression[source.value=${esqueryBase44}]`, message: BASE44_MESSAGE },
-  // A template literal has no .value; new code has no reason to build import paths dynamically.
-  {
-    selector: 'ImportExpression[source.type="TemplateLiteral"]',
-    message: "Use a plain string in import(), so the Base44 fence can check it (ADR-0011).",
-  },
-  {
-    selector: `CallExpression[callee.name="require"][arguments.0.value=${esqueryBase44}]`,
-    message: BASE44_MESSAGE,
-  },
-];
+// Inside src/api the legacy barrels are siblings (`./base44Client`), which BASE44_SOURCE doesn't match.
+const BASE44_SIBLING = "^\\./(base44Client|entities|integrations)(\\.[cm]?[jt]sx?)?$";
+// no-restricted-imports only sees static imports/exports; dynamic import() and require() need the
+// no-restricted-syntax selectors. esquery regex literals can't contain "/", even escaped: it is \x2F.
+function base44Fence(source) {
+  const esquery = `/${source.replaceAll("/", "\\x2F")}/`;
+  return {
+    "no-restricted-imports": ["error", { patterns: [{ regex: source, message: BASE44_MESSAGE }] }],
+    "no-restricted-syntax": [
+      "error",
+      { selector: `ImportExpression[source.value=${esquery}]`, message: BASE44_MESSAGE },
+      // A template literal has no .value; new code has no reason to build import paths dynamically.
+      {
+        selector: 'ImportExpression[source.type="TemplateLiteral"]',
+        message: "Use a plain string in import(), so the Base44 fence can check it (ADR-0011).",
+      },
+      {
+        selector: `CallExpression[callee.name="require"][arguments.0.value=${esquery}]`,
+        message: BASE44_MESSAGE,
+      },
+    ],
+  };
+}
 
 export default [
   {
@@ -97,9 +103,11 @@ export default [
       parser: tseslint.parser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
-    rules: {
-      "no-restricted-imports": noBase44Imports,
-      "no-restricted-syntax": noBase44DynamicImports,
-    },
+    rules: base44Fence(BASE44_SOURCE),
+  },
+  // The typed client (P1-07). The legacy src/api/*.js Base44 barrels themselves stay outside the fence.
+  {
+    files: ["src/api/**/*.{ts,tsx}"],
+    rules: base44Fence(`(${BASE44_SOURCE})|(${BASE44_SIBLING})`),
   },
 ];

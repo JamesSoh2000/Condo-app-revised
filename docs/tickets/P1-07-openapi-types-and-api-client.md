@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P1-04, P0-03 |
 | Replaces old | M4-T01, M4-T03, M4-T04 (conventions part) |
-| Status | todo |
+| Status | done |
 
 ## Goal
 
@@ -52,13 +52,40 @@ generated types, a backend change that breaks the UI fails `tsc` instead of fail
 
 1. **Given** the backend code, **when** `make gen-api` runs, **then** `schema.d.ts` contains the
    `/api/version` path. Running it again produces no diff.
+   *Sharpened:* `python -m app.export_openapi` prints exactly `create_app().openapi()` as JSON and works with
+   no database or server running (pytest, in a subprocess); `/api/version` has a typed response schema
+   (`VersionOut`), so `useVersion()` reads `git_sha` without casts.
 2. **Given** a backend change adding a field without regenerating, **when** CI runs, **then** the frontend job
    fails on the diff check.
+   *Sharpened:* proven by a deliberate mutation (a field added to `VersionOut`, not regenerated): the CI
+   step's commands exit non-zero, output pasted in the PR.
 3. **Given** a 409 problem+json response, **when** a call goes through the client, **then** an `ApiError` is
    thrown with `code` and `requestId` set (Vitest with mocked fetch).
+   *Sharpened:* `status`, `code`, `title`, `detail`, `errors` and `requestId` (from the body's `request_id`)
+   all set; also for a 422 with `errors[]`.
 4. **Given** any request, **then** the `X-Requested-With: fetch` header is present (Vitest).
+   *Sharpened:* on GET and POST, through both the raw client and the `api.get/post` wrappers.
 5. **Given** a 404 response, **then** the query client does not retry. A 503 retries at most twice.
+   *Sharpened:* "at most 2 attempts" in Scope means at most 2 **retries** (3 requests), as this criterion
+   says. Through a real `QueryClient` with the app's options: a 404 makes 1 request; a 503 makes 3; a
+   network error (`fetch` rejects with `TypeError`) makes 3; 400, 401, 403, 409 and 422 make 1.
 6. **Given** `npm run dev` with the backend up, **then** the footer shows the backend version.
+   *Sharpened:* a Testing Library test renders the footer from a mocked `/api/version`; on the stack,
+   `GET /api/version` through the Vite proxy returns the backend's body (transcript in the PR).
+
+Added while framing:
+
+7. **Given** a 401 response, **then** one `auth:unauthenticated` event is emitted (and `ApiError` 401
+   thrown); other statuses emit nothing (Vitest).
+8. **Given** an error response that is not problem+json (a proxy's HTML 502), **then** the client still
+   throws an `ApiError` with that `status`, `code: "http_error"`, and `requestId` from the `X-Request-ID`
+   response header when present, otherwise `null` (Vitest).
+9. **Given** a production build (`npm run build`), **then** the version footer is not rendered: it is gated on
+   `import.meta.env.DEV` (Vitest renders nothing with `DEV` false).
+10. `src/lib/query-client.js` is removed and `App.jsx` uses `src/app/queryClient.ts`; the query client's
+    defaults are `staleTime: 30_000`, `refetchOnWindowFocus: true` (Vitest). `npm run test` runs in CI.
+
+Tenant table (`ENGINEERING_PRACTICES.md` §7): no rows apply; this ticket adds no building-scoped endpoint.
 
 ## Test plan
 
@@ -85,7 +112,25 @@ is no `HTTPValidationError`). Paged responses appear as `Page_<Item>_`. Operatio
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+- Criteria added or sharpened: AC1 (export is pure, `VersionOut`), AC2 (mutation proof), AC3 (all fields,
+  422), AC4 (GET/POST, both paths), AC5 (retry counts per status and network error), AC6 (component test +
+  proxy transcript); added AC7 (401 event), AC8 (non-problem errors), AC9 (no footer in production), AC10
+  (old query client removed, defaults, tests in CI).
+- Criteria loosened (with reason; also listed in the inbox): none. AC6's "footer shows the version" is
+  checked by a component test plus the proxy transcript. (Written before implementing, expecting no browser;
+  Playwright's cached headless Chromium turned out to be available, so the PR also has the rendered footer.)
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - "At most 2 attempts" read as at most 2 retries, per AC5 (ticket).
+  - `openapi.json` is written to the repo root (the ticket's `../openapi.json`) and gitignored; only
+    `schema.d.ts` is committed and drift-checked (ticket).
+  - The drift check runs in the frontend CI job, which gains Python and uv to run the export (ticket AC2).
+  - `/api/version` gets a `VersionOut` response model so the generated type is a typed object rather than
+    `Record<string, string>` (autonomous, ticket-local).
+  - The 401 event goes through an `EventTarget` exported by `src/api/client.ts`, not `window` (autonomous;
+    P2-06 consumes it; listed in the inbox).
+  - Non-problem error bodies map to `code: "http_error"` (autonomous; listed in the inbox).
+  - Vitest 4 (not 5, which needs Vite ≥ 6.4; the lock has 6.3.6), jsdom only for component tests (autonomous).
+  - The version footer is a new `src/app/DevVersionFooter.tsx` rendered from `App.jsx`; legacy
+    `Layout.jsx` is not extended (CLAUDE.md layout rule).
+  - The Base44 import fence is extended to `src/api/**/*.{ts,tsx}` (stricter gate; autonomous).
+- Split: none. Estimate ~350 non-test lines (generated `schema.d.ts` excluded).

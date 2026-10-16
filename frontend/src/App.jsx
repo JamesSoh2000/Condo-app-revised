@@ -1,7 +1,8 @@
 import './App.css'
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
-import { queryClientInstance } from '@/lib/query-client'
+import { queryClient } from '@/app/queryClient'
+import { DevVersionFooter } from '@/app/DevVersionFooter'
 import VisualEditAgent from '@/lib/VisualEditAgent'
 import NavigationTracker from '@/lib/NavigationTracker'
 import { pagesConfig } from './pages.config'
@@ -78,7 +79,7 @@ function App() {
   return (
     <AuthProvider>
       <LanguageProvider>
-      <QueryClientProvider client={queryClientInstance}>
+      <QueryClientProvider client={queryClient}>
         <Router>
           {/* Base44 editor helpers, dev only: they post to window.parent with target '*' and log page
               views to Base44, and VisualEditAgent's message handler has no origin check. */}
@@ -86,6 +87,7 @@ function App() {
           <AuthenticatedApp />
         </Router>
         <Toaster />
+        <DevVersionFooter />
         {import.meta.env.DEV && <VisualEditAgent />}
       </QueryClientProvider>
       </LanguageProvider>

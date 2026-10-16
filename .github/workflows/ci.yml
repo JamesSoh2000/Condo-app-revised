@@ -143,6 +143,39 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      # Vitest: the API client, the query client's retry policy, and component tests.
+      - name: Unit tests
+        run: npm run test
+
+      # OpenAPI drift: the committed src/api/schema.d.ts must be what the backend's current OpenAPI
+      # generates. A backend change without `make gen-api` fails here. The export needs Python and the
+      # backend's dependencies, but no database or server.
+      - name: Set up Python (OpenAPI export)
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.8"
+
+      - name: Set up uv (OpenAPI export)
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.11.17"
+          enable-cache: true
+          cache-dependency-glob: |
+            backend/pyproject.toml
+            backend/uv.lock
+
+      - name: Generated API types are up to date
+        run: |
+          (cd ../backend && uv sync --locked)
+          (cd ../backend && uv run python -m app.export_openapi) > ../openapi.json
+          npm run gen:api
+          # status, not diff: a deleted-then-regenerated (untracked) file must fail too.
+          if [ -n "$(git status --porcelain -- src/api/schema.d.ts)" ]; then
+            git diff -- src/api/schema.d.ts
+            echo "::error file=frontend/src/api/schema.d.ts::Stale API types: run \`make gen-api\` and commit the result."
+            exit 1
+          fi
+
       # Base44 ratchet: fails if Base44 references under frontend/src go up (ADR-0011).
       - name: Base44 ratchet
         run: bash ../scripts/base44-count.sh

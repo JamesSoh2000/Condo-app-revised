@@ -67,14 +67,21 @@ typecheck: ## mypy and tsc
 	$(BACKEND) uv run mypy app
 	$(FRONTEND) npm run typecheck
 
-check: lint typecheck test ## Everything CI checks, plus alembic check (needs `make up`)
+check: lint typecheck test ## Everything CI checks: lint, types, tests, alembic check, API type drift (needs `make up`)
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) uv run alembic check
 	bash scripts/base44-count.sh
 	python3 scripts/check-version-pins.py
+	$(FRONTEND) npm run test
+	@$(MAKE) --no-print-directory gen-api >/dev/null
+	@test -z "$$(git status --porcelain -- frontend/src/api/schema.d.ts)" || { \
+	  echo "check: frontend/src/api/schema.d.ts was stale and has been regenerated; commit it"; exit 1; }
 	$(FRONTEND) npm run build
 
-gen-api: ## Regenerate the frontend API types (stub until P1-07)
-	@echo "make gen-api: no typed API client yet; P1-07 adds it"
+# openapi.json (repo root, gitignored) is an intermediate; only schema.d.ts is committed. CI runs the same two
+# steps and fails if schema.d.ts changes.
+gen-api: ## Regenerate frontend/src/api/schema.d.ts from the backend's OpenAPI (no server or database needed)
+	$(BACKEND) uv run python -m app.export_openapi > ../openapi.json
+	$(FRONTEND) npm run --silent gen:api
 
 e2e: ## Playwright journeys (stub until P4-09; fails so a stub never counts as a pass)
 	@echo "make e2e: no Playwright suite yet; P4-09 adds it"; exit 1
