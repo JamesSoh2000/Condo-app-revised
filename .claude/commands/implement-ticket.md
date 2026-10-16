@@ -4,7 +4,7 @@ argument-hint: <ticket-id, e.g. P2-03>
 ---
 
 Implement ticket $ARGUMENTS following CLAUDE.md. Don't wait for approval; the plan is written down so the
-reviewer and the explainer can check the code against it.
+reviewer can check the code against it, and the explanation is later compared against it.
 
 **Plan (step 2):**
 1. Read `docs/tickets/$ARGUMENTS-*.md` (including the Frame notes), its linked ADRs, and the current code.
@@ -36,7 +36,7 @@ reviewer and the explainer can check the code against it.
 3. Rebase onto the latest `main` (`git fetch && git rebase origin/main`) and run `make check` again.
 4. Fill in the rest of `.github/pull_request_template.md`
    with real evidence. Write "Decisions and alternatives" for a reader who wasn't in this conversation: the
-   explainer gets the "why" only from there. Put accepted risks and follow-ups under "Follow-ups and
+   the explanation takes the "why" only from there, not from your memory. Put accepted risks and follow-ups under "Follow-ups and
    accepted risks".
 5. Open or update the PR and wait for CI. An unrelated failure gets two retries, then its own fix PR, or a
    block if it is external.

@@ -5,7 +5,7 @@
 
 Multi-building condo operations app: FastAPI + PostgreSQL backend replacing a Base44-exported React
 frontend. One developer (James, solo since 2026-10-13). AI agents frame, build, review, explain and merge
-tickets **autonomously** (ADR-0014); no human checks a ticket before merge. James audits asynchronously
+tickets **autonomously** (ADR-0014, ADR-0017); no human checks a ticket before merge. James audits asynchronously
 through `docs/HUMAN_INBOX.md` and the explanations in `docs/explanations/`.
 
 ## Where things are
@@ -101,8 +101,10 @@ if it didn't.
    cut tests to fit). Stay in scope; put extras under "follow-ups".
 5. Branch `<ticket-id lowercase>-<slug>` (`p2-03-tenant-context`) in its own worktree. Rebase onto the
    latest `main` before review and before merge.
-6. **Never review or explain your own work.** The review and the explanation run in fresh sessions
-   (subagents). Fix confirmed findings test-first; at most 3 review rounds.
+6. **Never review your own work.** The review runs in fresh sessions (subagents). Fix confirmed findings
+   test-first; at most 3 review rounds. You write and edit the explanation yourself, after a reality pass:
+   re-read the diff, the cited files and the tests from disk, run them, and keep implemented behaviour,
+   design rationale and limitations apart. What you remember of building it is not a source (ADR-0017).
 7. Merge (`gh pr merge --squash`) only when the playbook's **merge gate** passes. End with the handoff block.
 8. In explanations and answers, reference code as `path::symbol`, not bare line numbers. Name the PR and
    revision you describe, and mark a "why" no record states as inferred.

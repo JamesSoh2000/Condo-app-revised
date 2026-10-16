@@ -48,8 +48,8 @@ history in [archive/2026-10-legacy/](./archive/2026-10-legacy/README.md), along 
 - **Packages is the reference slice** (week 6). Notices, maintenance and dashboard follow its recipe
   (week 7). Hardening and the demo come in week 8.
 - **One ticket = one branch = one PR, built and merged by agents.** The implementer frames and builds it; a
-  fresh session reviews it (plus Codex on Tier 1) and must say `MERGE`; another fresh session writes the
-  explanation; the agent merges when CI and the merge gate pass. It stops and writes to the
+  fresh session reviews it (plus Codex on Tier 1) and must say `MERGE`; the implementer then writes the
+  explanation after re-reading the code and tests; the agent merges when CI and the merge gate pass. It stops and writes to the
   [inbox](./HUMAN_INBOX.md) only on a [stop rule](./AI_AGENT_PLAYBOOK.md#stop-rules). Learning is yours, at
   your pace, and gates nothing.
 - **Model owner vs tenant now** ([ADR-0010](./adr/0010-unit-occupancy-relationship.md)), and host in

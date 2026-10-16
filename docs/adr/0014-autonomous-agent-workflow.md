@@ -5,6 +5,8 @@
 - Deciders: James
 - Amends: the loop in [AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md) as first written on 2026-10-13 (human
   frame, plan approval, human review with an explain-back gate, learning before the phase gate)
+- Amended by [ADR-0017](./0017-implementer-writes-the-explanation.md): the implementer session, not a fresh
+  one, writes and edits the explanation. Reviews still run in fresh sessions.
 
 ## Context
 

@@ -12,7 +12,8 @@ Built autonomously (docs/AI_AGENT_PLAYBOOK.md); merged by the agent once the mer
 
 ### Decisions and alternatives
 <!-- Record each decision when you make it (plan, implementation or review fix), for someone who wasn't in
-     the conversation: the explainer gets the "why" only from here, the ticket, the ADRs and the review log.
+     the conversation: the explanation takes the "why" only from here, the ticket, the ADRs and the review log,
+     not from the writer's memory.
      A consequential decision (behaviour, data, security, an interface, a gate, a tradeoff, anything a
      reviewer questioned) gets a block; a smaller one a table row; routine syntax nothing. Basis: ticket /
      ADR-NNNN / existing convention / experiment / test result / review finding (round N) / autonomous.
@@ -60,8 +61,8 @@ Built autonomously (docs/AI_AGENT_PLAYBOOK.md); merged by the agent once the mer
 - [ ] Every acceptance criterion has a passing test or evidence above
 - [ ] Tenant test table applied where relevant (docs/ENGINEERING_PRACTICES.md §7)
 - [ ] Tier 1–2 user-reachable behaviour: journey run on the stack, transcript above
-- [ ] Explanation written by a fresh session: docs/explanations/<ticket>.md; reference check passes
-- [ ] Nothing after the explanation changes what it describes (only bookkeeping since its commit)
+- [ ] Explanation written by the implementer after a reality pass (files and tests re-read, cited tests run; see its Reality check line): docs/explanations/<ticket>.md; reference check passes
+- [ ] Nothing after the explanation changes what it describes (only bookkeeping since its commit), or it was updated after a new pass
 - [ ] No protected gate loosened
 - [ ] Ticket index status `done`; inbox updated with any decisions to audit
 - [ ] `.env.example` updated, with secrets marked (if settings changed); OpenAPI types regenerated (if the API changed)
