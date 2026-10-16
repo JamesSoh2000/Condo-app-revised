@@ -83,6 +83,12 @@ something that did.
 2. Why does `auth.login_failed` *not* store the attempted email? What is the trade-off?
 3. What makes a log entry "append-only" in practice, and how could a real system make it tamper-evident?
 
+## Carried from P1-06 (do while framing)
+
+- There is no `make cli` target; the test plan's `make cli audit …` needs one (for example
+  `cli: ; $(COMPOSE) exec app python -m app.cli $(args)`), or use `docker compose exec app python -m app.cli
+  audit …`. `audit` is a placeholder in `backend/app/cli.py` that exits 1 until this ticket replaces it.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

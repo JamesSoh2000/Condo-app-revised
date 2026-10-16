@@ -82,6 +82,11 @@ The journeys above. Run 5 times locally in a row to check flakiness before mergi
    web-first assertions)?
 3. Why keep E2E to a few critical journeys instead of testing everything this way?
 
+## Carried from P1-06 (do while framing)
+
+- The compose service is `app`, not `api`: use `docker compose exec app python -m app.cli …` (as `make seed`
+  does).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

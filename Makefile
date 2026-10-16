@@ -47,8 +47,8 @@ revision: db-guard ## Autogenerate a migration: make revision m="add packages" (
 	@test -n "$(m)" || { echo 'usage: make revision m="what changed"'; exit 2; }
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) uv run alembic revision --autogenerate -m "$(m)"
 
-seed: ## Demo data (stub until P1-06)
-	@echo "make seed: nothing to seed yet; P1-06 adds the demo data"
+seed: ## Idempotent demo data (needs `make up` and `make migrate`); `make seed reset=1` wipes first (dev only)
+	$(COMPOSE) exec app python -m app.cli seed $(if $(reset),--reset)
 
 test: db-guard ## Backend tests, against condo_test on the compose db (needs `make up`)
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) TEST_DATABASE_URL=$(TEST_DATABASE_URL) uv run pytest

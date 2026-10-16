@@ -21,13 +21,37 @@ Needs Docker (with WSL integration), [uv](https://docs.astral.sh/uv/) and Node 2
 ```bash
 make up                     # api :8000, Postgres, Mailpit (UI :8025), S3 emulator :4566; waits until healthy
 make migrate                # alembic upgrade head
-make seed                   # demo data (a stub until P1-06)
+make seed                   # demo buildings and accounts (below); `make seed reset=1` wipes first
 cd frontend && npm ci && npm run dev   # http://localhost:5173, /api proxied to :8000
 ```
 
 `make help` lists every target; `make check` runs what CI runs (with the stack up). Port 5432 already taken?
 Pass the same free port to every target: `make up DB_PORT=55432`, `make migrate DB_PORT=55432`.
 More: [docs/README.md](docs/README.md), [ADR-0007](docs/adr/0007-private-s3-presigned-uploads.md) (the S3 emulator).
+
+### Seeded accounts
+
+`make seed` (`python -m app.cli seed`, [P1-06](docs/tickets/P1-06-seed-and-cli.md)) creates two buildings and
+the accounts below, and puts back any seeded value you changed; it leaves other rows alone. It refuses to run
+with `APP_ENV=prod`. `make seed reset=1` first deletes every domain row, and runs only with `APP_ENV=dev`.
+Passwords arrive in P2-01: until then the accounts can't log in.
+
+| Email (`@example.test`) | Building | Membership | Roles | Unit (relationship) |
+|---|---|---|---|---|
+| `manager` | Maple Tower (`maple`) | active | property_management | — |
+| `security` | `maple` | active | security | — |
+| `council` | `maple` | active | council | — |
+| `resident1` | `maple` | active | resident | 101 (owner) |
+| `resident2`, `resident3` | `maple` | active | resident | 102 (tenant, household) |
+| `resident4`, `resident6` | `maple` | active | resident | 304 (owner, household) |
+| `resident5` | `maple` | active | resident | 503 (tenant) |
+| `pending` | `maple` | pending | resident | — |
+| `birch.manager` | Birch Court (`birch`) | active | property_management | — |
+| `birch.resident` | `birch` | active | resident | 201 (tenant) |
+
+`maple`: 40 units (`101`–`104` … `1001`–`1004`), join code `MAPLE-2026`, features packages, notices and
+maintenance. `birch`: 8 units (`101`–`104`, `201`–`204`), join code `BIRCH-2026`, feature packages. Both in
+`America/Toronto`. The list lives in `backend/app/seed.py`; change both together.
 
 ### Database upgrades
 

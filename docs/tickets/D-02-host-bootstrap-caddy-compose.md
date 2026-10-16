@@ -93,6 +93,13 @@ built and smoke-tested by the `prodlike` CI job (P1-08).
 3. Why must cloud-init check for an existing filesystem before formatting? What would happen otherwise?
 4. Why bind the API to `127.0.0.1` and publish no DB port?
 
+## Carried from P1-06 (decide while framing)
+
+- `Settings.app_env` defaults to `dev`, and `seed --reset` (truncate every domain table) is allowed when
+  `APP_ENV=dev`. A deployed env that forgets `APP_ENV` would therefore permit `--reset`, and skip the staging
+  settings checks. Set `APP_ENV=staging` explicitly in the staging env, and consider making deployed images
+  fail without it (P1-06 review L2).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

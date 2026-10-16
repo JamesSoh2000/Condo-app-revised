@@ -150,6 +150,16 @@ From the P1-04 reviews (PR #49; `docs/explanations/P1-04-api-conventions.md`):
   session directly (or set a password), and login must treat a NULL hash as "cannot log in" (also a P1-02
   residual risk). Wire `as_user` into the TODO in `backend/tests/README.md` ("The 10 cases with the world").
 
+## Carried from P1-06 (decide while framing)
+
+- `make seed` (P1-06) also runs in staging (`APP_ENV=staging`), and the seeded emails are public in the
+  README. This ticket's Scope gives dev **and staging** seed users `DevPassword!2026`, which makes the staging
+  demo accounts loginable by anyone who reads the repo. P1-06 review (L3) flagged it. Decide while framing:
+  keep it (staging holds demo data only), or give staging seed users no password / a password from a
+  secret. Record the choice.
+- `python -m app.cli` has a `seed` command whose user upsert sets `full_name` and `is_active`; setting the
+  password goes in `backend/app/seed.py` too.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
