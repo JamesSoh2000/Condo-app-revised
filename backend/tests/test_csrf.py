@@ -81,8 +81,9 @@ UNSAFE = ["POST", "PUT", "PATCH", "DELETE", "PROPFIND"]
             ("X-Requested-With", "fetch "),
         ],
         [("X-Requested-With", "fetch"), ("X-Requested-With", "fetch")],
+        [("X-Requested-With", "fetch, fetch")],
     ],
-    ids=["missing", "xmlhttprequest", "wrong-case", "padded", "twice"],
+    ids=["missing", "xmlhttprequest", "wrong-case", "padded", "twice", "comma-joined"],
 )
 async def test_unsafe_request_without_exactly_fetch_header_is_rejected(
     app_client, method, requested_with
@@ -158,6 +159,31 @@ async def test_unsafe_request_without_origin_but_same_origin_fetch_site_passes(a
     headers = [("X-Requested-With", "fetch"), ("Sec-Fetch-Site", "same-origin")]
     async with app_client(router) as c:
         response = await send(c, "POST", "/api/csrf-probe/write", headers)
+
+    assert response.status_code == 200
+    assert calls == ["write"]
+
+
+@pytest.mark.anyio
+async def test_same_origin_fetch_site_does_not_rescue_an_untrusted_origin(app_client):
+    # Review round 3: when Origin is present, it alone decides.
+    headers = [
+        ("X-Requested-With", "fetch"),
+        ("Origin", "https://evil.example"),
+        ("Sec-Fetch-Site", "same-origin"),
+    ]
+    async with app_client(router) as c:
+        response = await send(c, "POST", "/api/csrf-probe/write", headers)
+
+    assert_csrf_rejected(response)
+
+
+@pytest.mark.anyio
+async def test_trusted_origin_passes_whatever_sec_fetch_site_says(app_client):
+    async with app_client(router) as c:
+        response = await send(
+            c, "POST", "/api/csrf-probe/write", [*OK, ("Sec-Fetch-Site", "cross-site")]
+        )
 
     assert response.status_code == 200
     assert calls == ["write"]

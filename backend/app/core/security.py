@@ -41,8 +41,12 @@ _PHC_SALT_AND_DIGEST = re.compile(r"\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+")
 
 
 def needs_rehash(password_hash: str) -> bool:
-    """True if the hash was made with other parameters than `hash_password` uses now, or any part
-    of it can't be parsed (it needs replacing either way)."""
+    """True if the hash was made with other parameters than `hash_password` uses now, or its
+    parameters can't be read, or its salt or digest holds a non-base64 character.
+
+    It doesn't decode the salt and digest (a non-canonical last character passes, review round 3),
+    so call it only on a hash `verify_password` accepted: that one is well-formed.
+    """
     salt_and_digest = "$" + "$".join(password_hash.split("$")[-2:])
     if not _PHC_SALT_AND_DIGEST.fullmatch(salt_and_digest):
         return True
