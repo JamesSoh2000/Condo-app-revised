@@ -94,7 +94,7 @@ Both P1-05 pending promotions were done in P1-07 (above); P1-06 hadn't picked th
 
 Recurring after promotion: **fix not tested on adjacent cases** came back in P1-07 round 2 (L4) with its
 lesson in place, as it did in P0-03b round 2. The lesson's examples (error paths, malformed input, one notch
-weaker) didn't cover "other caller options of the same function". Follow-up for the next ticket: widen the
+weaker) didn't cover "other caller options of the same function". Follow-up (done in the P1 recap, see below): widen the
 lesson's wording to "every input and option the changed code path sees", or find a check that enforces it.
 
 P1-08 round 1 (M2, L4) is the same pattern again: a fix or check applied to the observed path only, not to the other paths into the same state (error responses, other commands that rebuild `dist`). Promoted in the P1 recap PR: the `CLAUDE.md` lesson now names other options of the changed path and other paths into the same state.

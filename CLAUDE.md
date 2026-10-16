@@ -124,7 +124,8 @@ if it didn't.
 - When fixing a review finding, also test the fix on its neighbours: error paths, malformed input, the
   same check one notch weaker (warn vs error), every other option the changed code path takes, and every
   other way to reach the same state (another command, another response path). A fix that only covers the
-  reported case gets reopened (P0-05 round 3, P0-03a round 2, P1-07 round 2, P1-08 round 1).
+  reported case gets reopened (P0-05 round 3, P0-03a round 2, 2026-10-14; P1-07 round 2, P1-08 round 1,
+  2026-10-16).
 - Don't claim an effect ("unbreaks main", "new revisions come out ruff-clean") until you have run the
   thing that shows it and pasted the output (fix PR #3, P0-02, 2026-10-14).
 - Prove a gate, check or health signal can fail before trusting it: make it fail once on purpose (a probe
