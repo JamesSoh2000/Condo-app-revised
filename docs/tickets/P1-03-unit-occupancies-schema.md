@@ -40,8 +40,10 @@ tenant's packages. History plus a window filter prevents it by design
       start, same transaction)
     - `current_occupants(db, building_id, unit_id) -> list[membership_id]`
     - `occupancy_window_clause(membership_id, record_unit_col, record_time_col)` returns a SQLAlchemy
-      `exists()` clause that is true when the record's unit was occupied by the membership at the record's
-      timestamp. P5-01 uses it.
+      boolean expression that is true when the record's unit was occupied by the membership at the
+      record's timestamp. P5-01 uses it. *(changed in review round 4, James's decision: it calls the
+      database function `occupancy_window(membership, unit, at)` instead of building an `exists()` clause;
+      see the Frame notes)*
 - Out:
   - vehicles, emergency contacts, household-member accounts, documents (pilot options)
   - non-resident owners holding several units (relax the index later, per ADR-0010)
@@ -87,6 +89,10 @@ open). *(sharpened)*
      with a NULL unit or NULL time is false (fails closed)
    - *(added)* the clause correlates with an outer table: selecting from a table of records returns exactly
      the rows inside the window
+   - *(added in review rounds 2–4)* the answer doesn't depend on how the caller's query names things: an
+     outer `unit_occupancies` query or alias passing its own columns, aliases of any name (unquoted
+     upper case included), unqualified columns (`column()`, `literal_column()`, a textual FROM), an outer
+     CTE or a temporary table named `unit_occupancies`
 8. *(added)* `end_occupancy` sets `ended_at` (default: the transaction's `now()`) on M's current occupancy
    and returns it; with no current occupancy it is a no-op returning `None`. `transfer_occupancy` ends the
    old row and starts the new one at the **same** instant, so the windows neither overlap nor leave a gap.
@@ -139,6 +145,12 @@ open). *(sharpened)*
   the row the transfer inserted. The helpers now lock the membership row, so concurrent writes serialize and
   both succeed in order; criterion 11 asserts that, plus the move-out race. Not a loosening: the invariant
   (one current row, no overlap) is unchanged, and a case was added. Basis: autonomous; ADR-0016.
+- Changed in review (round 4, James in session): `occupancy_window_clause` returns a call to the database
+  function `occupancy_window` rather than an `exists()` clause. Rounds 2, 3 and 4 each found a query shape
+  that made the EXISTS always true (a new occupant seeing the former occupant's records), each one through
+  a name in the caller's query resolving to the clause's own table; a function gets its arguments as
+  values. Criterion 7 gained the shapes as cases. Not a loosening: the contract (true exactly inside the
+  window) is the same, and P5-01's call is unchanged. Basis: James's decision; ADR-0016.
 - Interface sharpened: `end_occupancy` and `transfer_occupancy` also take `building_id` (keyword), like
   `start_occupancy` and `current_occupants`, so every helper query is scoped to one building (CLAUDE.md
   rule 1). Basis: autonomous; it narrows what a caller can touch. P4-06 is the first caller.

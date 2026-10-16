@@ -1,8 +1,8 @@
-# ADR-0016: Occupancy windows are half-open on the database clock; writes serialize per membership
+# ADR-0016: Occupancy windows: half-open, on the database clock, tested in a database function; writes serialize per membership
 
 - Status: Accepted
 - Date: 2026-10-15
-- Deciders: agent (autonomous) in P1-03
+- Deciders: agent (autonomous) in P1-03; the database-function decision by James (in session, P1-03 review round 4)
 
 ## Context
 
@@ -32,8 +32,24 @@ builds on the answers (`occupancy_window_clause` in `app/memberships/occupancy.p
   then (READ COMMITTED: a fresh snapshot per statement) sees what the first committed. Two concurrent
   transfers therefore apply one after the other, and a move-out racing a transfer ends the new row.
 - **Helpers flush, never commit**, and take `building_id` so every statement is scoped to one building.
+- **The window test is a database function**, `occupancy_window(membership_id, unit_id, at) RETURNS boolean`
+  (created with `unit_occupancies`), and `occupancy_window_clause` returns a call to it. It is `STABLE`,
+  not `STRICT` (a NULL argument gives false), and has a SQL-standard body (`RETURN EXISTS (…)`), which
+  Postgres parses and binds to `public.unit_occupancies` when the function is created. The arguments
+  arrive as values, so no name in the caller's query (an alias, an unqualified column, an outer CTE) can
+  resolve to the occupancies table instead of the record; neither the search path nor a temporary table
+  can redirect the body; and the table can't be dropped while the function exists. Deciders: James (in
+  session, P1-03 review round 4), after three subquery versions each had a query shape that made the test
+  always true.
 
 ## Consequences
+
+- Negative: the function is a schema object that `alembic check` doesn't compare. Tests pin its behaviour
+  and attributes, and the migration round-trip test checks it is created and dropped with the table.
+  Changing it takes a new migration (`CREATE OR REPLACE FUNCTION`).
+- Negative: Postgres doesn't inline a SQL function whose body has a subquery, so the test runs once per
+  record, as an index lookup on `(membership_id, unit_id, started_at)`. That's fine at pilot scale; revisit
+  if a resident's list query gets slow.
 
 - Positive: a record's visibility at a turnover instant is decided by one comparison on one clock; tests pin
   the edges. Concurrent writers can't leave two current rows or a missed move-out.
@@ -46,6 +62,10 @@ builds on the answers (`occupancy_window_clause` in `app/memberships/occupancy.p
   (P4-06's last-manager rule) take the building first, then the membership.
 
 ## Alternatives considered
+
+- **An `exists()` subquery built in Python** (the first three versions): a name in the caller's query can
+  resolve to the subquery's own table. Review found three such shapes in turn (an outer `unit_occupancies`
+  column, an alias-name collision, unqualified columns and outer CTEs); each guard left another.
 
 - **Closed windows (`T <= ended_at`):** a record at the transfer instant would be visible to both the
   former and the new occupant.
