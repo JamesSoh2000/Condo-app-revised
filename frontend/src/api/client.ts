@@ -23,15 +23,16 @@ const middleware: Middleware = {
     request.headers.set('X-Requested-With', 'fetch');
     return request;
   },
-  async onResponse({ response }) {
+  async onResponse({ response, options }) {
     if (response.status === 401) events.dispatchEvent(new Event(UNAUTHENTICATED));
-    if (response.ok) await assertJsonBody(response);
+    // Only when the caller expects JSON (openapi-fetch's default); `parseAs: 'text' | 'blob' | …` is theirs.
+    if (response.ok && (options.parseAs ?? 'json') === 'json') await assertJsonBody(response);
     return response;
   },
 };
 
 /**
- * A 2xx must carry JSON (or nothing). An HTML page (an SPA fallback, a login page after a redirect) or a
+ * A 2xx the caller parses as JSON must carry JSON (or nothing). An HTML page (an SPA fallback, a login page after a redirect) or a
  * truncated body would otherwise reach callers as a bare SyntaxError; it becomes an `ApiError` instead,
  * thrown by the raw client and the `api` wrappers alike.
  */

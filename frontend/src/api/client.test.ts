@@ -189,6 +189,24 @@ describe('error bodies that are not problem+json (criterion 8)', () => {
     await expect(client.GET('/api/version')).rejects.toMatchObject({ status: 200, code: 'http_error' });
   });
 
+  it.each([
+    ['text', 'text/csv', 'a,b\n1,2'],
+    ['blob', 'application/pdf', '%PDF-1.7'],
+  ] as const)('leaves a 2xx alone when the caller asked for parseAs %s', async (parseAs, type, body) => {
+    fetchMock.mockResolvedValue(new Response(body, { status: 200, headers: { 'Content-Type': type } }));
+
+    const result = await client.GET('/api/version', { parseAs });
+
+    expect(result.response.ok).toBe(true);
+    expect(result.data).toBeDefined();
+  });
+
+  it('still checks the body when the caller asks for parseAs json explicitly', async () => {
+    fetchMock.mockResolvedValue(new Response('<html></html>', { status: 200, headers: { 'Content-Type': 'text/html' } }));
+
+    await expect(client.GET('/api/version', { parseAs: 'json' })).rejects.toMatchObject({ code: 'http_error' });
+  });
+
   it('still accepts an empty 204', async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
 
