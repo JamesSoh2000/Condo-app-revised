@@ -113,8 +113,8 @@ prodlike: ## Build the image and SPA, migrate, start the prod-like stack on :808
 
 prodlike-smoke: ## Smoke-test the prod-like stack (scripts/smoke.sh) and check its wiring
 	@# A later `npm run build` (make check does one) replaces frontend/dist/assets under the running Caddy.
-	bash scripts/smoke.sh http://localhost:8080 $(GIT_SHA) || { echo "prodlike-smoke: if frontend/dist was rebuilt \
-	  after make prodlike (make check does that), Caddy still serves the old assets: re-run make prodlike"; exit 1; }
+	bash scripts/smoke.sh http://localhost:8080 $(GIT_SHA) || { \
+	  echo "prodlike-smoke: was frontend/dist rebuilt after make prodlike? Then re-run make prodlike"; exit 1; }
 	bash scripts/prodlike-checks.sh http://localhost:8080
 
 prodlike-down: ## Stop the prod-like stack (its database volume is kept)
