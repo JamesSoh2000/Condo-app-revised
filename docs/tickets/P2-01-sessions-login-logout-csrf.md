@@ -126,6 +126,10 @@ P4-05) must:
   pattern) (L2, L5). Rejecting non-ASCII emails removes both problems;
 - check the length after normalising: lower-casing can lengthen a string past `String(320)` (L4).
 
+The database also accepts `''` and space-padded values for `email` and `full_name`, so the first request
+schemas that write users must reject them. `email-validator` isn't a dependency yet; the first `EmailStr`
+schema adds it.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

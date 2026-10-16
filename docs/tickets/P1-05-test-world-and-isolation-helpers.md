@@ -85,6 +85,20 @@ Tenant tests only get written if they are cheap. With one fixture and a few help
 2. Why do we need a nested savepoint to assert an `IntegrityError` inside a transactional test?
 3. Why "same building, other resident" tests in addition to cross-building tests?
 
+## Carried from P1-02 (decide while framing)
+
+Open ORM and schema follow-ups from the P1-02 reviews (PR #44). They belong with this ticket's test
+infrastructure; take them in scope, or move each to a named ticket:
+- A fitness test: every one-to-many `relationship()` whose child FK is part of the child's primary key has
+  `cascade` including `delete-orphan` (P1-02 round 2 crashed without it).
+- Tests that pin `BuildingMembership.roles`'s `passive_deletes=True` (deleting a membership with unloaded
+  roles issues no `SELECT` on `membership_roles`) and the `user` relationship on its own (review L-B).
+- No relationship to `Building` from `BuildingMembership`, `MembershipRole` or `Unit`: deleting a building
+  and its children in one ORM flush deletes the building first (review L-A). Buildings aren't deleted by
+  design; add the relationship if anything ever does.
+- No index on `membership_roles.building_id` or `building_memberships.status_changed_by_user_id`; only rare
+  building and user deletes scan for them (review L3).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
