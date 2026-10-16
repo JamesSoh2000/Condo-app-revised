@@ -6,6 +6,7 @@ from importlib import resources
 
 import pytest
 from argon2 import PasswordHasher
+from argon2 import Type as argon2_type
 
 from app.core.security import (
     DUMMY_HASH,
@@ -198,3 +199,39 @@ def test_real_and_weak_parameter_hashes_are_valid():
     assert is_valid_hash(hash_password(PASSWORD)) is True
     assert is_valid_hash(DUMMY_HASH) is True
     assert is_valid_hash(weak) is True
+
+
+# P2-01b review round 1 (Codex Medium): parameters libargon2 would refuse are not a valid hash.
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("t=3", "t=0"),
+        ("p=4", "p=0"),
+        ("m=65536", "m=31"),
+        ("v=19", "v=99"),
+        ("v=19", "v=0"),
+    ],
+)
+def test_parameters_libargon2_refuses_make_a_hash_invalid(old, new):
+    tampered = DUMMY_HASH.replace(old, new, 1)
+
+    assert verify_password(PASSWORD, tampered) is False
+    assert is_valid_hash(tampered) is False
+    assert needs_rehash(tampered) is True
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [(-2, "YWJjZGVmZw"), (-1, "YWJj")], ids=["7-byte-salt", "3-byte-digest"]
+)
+def test_too_short_salt_or_digest_makes_a_hash_invalid(field, value):
+    parts = DUMMY_HASH.split("$")
+    parts[field] = value
+
+    assert is_valid_hash("$".join(parts)) is False
+
+
+def test_other_argon2_variants_and_version_16_are_valid_shapes():
+    assert is_valid_hash(PasswordHasher(type=argon2_type.I).hash(PASSWORD)) is True
+    assert is_valid_hash(DUMMY_HASH.replace("v=19", "v=16", 1)) is True

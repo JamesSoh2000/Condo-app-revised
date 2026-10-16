@@ -5,12 +5,12 @@ import logging
 from datetime import timedelta
 
 import pytest
-from app.auth import service
-from app.auth.models import AuthSession
 from argon2 import PasswordHasher
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import service
+from app.auth.models import AuthSession
 from app.core.config import Settings, settings
 from app.core.security import DUMMY_HASH, hash_password, needs_rehash, verify_password
 from app.memberships.enums import MembershipStatus, Role
@@ -377,3 +377,114 @@ async def test_auth_routes_need_the_csrf_header(client, db, path):
     [row] = await _sessions(db)
     await db.refresh(row)
     assert row.revoked_at is None
+
+
+# Review round 1 (Codex Medium): structurally parseable but unusable argon2 hashes cost a full
+# verification too (each would fail fast inside libargon2).
+
+
+def _unusable(kind: str) -> str:
+    parts = DUMMY_HASH.split("$")
+    if kind == "short_salt":
+        parts[-2] = "YWJjZGVmZw"  # 7 bytes; libargon2 needs 8
+    elif kind == "short_digest":
+        parts[-1] = "YWJj"  # 3 bytes; libargon2 needs 4
+    elif kind == "zero_time":
+        parts[3] = parts[3].replace("t=3", "t=0")
+    elif kind == "zero_lanes":
+        parts[3] = parts[3].replace("p=4", "p=0")
+    elif kind == "tiny_memory":
+        parts[3] = parts[3].replace("m=65536", "m=31")  # under 8 x 4 lanes
+    elif kind == "bad_version":
+        parts[2] = "v=99"
+    return "$".join(parts)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["short_salt", "short_digest", "zero_time", "zero_lanes", "tiny_memory", "bad_version"],
+)
+async def test_unusable_argon2_hash_is_verified_as_dummy(client, db, monkeypatch, kind):
+    await make_user(db, email="broken@example.com", password_hash=_unusable(kind))
+    verified: list[str] = []
+    real_verify = service.verify_password
+    monkeypatch.setattr(
+        service, "verify_password", lambda p, h: verified.append(h) or real_verify(p, h)
+    )
+
+    response = await client.post(
+        "/api/auth/login", json={"email": "broken@example.com", "password": PASSWORD}
+    )
+
+    assert response.status_code == 401
+    assert verified == [DUMMY_HASH]
+
+
+# Review round 1 (Codex Low, Claude Medium 1): Postgres can't store or compare NUL characters.
+
+
+@pytest.mark.parametrize("email", ["a\x00b@example.com", "\x00", "a@example.com\x00"])
+async def test_email_with_a_nul_character_is_422_not_500(app_client, monkeypatch, email):
+    verified: list[str] = []
+    monkeypatch.setattr(service, "verify_password", lambda p, h: verified.append(h) or False)
+    async with app_client(raise_app_exceptions=False) as c:
+        response = await c.post("/api/auth/login", json={"email": email, "password": PASSWORD})
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    assert verified == []
+
+
+async def test_password_with_a_nul_character_is_an_ordinary_failure(client, db):
+    await _user(db, email="nulpw@example.com")
+
+    response = await client.post(
+        "/api/auth/login", json={"email": "nulpw@example.com", "password": PASSWORD + "\x00"}
+    )
+
+    assert response.status_code == 401
+
+
+# Review round 1 (Claude, AC4 gaps)
+
+
+async def test_logging_out_twice_with_the_same_cookie_keeps_the_first_revocation(
+    client, db, frozen_clock
+):
+    await _user(db, email="twice@example.com")
+    login = await client.post(
+        "/api/auth/login", json={"email": "twice@example.com", "password": PASSWORD}
+    )
+    token = login.cookies["session"]
+
+    first = await client.post("/api/auth/logout")
+    revoked_at = frozen_clock()
+    frozen_clock.advance(minutes=10)
+    client.cookies.set("session", token)
+    second = await client.post("/api/auth/logout")
+
+    assert (first.status_code, second.status_code) == (204, 204)
+    [row] = await _sessions(db)
+    await db.refresh(row)
+    assert row.revoked_at == revoked_at
+
+
+async def test_logout_deletes_a_secure_host_cookie_with_staging_settings(client, db, monkeypatch):
+    monkeypatch.setattr(settings, "session_cookie_name", "__Host-session")
+    monkeypatch.setattr(settings, "session_cookie_secure", True)
+    await _user(db, email="stagingout@example.com")
+    login = await client.post(
+        "/api/auth/login", json={"email": "stagingout@example.com", "password": PASSWORD}
+    )
+    client.cookies.set("__Host-session", login.cookies["__Host-session"])
+
+    response = await client.post("/api/auth/logout")
+
+    attributes = _attributes(_set_cookie(response))
+    assert attributes["__pair__"].startswith("__Host-session=")
+    assert attributes["max-age"] == "0"
+    assert "secure" in attributes
+    assert attributes["path"] == "/"
+    [row] = await _sessions(db)
+    await db.refresh(row)
+    assert row.revoked_at is not None

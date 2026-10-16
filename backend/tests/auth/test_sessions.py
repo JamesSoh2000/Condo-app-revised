@@ -5,8 +5,9 @@ from typing import Annotated
 
 import pytest
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import select, text
 
+from app.auth import service
 from app.auth.deps import get_current_session, get_current_user
 from app.auth.models import AuthSession
 from app.core.security import hash_password, hash_token
@@ -229,3 +230,44 @@ async def test_refresh_recomputes_the_idle_window_from_current_roles(app_client,
         await c.get("/api/session-probe/whoami")
 
     assert (await _row(db, token)).idle_expires_at == frozen_clock() + timedelta(hours=12)
+
+
+# Review round 1 (Claude): the refresh is conditional on the value read, and it updates the loaded
+# session object as well as the row.
+
+
+async def test_refresh_does_not_overwrite_a_newer_write(db, frozen_clock):
+    user = await make_user(db)
+    token = await service.start_session(db, user.id, user_agent=None, ip=None)
+    stale = await service.resolve_session(db, token)
+    assert stale is not None
+    # Another request refreshed the row after this one read it.
+    newer = frozen_clock() + timedelta(minutes=7)
+    await db.execute(
+        text("UPDATE sessions SET last_seen_at = :t WHERE token_hash = :h"),
+        {"t": newer, "h": hash_token(token)},
+    )
+    frozen_clock.advance(minutes=6)
+
+    await service.touch_session(db, stale.session)
+
+    assert (
+        await db.scalar(
+            text("SELECT last_seen_at FROM sessions WHERE token_hash = :h"),
+            {"h": hash_token(token)},
+        )
+        == newer
+    )
+
+
+async def test_refresh_updates_the_loaded_session_too(db, frozen_clock):
+    user = await make_user(db)
+    token = await service.start_session(db, user.id, user_agent=None, ip=None)
+    current = await service.resolve_session(db, token)
+    assert current is not None
+    frozen_clock.advance(minutes=6)
+
+    await service.touch_session(db, current.session)
+
+    assert current.session.last_seen_at == frozen_clock()
+    assert current.session.idle_expires_at == frozen_clock() + timedelta(days=7)

@@ -37,16 +37,29 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def is_valid_hash(password_hash: str) -> bool:
-    """True if `password_hash` is an argon2 PHC string whose salt and digest are canonical base64.
+    """True if `password_hash` is an argon2 PHC string libargon2 would actually compute.
 
-    argon2-cffi's `check_needs_rehash` reads only the parameters and lengths, so a corrupt salt or
-    digest would pass it (P2-01a review rounds 2-3). Login uses this to pick `DUMMY_HASH` instead.
+    Login verifies against `DUMMY_HASH` otherwise, so a corrupt row costs a full verification
+    instead of failing fast. argon2-cffi parses more than libargon2 accepts: it doesn't check the
+    salt and digest encoding (P2-01a review rounds 2-3) or the parameter minimums (P2-01b round 1).
     """
     try:
-        extract_parameters(password_hash)
+        params = extract_parameters(password_hash)
     except InvalidHashError, UnicodeEncodeError:
         return False
-    return all(_is_canonical_b64(field) for field in password_hash.split("$")[-2:])
+    # libargon2's minimums (argon2.h): versions 0x10 and 0x13, 8-byte salt, 4-byte digest, one
+    # pass, one lane, and 8 KiB of memory per lane.
+    within_limits = (
+        params.version in {16, 19}
+        and params.salt_len >= 8
+        and params.hash_len >= 4
+        and params.time_cost >= 1
+        and params.parallelism >= 1
+        and params.memory_cost >= 8 * params.parallelism
+    )
+    return within_limits and all(
+        _is_canonical_b64(field) for field in password_hash.split("$")[-2:]
+    )
 
 
 def _is_canonical_b64(field: str) -> bool:
