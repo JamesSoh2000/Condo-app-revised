@@ -1,8 +1,9 @@
 """CSRF protection (ADR-0003): unsafe requests must come from the app's own pages.
 
-The session cookie is `SameSite=Lax`, which still lets a top-level form POST from another site carry
-it. So every request whose method can change state must show two things a cross-site attacker can't
-fake from a browser:
+The session cookie will be `SameSite=Lax` (P2-01b). That stops most cross-site POSTs from carrying
+it, but not a POST from another origin on the same site (a sibling subdomain), and it depends on the
+browser. So every request whose method can change state must also show two things another origin
+can't fake from a browser:
 - where it comes from: an `Origin` in `settings.trusted_origins`, or, if the browser sent no
   `Origin`, `Sec-Fetch-Site: same-origin`;
 - that a script on our page sent it: `X-Requested-With: fetch`. An HTML form can't set headers, and
