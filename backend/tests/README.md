@@ -30,8 +30,9 @@ end. Stamp a record with `World.T0 + timedelta(days=1)` to put it in `a_former`'
 it at `now()` to put it in `a_resident1`'s.
 
 Why these personas: `a_former` catches a visibility filter that checks "has ever lived in the unit" instead
-of "lived there when the record was created"; `a_pending` and `a_suspended` hold the resident role, and
-`a_suspended` lives in 201, so a 404 for them proves the status check rather than a missing role or unit;
+of "lived there when the record was created"; `a_pending` and `a_suspended` hold the resident role, so a
+404 for either proves the status check rather than a missing role; `a_suspended` also lives in 201, so on a
+unit-addressed route only its 404 rules out the occupancy filter (`a_pending` has no unit);
 `multi` catches code that takes a user's role from the wrong membership.
 
 ## The 10 cases with the world
