@@ -14,6 +14,7 @@ from app.core.security import (
     generate_token,
     hash_password,
     hash_token,
+    is_valid_hash,
     needs_rehash,
     verify_password,
 )
@@ -164,3 +165,36 @@ def test_policy_counts_characters_not_bytes():
     check_password_policy("éééééééééééé")
     with pytest.raises(WeakPasswordError):
         check_password_policy("ééééééééééé")
+
+
+# P2-01b criterion 9 (carried from P2-01a round 3): the salt and digest must decode canonically
+
+
+@pytest.mark.parametrize("field", [-2, -1], ids=["salt", "digest"])
+def test_non_canonical_base64_is_not_a_valid_hash_and_needs_replacing(field):
+    parts = hash_password(PASSWORD).split("$")
+    # Unpadded base64 leaves unused low bits in the last character; setting them keeps the alphabet
+    # and length, but the field no longer round-trips.
+    last = parts[field][-1]
+    parts[field] = parts[field][:-1] + ("B" if last != "B" else "C")
+    tampered = "$".join(parts)
+
+    assert verify_password(PASSWORD, tampered) is False
+    assert is_valid_hash(tampered) is False
+    assert needs_rehash(tampered) is True
+
+
+@pytest.mark.parametrize(
+    "stored",
+    ["", "not-a-hash", "$2b$12$C6UzMDM.H6dfI/f/IKcEeO5YrWgxi2TfiN3ZQe4VuqUZ7NWEJdgJW", "é"],
+)
+def test_foreign_or_garbage_hashes_are_not_valid(stored):
+    assert is_valid_hash(stored) is False
+
+
+def test_real_and_weak_parameter_hashes_are_valid():
+    weak = PasswordHasher(time_cost=1, memory_cost=8 * 1024, parallelism=1).hash(PASSWORD)
+
+    assert is_valid_hash(hash_password(PASSWORD)) is True
+    assert is_valid_hash(DUMMY_HASH) is True
+    assert is_valid_hash(weak) is True

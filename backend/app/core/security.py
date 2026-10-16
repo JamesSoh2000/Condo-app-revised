@@ -5,14 +5,15 @@ tokens are 32 random bytes, so a fast sha256 is enough to keep the stored value 
 of the database.
 """
 
+import base64
+import binascii
 import hashlib
-import re
 import secrets
 from functools import cache
 from importlib import resources
 from typing import Literal
 
-from argon2 import PasswordHasher
+from argon2 import PasswordHasher, extract_parameters
 from argon2.exceptions import InvalidHashError, VerificationError
 
 # argon2-cffi's defaults: RFC 9106's low-memory profile (argon2id, t=3, m=64 MiB, p=4).
@@ -35,25 +36,31 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-# A PHC string ends in `$<salt>$<digest>`, both unpadded standard base64. argon2-cffi's
-# check_needs_rehash reads only the parameters and lengths, not these (review round 2).
-_PHC_SALT_AND_DIGEST = re.compile(r"\$[A-Za-z0-9+/]+\$[A-Za-z0-9+/]+")
+def is_valid_hash(password_hash: str) -> bool:
+    """True if `password_hash` is an argon2 PHC string whose salt and digest are canonical base64.
+
+    argon2-cffi's `check_needs_rehash` reads only the parameters and lengths, so a corrupt salt or
+    digest would pass it (P2-01a review rounds 2-3). Login uses this to pick `DUMMY_HASH` instead.
+    """
+    try:
+        extract_parameters(password_hash)
+    except InvalidHashError, UnicodeEncodeError:
+        return False
+    return all(_is_canonical_b64(field) for field in password_hash.split("$")[-2:])
+
+
+def _is_canonical_b64(field: str) -> bool:
+    try:
+        raw = base64.b64decode(field + "=" * (-len(field) % 4), validate=True)
+    except binascii.Error, ValueError:
+        return False
+    return base64.b64encode(raw).decode().rstrip("=") == field
 
 
 def needs_rehash(password_hash: str) -> bool:
-    """True if the hash was made with other parameters than `hash_password` uses now, or its
-    parameters can't be read, or its salt or digest holds a non-base64 character.
-
-    It doesn't decode the salt and digest (a non-canonical last character passes, review round 3),
-    so call it only on a hash `verify_password` accepted: that one is well-formed.
-    """
-    salt_and_digest = "$" + "$".join(password_hash.split("$")[-2:])
-    if not _PHC_SALT_AND_DIGEST.fullmatch(salt_and_digest):
-        return True
-    try:
-        return _hasher.check_needs_rehash(password_hash)
-    except InvalidHashError, UnicodeEncodeError:
-        return True
+    """True if the hash was made with other parameters than `hash_password` uses now, or isn't a
+    valid hash at all (it needs replacing either way)."""
+    return not is_valid_hash(password_hash) or _hasher.check_needs_rehash(password_hash)
 
 
 # Verified against when there is no hash to check (unknown email, no password set), so that path

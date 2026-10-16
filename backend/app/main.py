@@ -52,8 +52,10 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
     install_error_handlers(app)
 
+    from app.auth import router as auth
     from app.routers import health, version
 
+    app.include_router(auth.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(version.router, prefix="/api")
     return app

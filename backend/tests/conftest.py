@@ -11,6 +11,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, create_async_engine
 
+from app.core import clock
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.dependencies import get_db_session
@@ -257,3 +259,25 @@ def app_client(db_connection: AsyncConnection) -> AppClientFactory:
 def _no_leftover_dependency_overrides() -> Iterator[None]:
     yield
     assert get_db_session not in app.dependency_overrides
+
+
+class FrozenClock:
+    """`app.core.clock.now()` under the test's control: `frozen_clock.advance(minutes=5)`."""
+
+    def __init__(self, at: datetime) -> None:
+        self.at = at
+
+    def __call__(self) -> datetime:
+        return self.at
+
+    def advance(self, **delta: float) -> datetime:
+        self.at += timedelta(**delta)
+        return self.at
+
+
+@pytest.fixture
+def frozen_clock(monkeypatch: pytest.MonkeyPatch) -> FrozenClock:
+    """Freeze the app's clock at a fixed past instant (2026-01-15 12:00 UTC)."""
+    frozen = FrozenClock(datetime(2026, 1, 15, 12, 0, tzinfo=UTC))
+    monkeypatch.setattr(clock, "now", frozen)
+    return frozen

@@ -4,6 +4,7 @@
 autogenerate. `tests/test_schema_buildings_units.py` fails if an `app/**/models.py` isn't listed.
 """
 
+import app.auth.models
 import app.buildings.models
 import app.memberships.models
 import app.units.models

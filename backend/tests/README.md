@@ -42,7 +42,10 @@ unit-addressed route only its 404 rules out the occupancy filter (`a_pending` ha
 ## The 10 cases with the world
 
 The table is in [docs/ENGINEERING_PRACTICES.md §7](../../docs/ENGINEERING_PRACTICES.md#7-testing-standards).
-The HTTP helpers arrive with auth: `as_user` in P2-01b and `assert_cross_building_404` and the other tenant
+Log a client in with `await login_as(db, client, world.a_manager.user)` (`tests/helpers/auth.py`, P2-01b): it
+creates the session row directly, so the world's users need no password. Freeze time with the `frozen_clock`
+fixture (`frozen_clock.advance(minutes=5)`); code reads it through `app.core.clock.now()`. The other HTTP
+helpers arrive with tenancy: `as_user` and `assert_cross_building_404` and the other tenant
 helpers in `tests/helpers/tenancy.py` in P2-03
 ([P2-03](../../docs/tickets/P2-03-tenant-context-guards-fitness.md)). Until then the persona is the whole
 recipe:
@@ -50,7 +53,7 @@ recipe:
 | # | Case | Who |
 |---|---|---|
 | 1 | Happy path per allowed role | `a_manager`, `a_security`, `a_resident1`, … |
-| 2 | Unauthenticated | no session (TODO P2-01b: the client without `as_user`) |
+| 2 | Unauthenticated | the client without `login_as` (401 `not_authenticated`) |
 | 3 | Member of another building | `b_manager` or `b_resident1` on a building-A route; `multi` with the wrong building's role |
 | 4 | Same building, wrong role | `a_security` on a management route, `a_resident1` on a staff route |
 | 5 | Same building, another resident's record | `a_resident2` on `a_resident1`'s record; `a_former` on a record in 101 after `T1` |
