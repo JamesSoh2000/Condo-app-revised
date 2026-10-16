@@ -100,6 +100,20 @@ Dependencies above, plus `GET /api/buildings/{building_id}` (`buildings_get`).
 3. How does fitness test #1 walk FastAPI's dependency tree? What would make it miss a route?
 4. Why does a role change apply on the next request, with no logout needed?
 
+## Carried from P1-05 (decide while framing)
+
+Test-infrastructure follow-ups from PR #50 (P1-05); take in scope or move each to a named ticket:
+- `condo_test` is one per server: two concurrent full suites (worktrees, reviewers) drop each other's schema.
+  Give the session test database a per-run name too (Makefile, CI, `tests/conftest.py`), keeping the `_test`
+  guard, or keep passing distinct `TEST_DATABASE_URL`s.
+- Review round 2 L5: type `tests/helpers/db.py::assert_integrity_error`'s parameter as `Coroutine` (or assert
+  `inspect.iscoroutine`), so a pre-scheduled task can't run outside the savepoint.
+- Review round 2 L6: in `tests/conftest.py::scratch_database_url`, recreate inside the `try`, so a failed setup
+  still drops the scratch database. Round 1 L3 (accepted): the name is per PID, so containers with equal PIDs
+  sharing one server would collide.
+- `make check` runs mypy on `app/` only; the P1-05 test modules pass it when named explicitly. Adding
+  `tests/` to the gate tightens it.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

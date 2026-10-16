@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P1-03, P0-05 |
 | Replaces old | M2-T07 |
-| Status | todo |
+| Status | done |
 
 ## Goal
 
@@ -112,6 +112,63 @@ history (ADR-0016).
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+  - **1 sharpened.** Building A is slug `maple` with exactly units `101`, `102`, `201` (tower NULL); B is
+    `birch` with exactly `101`. Every user is active with `password_hash` NULL (P2-01 adds passwords). Each
+    persona's membership has exactly this status and role set, and exactly these occupancies (T0 < T1 < T2,
+    fixed instants in the past, exposed on the world so tests can stamp records inside a window):
+
+    | Persona | Building | Status | Roles | Occupancies |
+    |---|---|---|---|---|
+    | `a_manager` | A | active | property_management | none |
+    | `a_security` | A | active | security | none |
+    | `a_resident1` | A | active | resident | 101 tenant, from T2, current |
+    | `a_resident2` | A | active | resident | 102 owner, from T0, current |
+    | `a_council` | A | active | council, resident | 201 owner, from T0, current |
+    | `a_pending` | A | pending | resident | none |
+    | `a_suspended` | A | suspended | resident | 201 household, from T0, current |
+    | `a_former` | A | active | resident | 101 tenant T0–T1; 102 tenant from T1, current |
+    | `b_manager` | B | active | property_management | none |
+    | `b_resident1` | B | active | resident | B-101 tenant, from T0, current |
+    | `multi` | A and B | active, active | A: resident; B: security | A-201 household, from T0, current |
+    | `no_membership` | none | — | — | — |
+
+    `a_pending` holds the resident role and `a_suspended` lives in 201, so a 404 for either proves the
+    status check, not a missing role or unit. Features `packages`, `notices`, `maintenance` enabled in both
+    buildings, and no other feature rows.
+  - **2 sharpened.** `ended_at` of a_former's 101 row is T1, strictly before a_resident1's `started_at` (T2);
+    a_former's 102 row starts at T1 exactly (a transfer) and is current.
+  - **3 sharpened.** `assert_integrity_error(db, awaitable, constraint=...)` takes the expected constraint
+    name and checks it exactly; the test keeps using `db` (a query and a new flush) afterwards, and rows
+    flushed before the call survive.
+  - **4 sharpened.** A test without the world sees every table in `Base.metadata` empty; two tests with the
+    world see identical, exact row counts per table (2 buildings, 4 units, 12 users, 12 memberships,
+    13 roles, 8 occupancies, 6 features).
+  - **6 added (proves the helper can fail).** `assert_integrity_error` fails the test when the awaitable
+    raises nothing, or an `IntegrityError` on another constraint; any other exception propagates.
+  - **7 added.** Factories write occupancies through `app.memberships.occupancy` (ADR-0016): a second
+    current occupancy raises `IntegrityError`, and a start inside an earlier occupancy raises
+    `OccupancyTimeError`.
+  - **8 added (case the ticket missed).** The world supports the visibility window
+    (`occupancy_window_clause`): a record in A-101 at T0 + 1 day is visible to `a_former` only; one at
+    `now()` to `a_resident1` only; neither to `a_resident2` (same building, other resident: case 5).
+  - **9 added (carried from P1-02, taken in scope).** A fitness test: every one-to-many `relationship()` whose
+    child FK columns are part of the child's primary key cascades `delete-orphan`; shown failing on a
+    synthetic violating mapper, and shown non-vacuous (it finds `BuildingMembership.roles`). Tests pin
+    `roles`'s `passive_deletes=True` (deleting a membership with unloaded roles issues no `SELECT` on
+    `membership_roles`, and the database cascade removes them) and the `user` relationship on its own (a
+    new user and its membership, set only through `user`, flush together).
+  - **10 added (carried from P1-03, taken in scope).** The migration round-trip tests use a per-process
+    scratch database (`condo_migrations_<pid>_test`) and drop it afterwards.
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - 10-case table: no endpoints in this ticket, so no rows apply directly; the world provides a persona for
+    each of cases 1, 3, 4, 5, 6 and 7, and `tests/README.md` maps them (ticket).
+  - Personas are `Member(user, membership)` pairs; `multi` exposes `multi_in_a` / `multi_in_b` (autonomous,
+    reversible; test-only).
+  - P1-02 L-A (no `building` relationship) and L3 (two missing indexes): closed with no change. Nothing deletes
+    buildings or users (they are deactivated, P1-01/P1-02 RESTRICT FKs), so there is no ticket to move them
+    to; whichever ticket first deletes either must revisit them (autonomous; inbox "Decisions to audit").
+  - The session test database `condo_test` is also fixed per server, so two concurrent `make test` runs on one
+    server still collide. Out of scope (the carried item names only the scratch database); concurrent runs
+    pass their own `TEST_DATABASE_URL=..._test` meanwhile; follow-up in the PR (autonomous).
+- Split: no. Estimate ~350 lines, almost all under `backend/tests/`.

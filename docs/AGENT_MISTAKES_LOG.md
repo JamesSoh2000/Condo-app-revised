@@ -62,6 +62,11 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | 2026-10-16 | P1-04 | `HTTPException(204/304)` got a body; `paginate` kept a caller's OFFSET; origins accepted a trailing dot, bad labels and out-of-range ports | review round 2 (Claude), Low ×3 | edge cases of the same inputs not enumerated | tests for each |
 | 2026-10-16 | P1-04 | Subclass `code` is positional and unchecked: `NotFound("Package not found")` gives a non-snake_case code | review round 3 (Claude), Medium, open | copied the ticket's positional signature without asking how callers would misuse it | P2-01 "Carried from P1-04" |
 | 2026-10-16 | P1-04 | The PR said P2-01 follow-ups were "recorded in its ticket" before they were | explainer | wrote the PR line for a step not done yet (pattern "claim before evidence") | recorded in the bookkeeping commit |
+| 2026-10-16 | P1-05 | `assert_integrity_error` caught `IntegrityError` around `begin_nested()`, which flushes pending rows before the savepoint: a violation in the caller's setup passed as the expected one, the operation never ran and the session was dead | review round 1, Codex (Medium) and Claude (High) | didn't read what `begin_nested()` does before `SAVEPOINT`; tested only flushed setup | pre-flush outside the `except`; tests `test_a_violation_in_pending_setup_is_not_taken_for_the_expected_one`, `test_assert_integrity_error_never_leaves_an_unawaited_coroutine` |
+| 2026-10-16 | P1-05 | Default unit label `str(100 + n)` from a session-wide counter could equal "101"/"102"/"201" and collide with the world's units depending on test order | review round 1 (Claude), Low | defaults chosen without checking them against hand-set values | `U<n>` default; `test_default_unit_labels_never_collide_with_the_worlds_units` |
+| 2026-10-16 | P1-05 | Mutation probes "reverted" with `git checkout` on files not yet tracked, so the mutations stacked and five probe results ran against already-mutated files (second time after P1-03) | implementer | mutated uncommitted files | files restored by hand, committed, probes re-run one at a time; promotion pending (below) |
+| 2026-10-16 | P1-05 | The PR said the inbox entries and follow-ups were added "in the bookkeeping commit" before that commit existed (second time after P1-04) | explainer (update) | wrote the record of a future step as done | entries added in this bookkeeping commit; promotion pending (below) |
+| 2026-10-16 | P1-05 | The tests README claimed a 404 for `a_pending` rules out a missing unit, but `a_pending` has no occupancy | explainer | generalised one persona's property to both | README wording fixed (`6b82cc3`) |
 
 ## Promoted to rules / tests
 
@@ -70,3 +75,7 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | Fix not tested on adjacent cases (P0-05 round 3, P0-03a round 2) | `CLAUDE.md` lesson "When fixing a review finding, also test the fix on its neighbours" (P0-03b) | 2026-10-14 |
 | Claim before evidence (fix PR #3, P0-02) | `CLAUDE.md` lesson "Don't claim an effect … until you have run the thing" (P0-05) | 2026-10-14 |
 | A gate or health signal that passes vacuously (P0-03a, P0-03b, P0-04a, P0-05) | `CLAUDE.md` lesson "Prove a gate … can fail before trusting it" (P0 recap) | 2026-10-15 |
+
+Pending promotion (first follow-up of the next ticket, from P1-05):
+- **Mutating uncommitted files** (P1-03, P1-05): a `CLAUDE.md` lesson "commit before mutation probes; restore with `git checkout` only tracked files, and re-run M0 (clean) after each".
+- **Recording a future step as done** (P1-04, P1-05): a `CLAUDE.md` lesson "write in the PR only what is already on the branch; say 'will be added in <step>' otherwise".

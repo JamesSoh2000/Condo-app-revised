@@ -83,7 +83,7 @@ if it didn't.
 - Names: tables plural snake_case; enum values lowercase; audit actions `<domain>.<past_verb>`; job kinds
   `<domain>.<verb>`; operation IDs `<domain>_<verb>`.
 - Tests: behaviour names (`test_resident_cannot_see_other_residents_package`). Use the world fixtures in
-  `tests/conftest.py` (added in P1-05) and the tenant helpers in `tests/helpers/tenancy.py` (added in
+  `tests/conftest.py` (see `tests/README.md`) and the tenant helpers in `tests/helpers/tenancy.py` (added in
   P2-03). Apply the 10-case table in docs/ENGINEERING_PRACTICES.md §7 to every tenant endpoint.
 
 ## How to work a ticket (docs/AI_AGENT_PLAYBOOK.md; `/build-ticket <ID>` runs it all)
