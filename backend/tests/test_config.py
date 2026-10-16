@@ -318,3 +318,20 @@ def test_staging_refuses_an_insecure_session_cookie(override):
 def test_host_prefixed_cookie_needs_secure_in_every_env():
     with pytest.raises(ValidationError, match="__Host-"):
         Settings(_env_file=None, session_cookie_name="__Host-session", session_cookie_secure=False)
+
+
+# P2-01b review round 2 L4
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"session_cookie_name": ""},
+        {"session_absolute_days": 0},
+        {"session_idle_resident_days": -1},
+        {"session_idle_staff_hours": 0},
+    ],
+)
+def test_session_settings_must_be_usable(override):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **override)

@@ -4,7 +4,7 @@ from functools import lru_cache
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AppEnv = Literal["dev", "test", "staging", "prod"]
@@ -81,11 +81,11 @@ class Settings(BaseSettings):
 
     # Sessions (ADR-0003). The cookie's name and Secure flag default per environment in
     # `_session_cookie_defaults`: `session` on local http, `__Host-session` + Secure when deployed.
-    session_cookie_name: str = "session"
+    session_cookie_name: str = Field("session", min_length=1)
     session_cookie_secure: bool = False
-    session_absolute_days: int = 30
-    session_idle_resident_days: int = 7
-    session_idle_staff_hours: int = 12
+    session_absolute_days: int = Field(30, gt=0)
+    session_idle_resident_days: int = Field(7, gt=0)
+    session_idle_staff_hours: int = Field(12, gt=0)
 
     @model_validator(mode="before")
     @classmethod

@@ -1,9 +1,9 @@
 """Log a test client in without a password (the world's users have none)."""
 
-from app.auth.service import start_session
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.service import start_session
 from app.core.config import settings
 from app.users.models import User
 

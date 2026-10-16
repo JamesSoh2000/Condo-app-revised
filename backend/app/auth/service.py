@@ -54,16 +54,31 @@ async def login(
     timing tells them apart.
     """
     # lower() on both sides in Postgres: the same function as uq_users_lower_email (P1-02).
-    user = await db.scalar(select(User).where(func.lower(User.email) == func.lower(email)))
-    stored = user.password_hash if user is not None else None
+    found = (
+        await db.execute(
+            select(User.id, User.password_hash, User.is_active).where(
+                func.lower(User.email) == func.lower(email)
+            )
+        )
+    ).one_or_none()
+    # End the read before argon2 runs, so the pooled connection isn't held for the slow part: a
+    # burst of logins would otherwise hold every connection (review round 2).
+    await db.rollback()
+    stored = found.password_hash if found is not None else None
     usable = stored if stored is not None and is_valid_hash(stored) else None
     # argon2 is CPU-bound and memory-hard: run it off the event loop.
     matches = await to_thread.run_sync(verify_password, password, usable or DUMMY_HASH)
-    if user is None or usable is None or not matches or not user.is_active:
+    if found is None or usable is None or not matches or not found.is_active:
         raise InvalidCredentials(detail="The email or password is incorrect.")
     if needs_rehash(usable):
-        user.password_hash = await to_thread.run_sync(hash_password, password)
-    token = await start_session(db, user.id, user_agent=user_agent, ip=ip)
+        upgraded = await to_thread.run_sync(hash_password, password)
+        # Only over the hash that was verified: a password changed meanwhile wins.
+        await db.execute(
+            update(User)
+            .where(User.id == found.id, User.password_hash == usable)
+            .values(password_hash=upgraded)
+        )
+    token = await start_session(db, found.id, user_agent=user_agent, ip=ip)
     await db.commit()
     return token
 
@@ -82,7 +97,8 @@ async def start_session(
             last_seen_at=now,
             expires_at=now + timedelta(days=settings.session_absolute_days),
             idle_expires_at=now + await idle_window(db, user_id),
-            user_agent=user_agent[:300] if user_agent else None,
+            # Postgres text can't hold NUL (review round 2).
+            user_agent=user_agent.replace("\x00", "")[:300] if user_agent else None,
             ip=ip,
         )
     )

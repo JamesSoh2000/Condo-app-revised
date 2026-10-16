@@ -37,28 +37,41 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def is_valid_hash(password_hash: str) -> bool:
-    """True if `password_hash` is an argon2 PHC string libargon2 would actually compute.
+    """True if `password_hash` is an argon2 hash in the exact form argon2 writes, with parameters a
+    real verification would run. Login verifies against `DUMMY_HASH` otherwise.
 
-    Login verifies against `DUMMY_HASH` otherwise, so a corrupt row costs a full verification
-    instead of failing fast. argon2-cffi parses more than libargon2 accepts: it doesn't check the
-    salt and digest encoding (P2-01a review rounds 2-3) or the parameter minimums (P2-01b round 1).
+    The point is timing: a hash libargon2 refuses fails in microseconds, so an account with a
+    corrupt hash would answer faster than an unknown email. argon2-cffi's `extract_parameters`
+    parses more than libargon2 runs (review rounds: P2-01a 2-3, P2-01b 1-2), so instead of
+    listing bad inputs this rebuilds the canonical string from what was parsed and requires an
+    exact match (ruling out leading zeros, signs, reordered or extra fields, non-canonical
+    base64), then bounds every parameter.
     """
     try:
         params = extract_parameters(password_hash)
     except InvalidHashError, UnicodeEncodeError:
         return False
-    # libargon2's minimums (argon2.h): versions 0x10 and 0x13, 8-byte salt, 4-byte digest, one
-    # pass, one lane, and 8 KiB of memory per lane.
-    within_limits = (
-        params.version in {16, 19}
-        and params.salt_len >= 8
-        and params.hash_len >= 4
-        and params.time_cost >= 1
-        and params.parallelism >= 1
-        and params.memory_cost >= 8 * params.parallelism
+    *_, salt, digest = password_hash.split("$")
+    canonical = (
+        f"$argon2{params.type.name.lower()}$v={params.version}"
+        f"$m={params.memory_cost},t={params.time_cost},p={params.parallelism}${salt}${digest}"
     )
-    return within_limits and all(
-        _is_canonical_b64(field) for field in password_hash.split("$")[-2:]
+    # Lower bounds: libargon2's minimums (argon2.h). Upper bounds: ours, far above what
+    # hash_password writes (t=3, m=64 MiB, p=4, 16-byte salt, 32-byte digest); past them a
+    # verification could fail fast on allocation, or isn't a hash this app would accept.
+    within_bounds = (
+        params.version in {16, 19}
+        and 8 <= params.salt_len <= 64
+        and 4 <= params.hash_len <= 64
+        and 1 <= params.time_cost <= 16
+        and 1 <= params.parallelism <= 16
+        and 8 * params.parallelism <= params.memory_cost <= 1024 * 1024
+    )
+    return (
+        password_hash == canonical
+        and within_bounds
+        and _is_canonical_b64(salt)
+        and _is_canonical_b64(digest)
     )
 
 

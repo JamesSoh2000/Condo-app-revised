@@ -366,12 +366,21 @@ async def test_auth_routes_need_the_csrf_header(client, db, path):
     )
     assert login.status_code == 204
 
-    response = await client.post(
+    wrong = await client.post(
         path,
         json={"email": "csrf@example.com", "password": PASSWORD},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
+    # Review round 2 L5: missing, not only wrong.
+    request = client.build_request(
+        "POST", path, json={"email": "csrf@example.com", "password": PASSWORD}
+    )
+    del request.headers["x-requested-with"]
+    missing = await client.send(request)
 
+    assert missing.status_code == 403
+    assert missing.json()["code"] == "csrf_failed"
+    response = wrong
     assert response.status_code == 403
     assert response.json()["code"] == "csrf_failed"
     [row] = await _sessions(db)
@@ -488,3 +497,112 @@ async def test_logout_deletes_a_secure_host_cookie_with_staging_settings(client,
     [row] = await _sessions(db)
     await db.refresh(row)
     assert row.revoked_at is not None
+
+
+# Review round 2 (Codex Medium): parameters written in a non-canonical way, or past our bounds, are
+# not a hash this app wrote; they cost a DUMMY_HASH verification too.
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("t=3", "t=03"),
+        ("t=3", "t=+3"),
+        ("t=3", "t=4294967296"),
+        ("m=65536", "m=4294967296"),
+        ("m=65536,t=3,p=4", "t=3,m=65536,p=4"),
+        ("v=19", "v=019"),
+    ],
+)
+async def test_non_canonical_or_out_of_bounds_parameters_verify_as_dummy(
+    client, db, monkeypatch, old, new
+):
+    await make_user(db, email="odd@example.com", password_hash=DUMMY_HASH.replace(old, new, 1))
+    verified: list[str] = []
+    real_verify = service.verify_password
+    monkeypatch.setattr(
+        service, "verify_password", lambda p, h: verified.append(h) or real_verify(p, h)
+    )
+
+    response = await client.post(
+        "/api/auth/login", json={"email": "odd@example.com", "password": PASSWORD}
+    )
+
+    assert response.status_code == 401
+    assert verified == [DUMMY_HASH]
+
+
+# Review round 2 (Codex Low): a NUL in the User-Agent must not break a valid login.
+
+
+async def test_user_agent_with_nul_is_stored_without_it(app_client, db):
+    await _user(db, email="nulua@example.com")
+    async with app_client(raise_app_exceptions=False) as c:
+        response = await c.post(
+            "/api/auth/login",
+            json={"email": "nulua@example.com", "password": PASSWORD},
+            headers={"User-Agent": "agent\x00tail"},
+        )
+
+    assert response.status_code == 204
+    [row] = await _sessions(db)
+    assert row.user_agent == "agenttail"
+
+
+# Review round 2 (Claude M1): the DB connection is not held while argon2 runs, so a burst of
+# logins can't hold the whole pool.
+
+
+async def test_login_holds_no_transaction_while_verifying(client, db, db_connection, monkeypatch):
+    await _user(db, email="pool@example.com")
+    # The test's own savepoint; a request still inside its transaction would show its own.
+    before = db_connection.sync_connection.get_nested_transaction()
+    during: list[object] = []
+    real_verify = service.verify_password
+
+    def spy(password: str, password_hash: str) -> bool:
+        during.append(db_connection.sync_connection.get_nested_transaction())
+        return real_verify(password, password_hash)
+
+    monkeypatch.setattr(service, "verify_password", spy)
+
+    ok = await client.post(
+        "/api/auth/login", json={"email": "pool@example.com", "password": PASSWORD}
+    )
+    bad = await client.post(
+        "/api/auth/login", json={"email": "pool@example.com", "password": "x" * 12}
+    )
+
+    assert (ok.status_code, bad.status_code) == (204, 401)
+    assert during == [before, before]
+
+
+# Review round 2 (round 1's Claude L2, closed here): the rehash only replaces the hash it read.
+
+
+async def test_rehash_does_not_overwrite_a_password_changed_meanwhile(client, db, monkeypatch):
+    weak = PasswordHasher(time_cost=1, memory_cost=8 * 1024, parallelism=1).hash(PASSWORD)
+    await make_user(db, email="race@example.com", password_hash=weak)
+    changed = hash_password("changed-meanwhile-2026")
+    real_run_sync = service.to_thread.run_sync
+
+    async def run_sync(func, *args):
+        if func is service.hash_password:
+            # A password reset lands while login computes the upgraded hash.
+            await db.execute(
+                text("UPDATE users SET password_hash = :h WHERE email = 'race@example.com'"),
+                {"h": changed},
+            )
+        return await real_run_sync(func, *args)
+
+    monkeypatch.setattr(service.to_thread, "run_sync", run_sync)
+
+    response = await client.post(
+        "/api/auth/login", json={"email": "race@example.com", "password": PASSWORD}
+    )
+
+    assert response.status_code == 204
+    stored = await db.scalar(
+        text("SELECT password_hash FROM users WHERE email = 'race@example.com'")
+    )
+    assert stored == changed

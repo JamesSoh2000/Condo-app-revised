@@ -23,7 +23,9 @@ async def get_current_session(
 ) -> CurrentSession:
     """The caller's live session and active user, or 401 `not_authenticated`.
 
-    Refreshes the session's activity (at most every 5 minutes) before the endpoint runs.
+    Refreshes the session's activity (at most every 5 minutes) before the endpoint runs; that
+    refresh commits. So put this dependency before any that adds to the request's session: work
+    added earlier would be committed with it (review round 2).
     """
     token = request.cookies.get(settings.session_cookie_name)
     current = await service.resolve_session(db, token) if token else None
