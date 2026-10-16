@@ -11,8 +11,8 @@ through `docs/HUMAN_INBOX.md` and the explanations in `docs/explanations/`.
 ## Where things are
 
 - `backend/app/<feature>/` — models.py, schemas.py, service.py, router.py (package by feature)
-- `backend/app/core/` — config, database, dependencies; errors (problem+json) and pagination added in P1-04;
-  security and csrf added in P2-01
+- `backend/app/core/` — config, database, dependencies, errors (problem+json), pagination, schemas
+  (`APIModel`, `InputModel`); security and csrf added in P2-01
 - `backend/app/tenancy/` — TenantContext, get_tenant_context, require_roles, require_feature (added in P2-03)
 - `backend/migrations/` — Alembic. `backend/tests/` — pytest against real Postgres
 - `frontend/src/features/<domain>/` — migrated TypeScript code (added in P0-03). `frontend/src/api/` — typed
@@ -60,7 +60,7 @@ if it didn't.
    SMTP/SES from a request. (ADR-0006)
 7. **State changes.** Use action endpoints (`POST …/{id}/pickup`) with a conditional
    `UPDATE … WHERE status IN (…) RETURNING`. No `PATCH status`. Zero rows → 404 or 409 `invalid_transition`.
-8. **Errors.** Services raise domain errors from `app/core/errors.py` (added in P1-04) and get problem+json
+8. **Errors.** Services raise domain errors from `app/core/errors.py` and get problem+json
    with a stable `code`. Never return `str(exc)` to clients.
 9. **Files.** Never accept S3 keys from clients. Use `file_id` from the files module. Downloads authorize
    through the owning record. (ADR-0007)

@@ -119,7 +119,7 @@ async def test_client_requests_use_the_test_session(client, db: AsyncSession):
         note = (await session.execute(text("SELECT note FROM _client_probe"))).scalar_one()
         return {"note": note}
 
-    app.add_api_route("/__test__/client-probe", read_probe, methods=["GET"])
+    app.add_api_route("/__test__/client-probe", read_probe, methods=["GET"], tags=["probe"])
     try:
         response = await client.get("/__test__/client-probe")
     finally:
@@ -185,7 +185,7 @@ def _add_probe_route(path: str, *, commit: bool) -> None:
             await session.commit()
         return {"committed": commit}
 
-    app.add_api_route(path, write_probe, methods=["POST"])
+    app.add_api_route(path, write_probe, methods=["POST"], tags=["probe"])
 
 
 def _remove_route(path: str) -> None:
@@ -248,7 +248,7 @@ async def _count_request_probe(db: AsyncSession) -> int:
 
 @contextlib.contextmanager
 def _route(path: str, endpoint: Callable[..., Any], method: str = "POST") -> Iterator[None]:
-    app.add_api_route(path, endpoint, methods=[method])
+    app.add_api_route(path, endpoint, methods=[method], tags=["probe"])
     try:
         yield
     finally:
