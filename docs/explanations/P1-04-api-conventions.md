@@ -590,17 +590,20 @@ Not verified:
 - Untested branches noted in §5 (dict detail, unknown status phrase, IPv6 loopback, `errors` as a reserved
   `extra` key).
 
-Accepted risks and follow-ups, with where each is tracked:
+Accepted risks and follow-ups, with where each is tracked. The "Tracked" column was updated after the
+bookkeeping commit `4e8dd4c`, which recorded the follow-ups in tickets; nothing else in this explanation
+changed, and the code it describes is still `b281bc6`:
 
 | Item | Tracked |
 |---|---|
-| Round 3 M1: keyword-only `code`/`title`/`detail`/`extra` on subclasses, snake_case check | PR #49 says "recorded in its ticket" (P2-01); **the P2-01 ticket at `b281bc6` doesn't contain it**. Tracked only in the PR |
-| Round 3 L1: reject explicit default ports in `TRUSTED_ORIGINS` | Same: PR only |
-| Round 3 residual: a `DomainError` raised from a middleware (P2-01's CSRF check is a middleware) bypasses `ExceptionMiddleware` and becomes a 500; the middleware must return `problem_response(...)` | Same: PR only |
+| Round 3 M1: keyword-only `code`/`title`/`detail`/`extra` on subclasses, snake_case check | `docs/tickets/P2-01-sessions-login-logout-csrf.md` "Carried from P1-04"; also an open row in `docs/AGENT_MISTAKES_LOG.md`. PR #49 said "recorded in its ticket" before it was (the P2-01 ticket at `b281bc6` didn't contain it); that early claim is itself logged in `docs/AGENT_MISTAKES_LOG.md` |
+| Round 3 L1: reject explicit default ports in `TRUSTED_ORIGINS` | `docs/tickets/P2-01-sessions-login-logout-csrf.md` "Carried from P1-04" |
+| Round 3 residual: a `DomainError` raised from a middleware (P2-01's CSRF check is a middleware) bypasses `ExceptionMiddleware` and becomes a 500; the middleware must return `problem_response(...)` | `docs/tickets/P2-01-sessions-login-logout-csrf.md` "Carried from P1-04" (first bullet, with a test for status, code and media type) |
 | Round 2 F4 / L2: 422 `msg` can quote input fragments; 3xx gets a problem body | PR only |
 | `RequestLoggingMiddleware` logs `error_message=str(exc)` on a 500 (pre-existing) | PR only |
-| List routes must add `problem_responses(400)` to document `invalid_cursor` (first list endpoint, P4-01) | PR only |
-| P1-08: add `http://localhost:8080` to `TRUSTED_ORIGINS` when CSRF lands (P1-08 uses `APP_ENV=dev`, so it passes validation) | PR only; the P1-08 ticket doesn't mention it |
+| List routes must add `problem_responses(400)` to document `invalid_cursor` (first list endpoint, P4-01) | `docs/tickets/P4-01-units-api.md` "Carried from P1-04" (with notes that `paginate` needs a one-entity select and that handlers are named by verb) |
+| Handoff to P1-07: every error is `Problem` under `application/problem+json`, paged responses are `Page_<Item>_` (untested, see "Not verified"), operation ids are `<tag>_<function name>` | `docs/tickets/P1-07-openapi-types-and-api-client.md` "Carried from P1-04" |
+| P1-08: add `http://localhost:8080` to `TRUSTED_ORIGINS` when CSRF lands (P1-08 uses `APP_ENV=dev`, so it passes validation) | `docs/tickets/P1-08-production-like-local-stack.md` "Carried from P1-04", which also carries the unverified D1 check (a second uvicorn traceback for a 500, under "Not verified" above) |
 | Rename `ALLOWED_ORIGINS` in an untracked `backend/.env` | PR only (inbox row 41 says it's ignored) |
 | D3–D6 autonomous decisions | `docs/HUMAN_INBOX.md` "Decisions to audit" |
 
