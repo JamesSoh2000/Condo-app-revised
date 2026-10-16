@@ -84,6 +84,11 @@ CLI `bootstrap-building`. Audit action `building.bootstrapped`.
 2. Why print the URL to stdout but never log it?
 3. What would go wrong if bootstrap were not a single transaction?
 
+## Carried from P1-06 (do while framing)
+
+- The compose service is `app`, not `api`: use `docker compose exec app python -m app.cli …` (as `make seed`
+  does).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
