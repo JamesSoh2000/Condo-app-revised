@@ -1,15 +1,19 @@
 # Explanation — P1-05 Test world fixtures and tenant-isolation helpers
 
-> **PR:** #50 · **Source revision:** `90a38bb` (pre-merge), the PR head this explanation was written from and
-> checked against. **Reviewed:** the final review round (2) reviewed this commit (`90a38bb`), by both
-> reviewers (Codex and a fresh Claude reviewer).
+> **PR:** #50 · **Source revision:** `6b82cc3` (pre-merge), the PR head this explanation was last checked
+> against. It was first written from `90a38bb` and updated for `6b82cc3`, which changes one sentence in
+> `backend/tests/README.md` (what `a_pending`'s 404 proves) and no code; `git diff 90a38bb 6b82cc3` touches
+> only that file and this explanation. **Reviewed:** the final review round (2) reviewed `90a38bb`, by both
+> reviewers (Codex and a fresh Claude reviewer). No review round reviewed `6b82cc3`; it is docs-only. The
+> code excerpts and permalinks in §4 are at `90a38bb`, identical to `6b82cc3` for those files.
 > **Merge commit:** not known when written; after the merge, `gh pr view 50 --json mergeCommit` gives it.
 > Built and merged autonomously ([ADR-0014](../adr/0014-autonomous-agent-workflow.md)); no human reviewed it
 > before merge. This describes the PR's changes at the source revision. Commits after it (bookkeeping) and
 > the squash merge are not described here, and a rebase after it gives the same changes new SHAs. The branch
 > is rebased onto `origin/main` (`git merge-base --is-ancestor origin/main HEAD` succeeds).
-> This is a snapshot: if the code changes later, write a new explanation; do not update this one. Lasting
-> decisions live in ADRs.
+> This is a snapshot: if the code changes after the merge, write a new explanation; do not update this one.
+> (The pre-merge update for `6b82cc3` touched only the source revision, the README claim, the
+> `scratch_database_url` scope rationale and the review log.) Lasting decisions live in ADRs.
 > Form: full. Tier: 1. Walkthrough variant: C (one test run that uses the world, from fixture setup to
 > rollback). There is no HTTP request to follow: the ticket adds no endpoint.
 
@@ -63,7 +67,8 @@ the expected violation (D5, from review round 1).
   a later test that counts 201's occupants must allow for that. The PR says this is "documented in the
   README table": the table lists each persona's unit, but doesn't say "201 has three" in so many words.
   `a_pending` has no occupancy (the ticket asked for that), so on a *unit-addressed* route its 404 could
-  still come from the occupancy filter rather than the status check (see §7).
+  still come from the occupancy filter rather than the status check (see §7); since `6b82cc3` the README
+  says so.
 - **Basis:** ticket "Carried from P1-03"; ADR-0016; frame notes; mutation M8.
 - **Source:** recorded (PR decision D2).
 
@@ -211,7 +216,7 @@ None. No tables, columns, constraints or migrations.
 | `backend/tests/test_world.py` | new: criteria 1–8 | +399 |
 | `backend/tests/test_orm_relationships.py` | new: criterion 9 | +132 |
 | `backend/tests/test_schema_buildings_units.py`, `test_schema_identity.py`, `test_schema_occupancy.py` | migration test takes `scratch_database_url` | +3/−8 each |
-| `backend/tests/README.md` | the world, the 10 cases, factories, the helper | +86 |
+| `backend/tests/README.md` | the world, the 10 cases, factories, the helper | +87 (+86 at `90a38bb`; `6b82cc3` rewords one sentence) |
 | `CLAUDE.md` | pointer to `backend/tests/README.md` (review round 1 L4) | +1/−1 |
 | `docs/tickets/P1-05-test-world-and-isolation-helpers.md`, `docs/tickets/README.md` | Frame notes; status `in progress` | +61/−4 |
 
@@ -372,8 +377,12 @@ def scratch_database_url() -> Iterator[str]:
   runs on it.
 - `_recreate_test_schema` is outside the `try`: if it fails after `CREATE DATABASE`, the database is left
   behind until the next run with the same PID (review round 2 L6, open).
-- It is function-scoped, so each of the three migration tests recreates and drops it (rationale not
-  recorded; the cost is small).
+- It is function-scoped, so each of the three migration tests recreates and drops it. Rationale (recorded
+  in the PR's smaller-decisions table, added after the first explanation flagged it as unrecorded): each
+  test already recreated `condo_migrations_test` at its start through `_recreate_test_schema`, so function
+  scope keeps that behaviour and every round trip starts from an empty schema; the rejected alternative is
+  one session- or module-scoped database shared by the three; the cost is three create/drop pairs per run
+  (the PR reports the suite still takes about 5 s).
 
 <details><summary>Deeper: the leak test (criterion 4)</summary>
 
@@ -438,6 +447,7 @@ Acceptance criteria → tests:
 | 1 | Claude reviewer + security pass | `b23e366` | BLOCK | High H1: same bug; L1 default labels collide; L2 table walks may miss unimported models; L3 PID collisions across containers; L4 stale CLAUDE.md pointer | H1 fixed `e888ccc`; L1, L2, L4 fixed `90a38bb`; L3 dismissed (accepted risk) |
 | 2 (final) | Codex (`gpt-6-astra`, medium) | `90a38bb` | MERGE | none | — |
 | 2 (final) | new Claude reviewer + security pass | `90a38bb` | MERGE | L5 a `Task`/`Future` could run outside the savepoint; L6 scratch DB left if setup fails | not fixed; follow-ups |
+| Explainer | fresh session (this explanation, first version) | `90a38bb` (written in `0f1299f`) | — (not a review verdict) | no code contradicting the plan; inbox entries D3 claims missing; follow-ups tracked only in the PR; README overclaimed `a_pending`'s 404; `scratch_database_url` scope had no recorded rationale | README fixed `6b82cc3` (docs-only); scope rationale added to the PR's smaller-decisions table; inbox and follow-ups: see below |
 
 **H1 (round 1).** Inputs: `db.add(Unit(... label="101"))`, then
 `assert_integrity_error(db, make_unit(db, a, label="777"), constraint="uq_units_building_id_tower_label")`.
@@ -458,6 +468,14 @@ factory-made unit could collide with the world's units depending on test order.
 **L2 (round 1).** Hardening only: all 7 tables were already loaded; the import makes it independent of import
 order.
 
+**Explainer findings (after round 2).** The README sentence at `90a38bb` said a 404 for `a_pending` or
+`a_suspended` proves the status check "rather than a missing role or unit", but `a_pending` has no unit, so on
+a unit-addressed route its 404 could come from the occupancy filter. `6b82cc3` rewords it; only
+`backend/tests/README.md` changed, so no test or review round was rerun for it. The PR now also records why
+`scratch_database_url` is function-scoped (§4). The PR says the missing inbox entries and the PR-only
+follow-ups were handled "in the bookkeeping commit"; at `6b82cc3` there is no such commit on the branch and
+`docs/HUMAN_INBOX.md` still lacks them, so D3 and the §7 table below still hold.
+
 ## 7. Not verified, accepted risks and follow-ups
 
 Not verified:
@@ -467,8 +485,10 @@ Not verified:
   tickets use them. Cases 2 and 8–10 have no persona (they are per-endpoint).
 - **`a_pending` has no occupancy** (as the ticket asked). On a unit-addressed route its 404 could come from
   the occupancy filter instead of the status check, so it proves the status check only on routes that don't
-  depend on occupancy. `a_suspended` (who lives in 201) covers the unit-addressed case. The README's "a 404
-  for them proves the status check rather than a missing role or unit" is slightly broader than this.
+  depend on occupancy. `a_suspended` (who lives in 201) covers the unit-addressed case. At `90a38bb` the
+  README claimed a 404 for either "proves the status check rather than a missing role or unit"; `6b82cc3`
+  narrowed it to match: a 404 for either rules out a missing role, and on a unit-addressed route only
+  `a_suspended`'s rules out the occupancy filter.
 - **The leak test depends on file order.** A random-order plugin, or `-k` selecting only the "after" test,
   would make it pass without having seen two worlds first.
 - **The scratch drop** is shown by a manual `pg_database` query in the PR, not by a test.
