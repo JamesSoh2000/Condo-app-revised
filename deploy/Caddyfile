@@ -25,7 +25,7 @@
 	# The same paths the Vite dev proxy forwards (P0-03b): /api, /api/… and /api?…, not /apifoo.
 	@api path /api /api/*
 	handle @api {
-		reverse_proxy {$API_UPSTREAM}
+		reverse_proxi {$API_UPSTREAM}
 	}
 
 	# Hashed file names change with their content, so a cached copy is never stale. A missing asset is a
