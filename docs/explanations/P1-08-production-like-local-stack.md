@@ -7,6 +7,10 @@
 > before merge. This describes the PR's changes at the source revision. Commits after it (bookkeeping) and
 > the squash merge are not described here, and a rebase after it gives the same changes new SHAs. The branch
 > is rebased onto `origin/main` (`git merge-base --is-ancestor origin/main HEAD` succeeds).
+> **Updated** (pre-merge, same code): after the bookkeeping commit `3819f74` was read. It changes docs and
+> CLAUDE.md only (`git diff f305d47 3819f74 --stat`: tickets, inbox, mistakes log), so the code described is
+> still `9b358ab`. The update rewords §3 step 3, which cited a build output path that a clean checkout doesn't
+> have (the CI reference check failed on it).
 > This is a snapshot: before the merge it is edited to match the PR head; once merged, write a new
 > explanation for later changes and do not update this one. Lasting decisions live in ADRs.
 > **Reality check:** at `9b358ab`, re-read the following from disk:
@@ -190,7 +194,7 @@ flowchart LR
    - `API_IMAGE_TAG` is the SHA, plus `-dirty` if `git status --porcelain` shows anything.
    - CI sets both to `${{ github.sha }}` in `.github/workflows/ci.yml::prodlike:`.
 2. **Image.** `docker build -t condo-api:$(API_IMAGE_TAG) --build-arg GIT_SHA=… IMAGE_TAG=… BUILD_TIME=… backend`. The Dockerfile turns the args into `ENV`, and `backend/app/core/config.py::Settings` reads them as `git_sha`, `image_tag` and `build_time`, which `/api/version` reports.
-3. **SPA.** `cd frontend && npm ci && VITE_RELEASE=$(GIT_SHA) npm run build` writes `frontend/dist/index.html` and the hashed `dist/assets/*`. Nothing in the frontend reads `VITE_RELEASE` yet; D-04 (Sentry release) will.
+3. **SPA.** `cd frontend && npm ci && VITE_RELEASE=$(GIT_SHA) npm run build` writes `index.html` and the hashed `assets/*` into `frontend/dist`. Nothing in the frontend reads `VITE_RELEASE` yet; D-04 (Sentry release) will.
 4. **Migrate.** `docker compose -f compose.prodlike.yml run --rm api alembic upgrade head` starts `db`, `mailpit` and `s3` (the `depends_on` of `api`), then runs Alembic from the image. This is the order `deploy.sh` will use (D-03).
    - On an empty volume it applies all four revisions, from `989e5bd83064` to `8887ac143e98` (PR evidence, clean run and CI log).
    - **Fails** if the image lacks the migrations: `FAILED: No 'script_location' key found in configuration.` (CI probe run 38967396917).
