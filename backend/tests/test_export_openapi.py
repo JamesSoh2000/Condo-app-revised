@@ -10,7 +10,7 @@ from tests.conftest import BACKEND_DIR
 
 
 def run_export(**env: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 (fixed argv, this interpreter)
+    return subprocess.run(
         [sys.executable, "-m", "app.export_openapi"],
         cwd=BACKEND_DIR,
         env={**os.environ, **env},

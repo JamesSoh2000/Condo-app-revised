@@ -67,10 +67,14 @@ typecheck: ## mypy and tsc
 	$(BACKEND) uv run mypy app
 	$(FRONTEND) npm run typecheck
 
-check: lint typecheck test ## Everything CI checks, plus alembic check (needs `make up`)
+check: lint typecheck test ## Everything CI checks: lint, types, tests, alembic check, API type drift (needs `make up`)
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) uv run alembic check
 	bash scripts/base44-count.sh
 	python3 scripts/check-version-pins.py
+	$(FRONTEND) npm run test
+	@$(MAKE) --no-print-directory gen-api >/dev/null
+	@test -z "$$(git status --porcelain -- frontend/src/api/schema.d.ts)" || { \
+	  echo "check: frontend/src/api/schema.d.ts was stale and has been regenerated; commit it"; exit 1; }
 	$(FRONTEND) npm run build
 
 # openapi.json (repo root, gitignored) is an intermediate; only schema.d.ts is committed. CI runs the same two
