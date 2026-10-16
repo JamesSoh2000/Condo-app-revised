@@ -5,7 +5,7 @@ Dependabot updates some of these files and not others (the CI `services:` block,
 `requires-python`), so one merged bump can leave dev, the Docker image and CI on different versions.
 
 Python: every pin must name the same minor as `.python-version`, and the exact pins the same patch.
-Postgres: compose's `db` and CI's service must use the same major.
+Postgres: compose's `db`, the prod-like stack's `db` (P1-08) and CI's service must use the same major.
 uv: the Dockerfile's uv image and CI's setup-uv `version` must be the same release.
 
     python3 scripts/check-version-pins.py
@@ -109,7 +109,9 @@ def main() -> int:
 
     compose_pg = find_all("docker-compose.yml", POSTGRES_IMAGE)
     ci_pg = find_all(CI, POSTGRES_IMAGE)
+    prodlike_pg = find_all("compose.prodlike.yml", POSTGRES_IMAGE)
     checks.append((CI, "postgres major", ci_pg, compose_pg[0]))
+    checks.append(("compose.prodlike.yml", "postgres major", prodlike_pg, compose_pg[0]))
     checks.append(("docker-compose.yml", "postgres major", compose_pg, compose_pg[0]))
 
     errors = [
