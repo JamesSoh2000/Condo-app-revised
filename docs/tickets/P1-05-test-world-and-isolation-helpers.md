@@ -99,6 +99,16 @@ infrastructure; take them in scope, or move each to a named ticket:
 - No index on `membership_roles.building_id` or `building_memberships.status_changed_by_user_id`; only rare
   building and user deletes scan for them (review L3).
 
+## Carried from P1-03 (decide while framing)
+
+From the P1-03 reviews (PR #45). The migration round-trip tests in `tests/test_schema_buildings_units.py`,
+`tests/test_schema_identity.py` and `tests/test_schema_occupancy.py` all use the fixed scratch database
+`condo_migrations_test`, so two test runs at once (parallel worktrees or reviewers) can collide. Give it a
+per-run name (e.g. with the process id), keeping the `_test` suffix that `assert_safe_test_database_url`
+requires, and drop it afterwards. Agents also use `make_occupancy` here: build occupancies with the helpers
+in `app/memberships/occupancy.py` (explicit past `at`), not raw inserts, so the world can't hold overlapping
+history (ADR-0016).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

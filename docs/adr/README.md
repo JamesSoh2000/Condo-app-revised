@@ -26,5 +26,6 @@ himself. Reading them is a core learning activity, because they state the trade-
 | [0013](./0013-local-first-deployment-milestone.md) | Build and test locally first; deployment is a separate milestone (D) | Accepted |
 | [0014](./0014-autonomous-agent-workflow.md) | Agents build, review and merge tickets autonomously; humans audit asynchronously | Accepted |
 | [0015](./0015-typescript-eslint-for-new-code.md) | Lint TypeScript with typescript-eslint's recommended rules (agent, P0-03a) | Accepted |
+| [0016](./0016-occupancy-windows-and-writes.md) | Occupancy windows: half-open, on the database clock, tested in a database function; writes serialize per membership (agent and James, P1-03) | Accepted |
 
 Template: [../templates/ADR.md](../templates/ADR.md).

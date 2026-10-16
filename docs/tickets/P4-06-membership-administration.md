@@ -76,6 +76,22 @@ Real buildings constantly change staff and residents. Access must change immedia
 2. Why does suspension apply on the very next request?
 3. Why is "deactivate" a move-out that ends occupancy, and not a delete?
 
+## Carried from P1-03 (decide while framing)
+
+From the P1-03 reviews (PR #45, ADR-0016). The occupancy helpers in `app/memberships/occupancy.py` are what
+`deactivate` and `transfer` call:
+- **Errors.** `start_occupancy`, `end_occupancy` and `transfer_occupancy` raise `OccupancyTimeError` (a
+  `ValueError`) for times out of order, and `IntegrityError` for a second current occupancy or a unit or
+  membership in another building. Map both to problem+json with stable codes; never return `str(exc)`.
+- **Never pass a client-supplied `at`.** A start backdated into a previous occupant's time shows the
+  newcomer that occupant's records (P1-03 review round 1, L1). Add a test that the endpoints call the helpers
+  without `at`.
+- **Lock order.** The helpers lock the membership row (`FOR NO KEY UPDATE`). This ticket's last-manager rule
+  locks the `buildings` row: take the building first, then call the helpers.
+- **Stale `now()`.** A transaction that began before a concurrent writer for the same membership committed
+  can get `OccupancyTimeError` (its `now()` is older than that writer's row). Decide retry or 409, and test
+  it; nothing tests it yet (P1-03 explanation §7).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

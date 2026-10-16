@@ -196,6 +196,10 @@ class Package(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 - Domain records point at the **person** (`recipient_membership_id`), and at the unit for addressing.
 - "My packages" means packages whose recipient is me, or which are addressed to my unit and were received
   during *my* occupancy period. A new occupant therefore never sees a previous occupant's history.
+- Windows are half-open (`started_at <= T < ended_at`) on the database's clock, and occupancy writes for one
+  membership serialize on its row ([ADR-0016](./adr/0016-occupancy-windows-and-writes.md)). The filter is
+  `occupancy_window_clause` in `app/memberships/occupancy.py`, which calls the database function
+  `occupancy_window(membership_id, unit_id, at)`.
 
 ## 6. Identity and sessions ([ADR-0003](./adr/0003-same-origin-server-side-sessions.md))
 
