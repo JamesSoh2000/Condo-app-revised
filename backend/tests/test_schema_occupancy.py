@@ -378,10 +378,14 @@ async def test_new_unit_membership_and_occupancy_can_be_flushed_together(db: Asy
 
 
 async def _table_names(url: str) -> set[str]:
+    """Tables, plus `occupancy_window()` if the function exists (`alembic check` doesn't see it)."""
     engine = create_async_engine(url)
     try:
         async with engine.connect() as conn:
-            return set(await conn.run_sync(lambda sync: inspect(sync).get_table_names()))
+            names = set(await conn.run_sync(lambda sync: inspect(sync).get_table_names()))
+            if await conn.scalar(text("SELECT to_regproc('occupancy_window') IS NOT NULL")):
+                names.add("occupancy_window()")
+            return names
     finally:
         await engine.dispose()
 
@@ -400,13 +404,13 @@ def test_migration_upgrades_downgrades_and_upgrades_again():
 
     # Pinned revisions, not `-1`: later migrations stack on top and must not change what this tests.
     command.upgrade(cfg, P1_03_REVISION)
-    assert "unit_occupancies" in asyncio.run(_table_names(scratch))
+    assert {"unit_occupancies", "occupancy_window()"} <= asyncio.run(_table_names(scratch))
 
     command.downgrade(cfg, P1_03_DOWN_REVISION)
     tables = asyncio.run(_table_names(scratch))
-    assert "unit_occupancies" not in tables
+    assert {"unit_occupancies", "occupancy_window()"} & tables == set()
     assert "building_memberships" in tables  # only this revision was undone
 
     command.upgrade(cfg, "head")
-    assert "unit_occupancies" in asyncio.run(_table_names(scratch))
+    assert {"unit_occupancies", "occupancy_window()"} <= asyncio.run(_table_names(scratch))
     command.check(cfg)  # raises if the models and the migrated schema differ

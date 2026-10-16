@@ -18,18 +18,11 @@ call them (P4-02, P4-05, P4-06) do.
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import SQLColumnExpression, exists, func, or_, select, update
+from sqlalchemy import Boolean, ColumnElement, SQLColumnExpression, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
-from sqlalchemy.sql import coercions, roles
-from sqlalchemy.sql.expression import Exists
-from sqlalchemy.sql.util import find_tables
 
 from app.memberships.enums import OccupancyRelationship
 from app.memberships.models import BuildingMembership, UnitOccupancy
-
-# The name of `occupancy_window_clause`'s own `unit_occupancies` alias; no argument may use it.
-WINDOW_ALIAS = "occupancy_window"
 
 
 class OccupancyTimeError(ValueError):
@@ -176,44 +169,17 @@ def occupancy_window_clause(
     membership_id: UUID | SQLColumnExpression[UUID],
     record_unit_col: SQLColumnExpression[UUID],
     record_time_col: SQLColumnExpression[datetime],
-) -> Exists:
+) -> ColumnElement[bool]:
     """True when the membership occupied the record's unit at the record's time.
 
     For unit-addressed records: `select(Package).where(occupancy_window_clause(ctx.membership_id,
-    Package.unit_id, Package.received_at))` correlates with the outer table. A NULL unit, time or
-    membership makes it false. No building filter is needed: a unit id belongs to one building, and
-    the composite FKs keep an occupancy's unit and membership in it (ADR-0005).
+    Package.unit_id, Package.received_at))`. A NULL unit, time or membership makes it false. No
+    building filter is needed: a unit id belongs to one building, and the composite FKs keep an
+    occupancy's unit and membership in it (ADR-0005).
+
+    It calls the database function `occupancy_window` (migration 8887ac143e98, ADR-0016) rather than
+    building an EXISTS here: the function gets the three arguments as values, so no name in the
+    caller's query can resolve to the occupancies table instead of the record. Review rounds 2-4
+    found three such shapes in subquery versions.
     """
-    for argument in (membership_id, record_unit_col, record_time_col):
-        if WINDOW_ALIAS in _qualifiers(argument):
-            raise ValueError(f"an argument's table or alias is named {WINDOW_ALIAS!r}; rename it")
-    # Its own alias, referenced only inside the EXISTS. An argument may be a column of an outer
-    # `unit_occupancies` query; it must stay a reference to that outer row, which only fails if its
-    # qualifier is this alias's name (refused above). A fixed name keeps the SQL, and its cache key,
-    # the same on every call.
-    occupancy = aliased(UnitOccupancy, name=WINDOW_ALIAS)
-    return (
-        exists()
-        .where(
-            occupancy.membership_id == membership_id,
-            occupancy.unit_id == record_unit_col,
-            occupancy.started_at <= record_time_col,
-            or_(occupancy.ended_at.is_(None), occupancy.ended_at > record_time_col),
-        )
-        # Every other table correlates with the outer query; the alias is always the subquery's own.
-        .correlate_except(occupancy)
-    )
-
-
-def _qualifiers(argument: object) -> set[str]:
-    """Names of the tables, aliases and subqueries an argument's columns are qualified with."""
-    if isinstance(argument, UUID) or argument is None:
-        return set()
-    element = coercions.expect(roles.ExpressionElementRole, argument)
-    return {
-        name
-        for table in find_tables(
-            element, check_columns=True, include_aliases=True, include_selects=True
-        )
-        if (name := getattr(table, "name", None)) is not None
-    }
+    return func.occupancy_window(membership_id, record_unit_col, record_time_col, type_=Boolean)

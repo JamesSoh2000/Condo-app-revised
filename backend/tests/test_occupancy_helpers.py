@@ -18,9 +18,13 @@ from sqlalchemy import (
     MetaData,
     Table,
     Uuid,
+    column,
     delete,
     func,
     literal,
+    literal_column,
+    null,
+    quoted_name,
     select,
     text,
 )
@@ -34,7 +38,6 @@ from app.memberships import occupancy
 from app.memberships.enums import OccupancyRelationship
 from app.memberships.models import BuildingMembership, UnitOccupancy
 from app.memberships.occupancy import (
-    WINDOW_ALIAS,
     OccupancyTimeError,
     current_occupants,
     end_occupancy,
@@ -860,9 +863,9 @@ async def test_window_clause_works_when_the_outer_query_joins_unit_occupancies(
 # --- review round 2 ------------------------------------------------------------------------------
 
 
-# Outer table: plain; an anonymous alias; and named aliases that look like the names SQLAlchemy
-# gives anonymous aliases. The clause's own alias name is refused (test below); round 3 found it
-# shadowing an outer alias of the same name.
+# Outer table: plain; an anonymous alias; and named aliases, including names SQLAlchemy gives
+# anonymous aliases and the names earlier versions of the clause used for their own alias (rounds 2
+# and 3 found those shadowing an outer alias).
 OUTER_ALIASES = [
     None,
     "",
@@ -871,6 +874,8 @@ OUTER_ALIASES = [
     "anon_1",
     "unit_occupancies",
     "window_occupancy",
+    "occupancy_window",
+    "o",
 ]
 
 
@@ -1018,34 +1023,134 @@ async def test_the_membership_lock_leaves_fk_checks_on_the_membership_unblocked(
         await holder.rollback()
 
 
-@pytest.mark.parametrize("argument", ["membership", "unit", "time"])
-@pytest.mark.parametrize("table", ["unit_occupancies", "records"])
-async def test_window_clause_refuses_an_argument_named_like_its_own_alias(
-    db: AsyncSession, turnover: Turnover, argument: str, table: str
+# --- review round 4: names that resolve inside the window test ---------------------------------
+# Rounds 2-4 each found an argument or query shape whose names resolved to the clause's own
+# `unit_occupancies` instead of the caller's record, making it always true. The test now runs in a
+# database function (`occupancy_window`), which gets its arguments as values: the shapes below must
+# give exactly the turnover's answer. `current` may see only its own 101 record (T2); `former` its
+# 101 record (T0 + 1s) and its 102 record (T2).
+
+
+@pytest.fixture
+async def window_records(db: AsyncSession, turnover: Turnover) -> Table:
+    records = Table(
+        "window_records",
+        MetaData(),
+        Column("unit_id", Uuid()),
+        Column("created_at", DateTime(timezone=True)),
+        prefixes=["TEMPORARY"],
+    )
+    await db.run_sync(lambda sync: records.create(sync.connection()))
+    u101, u102 = turnover.s.u101.id, turnover.s.u102.id
+    await db.execute(
+        records.insert(),
+        [
+            {"unit_id": u101, "created_at": T0 + SECOND},  # former's
+            {"unit_id": u101, "created_at": T2},  # current's
+            {"unit_id": u102, "created_at": T2},  # former's, after the transfer
+        ],
+    )
+    return records
+
+
+def _expected(turnover: Turnover, who: str) -> set[tuple[UUID, datetime]]:
+    u101, u102 = turnover.s.u101.id, turnover.s.u102.id
+    if who == "current":
+        return {(u101, T2)}
+    return {(u101, T0 + SECOND), (u102, T2)}
+
+
+@pytest.mark.parametrize("who", ["current", "former"])
+@pytest.mark.parametrize("shape", ["column", "literal_column", "text"])
+async def test_window_clause_with_unqualified_column_arguments(
+    db: AsyncSession, turnover: Turnover, window_records: Table, who: str, shape: str
 ):
-    """Review round 3 (Codex H1): a qualifier equal to the clause's alias is shadowed by it."""
-    source: Any = (
-        aliased(UnitOccupancy, name=WINDOW_ALIAS)
-        if table == "unit_occupancies"
-        else Table(
-            WINDOW_ALIAS,
-            MetaData(),
-            Column("membership_id", Uuid()),
-            Column("unit_id", Uuid()),
-            Column("started_at", DateTime(timezone=True)),
+    """Round 4 (H1): an unqualified name used to resolve to the clause's own table."""
+    membership = getattr(turnover, who).id
+    make: Any = {"column": column, "literal_column": literal_column, "text": literal_column}[shape]
+    unit, created = make("unit_id"), make("created_at")
+    query = select(unit, created).where(occupancy_window_clause(membership, unit, created))
+    query = (
+        query.select_from(text("window_records"))
+        if shape == "text"
+        else query.select_from(window_records)
+    )
+
+    assert {tuple(r) for r in await db.execute(query)} == _expected(turnover, who)
+
+
+@pytest.mark.parametrize(
+    "name", ["OCCUPANCY_WINDOW", "UNIT_OCCUPANCIES", "occupancy_window", "o", "window_occupancy"]
+)
+async def test_window_clause_with_a_record_alias_of_any_name(
+    db: AsyncSession, turnover: Turnover, window_records: Table, name: str
+):
+    """Round 4 (L1) and round 3: alias names, unquoted upper case included, can't collide."""
+    records = window_records.alias(quoted_name(name, quote=False))
+    query = select(records.c.unit_id, records.c.created_at).where(
+        occupancy_window_clause(turnover.current.id, records.c.unit_id, records.c.created_at)
+    )
+
+    assert {tuple(r) for r in await db.execute(query)} == _expected(turnover, "current")
+
+
+async def test_window_clause_ignores_an_outer_cte_named_unit_occupancies(
+    db: AsyncSession, turnover: Turnover, window_records: Table
+):
+    """Round 4 (L2): a CTE of that name must not stand in for the real table."""
+    fake = select(
+        literal(turnover.current.id, Uuid()).label("membership_id"),
+        literal(turnover.s.u101.id, Uuid()).label("unit_id"),
+        literal(T0 - SECOND, DateTime(timezone=True)).label("started_at"),
+        null().label("ended_at"),
+    ).cte("unit_occupancies")
+    query = (
+        select(window_records.c.unit_id, window_records.c.created_at)
+        .add_cte(fake)
+        .where(
+            occupancy_window_clause(
+                turnover.current.id, window_records.c.unit_id, window_records.c.created_at
+            )
         )
     )
-    columns = source if table == "unit_occupancies" else source.c
-    membership: Any = columns.membership_id if argument == "membership" else turnover.current.id
-    unit: Any = columns.unit_id if argument == "unit" else records_unit()
-    at: Any = columns.started_at if argument == "time" else literal(T2, DateTime(timezone=True))
 
-    with pytest.raises(ValueError, match=WINDOW_ALIAS):
-        occupancy_window_clause(membership, unit, at)
+    assert {tuple(r) for r in await db.execute(query)} == _expected(turnover, "current")
 
 
-def records_unit() -> Any:
-    return Table("some_records", MetaData(), Column("unit_id", Uuid())).c.unit_id
+async def test_window_clause_ignores_a_temporary_table_named_unit_occupancies(
+    db: AsyncSession, turnover: Turnover, window_records: Table
+):
+    """`pg_temp` comes first on the search path; the function's table is bound when it's created."""
+    await db.execute(
+        text(
+            "CREATE TEMPORARY TABLE unit_occupancies AS SELECT CAST(:m AS uuid) AS membership_id,"
+            " CAST(:u AS uuid) AS unit_id, CAST(:t AS timestamptz) AS started_at,"
+            " CAST(NULL AS timestamptz) AS ended_at"
+        ),
+        {"m": turnover.current.id, "u": turnover.s.u101.id, "t": T0 - SECOND},
+    )
+    query = select(window_records.c.unit_id, window_records.c.created_at).where(
+        occupancy_window_clause(
+            turnover.current.id, window_records.c.unit_id, window_records.c.created_at
+        )
+    )
+
+    assert {tuple(r) for r in await db.execute(query)} == _expected(turnover, "current")
+
+
+async def test_window_function_is_stable_not_strict_and_bound_at_creation(db: AsyncSession):
+    row = (
+        await db.execute(
+            text(
+                "SELECT provolatile::text, proisstrict, prosqlbody IS NOT NULL FROM pg_proc"
+                " WHERE proname = 'occupancy_window'"
+            )
+        )
+    ).one()
+
+    # STABLE: reads the table, same answer within a statement. Not STRICT: a NULL argument gives
+    # false, not NULL. A SQL-standard body (prosqlbody) is parsed and bound when it's created.
+    assert tuple(row) == ("s", False, True)
 
 
 async def test_ending_at_the_instant_it_started_is_allowed(db: AsyncSession, setup: Setup):

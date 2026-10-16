@@ -107,10 +107,36 @@ def upgrade() -> None:
         unique=True,
         postgresql_where=sa.text("ended_at IS NULL"),
     )
+    # Hand-written: the occupancy-window test (ADR-0016), behind
+    # app.memberships.occupancy.occupancy_window_clause. A function, so its arguments arrive as
+    # values: no name in the caller's query (unqualified columns, aliases, CTEs) can resolve to this
+    # table instead of the caller's record. The SQL-standard body is parsed and bound to
+    # public.unit_occupancies when it's created, so neither the search path nor a temporary table
+    # can redirect it, and the table can't be dropped while the function exists. Half-open window;
+    # STABLE (reads the table); not STRICT, so a NULL argument gives false.
+    op.execute(
+        """
+        CREATE FUNCTION occupancy_window(p_membership_id uuid, p_unit_id uuid, p_at timestamptz)
+        RETURNS boolean
+        LANGUAGE sql
+        STABLE
+        PARALLEL SAFE
+        RETURN EXISTS (
+            SELECT 1
+            FROM public.unit_occupancies AS o
+            WHERE o.membership_id = p_membership_id
+              AND o.unit_id = p_unit_id
+              AND o.started_at <= p_at
+              AND (o.ended_at IS NULL OR o.ended_at > p_at)
+        )
+        """
+    )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    # First: the function's body depends on the table.
+    op.execute("DROP FUNCTION occupancy_window(uuid, uuid, timestamptz)")
     op.drop_index(
         "uq_unit_occupancies_current_membership",
         table_name="unit_occupancies",
