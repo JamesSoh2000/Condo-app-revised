@@ -23,7 +23,7 @@ through `docs/HUMAN_INBOX.md` and the explanations in `docs/explanations/`.
 ## Commands
 
 `make help` lists the targets (`e2e` is a stub until P4-09;
-`prodlike` is added in P1-08; the worker in P3-01). If port 5432 is taken, pass `DB_PORT=<free port>` to
+the worker is added in P3-01). If port 5432 is taken, pass `DB_PORT=<free port>` to
 every target.
 
 ```bash

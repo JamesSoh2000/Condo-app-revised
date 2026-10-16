@@ -48,7 +48,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P1-05](./P1-05-test-world-and-isolation-helpers.md) | Test world fixtures and tenant-isolation helpers | A | 1 | P1-03, P0-05 | done | — |
 | [P1-06](./P1-06-seed-and-cli.md) | Seed data and operator CLI skeleton | A | 3 | P1-03 | done | — |
 | [P1-07](./P1-07-openapi-types-and-api-client.md) | OpenAPI → TypeScript types and API client | B | 2 | P1-04, P0-03a, P0-03b | done | — |
-| [P1-08](./P1-08-production-like-local-stack.md) | Production-like local stack (local walking skeleton) | B | 2 | P0-04a, P0-02, P0-03a, P0-03b | in progress | — |
+| [P1-08](./P1-08-production-like-local-stack.md) | Production-like local stack (local walking skeleton) | B | 2 | P0-04a, P0-02, P0-03a, P0-03b | done | — |
 | [P2-01](./P2-01-sessions-login-logout-csrf.md) | Password hashing, sessions, login/logout and CSRF | A | 1 | P1-02, P1-04 | todo | — |
 | [P2-02](./P2-02-me-and-session-management.md) | Current-user API and session management | A | 1 | P2-01 | todo | — |
 | [P2-03](./P2-03-tenant-context-guards-fitness.md) | Tenant context, guards and fitness tests | A | 1 | P2-02, P1-05 | todo | — |

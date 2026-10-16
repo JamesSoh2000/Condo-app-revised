@@ -83,6 +83,14 @@ scrubber.
 2. Why is `send_default_pii=False` important, and what still might leak?
 3. Why use an *external* uptime monitor rather than one running on the same host?
 
+## Carried from P1-08
+
+On a 500, the image's gunicorn logs two ERROR records: `app.request` `request_failed` (with `request_id`) and
+`uvicorn.error` "Exception in ASGI application" (`request_id: null`). Both are JSON and both carry the
+traceback and the exception text (`error_message: str(exc)`). Decide which one Sentry and CloudWatch should
+rely on, and drop or tag the other. The CSP in `deploy/Caddyfile::security_headers` needs Sentry's ingest
+origin in `connect-src` (add it through an env placeholder, like `{$S3_PUBLIC_ORIGIN}`).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

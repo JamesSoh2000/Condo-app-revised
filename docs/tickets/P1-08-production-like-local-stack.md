@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P0-04 (compose, Makefile, S3 emulator), P0-02, P0-03 (CI jobs) |
 | Replaces old | — (new by [ADR-0013](../adr/0013-local-first-deployment-milestone.md); takes the Dockerfile and Caddyfile work from D-02) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 

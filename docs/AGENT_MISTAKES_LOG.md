@@ -74,6 +74,9 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | 2026-10-16 | P1-05 | Mutation probes "reverted" with `git checkout` on files not yet tracked, so the mutations stacked and five probe results ran against already-mutated files (second time after P1-03) | implementer | mutated uncommitted files | files restored by hand, committed, probes re-run one at a time; promotion pending (below) |
 | 2026-10-16 | P1-05 | The PR said the inbox entries and follow-ups were added "in the bookkeeping commit" before that commit existed (second time after P1-04) | explainer (update) | wrote the record of a future step as done | entries added in this bookkeeping commit; promotion pending (below) |
 | 2026-10-16 | P1-05 | The tests README claimed a 404 for `a_pending` rules out a missing unit, but `a_pending` has no occupancy | explainer | generalised one persona's property to both | README wording fixed (`6b82cc3`) |
+| 2026-10-16 | P1-08 | Claimed criterion 1 ("clean checkout") from a worktree that already had `node_modules`; `make prodlike` failed in a fresh clone (`vite: not found`), and CI hid it by running `npm ci` in its own step | review round 1 (Claude, Sonnet 5.5), Medium | verified in a warm environment; CI did a setup step the local path didn't | `make prodlike` runs `npm ci`; CI's separate step removed; fresh-clone run in the PR |
+| 2026-10-16 | P1-08 | Fixed Caddy's stale `dist/assets` mount only inside `make prodlike`; any later `npm run build` (e.g. `make check`) still broke a running stack silently | review round 1 (Claude, Sonnet 5.5), Medium | fixed the path that was observed, not the other ways to reach the same state | hint on `prodlike-smoke` failure |
+| 2026-10-16 | P1-08 | Error responses (`handle_errors` 404, 502) dropped the security headers; only success responses were checked | review round 1 (Claude, Sonnet 5.5), Low | headers checked on the happy path only | snippet imported in `handle_errors`; smoke checks headers on the 404 |
 
 ## Promoted to rules / tests
 
@@ -91,3 +94,5 @@ Recurring after promotion: **fix not tested on adjacent cases** came back in P1-
 lesson in place, as it did in P0-03b round 2. The lesson's examples (error paths, malformed input, one notch
 weaker) didn't cover "other caller options of the same function". Follow-up for the next ticket: widen the
 lesson's wording to "every input and option the changed code path sees", or find a check that enforces it.
+
+P1-08 round 1 (M2, L4) is the same pattern again: a fix or check applied to the observed path only, not to the other paths into the same state (error responses, other commands that rebuild `dist`). First follow-up for the next ticket stands: widen the lesson's wording, or add a check that enforces it.
