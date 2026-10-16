@@ -29,6 +29,11 @@ cd frontend && npm ci && npm run dev   # http://localhost:5173, /api proxied to 
 Pass the same free port to every target: `make up DB_PORT=55432`, `make migrate DB_PORT=55432`.
 More: [docs/README.md](docs/README.md), [ADR-0007](docs/adr/0007-private-s3-presigned-uploads.md) (the S3 emulator).
 
+`make prodlike` (after `make down`) runs what staging will run instead: the API image tagged with this commit
+and the built SPA behind `deploy/Caddyfile` on http://localhost:8080 ([P1-08](docs/tickets/P1-08-production-like-local-stack.md)).
+Use it to check the built artifacts (SPA routes, caching, headers, migrations in the image); `make prodlike-smoke`
+tests it and `make prodlike-down` stops it. Keep `make up` for everyday work: it reloads code and runs the tests.
+
 ### Seeded accounts
 
 `make seed` (`python -m app.cli seed`, [P1-06](docs/tickets/P1-06-seed-and-cli.md)) creates two buildings and

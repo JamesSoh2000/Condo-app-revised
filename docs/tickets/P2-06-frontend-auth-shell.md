@@ -111,6 +111,14 @@ Consumes `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` and
 - Optional hardening: add `src/api` cases to `scripts/check-eslint-fence.sh` (the `src/api` fence block from
   PR #52 D6 was probed by hand only).
 
+## Carried from P1-08 (do while framing)
+
+The CSP on the prod-like stack and staging (`deploy/Caddyfile`, no `'unsafe-inline'`) blocks sonner's injected
+toast stylesheet, so toasts render unstyled there (P1-08 D4). If this ticket uses toasts, load sonner's CSS as
+a file (or another toast approach without injected `<style>`) and check it on `make prodlike`. The legacy
+Base44/Supabase-hosted logo and favicon are blocked too; replace them with local assets when the layout is
+migrated.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

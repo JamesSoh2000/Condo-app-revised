@@ -16,10 +16,11 @@ BACKEND := cd backend &&
 FRONTEND := cd frontend &&
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps migrate revision seed test lint fmt typecheck check gen-api e2e psql s3-smoke db-guard
+.PHONY: help up down logs ps migrate revision seed test lint fmt typecheck check gen-api e2e psql s3-smoke db-guard \
+	prodlike prodlike-smoke prodlike-down
 
 help: ## List the targets
-	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
 
 up: ## Start api, db, mailpit and the S3 emulator; waits until all are healthy
 	$(COMPOSE) up -d --build --wait --remove-orphans
@@ -91,3 +92,30 @@ s3-smoke: ## Check that the S3 emulator enforces the upload policy, versioning a
 
 psql: ## psql shell on the dev database
 	$(COMPOSE) exec db psql -U postgres -d condo_dev
+
+# Production-like stack (P1-08): the API image tagged with this commit and the built SPA, behind
+# deploy/Caddyfile on http://localhost:8080, in its own compose project. The image tag gets "-dirty" when the
+# working tree has uncommitted changes, so /api/version doesn't pass them off as the commit.
+PRODLIKE := $(COMPOSE) -f compose.prodlike.yml
+GIT_SHA ?= $(shell git rev-parse HEAD)
+prodlike prodlike-smoke prodlike-down: export API_IMAGE_TAG ?= $(GIT_SHA)$(if $(shell git status --porcelain),-dirty)
+
+prodlike: ## Build the image and SPA, migrate, start the prod-like stack on :8080 (run `make down` first)
+	docker build -t condo-api:$(API_IMAGE_TAG) --build-arg GIT_SHA=$(GIT_SHA) \
+	  --build-arg IMAGE_TAG=$(API_IMAGE_TAG) --build-arg BUILD_TIME=$$(date -u +%Y-%m-%dT%H:%M:%SZ) backend
+	$(FRONTEND) npm ci --no-audit --no-fund && VITE_RELEASE=$(GIT_SHA) npm run build
+	# The order deploy.sh will use (D-03): migrate from the new image, then start it.
+	$(PRODLIKE) run --rm api alembic upgrade head
+	# --force-recreate caddy: the build replaced frontend/dist/assets, and a running container's bind mount
+	# still points at the deleted directory. The API and the rest are recreated only when they changed.
+	$(PRODLIKE) up -d --wait --remove-orphans
+	$(PRODLIKE) up -d --wait --no-deps --force-recreate caddy
+
+prodlike-smoke: ## Smoke-test the prod-like stack (scripts/smoke.sh) and check its wiring
+	@# A later `npm run build` (make check does one) replaces frontend/dist/assets under the running Caddy.
+	bash scripts/smoke.sh http://localhost:8080 $(GIT_SHA) || { \
+	  echo "prodlike-smoke: was frontend/dist rebuilt after make prodlike? Then re-run make prodlike"; exit 1; }
+	bash scripts/prodlike-checks.sh http://localhost:8080
+
+prodlike-down: ## Stop the prod-like stack (its database volume is kept)
+	$(PRODLIKE) down

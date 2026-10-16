@@ -74,10 +74,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 
 def _get_client_ip(request: Request) -> str | None:
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-
+    # Not the X-Forwarded-For header: any client can send one. The server (gunicorn/uvicorn) already
+    # replaced request.client with the forwarded address when, and only when, the peer is a trusted
+    # proxy (FORWARDED_ALLOW_IPS, P1-08).
     if request.client:
         return request.client.host
 

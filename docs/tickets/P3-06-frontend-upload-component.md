@@ -79,6 +79,12 @@ Consumes `files_create`, `files_complete` and `files_download_url`. Exports `Fil
 2. Why use XHR instead of `fetch` here?
 3. Why do client-side size checks not replace server enforcement?
 
+## Carried from P1-08
+
+The CSP has `form-action 'self'` and allows the S3 origin only in `img-src` and `connect-src`: upload with
+`fetch` (presigned POST as `FormData`), not a native `<form action="https://bucket…">`, or extend the CSP in
+`deploy/Caddyfile`. Check the upload on `make prodlike`, where the CSP applies.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

@@ -1,0 +1,59 @@
+# One origin for the SPA and the API (ADR-0003), shared by the prod-like stack (P1-08) and staging (D-02,
+# unchanged). Everything that differs between the two comes from the environment:
+#   SITE_ADDRESS      :8080 locally (plain http); the domain on staging (automatic HTTPS)
+#   API_UPSTREAM      api:8000 locally; 127.0.0.1:8000 on staging
+#   S3_PUBLIC_ORIGIN  the S3 emulator locally; the files bucket on staging (images and presigned uploads)
+# Releases: /srv/app/frontend/current is the live build; /srv/app/frontend/assets holds the hashed assets
+# of recent releases, so a page loaded before a deploy can still fetch its chunks (D-03).
+
+# Security headers on every response, including the error responses of handle_errors (which replaces
+# the headers set before the error).
+(security_headers) {
+	header {
+		# Browsers ignore HSTS over plain http, so it is harmless locally.
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# camera=(self): residents photograph packages and maintenance issues from the app.
+		Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=()"
+		# frame-ancestors 'none' also stops the bundled Base44 SDK from posting API traffic to a framing
+		# parent (P0-03b).
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: {$S3_PUBLIC_ORIGIN}; connect-src 'self' {$S3_PUBLIC_ORIGIN}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		-Server
+	}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	import security_headers
+
+	# The same paths the Vite dev proxy forwards (P0-03b): /api, /api/… and /api?…, not /apifoo.
+	@api path /api /api/*
+	handle @api {
+		reverse_proxy {$API_UPSTREAM}
+	}
+
+	# Hashed file names change with their content, so a cached copy is never stale. A missing asset is a
+	# plain 404 without the long cache header (handle_errors below), never index.html.
+	handle_path /assets/* {
+		root * /srv/app/frontend/assets
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# Everything else is the SPA: a real file from the build, or index.html for client-side routes. no-cache
+	# makes browsers revalidate, so a deploy is picked up on the next load.
+	handle {
+		root * /srv/app/frontend/current
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+
+	handle_errors {
+		import security_headers
+		header Cache-Control "no-store"
+		respond "{err.status_code} {err.status_text}"
+	}
+}
