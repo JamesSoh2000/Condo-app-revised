@@ -23,17 +23,19 @@ flowchart LR
     I --> V[4 Verify<br/>make check + CI]
     V --> R[5 Independent review<br/>fresh session]
     R -->|findings| I
-    R -->|MERGE| E[6 Explain<br/>fresh session]
+    R -->|MERGE| E[6 Explain<br/>implementer, after re-reading the code]
     E --> M[7 Merge gate<br/>agent squash-merges]
     M --> L[8 Improve<br/>mistakes log, inbox]
     F & I & R -.->|stop rule hit| B[Blocked<br/>inbox entry, next ticket]
 ```
 
-One ticket = one branch = one PR. A **session** here means a context: the implementer is one session, and the
-reviewer and the explainer are each a **fresh** one (a subagent or a new terminal) that never saw the
-implementation conversation. Commands: [`/build-next`](../.claude/commands/build-next.md) picks a ticket and
-runs [`/build-ticket`](../.claude/commands/build-ticket.md), which runs steps 1–8 and spawns the fresh
-sessions itself.
+One ticket = one branch = one PR. A **session** here means a context: the implementer is one session, and each
+reviewer is a **fresh** one (a subagent or a new terminal) that never saw the implementation conversation. The
+implementer writes and edits the explanation itself, after re-reading the code
+([ADR-0017](./adr/0017-implementer-writes-the-explanation.md)). Commands:
+[`/build-next`](../.claude/commands/build-next.md) picks a ticket and runs
+[`/build-ticket`](../.claude/commands/build-ticket.md), which runs steps 1–8 and spawns the fresh reviewers
+itself.
 
 ### Step 0 — Pick (orchestrator)
 
@@ -66,7 +68,7 @@ Frame notes and listed in the inbox for audit. The reviewer checks this.
 
 Write the plan into the PR description draft: files to change, interfaces and schemas, the migration, each
 acceptance criterion mapped to a test, risks, and the decisions taken. It replaces the human's design
-prediction: the explainer and the reviewer compare the code against it, and a large gap between plan and code
+prediction: the explanation and the reviewer compare the code against it, and a large gap between plan and code
 is a review finding.
 
 ### Step 3 — Implement (implementer)
@@ -120,17 +122,54 @@ re-reviews the whole diff, not just the fixes. At most **3 rounds**: an open Cri
 blocks the ticket. Medium and Low findings that are not fixed go to the PR's follow-ups and the
 explanation's "Not verified" section.
 
-### Step 6 — Explain (fresh session)
+### Step 6 — Explain (implementer, after re-reading the code)
 
-Command: [`/explain-ticket`](../.claude/commands/explain-ticket.md), run as a **subagent or new session**,
-writing `docs/explanations/<ticket>-<slug>.md` from [templates/EXPLANATION.md](./templates/EXPLANATION.md).
-It is committed to the PR as its last code commit.
+Command: [`/explain-ticket`](../.claude/commands/explain-ticket.md), run by the **implementer itself**, the
+parent session that ran steps 1–5, writing `docs/explanations/<ticket>-<slug>.md` from
+[templates/EXPLANATION.md](./templates/EXPLANATION.md). It is committed to the PR as its last code commit, and
+the same session edits it whenever later changes touch what it describes
+([ADR-0017](./adr/0017-implementer-writes-the-explanation.md)). No subagent writes or updates it.
 
-A fresh session explains the code that exists, not what the implementer intended. Its inputs are the ticket
-(with its Frame notes), the ADRs it links or adds, the PR description (the plan, "Decisions and
-alternatives", the review rounds, follow-ups), the PR's comments and reviews, the diff and the repo. The aim:
-a later session, without the implementation conversation, can explain what was built, how it works, why each
-consequential choice was made and what was rejected, what shaped it, and what was and wasn't verified.
+Its inputs are the ticket (with its Frame notes), the ADRs it links or adds, the PR description (the plan,
+"Decisions and alternatives", the review rounds, follow-ups), the PR's comments and reviews, the diff and the
+repo. The aim: a later session, without the implementation conversation, can explain what was built, how it
+works, why each consequential choice was made and what was rejected, what shaped it, and what was and wasn't
+verified.
+
+#### The reality pass
+
+The writer is the one that built the code, so the danger is **intent versus reality**: explaining what it
+meant to write, not what is in the code after the review rounds. Four steps, before the first sentence and
+again before every later edit:
+
+1. **Re-read, don't recall.** From disk at the source revision, read the diff (`git diff origin/main...HEAD`),
+   the files and symbols you will cite (the whole function or component, not a search hit), the tests that
+   carry each criterion (their assertions, not just their names), the final migration, the PR's current
+   description and the review comments. Run the tests you will cite. What you remember of the conversation is
+   a hypothesis to check against these, never a source.
+2. **Keep three kinds of statement apart.** *Implemented behaviour* is what the code does now, stated only
+   from files and tests re-read in this pass (template §3–§5). *Design rationale* is why, labelled recorded or
+   inferred (§2). *Limitations* are what it does not do, what no test proves and the accepted risks (§5 gaps,
+   §7). Don't support a behaviour claim with a rationale ("it is safe because we chose X"): it needs the line
+   that enforces it or the test that proves it. Don't leave a limitation inside a decision's tradeoffs.
+3. **Compare the final code with the plan.** Compare it with the PR's Plan, the ticket's criteria and Frame
+   notes, and each recorded decision. Describe the final state; an approach a review round replaced appears
+   only in the review log. A deliberate deviation is noted in the PR below the Plan, with the reason, and
+   listed in the explanation. A deviation that is a defect (a criterion unmet, a decision contradicted by
+   accident) is a **finding**: fix it test-first, run a review round, then update the explanation.
+4. **Audit the finished text against the code.** For each behaviour claim, open the cited symbol; for each
+   "test T proves X", open T and confirm it asserts X and would fail without the code (point to the mutation
+   evidence in the PR, or say none was run). `scripts/check-explanation-refs.py` only proves that anchors
+   exist, not that a claim is true.
+
+The header's **Reality check** line records what was re-read and run. **Remembered intent is not a source:**
+a rationale that exists only in the conversation is first written into the PR's "Decisions and alternatives"
+(only what you actually knew), then cited from there. Otherwise write "Rationale not recorded".
+
+**Editing.** When a commit after the explanation changes code, tests, config or docs it describes (a later
+review round, a CI fix, a rebase that conflicted in the ticket's files, a mismatch from step 3 above), repeat
+the reality pass on what changed, edit the explanation, update its header (source revision, and an "Updated"
+note saying what changed), and commit it. Never patch a sentence without re-reading the code it describes.
 
 | Rule | Why |
 |---|---|
@@ -141,7 +180,8 @@ consequential choice was made and what was rejected, what shaped it, and what wa
 | Walkthrough variant matches the ticket: **A** API request, **B** UI interaction, **C** process/pipeline | An invented request walkthrough is worse than none |
 | Prose references are `path::symbol`; code excerpts are fenced blocks headed by their `path::symbol`; immutable permalinks where exact lines matter | They survive later edits and are checked by `scripts/check-explanation-refs.py` (which skips fenced code) |
 | Answers the ticket's "Must explain" questions, then a 5-question quiz with collapsed answers | James's self-study material |
-| If the code contradicts the PR description or the plan, or a consequential decision has no recorded rationale, the explainer reports it and **does not paper over it** | A mismatch goes back to step 5 as a finding; a missing rationale goes into the PR's decisions |
+| If the code contradicts the PR description or the plan, or a consequential decision has no recorded rationale, the writer treats it as a finding and **does not paper over it** | A mismatch goes back to step 5 as a finding; a rationale the writer actually knew is added to the PR's decisions, and an unknown one is stated as "Rationale not recorded" |
+| Reality pass done and recorded in the header's **Reality check** line: what was re-read, which tests were run and their result | With the writer being the builder, this is the evidence that the text describes the code and not the intent |
 | It's a snapshot. The header names the PR and the pre-merge **source revision** it was written from; the merge commit is recorded after the merge (handoff block, phase recap) | The explanation is committed before the merge, so it can't name the merge SHA. Later changes get a new explanation, which says which revision it describes; lasting decisions live in ADRs |
 
 ### Step 7 — Merge gate (agent merges)
@@ -156,8 +196,10 @@ the inbox, so all three land atomically. The agent merges only when **all** of t
 - [ ] The explanation exists and `scripts/check-explanation-refs.py` passes.
 - [ ] Nothing after the explanation changes what it describes: `git diff <explanation commit> HEAD` touches
       only bookkeeping files, and a rebase after it resolved no conflict in the ticket's files (git doesn't
-      record that: the merging session confirms it). Otherwise a fresh explainer updates the explanation
-      first.
+      record that: the merging session confirms it). Otherwise the implementer repeats the reality pass on
+      the changed files and updates the explanation first.
+- [ ] The explanation's **Reality check** line says what was re-read and run; no cited test went unrun without
+      saying so.
 - [ ] No protected gate was loosened.
 
 Then: `gh pr merge <N> --squash --delete-branch`, remove the worktree, and return to step 0.

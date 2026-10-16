@@ -6,11 +6,30 @@
 > Built and merged autonomously ([ADR-0014](../adr/0014-autonomous-agent-workflow.md)); no human reviewed it
 > before merge. This describes the PR's changes at the source revision. Commits after it (bookkeeping) and
 > the squash merge are not described here, and a rebase after it gives the same changes new SHAs.
-> This is a snapshot: if the code changes later, write a new explanation; do not update this one. Lasting
-> decisions live in ADRs.
+> This is a snapshot: before the merge it is edited to match the PR head; once merged, write a new
+> explanation for later changes and do not update this one. Lasting decisions live in ADRs.
+> **Reality check:** re-read <the diff, the files and tests cited> at `<sha>`; ran `<command>`: <result>
+> (or "not run: <why>"). Differences from the plan: none / <see §2>.
+> Written by the implementing session after that check ([ADR-0017](../adr/0017-implementer-writes-the-explanation.md)).
 > Form: full / short. Tier: 1 / 2 / 3. Walkthrough variant: A / B / C / none.
 
-## How to write this (for the explainer; don't copy this section)
+## How to write this (for the writer, the implementing session; don't copy this section)
+
+### Describe the code that exists, not the one you meant to write
+
+You built this, so you remember intent, and the code has changed since (review rounds, CI fixes). Do the
+**reality pass** from the [playbook](../AI_AGENT_PLAYBOOK.md#the-reality-pass) before writing and before every
+edit:
+
+- **Re-read, don't recall.** Read the diff, the files and symbols you cite, and the tests' assertions from disk
+  at the source revision; run the tests you cite. Your memory of the conversation is a hypothesis.
+- **Keep three kinds of statement apart.** *Implemented behaviour* (§3–§5): what the code does now. *Design
+  rationale* (§2): why, recorded or inferred. *Limitations* (§5 gaps, §7): what it doesn't do, what no test
+  proves, accepted risks. Behaviour needs the line or test that shows it; a rationale doesn't prove behaviour.
+- **Compare with the plan.** Describe the final code. A replaced approach belongs in §6, a deviation from the
+  plan in §2. If the deviation is a defect, it's a finding: fix it and review again before you write it up.
+- **Audit the finished text.** Open each cited symbol; for each "test T proves X", open T. Fill in the
+  Reality check line in the header with what you actually did.
 
 ### Length and shape
 
@@ -31,16 +50,21 @@
 |---|---|---|
 | **Recorded** | Rationale written down before this explanation: the ticket and its Frame notes, an ADR, the PR's "Decisions and alternatives", the review log or review comments | State it and cite the source ("PR decision D2", "ADR-0005", "review round 2, High 1") |
 | **Code and tests** | Behaviour you established from the code, or from tests you ran | Cite `path::symbol` or the test name; say whether you ran it |
-| **Inferred** | Your own reading of *why*, which no record states | Prefix it with "Inferred:" |
+| **Inferred** | A reading of *why* that no record states | Prefix it with "Inferred:" |
 
-If the original motivation is not recorded and the code doesn't establish it, write "Rationale not
-recorded." **Never invent** an alternative, experiment, decision, test run or verification result. A
-consequential decision without recorded rationale is also reported to the implementer (`/explain-ticket`).
+What you remember from building it is **not a source**. If you knew a rationale that no record holds, add it to
+the PR's "Decisions and alternatives" first (only what you actually knew), then cite it as recorded. If the
+original motivation is not recorded and the code doesn't establish it, write "Rationale not recorded."
+**Never invent** an alternative, experiment, decision, test run or verification result. A consequential
+decision without recorded rationale is a gap to close in the PR, or to state (`/explain-ticket`).
 
 ### Revisions and links
 
 - The **source revision** is `git rev-parse HEAD` before your own commit. Check in the PR's "Independent
   review" section that the final review round reviewed that commit; if it didn't, name the one it did.
+- When you **edit** the explanation after later commits, redo the reality pass on what changed, set the source
+  revision to the new head, and add an `> **Updated** (pre-merge): …` line saying which commits were read and
+  what changed in the text.
 - Never write a merge SHA before the merge exists, and don't try to put your own commit's SHA in the file.
 - Describe the PR's changes (`git diff origin/main...HEAD`). Don't present the branch's whole tree as "what
   merged".
@@ -89,6 +113,10 @@ Smaller decisions, one row each:
 |---|---|---|---|---|
 
 **Framing changes:** criteria the agent added, sharpened or (with reason) loosened in step 1. "None" is valid.
+
+**Plan versus final code:** where the code at the source revision differs from the PR's Plan (usually because
+of a review round), what differs, and which round or decision caused it. "None" is valid only after you
+compared them.
 
 ## 3. How it is implemented
 
@@ -165,6 +193,8 @@ For each:
 | What could go wrong | What the code does | Test that proves it |
 |---|---|---|
 
+Write "No test" where none exists, and repeat it in §7. Open the test before naming it.
+
 Acceptance criteria → tests: one line per criterion, naming its test or evidence.
 
 ## 6. Review log
@@ -221,6 +251,7 @@ real alternatives), add the full-form sections it needs, such as the walkthrough
 3. **Files changed**: one line each, using `path` or `path::anchor`
 4. **The code**: the excerpt that matters, if any (usually ≤ 20 lines)
 5. **How to verify it**: the command or check, and what success looks like
-6. **Review**: verdict, and anything fixed (with the failure that motivated it) or dismissed
+6. **Review**: verdict, and anything fixed (with the failure that motivated it) or dismissed; and any
+   difference between the final code and the plan
 7. **Not verified, accepted risks and follow-ups**: and where each is tracked; "None" only if literally true
 8. **How to change it safely**: one or two lines

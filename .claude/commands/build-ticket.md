@@ -1,5 +1,5 @@
 ---
-description: Autonomous loop — frame, build, review (fresh), explain (fresh) and merge one ticket, with no human step
+description: Autonomous loop — frame, build, review (fresh), explain (implementer) and merge one ticket, with no human step
 argument-hint: <ticket-id, e.g. P2-03>
 ---
 
@@ -7,8 +7,9 @@ Build ticket $ARGUMENTS end to end, autonomously, following `docs/AI_AGENT_PLAYB
 Do not stop to ask me anything. The only reasons to stop early are the playbook's **stop rules**; then block
 the ticket (below) and end.
 
-You are the **implementer**. You never review or explain your own work: steps 5 and 6 run in fresh subagents
-that get file paths and the ticket ID, never this conversation.
+You are the **implementer**. You never review your own work: step 5 runs in fresh subagents that get file
+paths and the ticket ID, never this conversation. You write and edit the explanation yourself (step 6), but
+only after re-reading the code, never from memory of what you built.
 
 1. **Preflight.** Read `docs/HUMAN_INBOX.md`; if `Run state: paused`, stop. Check that every dependency of
    $ARGUMENTS in `docs/tickets/README.md` is `done`. Create the worktree and branch
@@ -31,12 +32,15 @@ that get file paths and the ticket ID, never this conversation.
    - Repeat with **new** subagents until every required reviewer says `VERDICT: MERGE`, at most 3 rounds.
      An open Critical/High after round 3 is stop rule 4.
 5. **Explain** (step 6). Rebase onto `origin/main` first if `main` has moved, so the source revision the
-   explanation records is normally the one that merges. Spawn a fresh subagent with: "Run
-   `.claude/commands/explain-ticket.md` for $ARGUMENTS in worktree `<path>`." If it reports a mismatch
-   between the code and the PR's plan or decisions, treat it as a review finding: fix, run one more review
-   round, then have a fresh explainer update the explanation. If it reports a decision without recorded
-   rationale, add the rationale to the PR (only what you actually know) and have a fresh explainer update
-   that part.
+   explanation records is normally the one that merges. Run `.claude/commands/explain-ticket.md` for
+   $ARGUMENTS yourself, in the worktree. Do its reality pass first: re-read the diff, the cited files and the
+   tests' assertions from disk, and run the tests you will cite. If the pass shows the code contradicting the
+   PR's plan or decisions by accident, treat it as a review finding: fix it test-first and run one more
+   review round with a new fresh reviewer, then redo the pass and update the explanation. A deliberate
+   deviation goes in the PR below the Plan. If a decision has no recorded rationale, add what you actually
+   knew to the PR first (or write "Rationale not recorded"). **Any later commit** that touches what the
+   explanation describes (a review round, a CI fix, a rebase that conflicted in the ticket's files) means
+   redoing the pass on the changed files and updating the explanation before the merge gate.
 6. **Bookkeeping commit** on the branch: the ticket's status `done` in `docs/tickets/README.md`; autonomous
    lasting decisions added to the inbox's "Decisions to audit"; confirmed findings added to
    `docs/AGENT_MISTAKES_LOG.md`; follow-ups that need action added to their ticket, the index or the inbox.
