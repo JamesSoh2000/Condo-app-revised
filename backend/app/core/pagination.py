@@ -66,7 +66,11 @@ async def paginate[M, T](
     params: CursorParams,
     mapper: Callable[[M], T],
 ) -> Page[T]:
-    """One page of `stmt`'s rows. Its filters are kept; its ORDER BY and LIMIT are replaced."""
+    """One page of `stmt`'s rows. Its filters are kept; its ORDER BY and LIMIT are replaced.
+
+    `stmt` selects one entity (`select(Package).where(...)`): rows are read with `db.scalars`, so
+    only the first column of a multi-column select would reach `mapper`.
+    """
     stmt = stmt.order_by(None).order_by(id_col.desc()).limit(params.limit + 1)
     if params.after_id is not None:
         stmt = stmt.where(id_col < params.after_id)

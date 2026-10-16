@@ -134,6 +134,14 @@ def test_trusted_origins_must_be_bare_origins_in_every_env(origin, app_env):
         (["*"], "explicit"),
         (["http://condo.example.org"], "https"),
         (["https://condo.example.org", "http://127.0.0.1:8080"], "localhost"),
+        # Review round 1, F2: loopback is rejected whatever the scheme or port.
+        (["https://localhost"], "localhost"),
+        (["https://localhost:8443"], "localhost"),
+        (["https://127.0.0.1"], "localhost"),
+        (["https://127.4.5.6:8443"], "localhost"),
+        (["https://0.0.0.0"], "localhost"),
+        (["http://localhost"], "localhost"),
+        (["https://app.localhost"], "localhost"),
     ],
 )
 def test_prod_rejects_unsafe_trusted_origins(origins, message):
@@ -147,6 +155,14 @@ def test_trusted_origins_accept_ports_in_dev_and_https_in_prod():
 
     assert dev.trusted_origins == ["http://localhost:8080"]
     assert prod.trusted_origins == ["https://condo.example.org:8443"]
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["https://localhost.example.org", "https://app.127.example.org", "https://127.example"],
+)
+def test_prod_accepts_hosts_that_only_look_like_loopback(origin):
+    assert Settings(_env_file=None, **PROD, trusted_origins=[origin]).trusted_origins == [origin]
 
 
 def test_old_allowed_origins_setting_is_gone():

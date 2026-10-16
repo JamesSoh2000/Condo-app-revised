@@ -16,6 +16,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
+from pydantic_core import to_jsonable_python
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.logging_config import request_id_ctx
@@ -154,7 +155,8 @@ def problem_response(
     body.update(members)
     body["request_id"] = request_id
     return JSONResponse(
-        body,
+        # extra members are often UUIDs and datetimes; encoded as response models are (UTC as `Z`).
+        to_jsonable_python(body),
         status_code=status,
         headers={**(headers or {}), "X-Request-ID": request_id},
         media_type=PROBLEM_MEDIA_TYPE,

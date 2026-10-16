@@ -1,6 +1,8 @@
+import ipaddress
 import re
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -83,10 +85,7 @@ class Settings(BaseSettings):
             if not self.trusted_origins or "*" in self.trusted_origins:
                 raise ValueError("TRUSTED_ORIGINS must be explicit in production; do not use '*'")
 
-            if any(
-                origin.startswith(("http://localhost", "http://127.0.0.1"))
-                for origin in self.trusted_origins
-            ):
+            if any(_is_loopback(origin) for origin in self.trusted_origins):
                 raise ValueError("TRUSTED_ORIGINS must not use localhost origins in production")
 
             if any(not origin.startswith("https://") for origin in self.trusted_origins):
@@ -117,6 +116,18 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "prod"
+
+
+def _is_loopback(origin: str) -> bool:
+    """localhost, *.localhost, 127.0.0.0/8, ::1 or 0.0.0.0, whatever the scheme or port."""
+    host = urlsplit(origin).hostname or ""
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
 
 
 @lru_cache

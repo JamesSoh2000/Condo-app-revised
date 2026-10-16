@@ -3,6 +3,8 @@
 import json
 import logging
 import re
+from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 from fastapi import APIRouter, HTTPException
@@ -44,6 +46,18 @@ async def signup(body: SignUp) -> dict[str, str]:
 @router.get("/conflict")
 async def conflict() -> None:
     raise Conflict(code="x_conflict", detail="Already done.", extra={"package_id": "p-1"})
+
+
+PACKAGE_ID = UUID("01920000-0000-7000-8000-000000000001")
+PICKED_UP_AT = datetime(2026, 10, 16, 12, 30, tzinfo=UTC)
+
+
+@router.get("/conflict-typed-extra")
+async def conflict_typed_extra() -> None:
+    raise Conflict(
+        code="package_already_picked_up",
+        extra={"package_id": PACKAGE_ID, "picked_up_at": PICKED_UP_AT, "ids": [PACKAGE_ID]},
+    )
 
 
 DOMAIN_ERRORS: dict[str, type[DomainError]] = {
@@ -170,6 +184,18 @@ async def test_conflict_is_problem_409_with_its_code_detail_and_extra(app_client
     assert body["title"] == "Conflict"
     assert body["detail"] == "Already done."
     assert body["package_id"] == "p-1"
+
+
+@pytest.mark.anyio
+async def test_extra_with_uuid_and_datetime_values_is_still_the_domain_error(app_client):
+    # Review round 1, F1: ids are uuid7 and times are datetimes, the first things services pass.
+    async with app_client(router) as c:
+        response = await c.get("/api/probe/conflict-typed-extra")
+
+    body = assert_problem(response, 409, "package_already_picked_up")
+    assert body["package_id"] == str(PACKAGE_ID)
+    assert body["picked_up_at"] == "2026-10-16T12:30:00Z"
+    assert body["ids"] == [str(PACKAGE_ID)]
 
 
 @pytest.mark.anyio
