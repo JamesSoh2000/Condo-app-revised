@@ -1142,15 +1142,17 @@ async def test_window_function_is_stable_not_strict_and_bound_at_creation(db: As
     row = (
         await db.execute(
             text(
-                "SELECT provolatile::text, proisstrict, prosqlbody IS NOT NULL FROM pg_proc"
+                "SELECT provolatile::text, proisstrict, prosqlbody IS NOT NULL, prosecdef,"
+                " proconfig IS NULL FROM pg_proc"
                 " WHERE proname = 'occupancy_window'"
             )
         )
     ).one()
 
     # STABLE: reads the table, same answer within a statement. Not STRICT: a NULL argument gives
-    # false, not NULL. A SQL-standard body (prosqlbody) is parsed and bound when it's created.
-    assert tuple(row) == ("s", False, True)
+    # false, not NULL. A SQL-standard body (prosqlbody) is parsed and bound when it's created. Not
+    # SECURITY DEFINER and no SET clauses (review round 5, L1): it runs with the caller's rights.
+    assert tuple(row) == ("s", False, True, False, True)
 
 
 async def test_ending_at_the_instant_it_started_is_allowed(db: AsyncSession, setup: Setup):

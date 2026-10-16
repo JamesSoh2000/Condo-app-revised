@@ -46,7 +46,9 @@ builds on the answers (`occupancy_window_clause` in `app/memberships/occupancy.p
 
 - Negative: the function is a schema object that `alembic check` doesn't compare. Tests pin its behaviour
   and attributes, and the migration round-trip test checks it is created and dropped with the table.
-  Changing it takes a new migration (`CREATE OR REPLACE FUNCTION`).
+  Changing it takes a new migration (`CREATE OR REPLACE FUNCTION`). Its bound body depends on the table:
+  dropping the table, or dropping or retyping `membership_id`, `unit_id`, `started_at` or `ended_at`, needs
+  the function dropped and recreated in the same migration.
 - Negative: Postgres doesn't inline a SQL function whose body has a subquery, so the test runs once per
   record, as an index lookup on `(membership_id, unit_id, started_at)`. That's fine at pilot scale; revisit
   if a resident's list query gets slow.
