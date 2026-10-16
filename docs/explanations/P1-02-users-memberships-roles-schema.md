@@ -19,9 +19,9 @@ mutations of the final `BuildingMembership.roles`/`.user` (§6). Every mutation 
 called "ran" below is quoted from the PR.
 
 **The first version's findings are closed.** It reported four gaps in the PR text; the bookkeeping commit
-`7a80889` closed all of them: the email follow-ups are now in the P2-01 ticket ("Carried from P1-02"), the
+`7a80889` and the PR description closed them: the email follow-ups are now in the P2-01 ticket ("Carried from P1-02"), the
 inbox has three P1-02 decision rows, the ticket's Scope no longer claims `EmailStr` lower-cases the address,
-and the PR header says 309 non-test lines (which I confirmed: 23 + 70 + 2 + 32 + 182).
+and the PR description's header now says 309 non-test lines (which I confirmed: 23 + 70 + 2 + 32 + 182).
 
 ## 1. What was built and why
 
@@ -100,8 +100,9 @@ SQLAlchemy that turns the objects you added, changed or deleted in a session int
     the composite FK already implies the building exists (the membership's own FK guarantees it), so the
     plain FK adds no protection today; it keeps the rule uniform for fitness checks and readers.
   - *The naming convention's name:* `fk_membership_roles_building_id_membership_id_building_memberships` is
-    66 characters; Postgres truncates identifiers to 63, so the name in the database would not match the
-    model and tests matching the constraint name would be fragile. Hand-named. Recorded (**autonomous**).
+    66 characters, over Postgres's 63-character identifier limit. Hand-named. Recorded (**autonomous**).
+    Inferred: Postgres would truncate it, so the name in the database would not match the model's and
+    tests matching the constraint name would be fragile.
 - **Tradeoffs and accepted limitations:** one extra unique index on `building_memberships`, which ADR-0005
   calls negligible. Writes through the model must give `building_id`; the `roles` relationship fills it in
   when a role is appended to a loaded membership
@@ -236,11 +237,11 @@ SQLAlchemy that turns the objects you added, changed or deleted in a session int
 | Decision | Alternative rejected | Why | Basis | Source |
 |---|---|---|---|---|
 | Roles on the membership, never on `users` | Role column on `users` | Roles are per building (§9 Q1); `test_users_table_has_no_role_or_building_column` pins it | ADR-0004, ticket | recorded |
-| `password_hash` nullable | NOT NULL, or a placeholder hash | No login until set through invitation or reset (§9 Q4) | ticket | recorded |
-| Status and role as `VARCHAR` + one named CHECK (`database_enum`, `native_enum=False`) | Postgres `ENUM` types | Same as P1-01: adding a value is a CHECK swap, not `ALTER TYPE`. Autogenerate rendered each CHECK twice; one was removed by hand | existing pattern (`backend/app/models/types.py::database_enum`) | recorded (PR "Migration") |
+| `password_hash` nullable | NOT NULL | No login until set through invitation or reset (§9 Q4) | ticket | recorded |
+| Status and role as `VARCHAR` + one named CHECK (`database_enum`, `native_enum=False`) | Postgres `ENUM` types | Same as P1-01. Inferred: adding a value is a CHECK swap, not `ALTER TYPE` (no record states why). Autogenerate rendered each CHECK twice; one was removed by hand | existing pattern (`backend/app/models/types.py::database_enum`) | duplicated-CHECK edit: recorded (PR "Migration"); the `ALTER TYPE` reason: inferred |
 | CHECK names `ck_building_memberships_status`, `ck_membership_roles_role` | `membership_status` | Shorter; matches `ck_building_features_feature` | existing pattern | recorded |
 | Index named `uq_users_lower_email` by hand | Convention name | `backend/app/models/base.py::NAMING_CONVENTION` has no column to name an expression index after; `uq_` because it enforces uniqueness | **autonomous** | recorded |
-| `TimestampMixin` on all three; uuid7 PK on users and memberships; PK `(membership_id, role)` on roles | Surrogate id on roles | The PK itself enforces "one row per role"; matches `building_features` | existing pattern | recorded |
+| `TimestampMixin` on all three; uuid7 PK on users and memberships; PK `(membership_id, role)` on roles | No timestamps on roles | Matches `building_features` (P1-01). Inferred: the composite PK itself enforces "one row per role" | existing pattern | recorded |
 | Index on `building_memberships.user_id` only | Also on `building_id` | `building_id` already leads both unique constraints | ticket | recorded (ticket); the "already leads" reason is inferred |
 | `STAFF_ROLES` is a `frozenset` | A mutable `set` (the ticket's word) | A module constant used by authorization should not change at run time | **autonomous** | recorded |
 | Column `status_changed_by_user_id` | ARCHITECTURE §5's `status_changed_by` | The ticket names it; `_user_id` says what it points at | ticket | recorded |
@@ -292,6 +293,7 @@ column in a child FK forces `delete-orphan`; what `ON UPDATE NO ACTION` buys; th
 
    ```sql
    INSERT INTO users (email, password_hash, full_name, phone, locale, is_active, email_verified_at, id) VALUES (...)
+       RETURNING users.created_at, users.updated_at
    -- ('alice@example.com', None, 'Alice', None, 'en', True, None, UUID('01a141ea-...'))
    INSERT INTO building_memberships (building_id, user_id, status, status_changed_by_user_id, id) VALUES (...)
        RETURNING building_memberships.status_changed_at, building_memberships.created_at, building_memberships.updated_at
