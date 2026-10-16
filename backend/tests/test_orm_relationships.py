@@ -37,7 +37,7 @@ def _pk_child_relationships(reg: registry) -> list[RelationshipProperty[Any]]:
             if rel.direction is not RelationshipDirection.ONETOMANY:
                 continue
             child_fk_columns = {remote for _local, remote in rel.local_remote_pairs}
-            if child_fk_columns & set(rel.mapper.local_table.primary_key.columns):
+            if child_fk_columns & set(rel.mapper.primary_key):
                 found.append(rel)
     return found
 

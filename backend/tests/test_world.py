@@ -324,16 +324,17 @@ async def test_factories_fill_sensible_defaults(db: AsyncSession):
 # --- 4: no data leaks between tests ---------------------------------------------------------------
 
 
-async def test_without_the_world_every_table_is_empty(db: AsyncSession):
-    assert set((await _row_counts(db)).values()) == {0}
-
-
 @pytest.mark.parametrize("run", [1, 2])
 async def test_two_worlds_in_a_row_have_the_same_row_counts(
     db: AsyncSession, world: World, run: int
 ):
     counts = await _row_counts(db)
     assert counts == EXPECTED_ROW_COUNTS, run
+
+
+async def test_after_two_worlds_a_test_without_one_sees_every_table_empty(db: AsyncSession):
+    # Runs after the two above (file order): their worlds were rolled back.
+    assert set((await _row_counts(db)).values()) == {0}
 
 
 async def test_building_the_world_is_fast(db: AsyncSession):
