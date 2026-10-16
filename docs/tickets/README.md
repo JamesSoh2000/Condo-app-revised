@@ -45,7 +45,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P1-02](./P1-02-users-memberships-roles-schema.md) | Users, memberships and roles schema | A | 1 | P1-01 | done | — |
 | [P1-03](./P1-03-unit-occupancies-schema.md) | Unit occupancies schema | A | 1 | P1-02 | done | — |
 | [P1-04](./P1-04-api-conventions.md) | API conventions: errors, pagination, schemas | B | 2 | P0-02 | done | — |
-| [P1-05](./P1-05-test-world-and-isolation-helpers.md) | Test world fixtures and tenant-isolation helpers | A | 1 | P1-03, P0-05 | in progress | — |
+| [P1-05](./P1-05-test-world-and-isolation-helpers.md) | Test world fixtures and tenant-isolation helpers | A | 1 | P1-03, P0-05 | done | — |
 | [P1-06](./P1-06-seed-and-cli.md) | Seed data and operator CLI skeleton | A | 3 | P1-03 | todo | — |
 | [P1-07](./P1-07-openapi-types-and-api-client.md) | OpenAPI → TypeScript types and API client | B | 2 | P1-04, P0-03a, P0-03b | todo | — |
 | [P1-08](./P1-08-production-like-local-stack.md) | Production-like local stack (local walking skeleton) | B | 2 | P0-04a, P0-02, P0-03a, P0-03b | todo | — |

@@ -144,6 +144,12 @@ From the P1-04 reviews (PR #49; `docs/explanations/P1-04-api-conventions.md`):
 - The CSRF check compares `Origin` exactly against `settings.trusted_origins`, which are already validated
   as lowercase `scheme://host[:port]` (`app/core/config.py::_is_origin`).
 
+## Carried from P1-05 (do while framing)
+
+- The test world's users (`tests/world.py`) all have `password_hash` NULL. `as_user` should create the
+  session directly (or set a password), and login must treat a NULL hash as "cannot log in" (also a P1-02
+  residual risk). Wire `as_user` into the TODO in `backend/tests/README.md` ("The 10 cases with the world").
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
