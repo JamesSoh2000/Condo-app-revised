@@ -77,6 +77,7 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | 2026-10-16 | P1-08 | Claimed criterion 1 ("clean checkout") from a worktree that already had `node_modules`; `make prodlike` failed in a fresh clone (`vite: not found`), and CI hid it by running `npm ci` in its own step | review round 1 (Claude, Sonnet 5.5), Medium | verified in a warm environment; CI did a setup step the local path didn't | `make prodlike` runs `npm ci`; CI's separate step removed; fresh-clone run in the PR |
 | 2026-10-16 | P1-08 | Fixed Caddy's stale `dist/assets` mount only inside `make prodlike`; any later `npm run build` (e.g. `make check`) still broke a running stack silently | review round 1 (Claude, Sonnet 5.5), Medium | fixed the path that was observed, not the other ways to reach the same state | hint on `prodlike-smoke` failure |
 | 2026-10-16 | P1-08 | Error responses (`handle_errors` 404, 502) dropped the security headers; only success responses were checked | review round 1 (Claude, Sonnet 5.5), Low | headers checked on the happy path only | snippet imported in `handle_errors`; smoke checks headers on the 404 |
+| 2026-10-16 | P1-08 | Wrote "11 wiring checks" in the PR, the explanation's Reality check and the handoff; the script has 10. The one count attempted failed (`API_IMAGE_TAG` unset → 0 lines) and the number was written anyway | P1 recap review round 1 (Claude, Sonnet 5.5), Medium | a count stated without a successful run (the "claim before evidence" lesson) | corrected in `docs/recaps/P1.md` §0 (the merged explanation is a snapshot) |
 
 ## Promoted to rules / tests
 
@@ -87,6 +88,7 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | A gate or health signal that passes vacuously (P0-03a, P0-03b, P0-04a, P0-05) | `CLAUDE.md` lesson "Prove a gate … can fail before trusting it" (P0 recap) | 2026-10-15 |
 | Recording a future step as done (P1-04, P1-05, P1-07) | `CLAUDE.md` lesson "Write in the PR only what is already on the branch" (P1-07) | 2026-10-16 |
 | Mutating uncommitted files (P1-03, P1-05) | `CLAUDE.md` lesson "Commit before mutation probes" (P1-07) | 2026-10-16 |
+| Fix not tested on adjacent cases, recurring (P1-07 round 2, P1-08 round 1) | the same `CLAUDE.md` lesson, widened to other options of the changed path and other paths into the same state (P1 recap) | 2026-10-16 |
 
 Both P1-05 pending promotions were done in P1-07 (above); P1-06 hadn't picked them up.
 
