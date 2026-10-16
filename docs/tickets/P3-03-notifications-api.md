@@ -84,6 +84,12 @@ implementations.
 2. Why is the email dedupe key `kind:entity:user`, and what duplicate does it prevent?
 3. Why does the summary endpoint exist separately from the list?
 
+## Carried from P1-03 (decide while framing)
+
+From the P1-03 reviews (PR #45). `current_occupants(db, building_id, unit_id)` returns memberships with a
+current occupancy **of any membership status**. Keep only active memberships before notifying people or
+accepting one as a package recipient or pickup person, and test it with a suspended occupant.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

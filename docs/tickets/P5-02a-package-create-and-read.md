@@ -92,6 +92,12 @@ idempotency. It is the template for every later slice's create and read paths.
 2. Explain the idempotency logic, and why "same key, different body" is a 409.
 3. Why notify current occupants rather than "everyone ever linked to unit 101"?
 
+## Carried from P1-03 (decide while framing)
+
+From the P1-03 reviews (PR #45). `current_occupants(db, building_id, unit_id)` returns memberships with a
+current occupancy **of any membership status**. Keep only active memberships before notifying people or
+accepting one as a package recipient or pickup person, and test it with a suspended occupant.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

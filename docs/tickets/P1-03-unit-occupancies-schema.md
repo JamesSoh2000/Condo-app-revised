@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P1-02 |
 | Replaces old | M2-T05 (minimum), M2-T12, M2-T06 (pattern part) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 

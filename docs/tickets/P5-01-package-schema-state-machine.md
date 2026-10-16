@@ -95,6 +95,18 @@ Model `Package`, enum `PackageStatus`, `visible_packages(ctx)`, `assert_transiti
 2. Why put the transition rules both in Python (`ALLOWED`) and in check constraints?
 3. Why is visibility a reusable `Select` rather than a filter applied in each endpoint?
 
+## Carried from P1-03 (decide while framing)
+
+From the P1-03 reviews (PR #45, ADR-0016). `occupancy_window_clause` calls the database function
+`public.occupancy_window(membership, unit, at)`:
+- **`received_at` must be `timestamptz`** (`DateTime(timezone=True)`). A naive `timestamp` record column is
+  cast with the session's time zone, which moves the window (P1-03 review round 5, L2: with
+  `America/Toronto`, a new occupant saw the former occupant's record). Add a test that pins the column type.
+- **`visible_packages` selects from `packages` itself**, with the building filter, and passes
+  `ctx.membership_id` (never a client value) as the membership. Pin both with a test.
+- Test `visible_packages` against the argument shapes the P1-03 reviews used (outer aliases, an outer join
+  to `unit_occupancies`), as `tests/test_occupancy_helpers.py` does for the clause.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
