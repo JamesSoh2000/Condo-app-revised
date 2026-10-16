@@ -22,6 +22,7 @@ from sqlalchemy.orm import (
     relationship,
 )
 
+import app.models.registry  # noqa: F401  (every table in Base.metadata)
 from app.memberships.enums import Role
 from app.memberships.models import BuildingMembership, MembershipRole
 from app.models.base import Base

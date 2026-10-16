@@ -53,7 +53,8 @@ async def make_building(
 
 
 async def make_unit(db: AsyncSession, building: Building, **overrides: Any) -> Unit:
-    values: dict[str, Any] = {"label": str(100 + next(_seq))}
+    # A letter prefix: a bare number could equal a label tests set by hand ("101").
+    values: dict[str, Any] = {"label": f"U{next(_seq)}"}
     return await _add(db, Unit(building_id=building.id, **(values | overrides)))
 
 

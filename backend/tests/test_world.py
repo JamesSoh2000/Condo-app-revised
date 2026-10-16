@@ -4,6 +4,7 @@ Criterion numbers refer to the ticket's acceptance criteria and Frame notes.
 """
 
 import gc
+import itertools
 import time
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -14,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+import app.models.registry  # noqa: F401  (every table in Base.metadata)
 from app.buildings.enums import Feature
 from app.buildings.models import BuildingFeature
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
@@ -22,6 +24,7 @@ from app.memberships.occupancy import OccupancyTimeError, occupancy_window_claus
 from app.models.base import Base
 from app.units.models import Unit
 from app.users.models import User
+from tests import factories
 from tests.factories import make_building, make_membership, make_occupancy, make_unit, make_user
 from tests.helpers.db import assert_integrity_error
 from tests.world import World, build_world
@@ -345,6 +348,17 @@ async def test_make_occupancy_with_ended_at_records_a_past_occupancy(db: AsyncSe
         started,
         World.T1,
     )
+
+
+async def test_default_unit_labels_never_collide_with_the_worlds_units(
+    db: AsyncSession, world: World, monkeypatch: pytest.MonkeyPatch
+):
+    # Review round 1 (L1): the default was str(100 + n), so n = 1, 2 or 101 gave "101", "102",
+    # "201" and a uq_units_building_id_tower_label error depending on test order.
+    for n in (1, 2, 101):
+        monkeypatch.setattr(factories, "_seq", itertools.count(n))
+        unit = await make_unit(db, world.a)
+        assert unit.label not in {"101", "102", "201"}
 
 
 async def test_factories_fill_sensible_defaults(db: AsyncSession):
