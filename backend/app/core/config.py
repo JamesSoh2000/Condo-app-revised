@@ -7,9 +7,9 @@ from urllib.parse import urlsplit
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-AppEnv = Literal["dev", "test", "prod"]
+AppEnv = Literal["dev", "test", "staging", "prod"]
 
-# Keeps the app bootable locally; validate_production_settings rejects it in production.
+# Keeps the app bootable locally; validate_production_settings rejects it in staging and production.
 LOCAL_DEV_SECRET_KEY = "change-me-in-local-dev-only"  # noqa: S105
 # What a browser sends in `Origin`: lowercase scheme://host[:port], no path or trailing slash; host
 # labels are letters, digits and inner dashes, with no trailing dot.
@@ -80,21 +80,25 @@ class Settings(BaseSettings):
         """
         Keep local development easy, but prevent obvious unsafe production config.
         """
-        if self.is_production:
+        # Staging is deployed and reachable, so the checks that keep dev values out apply there too;
+        # the rest (https, real AWS endpoints and sender) only in production.
+        if self.app_env in {"staging", "prod"}:
+            where = "in production" if self.is_production else "in staging"
             if self.secret_key == LOCAL_DEV_SECRET_KEY:
-                raise ValueError("SECRET_KEY must be changed in production")
+                raise ValueError(f"SECRET_KEY must be changed {where}")
 
             if not self.trusted_origins or "*" in self.trusted_origins:
-                raise ValueError("TRUSTED_ORIGINS must be explicit in production; do not use '*'")
+                raise ValueError(f"TRUSTED_ORIGINS must be explicit {where}; do not use '*'")
 
             if any(_is_loopback(origin) for origin in self.trusted_origins):
-                raise ValueError("TRUSTED_ORIGINS must not use localhost origins in production")
-
-            if any(not origin.startswith("https://") for origin in self.trusted_origins):
-                raise ValueError("TRUSTED_ORIGINS must all be https:// in production")
+                raise ValueError(f"TRUSTED_ORIGINS must not use localhost origins {where}")
 
             if self.s3_bucket_name in {"", "condo-app-dev-files"}:
-                raise ValueError("S3_BUCKET_NAME must be set to a production bucket in production")
+                raise ValueError(f"S3_BUCKET_NAME must be set to a real bucket {where}")
+
+        if self.is_production:
+            if any(not origin.startswith("https://") for origin in self.trusted_origins):
+                raise ValueError("TRUSTED_ORIGINS must all be https:// in production")
 
             if self.s3_endpoint_url is not None or self.s3_public_endpoint_url is not None:
                 raise ValueError(

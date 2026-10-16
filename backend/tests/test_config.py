@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.core.config import LOCAL_DEV_SECRET_KEY, Settings
 
 
 def test_dev_settings_parse_json_trusted_origins(monkeypatch):
@@ -175,3 +175,58 @@ def test_prod_accepts_hosts_that_only_look_like_loopback(origin):
 
 def test_old_allowed_origins_setting_is_gone():
     assert "allowed_origins" not in Settings.model_fields
+
+
+# P1-06: staging gets the checks that keep dev values out; prod-only checks stay prod-only.
+STAGING = {
+    "app_env": "staging",
+    "secret_key": "not-the-default-secret",  # (test fixture, not a real secret)
+    "trusted_origins": ["https://staging.condo.example.org"],
+    "s3_bucket_name": "condo-app-staging-files",
+}
+
+
+def test_staging_settings_are_accepted():
+    settings = Settings(_env_file=None, **STAGING)
+
+    assert settings.app_env == "staging"
+    assert settings.is_production is False
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"secret_key": LOCAL_DEV_SECRET_KEY}, "SECRET_KEY must be changed in staging"),
+        ({"trusted_origins": []}, "explicit in staging"),
+        ({"trusted_origins": ["*"]}, "explicit in staging"),
+        ({"trusted_origins": ["http://localhost:5173"]}, "localhost origins in staging"),
+        ({"trusted_origins": ["https://127.0.0.1"]}, "localhost origins in staging"),
+        ({"s3_bucket_name": "condo-app-dev-files"}, "S3_BUCKET_NAME"),
+        ({"s3_bucket_name": ""}, "S3_BUCKET_NAME"),
+    ],
+)
+def test_staging_rejects_dev_values(override, message):
+    with pytest.raises(ValidationError, match=message):
+        Settings(_env_file=None, **(STAGING | override))
+
+
+def test_staging_allows_what_only_prod_forbids():
+    # http origins, the S3 emulator endpoints and the example sender stay prod-only checks.
+    settings = Settings(
+        _env_file=None,
+        **(
+            STAGING
+            | {
+                "trusted_origins": ["http://staging.condo.example.org"],
+                "s3_endpoint_url": "http://s3:4566",
+                "ses_from_email": "noreply@example.com",
+            }
+        ),
+    )
+
+    assert settings.s3_endpoint_url == "http://s3:4566"
+
+
+def test_prod_still_rejects_the_dev_secret_key():
+    with pytest.raises(ValidationError, match="SECRET_KEY must be changed in production"):
+        Settings(_env_file=None, **(PROD | {"secret_key": LOCAL_DEV_SECRET_KEY}))
