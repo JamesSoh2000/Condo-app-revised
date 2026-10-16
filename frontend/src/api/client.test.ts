@@ -148,6 +148,53 @@ describe('problem+json becomes ApiError (criterion 3)', () => {
 });
 
 describe('error bodies that are not problem+json (criterion 8)', () => {
+  it('takes requestId from X-Request-ID when a problem body has none', async () => {
+    fetchMock.mockResolvedValue(
+      problem(409, { title: 'Conflict', status: 409, code: 'conflict' }, { 'X-Request-ID': 'req-header' }),
+    );
+
+    const error = await api.get('/api/version').catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ status: 409, code: 'conflict', requestId: 'req-header' });
+  });
+
+  it('turns a 2xx that is not JSON (an SPA fallback page) into an ApiError', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('<!doctype html><html></html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html', 'X-Request-ID': 'req-html' },
+      }),
+    );
+
+    const error = await api.get('/api/version').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 200, code: 'http_error', requestId: 'req-html' });
+  });
+
+  it('turns a 2xx with malformed JSON into an ApiError', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('{"git_sha": ', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    const error = await api.get('/api/version').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 200, code: 'http_error' });
+  });
+
+  it('throws the same ApiError from the raw client for a non-JSON 2xx', async () => {
+    fetchMock.mockResolvedValue(new Response('<html></html>', { status: 200, headers: { 'Content-Type': 'text/html' } }));
+
+    await expect(client.GET('/api/version')).rejects.toMatchObject({ status: 200, code: 'http_error' });
+  });
+
+  it('still accepts an empty 204', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(api.get('/api/version')).resolves.toBeUndefined();
+  });
+
   it('maps an HTML 502 to http_error with the X-Request-ID header', async () => {
     fetchMock.mockResolvedValue(
       new Response('<html>Bad Gateway</html>', {

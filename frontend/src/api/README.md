@@ -25,7 +25,8 @@ const version = await api.get('/api/version'); // typed from schema.d.ts
 - Paths are the full OpenAPI paths, `/api` included; the base URL is the page's own origin (ADR-0003).
 - Every request carries `X-Requested-With: fetch`.
 - Failures throw `ApiError`. Branch on `error.code` (stable), never on `title` or `detail`. A response that
-  isn't problem+json (a proxy's HTML 502) still throws `ApiError`, with `code: "http_error"`.
+  isn't problem+json (a proxy's HTML 502), or a 2xx whose body isn't JSON (an SPA fallback page), still
+  throws `ApiError`, with `code: "http_error"`. The raw `client` throws in that 2xx case too.
 - A 401 also calls every `onUnauthenticated()` listener (P2-06 redirects to login).
 
 ## React Query conventions

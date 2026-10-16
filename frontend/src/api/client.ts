@@ -5,7 +5,7 @@
  */
 import createClient, { type FetchResponse, type MaybeOptionalInit, type Middleware } from 'openapi-fetch';
 
-import { toApiError } from './errors';
+import { ApiError, toApiError } from './errors';
 import type { paths } from './schema';
 
 const UNAUTHENTICATED = 'auth:unauthenticated';
@@ -23,11 +23,32 @@ const middleware: Middleware = {
     request.headers.set('X-Requested-With', 'fetch');
     return request;
   },
-  onResponse({ response }) {
+  async onResponse({ response }) {
     if (response.status === 401) events.dispatchEvent(new Event(UNAUTHENTICATED));
+    if (response.ok) await assertJsonBody(response);
     return response;
   },
 };
+
+/**
+ * A 2xx must carry JSON (or nothing). An HTML page (an SPA fallback, a login page after a redirect) or a
+ * truncated body would otherwise reach callers as a bare SyntaxError; it becomes an `ApiError` instead,
+ * thrown by the raw client and the `api` wrappers alike.
+ */
+async function assertJsonBody(response: Response): Promise<void> {
+  const text = await response.clone().text();
+  if (!text) return;
+  try {
+    JSON.parse(text);
+  } catch {
+    throw new ApiError({
+      status: response.status,
+      code: 'http_error',
+      title: 'Response is not JSON',
+      requestId: response.headers.get('X-Request-ID'),
+    });
+  }
+}
 
 type Result<T> = { data?: T; error?: unknown; response: Response };
 
