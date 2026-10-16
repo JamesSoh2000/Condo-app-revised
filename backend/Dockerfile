@@ -27,8 +27,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY --chown=app:app app ./app
 # Migrations ship in the image: deploy runs `alembic upgrade head` from it before starting the API (P1-08).
-COPY --chown=app:app alembic.ini ./
-COPY --chown=app:app migrations ./migrations
 
 # Build metadata, reported by /api/version. Declared last so a new commit doesn't invalidate the cached
 # dependency layers above.
