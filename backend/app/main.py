@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.csrf import CSRFMiddleware
 from app.core.errors import install_error_handlers
 from app.logging_config import configure_logging
+from app.middleware.cache_control import NoStoreMiddleware
 from app.middleware.request_logging import RequestLoggingMiddleware
 
 # Every model, so relationships can resolve their targets in the server process (the tests import
@@ -51,17 +52,22 @@ def create_app() -> FastAPI:
 
     # No CORSMiddleware: the SPA and /api share an origin everywhere (ADR-0003), so browsers never
     # make a cross-origin API call. CSRF protection checks settings.trusted_origins.
-    # The last added runs first: request logging wraps the CSRF check, so a rejection is logged.
+    # The last added runs first: request logging wraps the CSRF check, so a rejection is logged;
+    # no-store wraps both, so the CSRF 403 gets it too.
     app.add_middleware(CSRFMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(NoStoreMiddleware)
     install_error_handlers(app)
 
     from app.auth import router as auth
+    from app.buildings import router as buildings
     from app.routers import health, version
 
     app.include_router(auth.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(version.router, prefix="/api")
+    # Building routers carry their full prefix (app/tenancy/router.py).
+    app.include_router(buildings.router)
     return app
 
 

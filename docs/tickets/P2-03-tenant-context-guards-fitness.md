@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P2-02, P1-05 |
 | Replaces old | M3-T04, M3-T09 (read API), M3-T10 (backend part), M2-T07 (HTTP helpers) |
-| Status | todo |
+| Status | done |
 
 ## Goal
 
@@ -126,7 +126,88 @@ Test-infrastructure follow-ups from PR #50 (P1-05); take in scope or move each t
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+- Criteria added or sharpened (the numbered criteria above stay; these make them exact and add cases):
+  - **1.** `a_manager`: 200 with exactly `{id, name: "Maple Court", slug: "maple", timezone, locale,
+    my_roles: ["property_management"], features: ["maintenance", "notices", "packages"]}`. Both lists are
+    sorted by value, as `/api/auth/me` sorts roles (D4). Also 200 for `a_security`, `a_resident1` and
+    `a_council` (`["council", "resident"]`): the route has no role restriction (tenant row 1).
+  - **2.** 404 `building_not_found` for `b_resident1` → A, a random building id, `a_pending` → A and
+    `a_suspended` → A, **plus** (added) a `denied` and a `deactivated` membership in A, `no_membership` →
+    A, and `a_manager` → A after A is set `is_active = false`. "Identical body" means identical except
+    `request_id` (which differs per request by design); content type `application/problem+json` for all.
+  - **2b (added).** No session cookie → 401 `not_authenticated` on the building route (authentication is
+    checked before tenancy; tenant row 2). An authenticated caller with a building id that isn't a UUID
+    gets 422 `validation_error`, not a 500.
+  - **3.** Test route under `building_router()` with `require_roles(Role.PROPERTY_MANAGEMENT)`: `a_security`
+    → 403 `forbidden_role`; `a_manager` → 200; `b_manager` → 404 `building_not_found` (tenancy runs
+    before the role check, so another building's manager learns nothing). `require_roles()` with no roles
+    raises `ValueError` when the route is declared.
+  - **4.** `require_feature(Feature.MAINTENANCE)`: 403 `feature_disabled` when A's row has
+    `enabled = false` **and** (added) when A has no row for the feature at all; 200 when enabled.
+  - **5.** Same session cookie, two requests: `a_manager` gets 200 on the `require_roles(property_management)`
+    route, the role row is deleted in the DB, the second request gets 403 `forbidden_role`. Added: the
+    membership set to `suspended` between two requests → 404; the feature disabled between two requests →
+    403 `feature_disabled`. Nothing about the membership is cached in the session.
+  - **6.** `multi` with one session: `GET /api/buildings/{A}` has `my_roles ["resident"]`,
+    `GET /api/buildings/{B}` has `["security"]`; the A test route with `require_roles(security)` is 403 and
+    the B one is 200.
+  - **7.** Fitness tests in `tests/test_architecture.py`, each a function over an app (or a source tree)
+    that returns the violations, so the meta-tests can run it on a test app:
+    1. every route whose path starts with `/api/buildings/` starts with `/api/buildings/{building_id}`
+       and has `get_tenant_context` or `get_own_membership` in its dependency tree (recursive walk of
+       `route.dependant`); **added:** no route outside that prefix depends on either (there, `building_id`
+       would silently become a query parameter); **added:** every route under `/api` is an `APIRoute`
+       except FastAPI's own docs routes (a `Mount` or plain Starlette route has no `dependant` to walk);
+    2. every `/api/*` route has `get_current_user` or `get_current_session` in its tree unless its
+       `(method, path)` is in `AUTH_ALLOWLIST` (`app/auth/allowlist.py`); **added:** every allowlist entry
+       names a route that exists (D1);
+    3. parametrized over every route under the building prefix of the real app, as `b_resident1` with
+       building A and random UUIDs for the other path parameters: 404 `building_not_found` (body `{}` for
+       unsafe methods). **Added:** the same routes without a session → 401 `not_authenticated`;
+    4. `.commit(` appears only in `app/**/service.py`, `app/cli.py`, `app/seed.py`, `app/worker.py`,
+       `app/jobs/worker.py`.
+    - Meta-tests: an unguarded route under the building prefix makes 1 fail; an unauthenticated
+      non-allowlisted route makes 2 fail; a route outside the prefix using `get_tenant_context`, a `Mount`
+      under `/api`, a stale allowlist entry and a `.commit(` in a non-service file each make their check
+      fail.
+  - **8 (added).** `get_own_membership` (test route): returns the membership row for `pending`, `active`,
+    `suspended` and `denied`; 404 `building_not_found` (same body) for `deactivated`, non-members, an
+    inactive building (D3) and a random id; 401 without a session.
+  - **9 (added).** One query: a request to a route with the router guard **plus** `require_roles` and
+    `require_feature` runs exactly one SQL statement that reads `building_memberships` (FastAPI's
+    per-request dependency cache), and that statement also returns the roles and enabled features.
+  - **10 (added).** Logging: the `request_completed` log line of a building request carries `building_id`
+    and `user_id`, so does a log emitted inside the endpoint; the next, non-building request's line has
+    neither.
+  - **11 (added, carried from P2-02).** Every `/api` response (200, 401, 404 problem+json, health) has
+    `Cache-Control: no-store` unless the route set its own `Cache-Control` (D5).
+  - Tenant table (ENGINEERING_PRACTICES §7) for `GET /api/buildings/{id}`: row 1 → criterion 1; row 2 →
+    2b; row 3 → 2 (`b_resident1`) and 6 (`multi`); row 4 → n/a (any role may read its building) but the
+    guard itself is 3; row 6 → 2; rows 5, 7–10 → n/a (no record, no body, no state change).
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - **D1** (autonomous, stricter than the ticket): `AUTH_ALLOWLIST` lists only routes that exist today
+    (health, ready, version, login, logout). Password reset, invitations, join-code lookup and signup are
+    added by the tickets that build them (P4-02, P4-04, P4-05); a fitness check fails on an entry with no
+    route, so the list can't pre-approve a path nobody reviewed.
+  - **D2** (ticket + autonomous): fitness test 1 also rejects tenant guards outside the prefix and non-`APIRoute`
+    routes under `/api` (criterion 7), the two ways a route could escape the dependency walk.
+  - **D3** (autonomous): `get_own_membership` refuses an inactive building (404) as `get_tenant_context`
+    does, consistent with P2-02 D1 (`/me` leaves inactive buildings out).
+  - **D4** (convention): `my_roles` and `features` sorted by value, like `/me`'s roles.
+  - **D5** (carried from P2-02): `Cache-Control: no-store` set in one place, a small ASGI middleware for
+    every `/api` response that has no `Cache-Control` of its own. The 500 that Starlette's outermost error
+    middleware writes is outside it (follow-up note, not a gap in the success path).
+  - **D6** (ticket): the guard stores `building_id`/`user_id` on `request.state` (read by the request log
+    middleware, which runs in another task) and in context variables read by the JSON log formatter.
+  - **D7** (ARCHITECTURE §7 "one query"): roles and enabled features are aggregated by correlated
+    `ARRAY(SELECT …)` subqueries in the same statement as the membership/building check.
+  - **Carried from P1-05:** L5 (`assert_integrity_error` takes a `Coroutine`) and L6 (the scratch
+    database is recreated inside the `try`) are taken. The per-run name for `condo_test` and adding
+    `tests/` to mypy (123 errors today in 13 files) move to a new Tier 3 ticket **P2-07** "Test
+    infrastructure hardening", added to the index in this ticket's bookkeeping commit. Until then
+    concurrent suites (reviewers) pass distinct `TEST_DATABASE_URL`s.
+  - **Carried from P2-02:** `Cache-Control` taken (D5, criterion 11); `ruff --no-cache` in `make lint`
+    taken (tightens a gate).
+- Split: none. Estimate ~340 non-test lines (tenancy package ~160, buildings endpoint ~65, allowlist ~30,
+  middleware and logging ~45, Makefile and docs ~40), under the ~400 limit.

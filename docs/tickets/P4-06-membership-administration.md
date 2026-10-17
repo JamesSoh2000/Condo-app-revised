@@ -92,6 +92,12 @@ From the P1-03 reviews (PR #45, ADR-0016). The occupancy helpers in `app/members
   can get `OccupancyTimeError` (its `now()` is older than that writer's row). Decide retry or 409, and test
   it; nothing tests it yet (P1-03 explanation §7).
 
+## Carried from P2-03 (decide while framing)
+
+- An active membership with **no roles** still gets a `TenantContext` (`my_roles: []`); every
+  `require_roles` route refuses it, but "any member" routes admit it (P2-03 review round 1, L2). Decide
+  whether a membership may lose its last role (refuse with 409, or deactivate it), and test it.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

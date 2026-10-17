@@ -182,10 +182,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/buildings/{building_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get
+         * @description The building, the caller's roles in it and its enabled features; any active member.
+         */
+        get: operations["buildings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * BuildingOut
+         * @description A building as its member sees it: the caller's roles there and its enabled features.
+         */
+        BuildingOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Timezone */
+            timezone: string;
+            /** Locale */
+            locale: string;
+            /** My Roles */
+            my_roles: components["schemas"]["Role"][];
+            /** Features */
+            features: components["schemas"]["Feature"][];
+        };
+        /**
+         * Feature
+         * @description A module a building can switch on (`building_features.feature`).
+         * @enum {string}
+         */
+        Feature: "packages" | "notices" | "maintenance" | "amenities" | "moves" | "visitors" | "reports" | "financials";
         /** LoginIn */
         LoginIn: {
             /** Email */
@@ -634,6 +683,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionOut"];
+                };
+            };
+        };
+    };
+    buildings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildingOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

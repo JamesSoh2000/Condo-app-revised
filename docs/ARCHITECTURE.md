@@ -272,12 +272,23 @@ class TenantContext:
 - **Pending onboarding** uses separate, narrower dependencies: `get_current_user` plus
   `get_own_membership(building_id)`, which allows a pending status. Only the onboarding endpoints use them.
 
-**Fitness tests** (P2-03) run on every PR. They make the architecture self-enforcing:
-1. Every route whose path starts with `/api/buildings/{building_id}` has `get_tenant_context` (or the explicit
-   onboarding dependency) in its dependency tree.
-2. Every `/api/*` route requires an authenticated session, except an explicit allowlist: health, ready,
-   version, login, password-reset request/confirm, invitation lookup/accept, and join-code lookup.
-3. A generated test calls every building route as a member of building B and expects 404.
+**Fitness tests** (`backend/tests/test_architecture.py`, P2-03) run on every PR. They make the architecture
+self-enforcing:
+1. Every route whose path starts with `/api/buildings/` starts with `/api/buildings/{building_id}` and has
+   `get_tenant_context` (or the onboarding dependency `get_own_membership`) in its dependency tree. No route
+   outside that prefix depends on either, and every route of the app is a FastAPI `APIRoute` (except the
+   docs routes): a mount, even at `/`, would serve paths the walk can't see.
+2. Every `/api` route requires an authenticated session, except the `(method, path)` pairs in
+   `app/auth/allowlist.py`: today health, ready, version, login and logout. Each later open route
+   (password reset, invitation lookup/accept, join-code lookup) adds its entry with its ticket; an entry
+   with no route fails the test.
+3. A generated test calls every building route as a member of building B and expects 404, and without a
+   session and expects 401.
+4. `.commit(` appears only in `service.py` files and the process entry points (`cli.py`, `seed.py`, the
+   worker).
+
+Every `/api` response carries `Cache-Control: no-store` unless its route sets its own
+(`app/middleware/cache_control.py`), so no browser or proxy keeps a user's data after logout.
 
 ## 8. API conventions
 

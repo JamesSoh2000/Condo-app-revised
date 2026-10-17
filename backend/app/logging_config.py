@@ -12,6 +12,11 @@ request_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "request_id",
     default=None,
 )
+# Set by get_tenant_context (app/tenancy/deps.py) for the rest of a building request.
+building_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "building_id", default=None
+)
+user_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar("user_id", default=None)
 
 
 class JsonFormatter(logging.Formatter):
@@ -45,6 +50,12 @@ class JsonFormatter(logging.Formatter):
             value = getattr(record, field, None)
             if value is not None:
                 log[field] = value
+
+        # A record's own value first: the request log runs outside the request's context.
+        for field, context in (("building_id", building_id_ctx), ("user_id", user_id_ctx)):
+            value = getattr(record, field, None) or context.get()
+            if value is not None:
+                log[field] = str(value)
 
         if record.exc_info:
             log["exception"] = self.formatException(record.exc_info)

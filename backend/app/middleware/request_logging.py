@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.logging_config import request_id_ctx
+from app.logging_config import building_id_ctx, request_id_ctx, user_id_ctx
 
 logger = logging.getLogger("app.request")
 
@@ -22,6 +22,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             request_id = str(uuid.uuid4())
         request.state.request_id = request_id
         token = request_id_ctx.set(request_id)
+        # Cleared for every request, so a value set by an earlier one (or outside any) can't leak
+        # into this request's logs; get_tenant_context sets them on building routes.
+        tenant_tokens = building_id_ctx.set(None), user_id_ctx.set(None)
         start = time.perf_counter()
 
         method = request.method
@@ -45,6 +48,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     "latency_ms": latency_ms,
                     "client_ip": client_ip,
                     "user_agent": user_agent,
+                    # Set by get_tenant_context on building routes (app/tenancy/deps.py).
+                    "building_id": getattr(request.state, "building_id", None),
+                    "user_id": getattr(request.state, "user_id", None),
                 },
             )
 
@@ -63,6 +69,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     "latency_ms": latency_ms,
                     "client_ip": client_ip,
                     "user_agent": user_agent,
+                    "building_id": getattr(request.state, "building_id", None),
+                    "user_id": getattr(request.state, "user_id", None),
                     "error_type": exc.__class__.__name__,
                     "error_message": str(exc),
                 },
@@ -71,6 +79,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         finally:
             request_id_ctx.reset(token)
+            building_id_ctx.reset(tenant_tokens[0])
+            user_id_ctx.reset(tenant_tokens[1])
 
 
 def _get_client_ip(request: Request) -> str | None:

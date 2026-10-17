@@ -117,6 +117,17 @@ matches the existing Base44 UI ([01 §Onboarding](../PRODUCT_SCOPE.md#onboarding
   with `func.lower(User.email) == func.lower(:input)`; send mail only to the stored address. `EmailStr` adds
   `email-validator` as a dependency.
 
+## Carried from P2-03 (do while framing)
+
+- Add this ticket's routes that work without a session to `backend/app/auth/allowlist.py::AUTH_ALLOWLIST`
+  as `(method, path)` pairs; the fitness test `test_every_api_route_requires_a_session_unless_allowlisted`
+  fails otherwise, and the allowlist holds only routes that exist (PR #59 D1).
+- Routes: join-code lookup and signup, if they work without a session.
+- Onboarding routes use `get_own_membership` on a plain router with the building prefix, not
+  `building_router()`. Nothing yet confines `get_own_membership` to onboarding: add an explicit list of
+  onboarding routes to fitness test 1 (`backend/tests/test_architecture.py::unguarded_building_routes`) so an
+  operational route can't use it (P2-03 review round 1, L3).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

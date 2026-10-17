@@ -9,7 +9,7 @@ savepoint (docs/ARCHITECTURE.md §14).
 
 import asyncio
 import os
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -28,6 +28,8 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.dependencies import get_db_session
 from app.main import app, create_app
+from app.users.models import User
+from tests.helpers.auth import login_as
 from tests.world import World, build_world
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -123,8 +125,9 @@ def scratch_database_url() -> Iterator[str]:
     url = make_url(settings.test_database_url).set(database=f"condo_migrations_{os.getpid()}_test")
     scratch = url.render_as_string(hide_password=False)
     assert_safe_test_database_url(scratch, settings.database_url)
-    asyncio.run(_recreate_test_schema(scratch))
     try:
+        # Inside the try: a setup that fails after creating the database still drops it.
+        asyncio.run(_recreate_test_schema(scratch))
         yield scratch
     finally:
         asyncio.run(_drop_database(scratch))
@@ -226,6 +229,33 @@ def _request_sessions_on(
     return override_get_db_session
 
 
+type UserClientFactory = Callable[[User], Awaitable[AsyncClient]]
+
+
+@pytest.fixture
+async def as_user(db: AsyncSession, client: AsyncClient) -> AsyncIterator[UserClientFactory]:
+    """`await as_user(user)`: a client of its own for `user`, logged in (tests/helpers/tenancy.py).
+
+    Each call opens another client on the same app and test connection as `client`, so a test can
+    keep several users side by side. The usual harness rules apply: one request at a time.
+    """
+    clients: list[AsyncClient] = []
+
+    async def _as_user(user: User) -> AsyncClient:
+        user_client = AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test", headers=CSRF_HEADERS
+        )
+        clients.append(user_client)
+        await login_as(db, user_client, user)
+        return user_client
+
+    try:
+        yield _as_user
+    finally:
+        for user_client in clients:
+            await user_client.aclose()
+
+
 type AppClientFactory = Callable[..., AbstractAsyncContextManager[AsyncClient]]
 
 
@@ -235,16 +265,17 @@ def app_client(db_connection: AsyncConnection) -> AppClientFactory:
 
     `async with app_client(router) as c:` gives the same middleware, exception handlers and OpenAPI
     setup as the real app, with requests on the test's connection like `client`. Pass
-    `raise_app_exceptions=False` to receive the 500 response instead of the re-raised exception.
+    `raise_app_exceptions=False` to receive the 500 response instead of the re-raised exception,
+    and `prefix=""` for routers that carry their full path (`building_router()`).
     """
 
     @asynccontextmanager
     async def _client(
-        *routers: APIRouter, raise_app_exceptions: bool = True
+        *routers: APIRouter, raise_app_exceptions: bool = True, prefix: str = "/api"
     ) -> AsyncIterator[AsyncClient]:
         test_app = create_app()
         for router in routers:
-            test_app.include_router(router, prefix="/api")
+            test_app.include_router(router, prefix=prefix)
         test_app.dependency_overrides[get_db_session] = _request_sessions_on(db_connection)
         transport = ASGITransport(app=test_app, raise_app_exceptions=raise_app_exceptions)
         async with AsyncClient(

@@ -13,7 +13,7 @@ through `docs/HUMAN_INBOX.md` and the explanations in `docs/explanations/`.
 - `backend/app/<feature>/` — models.py, schemas.py, service.py, router.py (package by feature)
 - `backend/app/core/` — config, database, dependencies, errors (problem+json), pagination, schemas
   (`APIModel`, `InputModel`); security and csrf added in P2-01
-- `backend/app/tenancy/` — TenantContext, get_tenant_context, require_roles, require_feature (added in P2-03)
+- `backend/app/tenancy/` — TenantContext, get_tenant_context, require_roles, require_feature, building_router
 - `backend/migrations/` — Alembic. `backend/tests/` — pytest against real Postgres
 - `frontend/src/features/<domain>/` — migrated TypeScript code (added in P0-03). `frontend/src/api/` — typed
   client (`client.ts`, `errors.ts`, generated `schema.d.ts`; see its README) next to the legacy Base44 `*.js`
@@ -83,8 +83,8 @@ if it didn't.
 - Names: tables plural snake_case; enum values lowercase; audit actions `<domain>.<past_verb>`; job kinds
   `<domain>.<verb>`; operation IDs `<domain>_<verb>`.
 - Tests: behaviour names (`test_resident_cannot_see_other_residents_package`). Use the world fixtures in
-  `tests/conftest.py` (see `tests/README.md`) and the tenant helpers in `tests/helpers/tenancy.py` (added in
-  P2-03). Apply the 10-case table in docs/ENGINEERING_PRACTICES.md §7 to every tenant endpoint.
+  `tests/conftest.py` (see `tests/README.md`) and the tenant helpers in `tests/helpers/tenancy.py`. Apply
+  the 10-case table in docs/ENGINEERING_PRACTICES.md §7 to every tenant endpoint.
 
 ## How to work a ticket (docs/AI_AGENT_PLAYBOOK.md; `/build-ticket <ID>` runs it all)
 

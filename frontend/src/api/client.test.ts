@@ -90,7 +90,12 @@ describe('generated types (criterion 1)', () => {
     expectTypeOf(api.get)
       .parameter(0)
       .toEqualTypeOf<
-        '/api/auth/me' | '/api/auth/sessions' | '/api/health' | '/api/ready' | '/api/version'
+        | '/api/auth/me'
+        | '/api/auth/sessions'
+        | '/api/buildings/{building_id}'
+        | '/api/health'
+        | '/api/ready'
+        | '/api/version'
       >();
     // @ts-expect-error: not a backend path
     void (() => api.get('/api/versions'));
