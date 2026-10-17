@@ -87,7 +87,11 @@ describe('typed success', () => {
 describe('generated types (criterion 1)', () => {
   it('rejects a path the backend does not have', () => {
     // Compile-time only (tsc checks test files): a renamed or removed backend path fails typecheck.
-    expectTypeOf(api.get).parameter(0).toEqualTypeOf<'/api/health' | '/api/ready' | '/api/version'>();
+    expectTypeOf(api.get)
+      .parameter(0)
+      .toEqualTypeOf<
+        '/api/auth/me' | '/api/auth/sessions' | '/api/health' | '/api/ready' | '/api/version'
+      >();
     // @ts-expect-error: not a backend path
     void (() => api.get('/api/versions'));
   });

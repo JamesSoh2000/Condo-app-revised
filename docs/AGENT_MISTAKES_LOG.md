@@ -120,3 +120,9 @@ validator is reopened once, switch to an allowlist or canonical-form comparison 
 **Claim before evidence** recurred as a CI status read from a truncated output. Follow-up for the next ticket
 PR: make the merge gate's CI evidence the full `gh pr checks` listing pasted into the PR (and `ruff --no-cache`
 in `make check`), so a summary can't stand in for it.
+
+P2-02: no reviewer finding was confirmed (round 1: Claude and Codex both MERGE, two Lows deferred or already
+tracked). Two slips the implementer caught before review, not logged as rows: a test assertion written as
+`assert x == [...] or y == [...]` (vacuous; rewritten before the first run), and a mutation probe (`sorted()`
+removed) that no test caught until one was added. The P2-01b step 8 note was applied: CI evidence is the full
+`gh pr checks` listing, and `ruff --no-cache` is carried to P2-03 for `make check`.

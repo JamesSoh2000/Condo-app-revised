@@ -94,6 +94,12 @@ something that did.
 - Wire the `auth.*` events into `app/auth/service.py::login` and `logout` (no audit there yet). A failed login
   must log no password and should not record whether the email exists in anything a client can read.
 
+## Carried from P2-02 (do while framing)
+
+- Also audit `app/auth/service.py::logout_all` (`auth.logged_out_all`, metadata: the count
+  `revoke_all_sessions` returns) and `revoke_session` (`auth.session_revoked`, metadata: the session id).
+  Both are use-cases that commit once; `record_audit` goes before that commit.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
