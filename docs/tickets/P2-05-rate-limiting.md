@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P2-01b |
 | Replaces old | M3-T11 |
-| Status | todo |
+| Status | in progress |
 
 ## Goal
 
@@ -54,14 +54,50 @@ process restarts. Postgres meets that without Redis.
 
 1. **Given** 8 failed logins for one email within 15 min, **when** a 9th attempt is made, **then** 429 with
    `Retry-After` > 0, even with the correct password.
+   - *Framed:* the 429 is problem+json `code: rate_limited` with `retry_after` equal to the header; no
+     session row or cookie is created; and the limited answer is identical for an existing and an unknown
+     email (same status, code and `Retry-After` for the same window position). A limited login runs no
+     user lookup and no argon2.
 2. **Given** another email from the same IP, **then** it is not blocked by the email limit.
 3. **Given** a failed login, **then** the counter row was incremented despite the request transaction rolling
    back.
+   - *Framed:* proven with the limiter on its own connection (as in production), read back from a third
+     connection: (a) a failed login's counter is committed, and (b) for a request that runs `enforce` and
+     then fails with an unhandled error, so its own session rolls back, the counter is still committed.
 4. **Given** 10 concurrent `hit()` calls for one key, **then** the final count is exactly 10.
+   - *Framed:* on 10 separate connections (`asyncio.gather`), and the returned counts are exactly
+     `{1..10}`; with `limit=7`, exactly 7 calls are allowed.
 5. **Given** the window passes (frozen clock), **then** requests are allowed again.
+   - *Framed:* windows are fixed and aligned to the window length since the Unix epoch; `Retry-After` is
+     the whole seconds (rounded up, at least 1) to the end of the current window; one second before the end
+     is still limited, the window's end is allowed.
 6. **Given** the table after login attempts, **then** no key contains a raw email address.
+   - *Framed:* the email key is `login:email:<sha256 hex>` of the email lowered **by Postgres** (the same
+     `lower()` that login's lookup uses), so the spellings that reach one account share one counter
+     (`Resident1@Example.TEST`, and Unicode cases where Python's `str.lower()` and Postgres disagree, such
+     as `İ`).
 7. **Given** a request with a forged `X-Forwarded-For` from a non-trusted peer, **then** the limiter uses the
    peer IP.
+   - *Framed:* tested through uvicorn's `ProxyHeadersMiddleware` (what gunicorn's `--forwarded-allow-ips`
+     installs), not only the bare app: from an untrusted peer the key is the peer's IP; from the trusted
+     proxy it is the forwarded client (so the test can fail). Also run on `make prodlike` behind Caddy.
+
+Added while framing:
+
+8. **Given** 30 login attempts from one IP within 10 minutes (each with a different email), **then** the
+   31st is 429, and it does not increment any email counter.
+9. **Given** IPv6 clients, **then** the IP key is the client's `/64` (one subscriber's usual allocation), and an
+   IPv4-mapped IPv6 address keys as its IPv4 address.
+10. **Given** `delete_expired_rate_limits(db)`, **then** rows whose window started more than 1 day ago are
+    deleted and newer ones kept; it never commits. Settings refuse a policy whose window is longer than
+    1 day (cleanup would delete a live window), or a limit or window ≤ 0.
+11. **Given** settings, **then** each policy (login per IP and per email; reset per IP and per email; signup
+    per IP; join lookup per IP) is a `RatePolicy` with the defaults below, overridable by environment
+    variable (JSON).
+12. **Given** the OpenAPI document, **then** `POST /api/auth/login` documents 429 with `Problem`, and
+    `schema.d.ts` is regenerated.
+13. Tenant table (ENGINEERING_PRACTICES §7): login is not a tenant endpoint, so rows 2–9 don't apply. Row 1:
+    the existing login tests stay green with the limiter on. Row 10: criterion 4.
 
 ## Test plan
 
@@ -91,7 +127,26 @@ process restarts. Postgres meets that without Redis.
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+- Criteria added or sharpened: 1, 3–7 sharpened (above, marked *Framed*); 8–13 added. 8 covers the IP
+  limit, which the ticket set but no criterion tested. 9 (IPv6 /64) is the case the ticket missed: keyed per
+  address, one IPv6 subscriber gets 2^64 IP buckets.
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - **Module location** (autonomous): the limiter is `app/rate_limits/` (`models.py`, `service.py`), not
+    `app/core/rate_limit.py`. `hit()` commits its own transaction, and the commit fitness test
+    (`tests/test_architecture.py::COMMIT_ALLOWED`) only allows `**/service.py` and entry points; adding a
+    core file to that list would loosen a protected gate. Package-by-feature is also the convention.
+  - **The limiter is a FastAPI dependency** (autonomous): `get_rate_limiter()` returns a `RateLimiter`
+    holding a session factory, so tests point it at their connection as they do `get_db_session`. `hit()`
+    and `enforce()` are its methods with the ticket's arguments.
+  - **What counts** (autonomous): every login attempt counts, checked before the user lookup and argon2,
+    so a limited answer costs no hash and can't reveal whether the email exists. IP first; an IP-limited
+    attempt does not count against the email.
+  - **Default policies** (autonomous, from the dependents' criteria): login 30/10 min per IP and 8/15 min
+    per email (ticket); reset 30/10 min per IP and 8/15 min per email (P4-04 criterion 6: the 9th in 15 min
+    is 429); signup 10/hour per IP; join lookup 20/10 min per IP (P4-05 criterion 8: 30 rapid lookups give
+    429). P4-02's invitation lookups get their own policy in P4-02.
+  - **Client IP** (ticket, already done in P1-08): gunicorn `--forwarded-allow-ips` = Caddy's address
+    (`FORWARDED_ALLOW_IPS`), so `request.client` is resolved by the server. Nothing to change in
+    `compose.prodlike.yml`.
+- Split: none. Estimate ~300 non-test lines.
