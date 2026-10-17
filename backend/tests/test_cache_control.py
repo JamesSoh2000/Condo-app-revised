@@ -22,6 +22,15 @@ async def test_api_responses_are_no_store(client, db, world):
     assert [r.headers.get("cache-control") for r in anonymous + member] == ["no-store"] * 5
 
 
+async def test_csrf_rejection_and_validation_error_are_no_store(client, db, world):
+    csrf = await client.post("/api/auth/logout-all", headers={"X-Requested-With": ""})
+    await login_as(db, client, world.a_manager.user)
+    invalid = await client.get("/api/buildings/not-a-uuid")
+
+    assert [csrf.status_code, invalid.status_code] == [403, 422]
+    assert [csrf.headers["cache-control"], invalid.headers["cache-control"]] == ["no-store"] * 2
+
+
 async def test_a_route_that_sets_its_own_cache_control_keeps_it(app_client):
     router = APIRouter(tags=["probe"])
 

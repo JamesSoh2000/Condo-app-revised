@@ -130,6 +130,19 @@ async def test_active_member_gets_their_building_with_roles_and_features(
     }
 
 
+async def test_features_are_the_url_buildings_own(as_user, db, world):
+    """B enables a feature A doesn't: A's members must not see it (Claude review round 1)."""
+    db.add(BuildingFeature(building_id=world.b.id, feature=Feature.FINANCIALS))
+    await db.flush()
+    client = await as_user(world.multi)
+
+    in_a = (await client.get(building_url(world.a.id))).json()["features"]
+    in_b = (await client.get(building_url(world.b.id))).json()["features"]
+
+    assert in_a == ["maintenance", "notices", "packages"]
+    assert in_b == ["financials", "maintenance", "notices", "packages"]
+
+
 async def test_disabled_feature_is_not_listed(as_user, db, world):
     await db.execute(
         update(BuildingFeature)
@@ -513,10 +526,20 @@ def json_logs():
             lg.setLevel(level)
 
 
-async def test_building_request_logs_carry_building_and_user(probe, db, world, json_logs):
-    # A value left in the caller's context (a direct call, a script) must not reach any request.
-    building_id_ctx.set("stale")
-    user_id_ctx.set("stale")
+@pytest.fixture
+def stale_log_context():
+    """A value left in the test's own context, as a direct call or a script would leave it."""
+    tokens = building_id_ctx.set("stale"), user_id_ctx.set("stale")
+    try:
+        yield
+    finally:
+        building_id_ctx.reset(tokens[0])
+        user_id_ctx.reset(tokens[1])
+
+
+async def test_building_request_logs_carry_building_and_user(
+    probe, db, world, json_logs, stale_log_context
+):
     async with probe() as c:
         await login_as(db, c, world.a_resident1.user)
         await c.get(f"{building_url(world.a.id)}/probe/any")
@@ -531,8 +554,6 @@ async def test_building_request_logs_carry_building_and_user(probe, db, world, j
     assert building_line.items() >= ids.items()
     assert "building_id" not in me_line
     assert "user_id" not in me_line
-    building_id_ctx.set(None)
-    user_id_ctx.set(None)
 
 
 async def test_refused_building_request_logs_the_user_but_not_the_building(

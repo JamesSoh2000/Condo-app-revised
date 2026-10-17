@@ -111,11 +111,13 @@ def stale_allowlist_entries(application: FastAPI) -> list[str]:
     return sorted(f"{m} {p}" for m, p in AUTH_ALLOWLIST if (m, p) not in existing)
 
 
-_COMMIT = re.compile(r"\.commit\(")
+# `.commit(`, and its neighbours that commit too: an alias (`save = db.commit`), raw SQL `COMMIT`
+# (not `COMMITTED`), and `.begin()`, whose context manager commits on exit (Claude review round 1).
+_COMMIT = re.compile(r"\.commit\b|\bCOMMIT\b|\.begin\(")
 
 
 def files_that_commit(root: Path) -> list[str]:
-    """Fitness test 4: `.commit(` only where COMMIT_ALLOWED says."""
+    """Fitness test 4: committing (see `_COMMIT`) only where COMMIT_ALLOWED says."""
     allowed = {p for pattern in COMMIT_ALLOWED for p in root.glob(pattern)}
     return sorted(
         str(path.relative_to(root))
@@ -322,9 +324,20 @@ def test_meta_commit_outside_a_service_is_reported(tmp_path):
         "core/helpers.py": "session.commit()",
         "cli.py": "await db.commit()",
         "jobs/worker.py": "await db.commit()",
-        "notices/router.py": "# no commits here",
+        "notices/router.py": "# no commits here; READ COMMITTED isolation",
+        # Neighbours of `.commit(` that also commit (Claude review round 1, L4):
+        "units/router.py": "save = db.commit",
+        "files/router.py": 'await db.execute(text("COMMIT"))',
+        "moves/router.py": "async with db.begin():",
+        "moves/service.py": "async with db.begin():",
     }.items():
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text(code)
 
-    assert files_that_commit(tmp_path) == ["core/helpers.py", "packages/router.py"]
+    assert files_that_commit(tmp_path) == [
+        "core/helpers.py",
+        "files/router.py",
+        "moves/router.py",
+        "packages/router.py",
+        "units/router.py",
+    ]
