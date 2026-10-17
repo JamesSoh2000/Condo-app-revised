@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { api, onUnauthenticated } from '@/api/client';
 import type { components } from '@/api/schema';
 import { runAuthCall } from '@/app/authQueue';
+import { clearSelectedBuilding } from '@/app/buildingStorage';
 import { isLoginPath, loginPath } from '@/app/safeNext';
 
 export type Me = components['schemas']['MeOut'];
@@ -33,6 +34,7 @@ export function useLogout() {
         await api.post('/api/auth/logout');
         navigate('/login', { replace: true });
         queryClient.clear();
+        clearSelectedBuilding();
       }),
     onMutate: () => setError(false),
     onError: () => setError(true),
@@ -60,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onUnauthenticated(({ method, path }) => {
         if (method === 'POST' && path === '/api/auth/login') return;
         queryClient.clear();
+        clearSelectedBuilding();
         const current = locationRef.current;
         if (!isLoginPath(current.pathname)) navigate(loginPath(current), { replace: true });
       }),

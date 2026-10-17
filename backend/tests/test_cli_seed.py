@@ -212,7 +212,7 @@ async def test_seed_in_staging_uses_the_seed_password(db: AsyncSession) -> None:
     await seed(db, app_env="staging", seed_password=STAGING_PASSWORD)
 
     hashes = await _hashes(db)
-    assert len(hashes) == 12
+    assert len(hashes) == 13
     assert all(verify_password(STAGING_PASSWORD, h or "") for h in hashes.values())
     assert not any(verify_password(DEV_SEED_PASSWORD, h or "") for h in hashes.values())
 
@@ -328,7 +328,8 @@ async def test_seeded_maple_has_the_documented_building_and_units(db: AsyncSessi
     assert features == {Feature.PACKAGES, Feature.NOTICES, Feature.MAINTENANCE}
 
 
-async def test_seeded_maple_has_six_residents_with_current_occupancies(db: AsyncSession) -> None:
+async def test_seeded_maple_has_seven_residents_with_current_occupancies(db: AsyncSession) -> None:
+    # resident1–6, plus the multi-building user (P2-06b), resident in 201.
     await seed(db, app_env="dev")
 
     relationships = set()
@@ -351,7 +352,7 @@ async def test_seeded_maple_has_six_residents_with_current_occupancies(db: Async
             MembershipRole.role == Role.RESIDENT,
         )
     )
-    assert active_residents == 6
+    assert active_residents == 7
 
 
 async def test_seeded_maple_has_one_pending_membership(db: AsyncSession) -> None:
@@ -405,13 +406,34 @@ async def test_seeded_birch_has_eight_units_a_manager_and_a_resident(db: AsyncSe
     assert len(await _current(db, resident)) == 1
 
 
+async def test_multi_building_user_is_active_in_maple_and_birch(db: AsyncSession) -> None:
+    # P2-06b criterion 10: one person in two buildings, with a different role in each.
+    await seed(db, app_env="dev")
+
+    in_maple = await _member(db, "maple", "multi@example.test")
+    in_birch = await _member(db, "birch", "multi@example.test")
+
+    assert in_maple.user_id == in_birch.user_id
+    assert (in_maple.status, in_birch.status) == (MembershipStatus.ACTIVE, MembershipStatus.ACTIVE)
+    assert await _roles(db, in_maple) == {Role.RESIDENT}
+    assert await _roles(db, in_birch) == {Role.SECURITY}
+    [occupancy] = await _current(db, in_maple)
+    unit = await db.get(Unit, occupancy.unit_id)
+    assert unit is not None
+    assert (unit.label, occupancy.relationship) == ("201", OccupancyRelationship.OWNER)
+    assert await _current(db, in_birch) == []
+    user = await db.get(User, in_maple.user_id)
+    assert user is not None
+    assert user.full_name == "Kim Laurent"
+
+
 async def test_seeded_users_use_example_test_and_the_dev_password(db: AsyncSession) -> None:
     # P1-06 asserted no password here; P2-01a gives every seeded user the documented dev password.
     await seed(db, app_env="dev")
 
     users = list(await db.scalars(select(User)))
 
-    assert len(users) == 12
+    assert len(users) == 13
     assert all(u.email.endswith("@example.test") for u in users)
     assert all(u.password_hash and u.password_hash.startswith("$argon2id$") for u in users)
     assert all(verify_password(DEV_SEED_PASSWORD, u.password_hash or "") for u in users)

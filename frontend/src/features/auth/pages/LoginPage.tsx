@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { api } from '@/api/client';
 import { ApiError } from '@/api/errors';
 import { runAuthCall } from '@/app/authQueue';
+import { clearSelectedBuilding } from '@/app/buildingStorage';
 import { safeNext } from '@/app/safeNext';
 
 // The backend takes any non-empty email string (a malformed one is just unknown: 401, not 422), so the
@@ -83,8 +84,10 @@ export function LoginPage() {
       return;
     }
     if (!sent) return;
-    // Nothing cached before this login (another user's data, a lost session's) may show after it.
+    // Nothing cached before this login (another user's data, a lost session's) may show after it, and the
+    // tab's building is chosen again from this user's memberships.
     queryClient.clear();
+    clearSelectedBuilding();
     if (mounted.current) navigate(safeNext(params.get('next')), { replace: true });
   };
 

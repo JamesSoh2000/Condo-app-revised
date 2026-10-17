@@ -41,6 +41,8 @@ afterEach(() => {
 const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 25)));
 const location = () => screen.getByTestId('location').textContent;
 const main = () => screen.getByRole('main');
+/** Waits for the shell's main area, then for `text` in it (the header names the building too). */
+const findInMain = async (text: string) => within(await screen.findByRole('main')).findByText(text);
 const buildingCalls = (fetchMock: ReturnType<typeof stubApi>) =>
   calls(fetchMock).filter((call) => call.includes('/api/buildings'));
 const meWith = (...memberships: Me['memberships']): Me => ({ ...RESIDENT_ME, memberships });
@@ -112,7 +114,7 @@ describe('membership screens, no building calls (criterion 1)', () => {
 
     renderApp(['/']);
 
-    expect(await within(main()).findByText('Maple Tower')).toBeTruthy();
+    expect(await findInMain('Maple Tower')).toBeTruthy();
     expect(screen.queryByRole('heading', { name: /waiting for approval/i })).toBeNull();
   });
 });
@@ -123,7 +125,7 @@ describe('default selection (criterion 4)', () => {
 
     renderApp(['/']);
 
-    expect(await within(main()).findByText('Maple Tower')).toBeTruthy();
+    expect(await findInMain('Maple Tower')).toBeTruthy();
     expect(screen.queryByRole('heading', { name: /choose a building/i })).toBeNull();
     expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
     expect(buildingCalls(fetchMock)).toEqual([`GET /api/buildings/${MAPLE.id}`]);
@@ -148,7 +150,7 @@ describe('default selection (criterion 4)', () => {
 
     await pick('Maple Tower');
 
-    expect(await within(main()).findByText('Maple Tower')).toBeTruthy();
+    expect(await findInMain('Maple Tower')).toBeTruthy();
     expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
     expect(buildingCalls(fetchMock)).toEqual([`GET /api/buildings/${MAPLE.id}`]);
   });
@@ -177,7 +179,7 @@ describe('a stored selection is checked against /me (criterion 5; tenant rows 3 
 
     renderApp(['/']);
 
-    expect(await within(main()).findByText('Maple Tower')).toBeTruthy();
+    expect(await findInMain('Maple Tower')).toBeTruthy();
     expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
     expect(buildingCalls(fetchMock)).toEqual([`GET /api/buildings/${MAPLE.id}`]);
   });
@@ -200,14 +202,14 @@ describe('one building per tab (criterion 2)', () => {
     stubApi(MULTI_ROUTES);
     renderApp(['/']);
     await pick('Maple Tower');
-    await within(main()).findByText('Maple Tower');
+    await findInMain('Maple Tower');
     const tab1 = sessionStorage.getItem(KEY);
     cleanup();
     sessionStorage.clear();
 
     renderApp(['/']);
     await pick('Birch Court');
-    await within(main()).findByText('Birch Court');
+    await findInMain('Birch Court');
     const tab2 = sessionStorage.getItem(KEY);
     cleanup();
     expect([tab1, tab2]).toEqual([MAPLE.id, BIRCH.id]);
@@ -219,7 +221,7 @@ describe('one building per tab (criterion 2)', () => {
       sessionStorage.setItem(KEY, stored!);
       const fetchMock = stubApi(MULTI_ROUTES);
       renderApp(['/']);
-      expect(await within(main()).findByText(name)).toBeTruthy();
+      expect(await findInMain(name)).toBeTruthy();
       expect(screen.queryByRole('heading', { name: /choose a building/i })).toBeNull();
       expect(buildingCalls(fetchMock)).toEqual([`GET /api/buildings/${id}`]);
       cleanup();
@@ -245,7 +247,7 @@ describe('switching buildings (criteria 3 and 11)', () => {
 
     fireEvent.change(screen.getByLabelText(/building/i), { target: { value: BIRCH.id } });
 
-    expect(await within(main()).findByText('Birch Court')).toBeTruthy();
+    expect(await findInMain('Birch Court')).toBeTruthy();
     expect(mapleRequest!.signal.aborted).toBe(true);
     expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id] })).toEqual([]);
 
@@ -267,7 +269,7 @@ describe('switching buildings (criteria 3 and 11)', () => {
     fireEvent.change(screen.getByLabelText(/building/i), { target: { value: BIRCH.id } });
 
     await waitFor(() => expect(location()).toBe('/'));
-    expect(await within(main()).findByText('Birch Court')).toBeTruthy();
+    expect(await findInMain('Birch Court')).toBeTruthy();
     expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id] })).toEqual([]);
   });
 
@@ -276,7 +278,7 @@ describe('switching buildings (criteria 3 and 11)', () => {
 
     renderApp(['/']);
 
-    await within(main()).findByText('Maple Tower');
+    await findInMain('Maple Tower');
     expect(screen.queryByLabelText(/building/i)).toBeNull();
     expect(screen.getByRole('banner').textContent).toContain('Maple Tower');
   });
@@ -418,7 +420,7 @@ describe('lost access mid-session (criterion 8; tenant rows 2 and 3)', () => {
     expect(screen.queryByRole('heading', { name: /no longer have access/i })).toBeNull();
     fail = false;
     fireEvent.click(retry);
-    expect(await within(main()).findByText('Maple Tower')).toBeTruthy();
+    expect(await findInMain('Maple Tower')).toBeTruthy();
   });
 });
 
@@ -433,7 +435,7 @@ describe('no selection outlives the user (criterion 9)', () => {
       },
     });
     renderApp(['/']);
-    await within(main()).findByText('Maple Tower');
+    await findInMain('Maple Tower');
     expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
 
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
@@ -448,7 +450,7 @@ describe('no selection outlives the user (criterion 9)', () => {
       'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'not_authenticated')),
     });
     const rendered = renderApp(['/']);
-    await within(main()).findByText('Maple Tower');
+    await findInMain('Maple Tower');
 
     signedIn = false;
     await act(() => rendered.queryClient.invalidateQueries({ queryKey: ['me'] }));

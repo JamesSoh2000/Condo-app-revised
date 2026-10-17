@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+import { useBuilding } from '@/app/BuildingProvider';
+
 export function LoadingScreen() {
   return (
     <div role="status" className="fixed inset-0 flex items-center justify-center">
@@ -30,11 +32,27 @@ export function NotFoundPage() {
   );
 }
 
+/** Under `RequireActiveMembership`: names the building whose data the tab shows. */
 export function HomePlaceholder() {
+  const { data: building } = useBuilding();
   return (
     <section>
       <h1 className="text-2xl font-semibold">Home</h1>
+      <p className="mt-2 font-medium">{building?.name}</p>
       <p className="mt-2 text-slate-600">Your building’s home page is coming soon.</p>
+    </section>
+  );
+}
+
+/** `/403`: a role or feature guard refused the page. The API would refuse its data too. */
+export function ForbiddenPage() {
+  return (
+    <section className="py-12 text-center">
+      <h1 className="mb-2 text-2xl font-semibold">You can’t open this page</h1>
+      <p>Your role in this building, or the building’s settings, don’t include it.</p>
+      <Link to="/" className="mt-4 inline-block underline">
+        Go to the home page
+      </Link>
     </section>
   );
 }
