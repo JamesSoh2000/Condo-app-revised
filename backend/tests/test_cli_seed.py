@@ -329,7 +329,7 @@ async def test_seeded_maple_has_the_documented_building_and_units(db: AsyncSessi
 
 
 async def test_seeded_maple_has_seven_residents_with_current_occupancies(db: AsyncSession) -> None:
-    # resident1–6, plus the multi-building user (P2-06b), resident in 201.
+    # resident1 to resident6, plus the multi-building user (P2-06b), resident in 201.
     await seed(db, app_env="dev")
 
     relationships = set()
