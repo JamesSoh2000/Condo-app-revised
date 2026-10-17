@@ -14,7 +14,7 @@ import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
-from starlette.routing import BaseRoute, Mount, Route
+from starlette.routing import BaseRoute, Host, Mount, Route, WebSocketRoute
 
 from app.auth.allowlist import AUTH_ALLOWLIST
 from app.auth.deps import get_current_session, get_current_user
@@ -64,16 +64,16 @@ def _methods(route: APIRoute) -> list[str]:
     return sorted(route.methods or ())
 
 
-def opaque_api_routes(application: FastAPI) -> list[str]:
-    """Routes under /api the walks below can't see into: a `Mount` or a plain Starlette route."""
+def opaque_routes(application: FastAPI) -> list[str]:
+    """Routes the walks below can't see into: any `Mount`, `Host` or plain Starlette route, wherever
+    it sits. A mount outside /api still serves /api paths when its prefix covers them (`/`), so
+    only FastAPI's own docs routes are let through (Codex review round 1)."""
     docs = _docs_paths(application)
-    violations = []
-    for route in application.routes:
-        path = getattr(route, "path", "")
-        if isinstance(route, APIRoute) or not _under(path, "/api") or path in docs:
-            continue
-        violations.append(f"{type(route).__name__} {path}")
-    return violations
+    return [
+        f"{type(route).__name__} {getattr(route, 'path', '') or '/'}"
+        for route in application.routes
+        if not isinstance(route, APIRoute) and getattr(route, "path", None) not in docs
+    ]
 
 
 def unguarded_building_routes(application: FastAPI) -> list[str]:
@@ -127,8 +127,8 @@ def files_that_commit(root: Path) -> list[str]:
 # The checks on the real app
 
 
-def test_every_api_route_is_an_api_route():
-    assert opaque_api_routes(app) == []
+def test_every_route_is_an_api_route():
+    assert opaque_routes(app) == []
 
 
 def test_every_building_route_is_tenant_guarded():
@@ -271,12 +271,39 @@ def test_meta_building_path_with_another_parameter_name_fails_check_1():
     ]
 
 
+def test_meta_root_mount_is_reported():
+    """A sub-app mounted at `/` serves any path, /api/... included, out of the walk's sight
+    (Codex review round 1)."""
+    legacy = FastAPI()
+
+    @legacy.get("/api/buildings/{building_id}/private-records")
+    async def private_records(building_id: uuid.UUID) -> dict[str, str]:
+        return {}
+
+    async def ws(websocket: object) -> None:
+        return None
+
+    test_app = _app_with(
+        Mount("/", app=legacy),
+        Mount("/static", app=FastAPI()),
+        Host("api.example.com", app=legacy),
+        WebSocketRoute("/ws", endpoint=ws),
+    )
+
+    assert opaque_routes(test_app) == [
+        "Mount /",
+        "Mount /static",
+        "Host /",
+        "WebSocketRoute /ws",
+    ]
+
+
 def test_meta_mount_or_plain_route_under_api_is_reported():
     test_app = _app_with(
         Mount("/api/legacy", app=FastAPI()), Route("/api/raw", endpoint=lambda r: None)
     )
 
-    assert opaque_api_routes(test_app) == ["Mount /api/legacy", "Route /api/raw"]
+    assert opaque_routes(test_app) == ["Mount /api/legacy", "Route /api/raw"]
 
 
 def test_meta_stale_allowlist_entry_is_reported(monkeypatch):

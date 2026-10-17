@@ -276,8 +276,8 @@ class TenantContext:
 self-enforcing:
 1. Every route whose path starts with `/api/buildings/` starts with `/api/buildings/{building_id}` and has
    `get_tenant_context` (or the onboarding dependency `get_own_membership`) in its dependency tree. No route
-   outside that prefix depends on either, and every route under `/api` is a FastAPI `APIRoute` (except the
-   docs routes), so the walk can see it.
+   outside that prefix depends on either, and every route of the app is a FastAPI `APIRoute` (except the
+   docs routes): a mount, even at `/`, would serve paths the walk can't see.
 2. Every `/api` route requires an authenticated session, except the `(method, path)` pairs in
    `app/auth/allowlist.py`: today health, ready, version, login and logout. Each later open route
    (password reset, invitation lookup/accept, join-code lookup) adds its entry with its ticket; an entry
