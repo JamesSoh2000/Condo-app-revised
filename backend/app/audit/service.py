@@ -64,12 +64,15 @@ async def record_audit(
 
 
 def _sanitize(metadata: dict[str, Any]) -> dict[str, Any]:
+    # Serialized first: json refuses a self-referencing container before _check_keys recurses into
+    # it (review round 1, Codex L1).
+    encoded = _to_json(metadata)
     _check_keys(metadata)
     for key, value in metadata.items():
         if len(_to_json(value).encode()) > MAX_VALUE_BYTES:
             raise ValueError(f"audit metadata value for {key!r} is over {MAX_VALUE_BYTES} bytes")
     # Round-tripped, so what is stored is exactly what was checked (UUIDs as strings).
-    result: dict[str, Any] = json.loads(_to_json(metadata))
+    result: dict[str, Any] = json.loads(encoded)
     return result
 
 

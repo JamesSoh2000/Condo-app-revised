@@ -40,7 +40,7 @@ something that did.
     - `auth.login_failed` (actor null; metadata `{user_id?}` only when a user matched; never the attempted
       email or password)
     - `auth.logged_out`
-    - `auth.sessions_revoked_all`
+    - `auth.logged_out_all` (named `auth.sessions_revoked_all` here before framing; see Frame notes)
     - `auth.session_revoked`
   - **CLI** `python -m app.cli audit [--building SLUG] [--actor EMAIL] [--entity TYPE:ID] [--action PREFIX]
     [--since 7d] [--json]`. It prints the newest first, limit 200.

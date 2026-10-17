@@ -179,6 +179,25 @@ async def test_record_audit_refuses_secret_keys_large_and_non_json_values(db, me
     assert await _count(db) == 0
 
 
+def _cyclic(kind: str) -> object:
+    value: dict[str, object] | list[object] = {} if kind == "dict" else []
+    if isinstance(value, dict):
+        value["self"] = value
+    else:
+        value.append(value)
+    return value
+
+
+@pytest.mark.parametrize("kind", ["dict", "list"])
+async def test_record_audit_refuses_self_referencing_metadata(db, kind):
+    # Review round 1 (Codex L1): this was a RecursionError, not the documented ValueError.
+    with pytest.raises(ValueError):
+        await record_audit(
+            db, action="test.recorded", entity_type="test", metadata={"changes": _cyclic(kind)}
+        )
+    assert not db.new
+
+
 async def test_value_of_exactly_one_kib_and_uuids_are_accepted(db):
     entity = uuid7()
     # 1,022 characters plus the JSON quotes: 1,024 bytes.
@@ -250,6 +269,21 @@ async def test_logout_records_logged_out_for_the_revoked_session(client, db):
     assert await _count(db) == 1
 
 
+async def test_logout_of_an_expired_session_revokes_and_records_it(client, db, frozen_clock):
+    # Review round 1 (Codex): criterion 7's expired-session case had no test.
+    user = await make_user(db)
+    await login_as(db, client, user)
+    session = await db.scalar(select(AuthSession).where(AuthSession.user_id == user.id))
+    frozen_clock.advance(days=31)
+
+    assert (await client.post("/api/auth/logout")).status_code == 204
+
+    [event] = await _events(db)
+    assert (event.action, event.entity_id) == (actions.AUTH_LOGGED_OUT, session.id)
+    await db.refresh(session)
+    assert session.revoked_at is not None
+
+
 @pytest.mark.parametrize("cookie", [None, "not-a-real-token"])
 async def test_logout_without_a_live_session_records_nothing(client, db, cookie):
     if cookie is not None:
@@ -301,11 +335,29 @@ async def test_revoking_one_session_records_session_revoked(client, db):
     assert (event.entity_type, event.entity_id) == ("session", other)
 
 
-async def test_revoking_an_unknown_session_records_nothing(client, db):
+@pytest.mark.parametrize("target", ["unknown", "someone_elses", "revoked", "expired"])
+async def test_revoking_a_session_that_is_not_ones_own_live_one_records_nothing(
+    client, db, frozen_clock, target
+):
+    # Review round 1 (Codex): every 404 kind, not only an unknown id.
     user = await make_user(db)
+    other = await make_user(db)
+    session_id = uuid7()
+    if target == "someone_elses":
+        await start_session(db, other.id, user_agent=None, ip=None)
+        session_id = await db.scalar(select(AuthSession.id).where(AuthSession.user_id == other.id))
+    elif target in ("revoked", "expired"):
+        await start_session(db, user.id, user_agent="target", ip=None)
+        session = await db.scalar(select(AuthSession).where(AuthSession.user_agent == "target"))
+        session_id = session.id
+        if target == "revoked":
+            session.revoked_at = frozen_clock.at
+        else:
+            session.expires_at = frozen_clock.at
+    await db.flush()
     await login_as(db, client, user)
 
-    response = await client.delete(f"/api/auth/sessions/{uuid7()}")
+    response = await client.delete(f"/api/auth/sessions/{session_id}")
 
     assert_problem(response, 404, "not_found")
     assert await _count(db) == 0

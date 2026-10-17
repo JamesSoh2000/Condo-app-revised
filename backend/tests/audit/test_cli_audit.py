@@ -273,6 +273,8 @@ def test_cli_since_units(monkeypatch, frozen_clock, since, delta):
         ["--since", "7w"],
         ["--since", "-1d"],
         ["--since", "d"],
+        # Passes the pattern but leaves datetime's range (review round 1, Claude M1).
+        ["--since", "999999d"],
         ["--entity", "session"],
         ["--entity", "session:not-a-uuid"],
         ["--entity", ":" + str(uuid7())],
@@ -286,6 +288,15 @@ def test_cli_malformed_option_is_a_usage_error_without_a_session(monkeypatch, ar
     assert result.exit_code == 2, result.output
     assert opened == []
     assert seen == []
+
+
+def test_cli_largest_since_in_range_still_works(monkeypatch, frozen_clock):
+    seen, _ = _fake_query(monkeypatch, [])
+
+    result = runner.invoke(cli.app, ["audit", "--since", "999999h"])
+
+    assert result.exit_code == 0, result.output
+    assert seen[0].since == frozen_clock.at - timedelta(hours=999999)
 
 
 def test_cli_unknown_building_exits_1(monkeypatch):

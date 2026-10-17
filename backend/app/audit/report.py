@@ -14,11 +14,15 @@ def render(rows: Sequence[AuditEventRow], *, as_json: bool) -> str:
     return "\n".join(_as_line(row) for row in rows)
 
 
+_UUID_FIELDS = ("id", "building_id", "actor_user_id", "entity_id")
+
+
 def _as_dict(row: AuditEventRow) -> dict[str, object]:
-    return {
-        field: str(value) if field.endswith("id") and value is not None else value
-        for field, value in row._asdict().items()
-    } | {"created_at": row.created_at.isoformat()}
+    fields = row._asdict()
+    for field in _UUID_FIELDS:
+        if fields[field] is not None:
+            fields[field] = str(fields[field])
+    return fields | {"created_at": row.created_at.isoformat()}
 
 
 def _as_line(row: AuditEventRow) -> str:

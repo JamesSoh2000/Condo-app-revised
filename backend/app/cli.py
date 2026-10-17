@@ -73,7 +73,13 @@ def _parse_since(value: str | None) -> timedelta | None:
     match = _SINCE.fullmatch(value)
     if match is None:
         raise typer.BadParameter("use <n>m, <n>h or <n>d, for example 7d", param_hint="--since")
-    return timedelta(**{_SINCE_UNITS[match[2]]: int(match[1])})
+    window = timedelta(**{_SINCE_UNITS[match[2]]: int(match[1])})
+    try:
+        clock.now() - window
+    except OverflowError:
+        # 999999d passes the pattern but leaves datetime's range (review round 1, Claude M1).
+        raise typer.BadParameter("too far back", param_hint="--since") from None
+    return window
 
 
 def _parse_entity(value: str | None) -> tuple[str | None, UUID | None]:
