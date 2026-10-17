@@ -1,4 +1,4 @@
-# P2-06 — Frontend auth shell, guards and building picker
+# P2-06 — Frontend auth shell, guards and building picker (split)
 
 | Field | Value |
 |---|---|
@@ -6,19 +6,43 @@
 | Risk tier | 1 |
 | Depends on | P2-02, P1-07 |
 | Replaces old | M4-T02, M4-T05, M3-T10 (frontend part) |
-| Status | todo |
+| Status | split into [P2-06a](./P2-06a-frontend-auth-core.md), [P2-06b](./P2-06b-building-context-guards-nav.md) |
 
-## Goal
+Split while framing (2026-10-17). "P2-06" in other tickets' text means both parts; the
+[ticket index](./README.md) lists which part each dependent needs (P3-05, P3-06, P4-07 and P4-08 need
+P2-06b, which depends on P2-06a).
+
+| Part | Scope | Acceptance criteria (original numbers) |
+|---|---|---|
+| [P2-06a](./P2-06a-frontend-auth-core.md) | The new TypeScript shell (`src/app/App.tsx`, `routes.tsx`), `AuthProvider` (`useMe`, the 401 listener), the login page, logout, `RequireAuth`, the "Being migrated" placeholders, the 404 page, retiring `AuthContext.jsx` and the other Base44 boot code from the shell, the ratchet; the "Carried from P1-07" items (login 401, empty 2xx, `signal`, ADR-0015) and the P1-08 favicon | 1 (login and landing), 2, 5, 6, 7 |
+| [P2-06b](./P2-06b-building-context-guards-nav.md) | `BuildingProvider`, `RequireActiveMembership` and its four screens, `RequireRole`, `RequireFeature`, the 403 page, navigation from route metadata (replacing `Layout.jsx`), the council "view as" toggle, a multi-building seed user | 1 (the nav), 3, 4 |
+
+## Why split
+
+- Size: the estimate for the whole ticket was ~800 non-test lines (shell, providers and routes ~150, login
+  ~130, logout and header ~50, building provider and picker ~90, four guards and four membership screens
+  ~160, 403/404 and placeholders ~60, metadata nav and view-as replacing `Layout.jsx` ~120, client carries
+  and lint ~40), about twice the ~400 limit.
+- Order: the auth core goes first because everything else sits inside `RequireAuth`, and it removes every
+  Base44 auth call from the boot path on its own. P2-06b then adds the building layer on top of a shell that
+  already works.
+- No criterion was dropped or loosened: AC2, AC5, AC6 and AC7 are in P2-06a; AC1 is divided (logging in and
+  landing in P2-06a, the resident-only navigation in P2-06b); AC3 and AC4 are in P2-06b. "Must explain"
+  question 3 is answered by P2-06a's explanation, 1, 2 and 4 by P2-06b's.
+
+## Original ticket (for reference)
+
+### Goal
 
 The app shell boots entirely from the new auth API (login, logout, `/me`, guards, per-tab building
 selection, role-based navigation) with no Base44 auth calls left in the shell.
 
-## Why
+### Why
 
 Every migrated page plugs into this shell. Correct cache scoping here prevents a whole class of
 cross-building data-leak bugs in the UI ([02 §13](../ARCHITECTURE.md#13-frontend-architecture-adr-0011)).
 
-## Scope
+### Scope
 
 - In:
   - **`src/app/AuthProvider.tsx`:**
@@ -52,12 +76,12 @@ cross-building data-leak bugs in the UI ([02 §13](../ARCHITECTURE.md#13-fronten
   - invitation, reset and join screens (P4-07, P4-08)
   - notification bell (P3-05)
 
-## Interfaces
+### Interfaces
 
 Consumes `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` and
 `GET /api/buildings/{id}`. Routes: `/login`, `/`, `/403`, `*`.
 
-## Acceptance criteria
+### Acceptance criteria
 
 1. **Given** seeded `resident1`, **when** logging in, **then** they land on the resident home placeholder,
    and the nav shows only resident demo items.
@@ -73,7 +97,7 @@ Consumes `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` and
 7. **Given** `npm run lint` and the ratchet, **then** shell files contain no `base44` references, and the
    baseline is lowered in this PR.
 
-## Test plan
+### Test plan
 
 - Vitest + Testing Library for the guards (mock the client), building switching (cache removal), and the 401
   handling.
@@ -81,13 +105,13 @@ Consumes `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` and
   capture in the PR.
 - Commands: `npm run test`, `npm run typecheck`, `npm run lint`.
 
-## Likely files
+### Likely files
 
 `frontend/src/app/{AuthProvider,BuildingProvider,guards,routes}.tsx`, `frontend/src/features/auth/**`,
 `frontend/src/App.jsx` (or `App.tsx`), `frontend/src/Layout.jsx`, `frontend/src/lib/AuthContext.jsx`,
 `frontend/base44-baseline.txt`.
 
-## Must explain (learning checkpoint)
+### Must explain (learning checkpoint)
 
 1. Why is the selected building stored in `sessionStorage` rather than `localStorage` or on the server?
 2. Show how a slow response from building A could appear in building B's view without building-scoped query
@@ -95,7 +119,7 @@ Consumes `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` and
 3. Why are frontend guards "UX only"? Which server mechanism actually protects the data?
 4. Why does council "view as" never change API permissions?
 
-## Carried from P1-07 (do while framing)
+### Carried from P1-07 (do while framing)
 
 - **The 401 event fires on the login endpoint's own 401.** `src/api/client.ts::onUnauthenticated` calls its
   listeners after **every** 401 (PR #52 D1), and P2-01 makes a wrong password a 401 `invalid_credentials`.
@@ -111,7 +135,7 @@ Consumes `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` and
 - Optional hardening: add `src/api` cases to `scripts/check-eslint-fence.sh` (the `src/api` fence block from
   PR #52 D6 was probed by hand only).
 
-## Carried from P1-08 (do while framing)
+### Carried from P1-08 (do while framing)
 
 The CSP on the prod-like stack and staging (`deploy/Caddyfile`, no `'unsafe-inline'`) blocks sonner's injected
 toast stylesheet, so toasts render unstyled there (P1-08 D4). If this ticket uses toasts, load sonner's CSS as
@@ -119,9 +143,6 @@ a file (or another toast approach without injected `<style>`) and check it on `m
 Base44/Supabase-hosted logo and favicon are blocked too; replace them with local assets when the layout is
 migrated.
 
-## Frame notes (filled by the agent in step 1)
+### Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+- Split (2026-10-17): into P2-06a and P2-06b; see the table at the top. Each part has its own Frame notes.

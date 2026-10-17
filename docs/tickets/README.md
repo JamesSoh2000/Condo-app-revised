@@ -55,22 +55,23 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P2-03](./P2-03-tenant-context-guards-fitness.md) | Tenant context, guards and fitness tests | A | 1 | P2-02, P1-05 | done | — |
 | [P2-04](./P2-04-audit-events.md) | Audit events | A | 1 | P2-03 | done | — |
 | [P2-05](./P2-05-rate-limiting.md) | Rate limiting | B | 1 | P2-01b | done | — |
-| [P2-06](./P2-06-frontend-auth-shell.md) | Frontend auth shell, guards and building picker (split into P2-06a/P2-06b on PR #62; P2-06a blocked, inbox B-3) | B | 1 | P2-02, P1-07 | blocked | — |
+| [P2-06a](./P2-06a-frontend-auth-core.md) | Frontend auth core: login, logout, session guard, new shell (split from [P2-06](./P2-06-frontend-auth-shell.md)) | B | 1 | P2-02, P1-07 | in progress | — |
+| [P2-06b](./P2-06b-building-context-guards-nav.md) | Building context, membership guards and navigation | B | 1 | P2-06a | todo | — |
 | [P2-07](./P2-07-test-infrastructure-hardening.md) | Test infrastructure hardening (P1-05 and P2-03 follow-ups) | B | 3 | P2-03 | todo | — |
 | [P3-01](./P3-01-job-queue-and-worker.md) | Job queue and worker | B | 1 | P1-04, P0-05 | todo | — |
 | [P3-02](./P3-02-transactional-email.md) | Transactional email | B | 2 | P3-01 | todo | — |
 | [P3-03](./P3-03-notifications-api.md) | In-app notifications API | A | 2 | P3-01, P2-03 | todo | — |
 | [P3-04](./P3-04-private-file-uploads.md) | Private file uploads | A | 1 | P2-03, P0-04a | todo | — |
-| [P3-05](./P3-05-frontend-notification-center.md) | Frontend notification center with polling | B | 2 | P3-03, P2-06 | todo | — |
-| [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04, P2-06 | todo | — |
+| [P3-05](./P3-05-frontend-notification-center.md) | Frontend notification center with polling | B | 2 | P3-03, P2-06b | todo | — |
+| [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04, P2-06b | todo | — |
 | [P4-01](./P4-01-units-api.md) | Units API | A | 2 | P2-03, P2-04 | todo | — |
 | [P4-02](./P4-02-staff-invitations.md) | Staff invitations | A | 1 | P3-02, P2-04, P2-03, P2-05 | todo | — |
 | [P4-03](./P4-03-bootstrap-building-command.md) | Bootstrap-building operator command | A | 1 | P4-02, P4-01, P1-06 | todo | — |
 | [P4-04](./P4-04-password-reset.md) | Password reset | B | 1 | P3-02, P2-05, P2-04 | todo | — |
 | [P4-05](./P4-05-resident-join-onboarding-approval.md) | Resident join, onboarding and approval | A | 1 | P4-01, P3-03, P2-04, P2-05 | todo | — |
 | [P4-06](./P4-06-membership-administration.md) | Membership administration | A | 1 | P2-04, P4-05 | todo | — |
-| [P4-07](./P4-07-frontend-account-screens.md) | Frontend account screens | B | 2 | P4-02, P4-04, P2-06 | todo | — |
-| [P4-08](./P4-08-frontend-onboarding-approval-screens.md) | Frontend onboarding and approval screens | B | 2 | P4-05, P4-06, P2-06 | todo | — |
+| [P4-07](./P4-07-frontend-account-screens.md) | Frontend account screens | B | 2 | P4-02, P4-04, P2-06b | todo | — |
+| [P4-08](./P4-08-frontend-onboarding-approval-screens.md) | Frontend onboarding and approval screens | B | 2 | P4-05, P4-06, P2-06b | todo | — |
 | [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07, P4-08, P4-03, P1-08 | todo | — |
 | [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04 | todo | — |
 | [P5-02a](./P5-02a-package-create-and-read.md) | Package create and read | A | 1 | P5-01, P3-03, P2-04, P4-01 | todo | — |
