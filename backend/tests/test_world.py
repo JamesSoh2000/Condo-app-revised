@@ -59,6 +59,8 @@ EXPECTED_ROW_COUNTS = {
     "sessions": 0,
     # P2-04: nor records any audit event.
     "audit_events": 0,
+    # P2-05: nor counts a login attempt.
+    "rate_limits": 0,
 }
 
 

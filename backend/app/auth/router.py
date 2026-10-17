@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.dependencies import get_db_session
 from app.core.errors import problem_responses
 from app.core.pagination import CursorParams, Page
+from app.rate_limits.service import RateLimiter, get_rate_limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -24,11 +25,19 @@ DbSession = Annotated[AsyncSession, Depends(get_db_session)]
 Current = Annotated[CurrentSession, Depends(get_current_session)]
 
 
-@router.post("/login", status_code=204, responses=problem_responses(401))
-async def login(body: LoginIn, request: Request, response: Response, db: DbSession) -> None:
-    """Log in: 204 with the session cookie, or 401 `invalid_credentials` for any failure."""
+@router.post("/login", status_code=204, responses=problem_responses(401, 429))
+async def login(
+    body: LoginIn,
+    request: Request,
+    response: Response,
+    db: DbSession,
+    limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+) -> None:
+    """Log in: 204 with the session cookie, 401 `invalid_credentials` for any failure, or 429
+    `rate_limited` (with Retry-After) after too many attempts from the IP or for the email."""
     token = await service.login(
         db,
+        limiter,
         email=body.email,
         password=body.password,
         user_agent=request.headers.get("user-agent"),

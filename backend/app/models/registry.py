@@ -8,6 +8,7 @@ import app.audit.models
 import app.auth.models
 import app.buildings.models
 import app.memberships.models
+import app.rate_limits.models
 import app.units.models
 import app.users.models
 

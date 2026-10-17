@@ -1,10 +1,11 @@
 import ipaddress
 import re
+from datetime import timedelta
 from functools import lru_cache
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 AppEnv = Literal["dev", "test", "staging", "prod"]
@@ -15,6 +16,24 @@ LOCAL_DEV_SECRET_KEY = "change-me-in-local-dev-only"  # noqa: S105
 # labels are letters, digits and inner dashes, with no trailing dot.
 _LABEL = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?"
 _ORIGIN = re.compile(rf"https?://{_LABEL}(\.{_LABEL})*(:[1-9][0-9]{{0,4}})?")
+
+
+class RatePolicy(BaseModel):
+    """At most `limit` attempts per fixed window of `window_seconds` (P2-05).
+
+    The window is at most a day: `delete_expired_rate_limits` deletes windows older than that.
+    As an environment variable it is JSON:
+    `RATE_LIMIT_LOGIN_IP='{"limit": 30, "window_seconds": 600}'`.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    limit: int = Field(gt=0)
+    window_seconds: int = Field(gt=0, le=24 * 3600)
+
+    @property
+    def window(self) -> timedelta:
+        return timedelta(seconds=self.window_seconds)
 
 
 class Settings(BaseSettings):
@@ -86,6 +105,15 @@ class Settings(BaseSettings):
     session_absolute_days: int = Field(30, gt=0)
     session_idle_resident_days: int = Field(7, gt=0)
     session_idle_staff_hours: int = Field(12, gt=0)
+
+    # Rate limits (P2-05), per client IP (IPv6 per /64) and per hashed email. Login applies its two
+    # here; P4-04 applies the reset ones and P4-05 the signup and join ones.
+    rate_limit_login_ip: RatePolicy = RatePolicy(limit=30, window_seconds=600)
+    rate_limit_login_email: RatePolicy = RatePolicy(limit=8, window_seconds=900)
+    rate_limit_reset_ip: RatePolicy = RatePolicy(limit=30, window_seconds=600)
+    rate_limit_reset_email: RatePolicy = RatePolicy(limit=8, window_seconds=900)
+    rate_limit_signup_ip: RatePolicy = RatePolicy(limit=10, window_seconds=3600)
+    rate_limit_join_ip: RatePolicy = RatePolicy(limit=20, window_seconds=600)
 
     @model_validator(mode="before")
     @classmethod
