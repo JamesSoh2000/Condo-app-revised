@@ -87,7 +87,7 @@ describe('typed success', () => {
 describe('generated types (criterion 1)', () => {
   it('rejects a path the backend does not have', () => {
     // Compile-time only (tsc checks test files): a renamed or removed backend path fails typecheck.
-    expectTypeOf(api.get)
+    expectTypeOf<typeof api.get>()
       .parameter(0)
       .toEqualTypeOf<
         | '/api/auth/me'

@@ -87,15 +87,23 @@ export default [
       "react-hooks/rules-of-hooks": "error",
     },
   },
-  // TypeScript files (new and migrated code, ADR-0015).
-  ...tseslint.configs.recommended.map((config) => ({
+  // TypeScript files (new and migrated code): type-aware recommended rules and exhaustive-deps (ADR-0015).
+  ...tseslint.configs.recommendedTypeChecked.map((config) => ({
     ...config,
     files: ["src/**/*.{ts,tsx}"],
   })),
   {
     files: ["src/**/*.{ts,tsx}"],
+    languageOptions: {
+      parserOptions: {
+        // The default project serves only the virtual files scripts/check-eslint-fence.sh pipes in: real
+        // files there would be "found in both" and fail, and real code lives in src/features/<domain>/.
+        projectService: { allowDefaultProject: ["src/features/*.ts", "src/features/*.tsx", "src/api/fence-probe.ts"] },
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     plugins: { "react-hooks": pluginReactHooks },
-    rules: { "react-hooks/rules-of-hooks": "error" },
+    rules: { "react-hooks/rules-of-hooks": "error", "react-hooks/exhaustive-deps": "error" },
   },
   {
     files: ["src/features/**/*.{js,jsx,ts,tsx}", "src/app/**/*.{js,jsx,ts,tsx}"],
