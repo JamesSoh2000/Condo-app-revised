@@ -102,6 +102,15 @@ This completes demo journey 7, and it is one of the most commonly attacked flows
 - `revoke_all_sessions` records no audit event (PR #60 D4). The reset use-case records its own action (for
   example `auth.password_reset`, with `{"sessions_revoked": n}`) with `record_audit`, before its single commit.
 
+## Carried from P2-05 (do while framing)
+
+- The policies exist: `settings.rate_limit_reset_ip` (30/10 min) and `settings.rate_limit_reset_email`
+  (8/15 min). Inject `get_rate_limiter`, and in the use-case, **before any lookup**:
+  `await limiter.enforce(ip_key("reset", ip), settings.rate_limit_reset_ip)` then
+  `await limiter.enforce(await limiter.email_key("reset", email), settings.rate_limit_reset_email)`. Use the
+  `reset` scope so reset and login counts stay apart; document 429 (`problem_responses(..., 429)`). See
+  `docs/explanations/P2-05-rate-limiting.md` §8.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

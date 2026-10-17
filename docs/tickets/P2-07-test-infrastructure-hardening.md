@@ -50,6 +50,12 @@ blind spots review round 2 found.
   isn't checked by it. Only `test_record_audit_never_commits` guards `record_audit` (PR #60 mutation M2).
   Consider naming the non-committing helpers and failing on a commit inside them.
 
+## Carried from P2-05 (do while framing)
+
+- `backend/tests/test_rate_limit.py::committing` really commits rate-limit rows to the shared test database and
+  deletes the keys it used afterwards. A hard kill mid-test leaves rows, and the next run fails the `== 1`
+  assertions. Also delete the tests' fixed keys before each test (PR #61 review round 1, L4).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

@@ -87,6 +87,13 @@ The journeys above. Run 5 times locally in a row to check flakiness before mergi
 - The compose service is `app`, not `api`: use `docker compose exec app python -m app.cli …` (as `make seed`
   does).
 
+## Carried from P2-05 (do while framing)
+
+- Login is rate-limited: 30 attempts per 10 minutes per IP, 8 per 15 minutes per email, counting successes.
+  A suite that logs in repeatedly as one seeded user from one IP will get 429s. Set `RATE_LIMIT_LOGIN_IP` and
+  `RATE_LIMIT_LOGIN_EMAIL` (JSON `{"limit", "window_seconds"}`) for the e2e environment, or log in once per
+  persona and reuse the storage state (PR #61 review round 1, L2).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

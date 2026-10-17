@@ -128,6 +128,12 @@ matches the existing Base44 UI ([01 §Onboarding](../PRODUCT_SCOPE.md#onboarding
   onboarding routes to fitness test 1 (`backend/tests/test_architecture.py::unguarded_building_routes`) so an
   operational route can't use it (P2-03 review round 1, L3).
 
+## Carried from P2-05 (do while framing)
+
+- The policies exist: `settings.rate_limit_signup_ip` (10/hour) and `settings.rate_limit_join_ip`
+  (20/10 min; criterion 8's 30 rapid lookups give 429). Use `limiter.enforce(ip_key("signup" | "join", ip),
+  …)` before any lookup; document 429. See `docs/explanations/P2-05-rate-limiting.md` §8.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
