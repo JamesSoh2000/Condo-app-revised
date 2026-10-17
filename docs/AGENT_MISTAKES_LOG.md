@@ -139,3 +139,13 @@ caught before review, not logged as rows: the log context variables leaked betwe
 during implementation; fixed with a per-request reset), and the first mutation run showed no test proved
 `building_router()` itself attaches the guard (test added).
 
+| 2026-10-17 | P2-04 | `--since` accepted up to 6 digits, but `999999d` overflowed `datetime` (exit 1 with a traceback, not the promised usage error) | review round 1 (Claude), Medium | validated the pattern, not the computed value | overflow → `BadParameter`, test case `999999d` + neighbour `999999h` |
+| 2026-10-17 | P2-04 | The metadata sanitizer recursed: a cyclic dict raised `RecursionError` (round 1). The round-1 fix (serialize first) missed deep *acyclic* nesting (round 2), and NUL and non-dict input weren't refused either (round 2) | review rounds 1–2 (Codex L1, Claude L2–L4) | enumerated only the ticket's examples (key words, size), not the input classes of a validator: depth, cycles, encodability, type. Pattern "fix not tested on adjacent cases" **again, with its lesson in CLAUDE.md** | iterative `_check_structure` with depth limit; 9 new cases |
+| 2026-10-17 | P2-04 | Round 3 still found two neighbours of the round-2 fixes: a lone-surrogate key, and falsy non-dict metadata slipping through `metadata or {}` | review round 3 (Codex + Claude), Low ×2 | same as above: the round-2 type check was written after a truthy-only `or {}` | unfixed (last round); carried to P4-01 |
+| 2026-10-17 | P2-04 | Committed and pushed `9c92927` before reading `make check`'s exit code (E501 in a docstring) | the implementer, from the log; CI would have caught it | ran the check and the push in one command | `7922d2d`; run the check, read the result, then commit |
+
+P2-04 step 8 note: "fix not tested on adjacent cases" recurred over three rounds on a single validator, even
+with the `CLAUDE.md` lesson in place. Next ticket's first follow-up: add an input-class checklist for any
+validator or sanitizer (type, empty/falsy, depth, cycles, size boundary, encoding/NUL/surrogates, case) to
+`docs/templates/REVIEW_PROMPT.md` or the `CLAUDE.md` lesson, so the implementer enumerates the classes before the
+first review instead of discovering them one per round.

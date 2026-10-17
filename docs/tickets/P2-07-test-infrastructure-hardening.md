@@ -43,6 +43,13 @@ blind spots review round 2 found.
 4. A meta-test: `text("commit")` and `isolation_level="AUTOCOMMIT"` in a non-service file fail fitness test 4.
 5. The docs-route decision is recorded and tested.
 
+## Carried from P2-04 (do while framing)
+
+- The commit fitness test (`tests/test_architecture.py::files_that_commit`) allows every `**/service.py`, so
+  a helper that lives in a service module (`app/audit/service.py::record_audit`, later `notify`, `enqueue`)
+  isn't checked by it. Only `test_record_audit_never_commits` guards `record_audit` (PR #60 mutation M2).
+  Consider naming the non-committing helpers and failing on a commit inside them.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

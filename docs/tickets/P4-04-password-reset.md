@@ -97,6 +97,11 @@ This completes demo journey 7, and it is one of the most commonly attacked flows
   fails otherwise, and the allowlist holds only routes that exist (PR #59 D1).
 - Routes: password-reset request and confirm.
 
+## Carried from P2-04 (do while framing)
+
+- `revoke_all_sessions` records no audit event (PR #60 D4). The reset use-case records its own action (for
+  example `auth.password_reset`, with `{"sessions_revoked": n}`) with `record_audit`, before its single commit.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
