@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P2-01b |
 | Replaces old | M3-T03 |
-| Status | todo |
+| Status | in progress |
 
 ## Goal
 
@@ -89,7 +89,60 @@ Endpoints above, with operation IDs `auth_me`, `auth_logout_all`, `auth_sessions
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+- Criteria added or sharpened (the numbered criteria above stay; these make them exact and add cases):
+  - **1.** `no_membership`'s `/me` is 200 with its own `user` fields and `"memberships": []`.
+  - **2.** `a_pending`'s `/me` has exactly one membership: building A, status `pending`, roles
+    `["resident"]`, `occupancy: null`.
+  - **3.** `multi`'s `/me` has exactly two memberships: A with roles `["resident"]` and occupancy A-201
+    `household`; B with roles `["security"]` and `occupancy: null` (catches roles or occupancy taken from
+    the wrong membership, tenant row 3).
+  - **4.** `a_resident1`: occupancy `{unit_id: a_101, unit_label: "101", tower: null, relationship:
+    "tenant"}`. `a_former`: unit 102, `tenant`; its ended 101 row never appears.
+  - **5.** logout-all from client 1 is 204 and deletes the cookie (`Max-Age=0`, same name and flags as
+    login's). Afterwards client 2 **and** client 1 replaying its old token get 401 `not_authenticated`;
+    another user's session still works.
+  - **6.** The list holds only the caller's live sessions, each with `current` true only for the session
+    of the calling client. `DELETE` of another user's session id is 404 `not_found`, the same body as a
+    random id, and that other session still works afterwards.
+  - **7.** Without a cookie, all four endpoints return 401 `not_authenticated` (with CSRF headers sent on
+    the unsafe ones, so the 401 is the auth check, not CSRF).
+  - **8.** Checked twice: the OpenAPI schemas of all four responses (followed through `$ref`) have no
+    property `password_hash`, `token_hash` or `ip`, and neither do the real response bodies.
+  - **9 (added).** `/me` shows `denied` and `suspended` memberships with their status (`a_suspended` with
+    its current A-201 occupancy); it omits `deactivated` memberships and memberships in an inactive
+    building (decision D1 below).
+  - **10 (added).** Building `/me` takes at most 2 SQL statements whatever the number of memberships
+    (counted with a statement listener for a user with 3 memberships, all with roles and occupancies).
+  - **11 (added).** A membership whose only occupancy has ended shows `occupancy: null`.
+  - **12 (added).** The session list leaves out revoked, absolutely expired and idle-expired sessions. It
+    is a page `{items, next_cursor}` (newest first, `?limit=&cursor=`), like every list (D2). Items carry
+    `user_agent`, never `ip`.
+  - **13 (added).** `DELETE` of one of the caller's other sessions: 204, that session's client then gets
+    401, the caller keeps working. `DELETE` of the caller's own revoked or expired session: 404 (D3).
+    `DELETE` of the current session: 204, deletes the cookie, and the next request is 401 (D4).
+  - **14 (added).** logout-all and `DELETE` without the CSRF headers get 403 from the middleware and
+    revoke nothing.
+  - **15 (added).** `revoke_all_sessions(db, user_id)` never commits (a test makes `commit` fail) and
+    returns how many sessions it revoked; it skips already-revoked rows.
+  - **16 (added).** A session id that isn't a UUID is 422 `validation_error` (problem+json), not a 500.
+  - Tenant table (ENGINEERING_PRACTICES §7): none of these routes is building-scoped. Row 2 → criterion 7;
+    row 3 → criterion 3 (`multi`); row 5 (someone else's record) → criterion 6, 404 not 403; row 6 →
+    criteria 2 and 9 (pending/suspended are shown, not refused: `/me` is how the UI explains them).
+    Rows 1, 4, 7 have no role or related id here; rows 8–10: criterion 13 (DELETE twice → 404).
+- Criteria loosened: none.
+- Decisions taken:
+  - **D1** Memberships in an inactive building (`buildings.is_active = false`) are left out of `/me`,
+    like deactivated memberships: P2-03's tenant context refuses inactive buildings, so the shell would
+    offer a building every request 404s. Autonomous (rule 3); in the inbox.
+  - **D2** `GET /api/auth/sessions` returns the standard `Page` (`{items, next_cursor}`, `id DESC`) instead
+    of a bare array: ENGINEERING_PRACTICES says every list endpoint is paginated, and a user's sessions
+    are unbounded (one per login for 30 days). Basis: rule 1 (convention).
+  - **D3** `DELETE` on a session that is the caller's but no longer live is 404, like an unknown id: only
+    sessions in the list exist for the caller. Autonomous (rule 3).
+  - **D4** `DELETE` of the current session also deletes the cookie, as logout does. Autonomous (rule 3).
+  - **D5** Memberships are ordered by building name then building id; roles sorted by value: a stable
+    payload for the UI and the tests. Autonomous (rule 3).
+  - **D6** `/me` = one query (memberships ⋈ buildings ⟕ current occupancy ⟕ unit) plus one for roles;
+    "one or two queries" (ticket).
+- Split: none; estimated ~250 non-test lines (schemas ~60, service ~100, router ~70, plus the regenerated
+  `schema.d.ts`).
