@@ -31,7 +31,9 @@ export function runAuthCall<T>(call: (signal: AbortSignal) => Promise<T>): Promi
     }
   };
   const locks = 'locks' in navigator ? navigator.locks : undefined;
-  const result = tail.then(() => (locks ? locks.request(LOCK, timed) : timed()));
+  // The DOM typings give `request` the callback's return type unwrapped once too few (Promise<Promise<T>>);
+  // the browser resolves it to T, as with any promise returned from a then callback.
+  const result = tail.then(() => (locks ? (locks.request(LOCK, timed) as Promise<T>) : timed()));
   tail = result.catch(() => undefined);
   return result;
 }

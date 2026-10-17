@@ -237,9 +237,9 @@ describe('across tabs: the condo.auth Web Lock (P2-06c criterion 7a)', () => {
       expect(locks.held).toEqual(['condo.auth']);
       await first.promise;
     });
-    const b = runAuthCall(async () => {
+    const b = runAuthCall(() => {
       started.push('b');
-      return 'b done';
+      return Promise.resolve('b done');
     });
     await settle();
     expect(started).toEqual([]);
@@ -265,8 +265,9 @@ describe('across tabs: the condo.auth Web Lock (P2-06c criterion 7a)', () => {
       await first.promise;
       order.push('a');
     });
-    const b = runAuthCall(async () => {
+    const b = runAuthCall(() => {
       order.push('b');
+      return Promise.resolve();
     });
     await settle();
     expect(order).toEqual([]);
@@ -340,8 +341,9 @@ describe('login and logout time out (P2-06c criterion 7b)', () => {
 
   it('passes an unaborted signal to a call that answers in time', async () => {
     let seen: AbortSignal | undefined;
-    await runAuthCall(async (signal) => {
+    await runAuthCall((signal) => {
       seen = signal;
+      return Promise.resolve();
     });
     expect(seen?.aborted).toBe(false);
   });
