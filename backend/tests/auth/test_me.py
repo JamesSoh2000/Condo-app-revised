@@ -95,6 +95,17 @@ async def test_memberships_are_ordered_by_building_name_and_roles_sorted(client,
     assert council[0]["roles"] == ["council", "resident"]
 
 
+async def test_roles_are_sorted_whatever_order_they_were_stored_in(client, db):
+    user = await make_user(db)
+    await make_membership(
+        user, await make_building(db), roles=(Role.SECURITY, Role.RESIDENT, Role.COUNCIL)
+    )
+
+    [membership] = (await _me(client, db, user))["memberships"]
+
+    assert membership["roles"] == ["council", "resident", "security"]
+
+
 # Criterion 4
 
 
