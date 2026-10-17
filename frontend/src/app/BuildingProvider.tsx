@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { api } from '@/api/client';
@@ -18,6 +18,8 @@ interface BuildingContextValue {
   select: (id: string) => void;
   /** Forgets the selection and every building's queries (the picker or the default comes next). */
   reset: () => void;
+  /** Changes at each reset(), so what depends on the building renders again. */
+  epoch: number;
 }
 
 const BuildingContext = createContext<BuildingContextValue | null>(null);
@@ -53,29 +55,42 @@ function UserBuildingProvider({ children }: { children: ReactNode }) {
     if (readSelectedBuilding() !== buildingId) writeSelectedBuilding(buildingId);
   }, [buildingId, stored]);
 
+  // Whatever moves the selection off a building (a switch, or a /me refresh that ends its membership)
+  // drops that building's queries. Removing a query also aborts its request (it is cancelled with its
+  // `signal`), so a late answer from the old building can't land anywhere; every building key starts
+  // ['b', id] (review round 2: a /me-driven change used to skip this).
+  const previous = useRef(buildingId);
+  useEffect(() => {
+    const old = previous.current;
+    previous.current = buildingId;
+    if (old !== null && old !== buildingId) queryClient.removeQueries({ queryKey: ['b', old] });
+  }, [buildingId, queryClient]);
+
   const select = useCallback(
     (id: string) => {
       if (id === buildingId || !active.some((m) => m.building.id === id)) return;
-      if (buildingId !== null) {
-        // Removing a query also aborts its request (it is cancelled with its `signal`), so a late answer
-        // from the old building can't land anywhere; every building key starts ['b', id].
-        queryClient.removeQueries({ queryKey: ['b', buildingId] });
-        // The current page may be closed in the new building (role, feature).
-        navigate('/');
-      }
+      // The current page may be closed in the new building (role, feature).
+      if (buildingId !== null) navigate('/');
       writeSelectedBuilding(id);
       setStored(id);
     },
-    [active, buildingId, navigate, queryClient],
+    [active, buildingId, navigate],
   );
 
+  // Bumped by reset(), so the guards render again and ask for the building again even when the selection
+  // comes out the same (review round 2: with one active membership the click changed no state).
+  const [epoch, setEpoch] = useState(0);
   const reset = useCallback(() => {
     queryClient.removeQueries({ queryKey: ['b'] });
     // The effect above then stores whatever is selected next (the default, or nothing: the picker).
     setStored(null);
+    setEpoch((n) => n + 1);
   }, [queryClient]);
 
-  const value = useMemo(() => ({ buildingId, active, select, reset }), [buildingId, active, select, reset]);
+  const value = useMemo(
+    () => ({ buildingId, active, select, reset, epoch }),
+    [buildingId, active, select, reset, epoch],
+  );
   return <BuildingContext.Provider value={value}>{children}</BuildingContext.Provider>;
 }
 

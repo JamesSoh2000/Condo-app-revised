@@ -439,16 +439,45 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
     return { app, fetchMock };
   }
 
-  it('hides the page when a background refetch answers 404, and Choose again recovers', async () => {
+  it('hides the page when a background refetch answers 404', async () => {
     await loadedThen('/Packages', () => problem(404, 'building_not_found'));
 
     expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
     expect(screen.queryByText(/being migrated/i)).toBeNull();
+  });
 
+  // Review round 2 (Claude M1): with /me unchanged the click used to change no state, so nothing was asked.
+  it.each([
+    ['on the first load', false],
+    ['after the building loaded', true],
+  ])('asks the building again on Choose again with /me unchanged (404 %s)', async (_label, loadedFirst) => {
+    let answer = loadedFirst ? 'ok' : 'gone';
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      [`GET /api/buildings/${MAPLE.id}`]: () =>
+        answer === 'ok' ? json(buildingOut(MAPLE, ['resident'])) : problem(404, 'building_not_found'),
+    });
+    const app = renderApp(['/Packages']);
+    if (loadedFirst) {
+      await screen.findByText(/being migrated/i);
+      answer = 'gone';
+      await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id] }));
+    }
+    await screen.findByRole('heading', { name: /no longer have access/i });
+    const asked = buildingCalls(fetchMock).length;
+
+    // Still a 404: asked again, the same screen (no loop: one request per click).
     fireEvent.click(screen.getByRole('button', { name: /choose again/i }));
-    await waitFor(() => expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id));
-    // /me still lists Maple, so it is selected again and asked again: the same 404, the same screen.
+    await waitFor(() => expect(buildingCalls(fetchMock)).toHaveLength(asked + 1));
     expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
+    await settle();
+    expect(buildingCalls(fetchMock)).toHaveLength(asked + 1);
+
+    // Access back (a transient 404): the next click shows the page.
+    answer = 'ok';
+    fireEvent.click(screen.getByRole('button', { name: /choose again/i }));
+    expect(await screen.findByText(/being migrated/i)).toBeTruthy();
+    expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
   });
 
   it('keeps showing the page when a background refetch fails with a server error', async () => {
@@ -483,6 +512,42 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
     await settle();
     expect(buildingCalls(fetchMock)).toHaveLength(before);
     expect(sessionStorage.getItem(KEY)).toBeNull();
+  });
+});
+
+describe('a /me refresh changes the selection (review round 2, Codex M1)', () => {
+  it('removes the old building’s queries when /me leaves another building as the only active one', async () => {
+    let me = meWith(membership(MAPLE), membership(BIRCH));
+    stubApi({
+      ...MULTI_ROUTES,
+      'GET /api/auth/me': () => json(me),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['resident'])),
+    });
+    sessionStorage.setItem(KEY, MAPLE.id);
+    const app = renderApp(['/']);
+    await findInMain('Maple Tower');
+    app.queryClient.setQueryData(['b', MAPLE.id, 'packages'], ['a Maple package']);
+
+    me = meWith(membership(MAPLE, { status: 'suspended' }), membership(BIRCH));
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+
+    expect(await findInMain('Birch Court')).toBeTruthy();
+    expect(sessionStorage.getItem(KEY)).toBe(BIRCH.id);
+    expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id] })).toEqual([]);
+  });
+
+  it('removes the old building’s queries when /me leaves no active membership', async () => {
+    let me: Me = RESIDENT_ME;
+    stubApi({ 'GET /api/auth/me': () => json(me) });
+    const app = renderApp(['/']);
+    await findInMain('Maple Tower');
+    app.queryClient.setQueryData(['b', MAPLE.id, 'packages'], ['a Maple package']);
+
+    me = meWith(membership(MAPLE, { status: 'suspended' }));
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+
+    await screen.findByRole('heading', { name: /access is suspended/i });
+    expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id] })).toEqual([]);
   });
 });
 
