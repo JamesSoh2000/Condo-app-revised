@@ -18,6 +18,8 @@ export const DEMO_PAGES = [
   'Contacts',
 ] as const;
 
+export type DemoPage = (typeof DEMO_PAGES)[number];
+
 const demoPages = new Set<string>(DEMO_PAGES.map((name) => name.toLowerCase()));
 
 /** True if a page name is in the demo scope. Case-insensitive, like React Router's matching. */

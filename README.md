@@ -55,6 +55,7 @@ it). Login arrives in [P2-01b](docs/tickets/P2-01b-sessions-login-logout.md). St
 | `pending` | `maple` | pending | resident | — |
 | `birch.manager` | Birch Court (`birch`) | active | property_management | — |
 | `birch.resident` | `birch` | active | resident | 201 (tenant) |
+| `multi` | `maple` and `birch` | active in both | resident in `maple`, security in `birch` | 201 in `maple` (owner) |
 
 `maple`: 40 units (`101`–`104` … `1001`–`1004`), join code `MAPLE-2026`, features packages, notices and
 maintenance. `birch`: 8 units (`101`–`104`, `201`–`204`), join code `BIRCH-2026`, feature packages. Both in

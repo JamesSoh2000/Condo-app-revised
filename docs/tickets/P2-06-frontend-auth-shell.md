@@ -9,8 +9,8 @@
 | Status | split into [P2-06a](./P2-06a-frontend-auth-core.md), [P2-06b](./P2-06b-building-context-guards-nav.md) |
 
 Split while framing (2026-10-17). "P2-06" in other tickets' text means both parts; the
-[ticket index](./README.md) lists which part each dependent needs (P3-05, P3-06, P4-07 and P4-08 need
-P2-06b, which depends on P2-06a).
+[ticket index](./README.md) lists which part each dependent needs (P3-06 needs P2-06b; P3-05, P4-07
+and P4-08 need [P2-06c](./P2-06c-navigation-and-header-menu.md), split from P2-06b while framing it).
 
 | Part | Scope | Acceptance criteria (original numbers) |
 |---|---|---|

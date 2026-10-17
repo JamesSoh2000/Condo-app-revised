@@ -28,7 +28,37 @@ export function problem(status: number, code: string, headers: Record<string, st
 
 export const noContent = (): Response => new Response(null, { status: 204 });
 
-export const RESIDENT_ME: components['schemas']['MeOut'] = {
+type Schemas = components['schemas'];
+type Membership = Schemas['MeMembershipOut'];
+
+export const MAPLE = { id: '01929a4e-0000-7000-8000-00000000a001', name: 'Maple Tower', slug: 'maple' };
+export const BIRCH = { id: '01929a4e-0000-7000-8000-00000000b001', name: 'Birch Court', slug: 'birch' };
+type BuildingRef = typeof MAPLE;
+
+/** A `/me` membership in `building`; active resident unless overridden. */
+export function membership(
+  building: BuildingRef,
+  { status = 'active', roles = ['resident'] }: { status?: Membership['status']; roles?: Schemas['Role'][] } = {},
+): Membership {
+  return {
+    membership_id: building.id.replace(/1$/, '2'),
+    status,
+    roles,
+    building: { ...building, timezone: 'America/Toronto', locale: 'en' },
+    occupancy: null,
+  };
+}
+
+/** `GET /api/buildings/{id}`'s body for `building`. */
+export function buildingOut(
+  building: BuildingRef,
+  my_roles: Schemas['Role'][],
+  features: Schemas['Feature'][] = ['packages', 'notices', 'maintenance'],
+): Schemas['BuildingOut'] {
+  return { ...building, timezone: 'America/Toronto', locale: 'en', my_roles, features };
+}
+
+export const RESIDENT_ME: Schemas['MeOut'] = {
   user: {
     id: '01929a4e-0000-7000-8000-000000000001',
     email: 'resident1@example.test',
@@ -36,14 +66,22 @@ export const RESIDENT_ME: components['schemas']['MeOut'] = {
     phone: null,
     locale: 'en',
   },
-  memberships: [],
+  memberships: [membership(MAPLE)],
+};
+
+/**
+ * Answered unless a test overrides it: `RESIDENT_ME`'s building, so a test about something else can render a
+ * page (P2-06b: pages need an active membership and the building's roles).
+ */
+const DEFAULT_ROUTES: Record<string, Handler> = {
+  [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['resident'])),
 };
 
 /** Stubs `fetch`; unknown routes fail the test loudly. Returns the mock to inspect calls. */
 export function stubApi(routes: Record<string, Handler>) {
   const fetchMock = vi.fn(async (request: Request) => {
     const key = `${request.method} ${new URL(request.url).pathname}`;
-    const handler = routes[key];
+    const handler = routes[key] ?? DEFAULT_ROUTES[key];
     if (!handler) throw new Error(`unexpected request ${key}`);
     return handler(request);
   });

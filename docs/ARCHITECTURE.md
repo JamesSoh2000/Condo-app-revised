@@ -441,9 +441,10 @@ frontend/src/
 
 - **Query keys:** `['me']`, `['b', buildingId, 'packages', params]`. On a building switch, remove
   `['b', oldId]` queries. On logout, `queryClient.clear()`.
-- **Building context:** the selected building is kept per tab in `sessionStorage` and defaults to the first
-  active membership. It is part of every building API path and query key, so a late response from the old
-  building can never fill the new building's view.
+- **Building context:** the selected building is kept per tab in `sessionStorage`. It defaults to the only
+  active membership, with a picker when there are several (P2-06b), and a stored ID counts only while it is
+  one of `/me`'s active memberships. It is part of every building API path and query key, so a late
+  response from the old building can never fill the new building's view.
 - **Guards:** `<RequireAuth>`, `<RequireActiveMembership>`, `<RequireRole roles>` and `<RequireFeature>` are UX
   only. The server enforces everything again.
 - **Migration:**

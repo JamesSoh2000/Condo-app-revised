@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { api, onUnauthenticated } from '@/api/client';
 import type { components } from '@/api/schema';
 import { runAuthCall } from '@/app/authQueue';
+import { clearSelectedBuilding } from '@/app/buildingStorage';
 import { isLoginPath, loginPath } from '@/app/safeNext';
 
 export type Me = components['schemas']['MeOut'];
@@ -33,6 +34,7 @@ export function useLogout() {
         await api.post('/api/auth/logout');
         navigate('/login', { replace: true });
         queryClient.clear();
+        clearSelectedBuilding();
       }),
     onMutate: () => setError(false),
     onError: () => setError(true),
@@ -55,11 +57,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     locationRef.current = location;
   }, [location]);
 
+  // `/me` answering for another user than before means another tab logged in on the shared cookie: drop
+  // everything cached for the previous user, and their building selection (review round 1, Claude M1).
+  useEffect(() => {
+    let userId = queryClient.getQueryData<Me>(['me'])?.user.id;
+    return queryClient.getQueryCache().subscribe((event) => {
+      if (event.type !== 'updated' || event.query.queryHash !== '["me"]') return;
+      const next = (event.query.state.data as Me | undefined)?.user.id;
+      if (next === undefined) return;
+      if (userId !== undefined && next !== userId) {
+        queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' });
+        clearSelectedBuilding();
+      }
+      userId = next;
+    });
+  }, [queryClient]);
+
   useEffect(
     () =>
       onUnauthenticated(({ method, path }) => {
         if (method === 'POST' && path === '/api/auth/login') return;
         queryClient.clear();
+        clearSelectedBuilding();
         const current = locationRef.current;
         if (!isLoginPath(current.pathname)) navigate(loginPath(current), { replace: true });
       }),

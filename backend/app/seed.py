@@ -114,6 +114,9 @@ MEMBERS = (
     ),
     _staff("birch", "birch.manager@example.test", "Drew Kowalski", Role.PROPERTY_MANAGEMENT),
     _resident("birch", "birch.resident@example.test", "Robin Silva", "201", TENANT),
+    # One person in two buildings with a different role in each (P2-06b: one building per tab).
+    _resident("maple", "multi@example.test", "Kim Laurent", "201", OWNER),
+    _staff("birch", "multi@example.test", "Kim Laurent", Role.SECURITY),
 )
 
 
