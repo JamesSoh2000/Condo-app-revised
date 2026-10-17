@@ -7,7 +7,7 @@ the legacy Base44 client; the ESLint fence keeps them out of the TypeScript file
 |---|---|
 | `schema.d.ts` | Generated from the backend's OpenAPI by `make gen-api`. Never edit it. CI regenerates it and fails on any diff |
 | `client.ts` | `api.get/post` (throw `ApiError`), the raw openapi-fetch `client`, `unwrap()`, `onUnauthenticated()` |
-| `errors.ts` | `ApiError {status, code, title, detail, errors, requestId}` and `toApiError()` |
+| `errors.ts` | `ApiError {status, code, title, detail, errors, requestId, retryAfter}` and `toApiError()` |
 
 ## When the backend changes
 
@@ -27,7 +27,12 @@ const version = await api.get('/api/version'); // typed from schema.d.ts
 - Failures throw `ApiError`. Branch on `error.code` (stable), never on `title` or `detail`. A response that
   isn't problem+json (a proxy's HTML 502), or a 2xx whose body isn't JSON (an SPA fallback page), still
   throws `ApiError`, with `code: "http_error"`. The raw `client` throws in that 2xx case too.
-- A 401 also calls every `onUnauthenticated()` listener (P2-06 redirects to login).
+- An empty 2xx other than 204 also throws `http_error` from `api.get/post` (`unwrap`), so a typed result is
+  never `undefined`. A 204 resolves `undefined`. The raw `client` returns `data: undefined` there.
+- `error.retryAfter` holds the `Retry-After` header's seconds (a 429 `rate_limited`), else `null`.
+- A 401 also calls every `onUnauthenticated()` listener with the request's `{ method, path }`.
+  `src/app/AuthProvider.tsx` clears the cache and redirects to login, except for `POST /api/auth/login`
+  (a wrong password is not a lost session).
 
 ## React Query conventions
 
@@ -44,5 +49,15 @@ Query keys:
 
 `buildingId` is in every building key so that switching buildings never shows one building's cached data
 under another, and so `queryClient.removeQueries({ queryKey: ['b', oldId] })` drops a building's data in
-one call. Hooks live with their domain (`src/features/<domain>/`), not here; `src/app/useVersion.ts` is the
-sample.
+one call. Hooks live with their domain (`src/features/<domain>/`), not here; `src/app/useVersion.ts` and
+`src/app/AuthProvider.tsx::useMe` are samples.
+
+Pass React Query's `signal` to the request, so a query that is cancelled or superseded (a building switch,
+a component unmounting) aborts its fetch instead of finishing in the background:
+
+```ts
+useQuery({
+  queryKey: ['me'],
+  queryFn: ({ signal }) => api.get('/api/auth/me', { signal }),
+});
+```

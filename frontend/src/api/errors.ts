@@ -12,6 +12,8 @@ export class ApiError extends Error {
   readonly errors: ProblemFieldError[] | null;
   /** The backend's request id (the body's `request_id`, else the `X-Request-ID` header), for support. */
   readonly requestId: string | null;
+  /** Whole seconds from a `Retry-After` header (a 429 `rate_limited`, a 503), or null if absent or not seconds. */
+  readonly retryAfter: number | null;
 
   constructor(fields: {
     status: number;
@@ -20,6 +22,7 @@ export class ApiError extends Error {
     detail?: string | null;
     errors?: ProblemFieldError[] | null;
     requestId?: string | null;
+    retryAfter?: number | null;
   }) {
     super(`${fields.status} ${fields.code}: ${fields.detail ?? fields.title}`);
     this.name = 'ApiError';
@@ -29,6 +32,7 @@ export class ApiError extends Error {
     this.detail = fields.detail ?? null;
     this.errors = fields.errors ?? null;
     this.requestId = fields.requestId ?? null;
+    this.retryAfter = fields.retryAfter ?? null;
   }
 }
 
@@ -42,8 +46,15 @@ function isProblem(body: unknown): body is Problem {
  * The `ApiError` for a failed response and its parsed body. A body that isn't a problem (an HTML 502 from
  * a proxy, an empty 500) still becomes an `ApiError`, with `code: "http_error"`.
  */
+/** `Retry-After` as delta-seconds; the HTTP-date form (the backend never sends it) and junk give null. */
+function parseRetryAfter(value: string | null): number | null {
+  if (value === null || !/^\d{1,9}$/.test(value.trim())) return null;
+  return Number(value.trim());
+}
+
 export function toApiError(response: Response, body: unknown): ApiError {
   const headerRequestId = response.headers.get('X-Request-ID');
+  const retryAfter = parseRetryAfter(response.headers.get('Retry-After'));
   if (isProblem(body)) {
     return new ApiError({
       status: response.status,
@@ -52,6 +63,7 @@ export function toApiError(response: Response, body: unknown): ApiError {
       detail: body.detail,
       errors: body.errors,
       requestId: body.request_id || headerRequestId,
+      retryAfter,
     });
   }
   return new ApiError({
@@ -59,5 +71,6 @@ export function toApiError(response: Response, body: unknown): ApiError {
     code: 'http_error',
     title: response.statusText || `HTTP ${response.status}`,
     requestId: headerRequestId,
+    retryAfter,
   });
 }
