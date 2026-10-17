@@ -28,6 +28,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.dependencies import get_db_session
 from app.main import app, create_app
+from app.rate_limits.service import RateLimiter, get_rate_limiter
 from app.users.models import User
 from tests.helpers.auth import login_as
 from tests.world import World, build_world
@@ -202,6 +203,7 @@ async def client(db_connection: AsyncConnection) -> AsyncIterator[AsyncClient]:
     """
 
     app.dependency_overrides[get_db_session] = _request_sessions_on(db_connection)
+    app.dependency_overrides[get_rate_limiter] = lambda: limiter_on(db_connection)
     try:
         transport = ASGITransport(app=app)
         async with AsyncClient(
@@ -210,6 +212,7 @@ async def client(db_connection: AsyncConnection) -> AsyncIterator[AsyncClient]:
             yield ac
     finally:
         app.dependency_overrides.pop(get_db_session, None)
+        app.dependency_overrides.pop(get_rate_limiter, None)
 
 
 def _request_sessions_on(
@@ -227,6 +230,17 @@ def _request_sessions_on(
             await session.close()
 
     return override_get_db_session
+
+
+def limiter_on(db_connection: AsyncConnection) -> RateLimiter:
+    """A `get_rate_limiter` override: the limiter's own sessions are savepoints of `db_connection`.
+
+    Its counts commit (release a savepoint) and are rolled back with the test. Production's limiter
+    commits on connections of its own; `tests/test_rate_limit.py` tests that with `engine`.
+    """
+    return RateLimiter(
+        lambda: AsyncSessionLocal(bind=db_connection, join_transaction_mode="create_savepoint")
+    )
 
 
 type UserClientFactory = Callable[[User], Awaitable[AsyncClient]]
@@ -277,6 +291,7 @@ def app_client(db_connection: AsyncConnection) -> AppClientFactory:
         for router in routers:
             test_app.include_router(router, prefix=prefix)
         test_app.dependency_overrides[get_db_session] = _request_sessions_on(db_connection)
+        test_app.dependency_overrides[get_rate_limiter] = lambda: limiter_on(db_connection)
         transport = ASGITransport(app=test_app, raise_app_exceptions=raise_app_exceptions)
         async with AsyncClient(
             transport=transport, base_url="http://test", headers=CSRF_HEADERS
@@ -290,6 +305,7 @@ def app_client(db_connection: AsyncConnection) -> AppClientFactory:
 def _no_leftover_dependency_overrides() -> Iterator[None]:
     yield
     assert get_db_session not in app.dependency_overrides
+    assert get_rate_limiter not in app.dependency_overrides
 
 
 class FrozenClock:
