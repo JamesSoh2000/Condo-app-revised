@@ -54,7 +54,8 @@ is served from, for the CSRF check (§6).
 backend/app/
   main.py                 app factory: middleware, exception handlers, router mounting
   core/                   config, database (engine/session), errors (problem+json), pagination,
-                          security (hashing, tokens), csrf, rate_limit, clock
+                          security (hashing, tokens), csrf, clock
+  rate_limits/            fixed-window counters in Postgres (P2-05): RateLimiter.hit/enforce, ip_key
   models/                 Base, NAMING_CONVENTION, mixins (UUID7 PK, timestamps), types (database_enum)
   auth/                   sessions, login/logout, me, password reset; deps: current_session/current_user
   tenancy/                TenantContext, get_tenant_context, require_roles, require_feature
@@ -157,7 +158,7 @@ erDiagram
 | `invitations` | `building_id`, `email`, `roles` (array), `unit_id`, `relationship`, `token_hash`, `expires_at`, `accepted_at`, `revoked_at`, `created_by` | `token_hash` unique |
 | `sessions` | `user_id`, `token_hash`, `expires_at`, `idle_expires_at`, `last_seen_at`, `revoked_at`, `user_agent`, `ip` | `token_hash` unique |
 | `password_reset_tokens` | `user_id`, `token_hash`, `expires_at`, `used_at` | `token_hash` unique |
-| `rate_limits` | `key`, `window_start`, `count` | PK `(key, window_start)` |
+| `rate_limits` | `key`, `window_start`, `count` | PK `(key, window_start)`; index on `window_start` for the cleanup. Keys are `<scope>:ip:<ip or IPv6 /64>` and `<scope>:email:<sha256 of Postgres lower(email)>`, never a raw email |
 | `audit_events` | `building_id` (nullable for identity events), `actor_user_id`, `action`, `entity_type`, `entity_id`, `request_id`, `metadata` jsonb | index `(building_id, created_at DESC)`, `(entity_type, entity_id)`, `(actor_user_id, created_at DESC)` |
 | `jobs` | `kind`, `payload` jsonb, `status`, `run_at`, `attempts`, `max_attempts`, `locked_by`, `locked_until`, `last_error`, `dedupe_key` | partial index on due jobs; `dedupe_key` unique |
 | `notifications` | `building_id`, `recipient_user_id`, `kind`, `title`, `body`, `link`, `entity_type`, `entity_id`, `read_at` | index `(recipient_user_id, building_id, read_at, id)` |
@@ -207,6 +208,9 @@ class Package(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 - **Passwords:** argon2id (`argon2-cffi`, `core/security.py`), 12–128 characters, not one of the 1,000 most
   common passwords of that length (P2-01a).
 - **Login** (`POST /api/auth/login`):
+  - Is rate-limited first (P2-05): every attempt counts, 30 per 10 minutes per client IP, then 8 per 15
+    minutes per email; over either, 429 `rate_limited` with `Retry-After`, before any lookup or argon2, so the
+    answer is the same whether the email exists.
   - Verifies the credentials with one argon2 verification on every path: against `DUMMY_HASH` for an unknown
     email or a missing or unparsable hash, so the timing doesn't reveal which emails have accounts.
   - Creates a session with a random 32-byte token (`secrets.token_urlsafe(32)`).
@@ -234,6 +238,16 @@ class Package(UUIDPrimaryKeyMixin, TimestampMixin, Base):
   preflight that the API never approves.
 - **`GET /api/auth/me`** returns the user plus the list of memberships (building id/name/timezone, status,
   roles, occupancy summary). That is enough to render every shell: no membership, pending, denied or active.
+- **Rate limits** (`app/rate_limits/`, P2-05) are fixed windows aligned to the epoch, counted by one
+  `INSERT … ON CONFLICT DO UPDATE … RETURNING count` on a session of their own that commits at once, so a
+  failed attempt counts although its request rolls back. Fixed windows allow up to twice the limit across a
+  window boundary; for guessing passwords that is still a few attempts a minute. Policies are settings
+  (`RATE_LIMIT_*`, JSON); a cleanup job (P3-01) deletes windows older than a day.
+- **Client IP.** Keys use `request.client.host`, never the `X-Forwarded-For` header: any client can send that
+  header with any address, so trusting it would let an attacker pick a fresh IP bucket per request (or blame
+  someone else's IP). gunicorn/uvicorn replace the peer with the forwarded client only when the peer is the
+  reverse proxy (`--forwarded-allow-ips` = `FORWARDED_ALLOW_IPS`: Caddy's address on the prod-like stack,
+  `127.0.0.1` for host Caddy on staging). IPv6 clients are keyed by their /64.
 - **Staff MFA (TOTP + recovery codes)** is a pilot-readiness item. The session table gets an
   `mfa_verified_at` column then.
 
