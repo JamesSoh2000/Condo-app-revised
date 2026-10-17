@@ -2,7 +2,18 @@
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { RESIDENT_ME, calls, json, noContent, problem, renderApp, stubApi } from '@/test/renderApp';
+import {
+  MAPLE,
+  RESIDENT_ME,
+  buildingOut,
+  calls,
+  json,
+  membership,
+  noContent,
+  problem,
+  renderApp,
+  stubApi,
+} from '@/test/renderApp';
 
 vi.mock('@/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/client')>();
@@ -86,10 +97,21 @@ describe('home and placeholders (criterion 1)', () => {
     expect(screen.getByRole('banner').textContent).toContain('Alex Chen');
   });
 
-  it.each(['/Packages', '/packages', '/SecurityPackages', '/Maintenance', '/Dashboard', '/Contacts'])(
+  // P2-06b guards pages by role: /SecurityPackages is opened as a security user (a resident gets /403).
+  it.each([
+    ['/Packages', 'resident'],
+    ['/packages', 'resident'],
+    ['/SecurityPackages', 'security'],
+    ['/Maintenance', 'resident'],
+    ['/Dashboard', 'resident'],
+    ['/Contacts', 'resident'],
+  ] as const)(
     'renders a Being migrated placeholder at %s',
-    async (path) => {
-      stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME) });
+    async (path, role) => {
+      stubApi({
+        'GET /api/auth/me': () => json({ ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: [role] })] }),
+        [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, [role])),
+      });
 
       renderApp([path]);
 
