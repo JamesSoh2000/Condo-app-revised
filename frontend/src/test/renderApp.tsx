@@ -4,7 +4,7 @@
  * absolute baseUrl (Node's Request rejects relative URLs); see shell.test.tsx.
  */
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigate, type NavigateFunction } from 'react-router-dom';
 import { vi } from 'vitest';
 
@@ -120,4 +120,10 @@ export function renderApp(entries: string[]): RenderedApp {
     </QueryClientProvider>,
   );
   return { queryClient, navigate: () => navigate! };
+}
+
+/** Opens the header's account menu (P2-06c), where the building switcher, "view as" and "Log out" are. */
+export function openAccountMenu(): void {
+  const button = screen.getByRole('button', { name: /account menu/i });
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button);
 }
