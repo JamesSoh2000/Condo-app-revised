@@ -44,11 +44,15 @@ class RateLimiter:
         """
         now = clock.now()
         start = window_start(now, window)
-        upsert = insert(RateLimit).values(key=key, window_start=start, count=1)
-        upsert = upsert.on_conflict_do_update(
-            index_elements=[RateLimit.key, RateLimit.window_start],
-            set_={"count": RateLimit.count + 1},
-        ).returning(RateLimit.count)
+        upsert = (
+            insert(RateLimit)
+            .values(key=key, window_start=start, count=1)
+            .on_conflict_do_update(
+                index_elements=[RateLimit.key, RateLimit.window_start],
+                set_={"count": RateLimit.count + 1},
+            )
+            .returning(RateLimit.count)
+        )
         async with self._sessions() as session:
             count = (await session.execute(upsert)).scalar_one()
             await session.commit()
@@ -59,9 +63,7 @@ class RateLimiter:
         """`hit`, raising `RateLimited` (429 `rate_limited` with Retry-After) over the limit."""
         decision = await self.hit(key, policy.limit, policy.window)
         if not decision.allowed:
-            raise RateLimited(
-                decision.retry_after, detail="Too many attempts. Try again later."
-            )
+            raise RateLimited(decision.retry_after, detail="Too many attempts. Try again later.")
 
     async def email_key(self, scope: str, email: str) -> str:
         """`<scope>:email:<sha256 hex>` of the email as Postgres lowers it.
@@ -110,9 +112,11 @@ async def delete_expired_rate_limits(
     """Delete windows that started more than `older_than` ago; return how many. Never commits.
 
     No policy window is longer than a day (`RatePolicy`), so the default only deletes ended windows.
-    TODO(P3-01): schedule as the `rate_limits.cleanup` job (docs/tickets/P3-01-job-queue-and-worker.md).
+    TODO(P3-01): schedule it as the `rate_limits.cleanup` job
+    (docs/tickets/P3-01-job-queue-and-worker.md).
     """
     result = await db.execute(
         delete(RateLimit).where(RateLimit.window_start < clock.now() - older_than)
     )
-    return result.rowcount  # type: ignore[attr-defined]
+    deleted: int = result.rowcount  # type: ignore[attr-defined]
+    return deleted

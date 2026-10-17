@@ -1,4 +1,4 @@
-"""Rate limiting (P2-05): the Postgres counter, the login policies, and the client IP they key on."""
+"""Rate limiting (P2-05): the Postgres counter, the login policies and the client IP they use."""
 
 import asyncio
 import hashlib
@@ -456,3 +456,9 @@ async def test_login_succeeds_under_the_limits(client, db, frozen_clock):
     assert response.status_code == 204
     assert (await db.scalar(select(AuthSession.user_id))) == user.id
     assert (await _counts(db))[_email_key("fine@example.com")] == 1
+
+
+def test_production_limiter_opens_sessions_of_its_own_not_the_requests():
+    from app.core.database import AsyncSessionLocal
+
+    assert get_rate_limiter()._sessions is AsyncSessionLocal

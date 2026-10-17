@@ -22,7 +22,8 @@ class RatePolicy(BaseModel):
     """At most `limit` attempts per fixed window of `window_seconds` (P2-05).
 
     The window is at most a day: `delete_expired_rate_limits` deletes windows older than that.
-    As an environment variable it is JSON: `RATE_LIMIT_LOGIN_IP='{"limit": 30, "window_seconds": 600}'`.
+    As an environment variable it is JSON:
+    `RATE_LIMIT_LOGIN_IP='{"limit": 30, "window_seconds": 600}'`.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
