@@ -595,8 +595,11 @@ describe('another user in /me (review round 1, Claude M1)', () => {
 describe('no selection outlives the user (criterion 9)', () => {
   it('clears the stored building on logout', async () => {
     let signedIn = true;
-    stubApi({
-      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'not_authenticated')),
+    // After logout /me is held: the login page's session check (P2-06c 7d) can't be what clears the storage.
+    let releaseCheck: ((response: Response) => void) | undefined;
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () =>
+        signedIn ? json(RESIDENT_ME) : new Promise<Response>((resolve) => (releaseCheck = resolve)),
       'POST /api/auth/logout': () => {
         signedIn = false;
         return noContent();
@@ -610,7 +613,11 @@ describe('no selection outlives the user (criterion 9)', () => {
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
 
     await waitFor(() => expect(location()).toBe('/login'));
+    await waitFor(() => expect(releaseCheck).toBeDefined());
     expect(sessionStorage.getItem(KEY)).toBeNull();
+    expect(calls(fetchMock).filter((c) => c === 'GET /api/auth/me')).toHaveLength(2);
+    // Free the auth queue (module state) for the next test.
+    await act(() => Promise.resolve(releaseCheck!(problem(401, 'not_authenticated'))));
   });
 
   it('clears the stored building when a 401 resets the session', async () => {

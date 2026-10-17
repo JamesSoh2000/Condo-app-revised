@@ -141,8 +141,15 @@ describe('home and placeholders (criterion 1)', () => {
 describe('logout (criterion 5)', () => {
   it('calls the API, empties the cache and shows /login; Back renders no authenticated content', async () => {
     let signedIn = true;
+    // The login page's session check (P2-06c 7d) is held, so its 401 can't do the clearing asserted here.
+    let releaseCheck: ((response: Response) => void) | undefined;
     const fetchMock = stubApi({
-      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'unauthorized')),
+      'GET /api/auth/me': () =>
+        signedIn
+          ? json(RESIDENT_ME)
+          : releaseCheck === undefined
+            ? new Promise<Response>((resolve) => (releaseCheck = resolve))
+            : problem(401, 'unauthorized'),
       'POST /api/auth/logout': () => {
         signedIn = false;
         return noContent();
@@ -158,6 +165,8 @@ describe('logout (criterion 5)', () => {
     expect(calls(fetchMock)).toContain('POST /api/auth/logout');
     expect(app.queryClient.getQueryCache().getAll()).toEqual([]);
     expect(screen.queryByText('Alex Chen')).toBeNull();
+    await waitFor(() => expect(releaseCheck).toBeDefined());
+    await act(() => Promise.resolve(releaseCheck!(problem(401, 'unauthorized'))));
 
     act(() => app.navigate()(-1));
 

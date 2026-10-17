@@ -290,7 +290,20 @@ describe('council "view as" (criterion 3)', () => {
   });
 
   it('forgets the view at logout (3e)', async () => {
-    stubApi({ ...COUNCIL_RESIDENT, 'POST /api/auth/logout': () => noContent() });
+    let signedIn = true;
+    // After logout /me is held, so the login page's session check can't be what clears the view.
+    let releaseCheck: ((response: Response) => void) | undefined;
+    const fetchMock = stubApi({
+      ...COUNCIL_RESIDENT,
+      'GET /api/auth/me': (request) =>
+        signedIn
+          ? COUNCIL_RESIDENT['GET /api/auth/me'](request)
+          : new Promise<Response>((resolve) => (releaseCheck = resolve)),
+      'POST /api/auth/logout': () => {
+        signedIn = false;
+        return noContent();
+      },
+    });
     renderApp(['/']);
     await findNavItems();
     openAccountMenu();
@@ -299,7 +312,11 @@ describe('council "view as" (criterion 3)', () => {
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
 
     await waitFor(() => expect(location()).toBe('/login'));
+    await waitFor(() => expect(releaseCheck).toBeDefined());
     expect(sessionStorage.getItem(VIEW_KEY)).toBeNull();
+    expect(calls(fetchMock).filter((c) => c === 'GET /api/auth/me')).toHaveLength(2);
+    // Free the auth queue (module state) for the next test.
+    await act(() => Promise.resolve(releaseCheck!(problem(401, 'not_authenticated'))));
   });
 
   it('forgets the view when /me answers for another user (3e)', async () => {
