@@ -161,6 +161,77 @@ describe('logout (criterion 5)', () => {
   });
 });
 
+describe('logout still in flight when the user logs in again (review round 2, Codex M1)', () => {
+  it('sends the login only after the old logout settles, and the old logout does not undo it', async () => {
+    let signedIn = true;
+    let finishLogout!: (response: Response) => void;
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'unauthorized')),
+      'POST /api/auth/logout': () => {
+        // The server revokes the session at once; its response (which deletes the cookie) is slow.
+        signedIn = false;
+        return new Promise<Response>((resolve) => (finishLogout = resolve));
+      },
+      'POST /api/auth/login': () => {
+        signedIn = true;
+        return noContent();
+      },
+    });
+    const app = renderApp(['/Packages']);
+    await screen.findByText('Alex Chen');
+    fireEvent.click(screen.getByRole('button', { name: /log out/i }));
+    await waitFor(() => expect(signedIn).toBe(false));
+    // A refetch sees the revocation first and sends the user to the login page.
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await screen.findByRole('heading', { name: /sign in/i });
+    expect(location()).toBe('/login?next=%2FPackages');
+
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'resident1@example.test' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'DevPassword!2026' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: /sign in/i }).disabled).toBe(true));
+    // Its response would delete the new cookie, so the login waits for it.
+    expect(calls(fetchMock)).not.toContain('POST /api/auth/login');
+
+    await act(() => Promise.resolve(finishLogout(noContent())));
+
+    expect(await screen.findByText('Alex Chen')).toBeTruthy();
+    expect(calls(fetchMock).filter((c) => c === 'POST /api/auth/login')).toHaveLength(1);
+    expect(location()).toBe('/Packages');
+    expect(app.queryClient.getQueryData(['me'])).toEqual(RESIDENT_ME);
+  });
+
+  it('also waits for a logout that fails, then logs in', async () => {
+    let finishLogout!: (response: Response) => void;
+    let signedIn = false;
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'unauthorized')),
+      'POST /api/auth/logout': () => new Promise<Response>((resolve) => (finishLogout = resolve)),
+      'POST /api/auth/login': () => {
+        signedIn = true;
+        return noContent();
+      },
+    });
+    signedIn = true;
+    const app = renderApp(['/']);
+    await screen.findByText('Alex Chen');
+    fireEvent.click(screen.getByRole('button', { name: /log out/i }));
+    signedIn = false;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await screen.findByRole('heading', { name: /sign in/i });
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'resident1@example.test' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'DevPassword!2026' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await waitFor(() => expect(calls(fetchMock)).toContain('POST /api/auth/logout'));
+    expect(calls(fetchMock)).not.toContain('POST /api/auth/login');
+
+    await act(() => Promise.resolve(finishLogout(problem(500, 'internal_error'))));
+
+    expect(await screen.findByText('Alex Chen')).toBeTruthy();
+    expect(location()).toBe('/');
+  });
+});
+
 describe('session lost (criterion 6)', () => {
   it('clears the cache and goes to /login with next when another call answers 401', async () => {
     stubApi({

@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import { api } from '@/api/client';
 import { ApiError } from '@/api/errors';
+import { whenLogoutSettled } from '@/app/AuthProvider';
 import { safeNext } from '@/app/safeNext';
 
 // The backend takes any non-empty email string (a malformed one is just unknown: 401, not 422), so the
@@ -59,6 +60,8 @@ export function LoginPage() {
 
   const onSubmit = async (body: LoginForm) => {
     setFailure(null);
+    // A logout still in flight would delete the cookie this login sets (see whenLogoutSettled).
+    await whenLogoutSettled();
     try {
       await api.post('/api/auth/login', { body });
     } catch (error) {

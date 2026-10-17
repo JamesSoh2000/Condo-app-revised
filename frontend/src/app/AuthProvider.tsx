@@ -17,6 +17,18 @@ export function useMe() {
   });
 }
 
+// Settles when the latest logout call has finished, whatever its outcome (review round 2, Codex M1).
+let logoutSettled: Promise<void> = Promise.resolve();
+
+/**
+ * The login page waits on this before logging in. A logout response deletes the session cookie, and the
+ * server may revoke the session (so a refetch sends the user to login) before that response arrives: a
+ * login that finished first would have its new cookie deleted and its user sent back to /login.
+ */
+export function whenLogoutSettled(): Promise<void> {
+  return logoutSettled;
+}
+
 /**
  * Logs out on the server first: if that fails, the session is still live, so the user stays signed in and
  * sees `error`. On success the cache is emptied, so nothing of this user is left for the next one.
@@ -26,13 +38,17 @@ export function useLogout() {
   const navigate = useNavigate();
   const [error, setError] = useState(false);
   const mutation = useMutation({
-    mutationFn: () => api.post('/api/auth/logout'),
+    mutationFn: () => {
+      // Navigating and clearing happen inside the settled promise, so a waiting login runs after them.
+      const run = api.post('/api/auth/logout').then(() => {
+        navigate('/login', { replace: true });
+        queryClient.clear();
+      });
+      logoutSettled = run.catch(() => undefined);
+      return run;
+    },
     onMutate: () => setError(false),
     onError: () => setError(true),
-    onSuccess: () => {
-      navigate('/login', { replace: true });
-      queryClient.clear();
-    },
   });
   return { logout: () => mutation.mutate(), pending: mutation.isPending, error };
 }
