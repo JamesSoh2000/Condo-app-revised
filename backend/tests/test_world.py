@@ -57,6 +57,8 @@ EXPECTED_ROW_COUNTS = {
     "unit_occupancies": 8,
     # P2-01b: the world logs nobody in.
     "sessions": 0,
+    # P2-04: nor records any audit event.
+    "audit_events": 0,
 }
 
 

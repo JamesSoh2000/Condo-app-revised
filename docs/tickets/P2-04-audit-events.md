@@ -84,9 +84,9 @@ something that did.
 6. The grep fitness test passes, and fails when an `update(AuditEvent)` line is added. *(sharpened)* It also
    reports `delete(AuditEvent`, `AuditEvent.__table__.update(` / `.delete(`, and raw SQL
    `UPDATE audit_events` / `DELETE FROM audit_events` (case-insensitive), each proven by a meta-test.
-7. *(added)* `auth.logged_out` is recorded once when `POST /api/auth/logout` revokes a live session (actor
-   = its user, entity = the session); a logout with no cookie, an unknown token or an already-revoked
-   session records nothing.
+7. *(added)* `auth.logged_out` is recorded once when `POST /api/auth/logout` revokes a session (actor
+   = its user, entity = the session; an expired but unrevoked session is revoked too, as before this
+   ticket); a logout with no cookie, an unknown token or an already-revoked session records nothing.
 8. *(added, from the P2-02 carry)* `POST /api/auth/logout-all` records one `auth.logged_out_all` (actor and
    entity = the user, `metadata == {"count": <sessions revoked>}`); `DELETE /api/auth/sessions/{id}` records
    one `auth.session_revoked` (entity = that session) on 204 and nothing on 404.

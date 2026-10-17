@@ -128,7 +128,7 @@ def files_that_commit(root: Path) -> list[str]:
 
 
 # Writing to audit_events other than by INSERT: the ORM statements, the Core table's own, a legacy
-# Query, and raw SQL (P2-04 criterion 6). `TRUNCATE` in seed.py's reset names its tables at run time.
+# Query, and raw SQL (P2-04 criterion 6). seed.py's dev-only TRUNCATE names its tables at run time.
 _AUDIT_MUTATION = re.compile(
     r"\b(?:update|delete)\(\s*AuditEvent\b"
     r"|\bAuditEvent\.__table__\.(?:update|delete)\("
@@ -377,9 +377,9 @@ def test_meta_audit_event_update_or_delete_is_reported(tmp_path):
         "core/table.py": "await db.execute(AuditEvent.__table__.update().values(action='x'))",
         "core/table2.py": "await db.execute(AuditEvent.__table__.delete())",
         "core/legacy.py": "session.query(AuditEvent).filter_by(id=i).delete()",
-        "core/raw.py": 'await db.execute(text("Update audit_events SET action = \'x\'"))',
+        "core/raw.py": "await db.execute(text(\"Update audit_events SET action = 'x'\"))",
         "core/raw2.py": 'await db.execute(text("DELETE FROM audit_events"))',
-        "core/raw3.py": 'op.execute(\'delete from "audit_events" where true\')',
+        "core/raw3.py": "op.execute('delete from \"audit_events\" where true')",
         "core/raw4.py": 'await db.execute(text("TRUNCATE sessions, audit_events"))',
         # Not mutations: inserting, reading, and names that only contain the words.
         "audit/ok.py": "db.add(AuditEvent(action='x'))\nselect(AuditEvent)\nrecord_audit_events()",

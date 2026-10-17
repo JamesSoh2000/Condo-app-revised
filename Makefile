@@ -16,7 +16,7 @@ BACKEND := cd backend &&
 FRONTEND := cd frontend &&
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps migrate revision seed test lint fmt typecheck check gen-api e2e psql s3-smoke db-guard \
+.PHONY: help up down logs ps migrate revision seed cli test lint fmt typecheck check gen-api e2e psql s3-smoke db-guard \
 	prodlike prodlike-smoke prodlike-down
 
 help: ## List the targets
@@ -50,6 +50,10 @@ revision: db-guard ## Autogenerate a migration: make revision m="add packages" (
 
 seed: ## Idempotent demo data (needs `make up` and `make migrate`); `make seed reset=1` wipes first (dev only)
 	$(COMPOSE) exec app python -m app.cli seed $(if $(reset),--reset)
+
+cli: ## Run an operator command in the app container: make cli args="audit --since 1d"
+	@test -n "$(args)" || { echo 'usage: make cli args="audit --since 1d" (python -m app.cli --help lists them)'; exit 2; }
+	$(COMPOSE) exec app python -m app.cli $(args)
 
 test: db-guard ## Backend tests, against condo_test on the compose db (needs `make up`)
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) TEST_DATABASE_URL=$(TEST_DATABASE_URL) uv run pytest

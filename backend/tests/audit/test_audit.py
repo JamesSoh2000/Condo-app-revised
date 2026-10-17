@@ -110,7 +110,8 @@ async def test_unknown_email_records_login_failed_without_the_email_or_password(
 @pytest.mark.parametrize("case", ["wrong_password", "inactive_user"])
 async def test_known_user_failure_records_only_the_user_id(client, db, case):
     user = await _user(db, is_active=case != "inactive_user")
-    password = "not-the-password-at-all" if case == "wrong_password" else PASSWORD  # noqa: S105
+    wrong = "not-the-password-at-all"
+    password = wrong if case == "wrong_password" else PASSWORD
 
     response = await client.post(LOGIN, json={"email": user.email, "password": password})
     unknown = await client.post(
@@ -135,7 +136,7 @@ async def test_known_user_failure_records_only_the_user_id(client, db, case):
 
 
 async def test_audit_row_is_discarded_when_the_use_case_raises_before_commit(app_client, db):
-    router = APIRouter()
+    router = APIRouter(tags=["test"])
 
     @router.post("/test-audit-then-fail")
     async def audit_then_fail(db: Annotated[AsyncSession, Depends(get_db_session)]) -> None:
@@ -285,7 +286,9 @@ async def test_revoking_one_session_records_session_revoked(client, db):
     await login_as(db, client, user)
     ids = await _extra_sessions(db, user, 1)
     current = await db.scalar(
-        select(AuthSession.id).where(AuthSession.user_id == user.id, AuthSession.user_agent == "tests")
+        select(AuthSession.id).where(
+            AuthSession.user_id == user.id, AuthSession.user_agent == "tests"
+        )
     )
     [other] = [i for i in ids if i != current]
 

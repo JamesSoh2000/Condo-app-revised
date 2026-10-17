@@ -158,7 +158,7 @@ erDiagram
 | `sessions` | `user_id`, `token_hash`, `expires_at`, `idle_expires_at`, `last_seen_at`, `revoked_at`, `user_agent`, `ip` | `token_hash` unique |
 | `password_reset_tokens` | `user_id`, `token_hash`, `expires_at`, `used_at` | `token_hash` unique |
 | `rate_limits` | `key`, `window_start`, `count` | PK `(key, window_start)` |
-| `audit_events` | `building_id` (nullable for identity events), `actor_user_id`, `action`, `entity_type`, `entity_id`, `request_id`, `metadata` jsonb | index `(building_id, created_at)`, `(entity_type, entity_id)` |
+| `audit_events` | `building_id` (nullable for identity events), `actor_user_id`, `action`, `entity_type`, `entity_id`, `request_id`, `metadata` jsonb | index `(building_id, created_at DESC)`, `(entity_type, entity_id)`, `(actor_user_id, created_at DESC)` |
 | `jobs` | `kind`, `payload` jsonb, `status`, `run_at`, `attempts`, `max_attempts`, `locked_by`, `locked_until`, `last_error`, `dedupe_key` | partial index on due jobs; `dedupe_key` unique |
 | `notifications` | `building_id`, `recipient_user_id`, `kind`, `title`, `body`, `link`, `entity_type`, `entity_id`, `read_at` | index `(recipient_user_id, building_id, read_at, id)` |
 | `files` | `building_id`, `uploaded_by`, `purpose`, `s3_key`, `s3_version_id`, `content_type`, `size_bytes`, `original_name`, `status` (pending/ready) | unique `(building_id, id)` |
@@ -400,12 +400,18 @@ sequenceDiagram
 
 ## 12. Audit
 
-- `record_audit(db, ctx_or_user, action, entity_type, entity_id, metadata)` writes in the same transaction.
-- Action names use the pattern `<domain>.<past_verb>`: `membership.approved`, `package.picked_up`,
-  `session.revoked_all`, `role.granted`.
+- `record_audit(db, *, action, entity_type, entity_id=None, building_id=None, actor_user_id=None,
+  metadata=None)` (`app/audit/service.py`, P2-04) adds the row to the caller's transaction and never
+  commits; `request_id` comes from the request's logging context.
+- Action names use the pattern `<domain>.<past_verb>`, with constants in `app/audit/actions.py`:
+  `auth.logged_in`, `auth.logged_out_all`, `membership.approved`, `package.picked_up`, `role.granted`.
 - **Never** store passwords, tokens, file contents or full request bodies in `metadata`. Store IDs and
-  changed field names.
-- Retrieval: `python -m app.cli audit --building <slug> [--entity package:<id>] [--since 7d]`. A UI comes later.
+  changed field names. `record_audit` raises `ValueError` on a key containing `password`, `token`,
+  `secret`, `cookie` or `authorization` (any case, any depth) and on a value over 1 KiB.
+- Append-only: no code updates or deletes an event (fitness test in `tests/test_architecture.py`).
+- Retrieval: `python -m app.cli audit [--building <slug>] [--actor <email>] [--entity package:<id>]
+  [--action <prefix>] [--since 7d] [--json]` (`make cli args="audit …"`), newest first, at most 200. A UI
+  comes later.
 
 ## 13. Frontend architecture ([ADR-0011](./adr/0011-frontend-strangler-typescript.md))
 

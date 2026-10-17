@@ -5,11 +5,17 @@ A command is a use-case, like a service function: it opens its own session throu
 """
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
+from datetime import timedelta
+from uuid import UUID
 
 import typer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit.report import render
+from app.audit.service import AuditQuery, UnknownFilterValue, find_audit_events
+from app.core import clock
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, dispose_database_engine
 from app.seed import SeedRefusedError, check_seed_allowed, seed, seed_password_for
@@ -57,6 +63,67 @@ def seed_command(
     typer.echo(f"seeded{' after reset' if reset else ''} (APP_ENV={app_env})")
 
 
+_SINCE = re.compile(r"([1-9][0-9]{0,5})([mhd])")
+_SINCE_UNITS = {"m": "minutes", "h": "hours", "d": "days"}
+
+
+def _parse_since(value: str | None) -> timedelta | None:
+    if value is None:
+        return None
+    match = _SINCE.fullmatch(value)
+    if match is None:
+        raise typer.BadParameter("use <n>m, <n>h or <n>d, for example 7d", param_hint="--since")
+    return timedelta(**{_SINCE_UNITS[match[2]]: int(match[1])})
+
+
+def _parse_entity(value: str | None) -> tuple[str | None, UUID | None]:
+    if value is None:
+        return None, None
+    entity_type, _, raw_id = value.partition(":")
+    try:
+        if not entity_type:
+            raise ValueError
+        return entity_type, UUID(raw_id)
+    except ValueError:
+        raise typer.BadParameter(
+            "use TYPE:UUID, for example session:<id>", param_hint="--entity"
+        ) from None
+
+
+@app.command("audit")
+def audit_command(
+    building: str | None = typer.Option(None, "--building", help="Building slug."),
+    actor: str | None = typer.Option(None, "--actor", help="Actor's email (any case)."),
+    entity: str | None = typer.Option(None, "--entity", help="TYPE:ID, e.g. session:<uuid>."),
+    action: str | None = typer.Option(None, "--action", help="Action prefix, e.g. auth."),
+    since: str | None = typer.Option(None, "--since", help="Only newer than <n>m, <n>h or <n>d."),
+    as_json: bool = typer.Option(False, "--json", help="Print a JSON array."),
+) -> None:
+    """Print audit events, newest first, at most 200."""
+    # Parsed before any session: a usage error must not touch the database.
+    window = _parse_since(since)
+    entity_type, entity_id = _parse_entity(entity)
+    query = AuditQuery(
+        building_slug=building,
+        actor_email=actor,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action_prefix=action,
+        since=clock.now() - window if window is not None else None,
+    )
+    output: list[str] = []
+
+    async def work(db: AsyncSession) -> None:
+        output.append(render(await find_audit_events(db, query), as_json=as_json))
+
+    try:
+        run_in_session(work)
+    except UnknownFilterValue as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(output[0])
+
+
 def _placeholder(name: str, ticket: str) -> None:
     def command() -> None:
         typer.echo(f"error: {name} is not implemented yet; {ticket} adds it", err=True)
@@ -67,7 +134,6 @@ def _placeholder(name: str, ticket: str) -> None:
 
 # Fail loudly: a script that calls a placeholder must not mistake it for success.
 _placeholder("bootstrap-building", "P4-03")
-_placeholder("audit", "P2-04")
 _placeholder("jobs-status", "P3-01")
 _placeholder("email-test", "P3-02")
 

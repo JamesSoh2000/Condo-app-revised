@@ -2,8 +2,8 @@
 
 The query and the report run in the test's transaction. A CLI command runs its own event loop, which
 can't share the test's connection (tests/test_cli_seed.py), so the CLI tests check the parsing and
-the wiring with a fake session and a fake query; `make cli args="audit …"` is run on the stack in the
-PR.
+the wiring with a fake session and a fake query; `make cli args="audit …"` is run on the stack in
+the PR.
 """
 
 import asyncio
@@ -61,14 +61,20 @@ async def events(db: AsyncSession, world: World, frozen_clock: FrozenClock) -> l
     frozen_clock.advance(minutes=1)
     await _record(db, "membership.approved", building=world.a, actor=world.a_manager.user)
     frozen_clock.advance(minutes=1)
-    await _record(db, "auth.loggedXin", building=world.a, actor=world.a_resident1.user)
-    return ["auth.loggedXin", "membership.approved", "auth.logged_in", "unit.created", "unit.created"]
+    await _record(db, "auth.loggedxin", building=world.a, actor=world.a_resident1.user)
+    return [
+        "auth.loggedxin",
+        "membership.approved",
+        "auth.logged_in",
+        "unit.created",
+        "unit.created",
+    ]
 
 
 async def test_building_filter_prints_only_that_buildings_events(db, world, events):
     rows = await find_audit_events(db, AuditQuery(building_slug="maple"))
 
-    assert [r.action for r in rows] == ["auth.loggedXin", "membership.approved", "unit.created"]
+    assert [r.action for r in rows] == ["auth.loggedxin", "membership.approved", "unit.created"]
     assert {r.building_slug for r in rows} == {"maple"}
     text = render(rows, as_json=False)
     assert "birch" not in text
@@ -100,7 +106,7 @@ async def test_entity_filter_matches_type_and_id(db, world):
 
 
 async def test_action_prefix_is_literal_not_a_like_pattern(db, events):
-    assert await _actions(db, action_prefix="auth.") == ["auth.loggedXin", "auth.logged_in"]
+    assert await _actions(db, action_prefix="auth.") == ["auth.loggedxin", "auth.logged_in"]
     # `_` would match any character in LIKE; here it matches only itself.
     assert await _actions(db, action_prefix="auth.logged_") == ["auth.logged_in"]
     assert await _actions(db, action_prefix="%") == []
@@ -110,7 +116,7 @@ async def test_since_keeps_only_newer_events(db, events, frozen_clock):
     frozen_clock.advance(seconds=30)
 
     assert await _actions(db, since=clock.now() - timedelta(minutes=2)) == [
-        "auth.loggedXin",
+        "auth.loggedxin",
         "membership.approved",
     ]
 
@@ -141,7 +147,8 @@ async def test_same_instant_events_keep_insertion_order_newest_first(db):
 
 
 @pytest.mark.parametrize(
-    "query", [AuditQuery(building_slug="no-such-building"), AuditQuery(actor_email="x@nowhere.test")]
+    "query",
+    [AuditQuery(building_slug="no-such-building"), AuditQuery(actor_email="x@nowhere.test")],
 )
 async def test_unknown_building_or_actor_is_an_error(db, query):
     with pytest.raises(UnknownFilterValue):
@@ -179,7 +186,7 @@ async def test_text_report_has_one_line_per_event(db, events):
     lines = render(rows, as_json=False).splitlines()
 
     assert len(lines) == len(rows)
-    assert "auth.loggedXin" in lines[0]
+    assert "auth.loggedxin" in lines[0]
 
 
 def test_empty_text_report_says_so() -> None:
