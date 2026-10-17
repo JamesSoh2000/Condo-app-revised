@@ -81,6 +81,17 @@ CLI `import-units`.
 - Operation ids are `<first tag>_<function name>`: name handlers by the verb (`def list`, `def create`
   under tag `units`) to get `units_list`, not `units_list_units`.
 
+## Carried from P2-04 (do while framing)
+
+- The first domain caller of `record_audit`: first fix review round 3's three Low edges in
+  `backend/app/audit/service.py`, test-first (PR #60):
+  - a lone-surrogate key (`{"\ud800": "x"}`) passes `_check_structure` and fails at flush; it should raise
+    `ValueError`, as a surrogate value already does
+  - falsy non-dict metadata (`False`, `0`, `""`, `[]`) becomes `{}` through `metadata or {}`; use
+    `{} if metadata is None else metadata`
+  - shared sub-objects (`x = [x, x]` repeated) are walked once per path (exponential): track visited `id()`s
+    or bound the total node count
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

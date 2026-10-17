@@ -53,7 +53,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P2-01b](./P2-01b-sessions-login-logout.md) | Sessions, login and logout | A | 1 | P2-01a, P1-02, P1-05 | done | — |
 | [P2-02](./P2-02-me-and-session-management.md) | Current-user API and session management | A | 1 | P2-01b | done | — |
 | [P2-03](./P2-03-tenant-context-guards-fitness.md) | Tenant context, guards and fitness tests | A | 1 | P2-02, P1-05 | done | — |
-| [P2-04](./P2-04-audit-events.md) | Audit events | A | 1 | P2-03 | todo | — |
+| [P2-04](./P2-04-audit-events.md) | Audit events | A | 1 | P2-03 | done | — |
 | [P2-05](./P2-05-rate-limiting.md) | Rate limiting | B | 1 | P2-01b | todo | — |
 | [P2-06](./P2-06-frontend-auth-shell.md) | Frontend auth shell, guards and building picker | B | 1 | P2-02, P1-07 | todo | — |
 | [P2-07](./P2-07-test-infrastructure-hardening.md) | Test infrastructure hardening (P1-05 and P2-03 follow-ups) | B | 3 | P2-03 | todo | — |

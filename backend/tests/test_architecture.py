@@ -25,6 +25,7 @@ from tests.helpers.auth import login_as
 from tests.helpers.tenancy import assert_cross_building_404, assert_problem
 
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
+MIGRATIONS_DIR = APP_DIR.parent / "migrations"
 BUILDING_PREFIX = "/api/buildings/{building_id}"
 TENANT_GUARDS = frozenset({get_tenant_context, get_own_membership})
 AUTH_DEPENDENCIES = frozenset({get_current_user, get_current_session})
@@ -126,6 +127,28 @@ def files_that_commit(root: Path) -> list[str]:
     )
 
 
+# Writing to audit_events other than by INSERT: the ORM statements, the Core table's own, a legacy
+# Query, and raw SQL (P2-04 criterion 6). seed.py's dev-only TRUNCATE names its tables at run time.
+_AUDIT_MUTATION = re.compile(
+    r"\b(?:update|delete)\(\s*AuditEvent\b"
+    r"|\bAuditEvent\.__table__\.(?:update|delete)\("
+    r"|\bquery\(\s*AuditEvent\b.*\.(?:update|delete)\("
+    r"|(?i:\bupdate\s+\"?audit_events\b|\bdelete\s+from\s+\"?audit_events\b)"
+    r"|(?i:\btruncate\b.*\baudit_events\b)"
+)
+
+
+def files_that_mutate_audit_events(*roots: Path) -> list[str]:
+    """Fitness test 5: audit events are append-only; no code path updates or deletes one."""
+    return sorted(
+        f"{path.relative_to(root)}: {match.group(0)}"
+        for root in roots
+        for path in root.rglob("*.py")
+        for match in [_AUDIT_MUTATION.search(path.read_text())]
+        if match
+    )
+
+
 # The checks on the real app
 
 
@@ -147,6 +170,10 @@ def test_every_allowlist_entry_is_a_real_route():
 
 def test_only_services_and_entry_points_commit():
     assert files_that_commit(APP_DIR) == []
+
+
+def test_no_code_updates_or_deletes_audit_events():
+    assert files_that_mutate_audit_events(APP_DIR, MIGRATIONS_DIR) == []
 
 
 def test_the_checks_see_the_building_route():
@@ -340,4 +367,37 @@ def test_meta_commit_outside_a_service_is_reported(tmp_path):
         "moves/router.py",
         "packages/router.py",
         "units/router.py",
+    ]
+
+
+def test_meta_audit_event_update_or_delete_is_reported(tmp_path):
+    for name, code in {
+        "audit/service.py": "await db.execute(update(AuditEvent).values(action='x'))",
+        "audit/purge.py": "await db.execute(sa.delete( AuditEvent).where(AuditEvent.id == i))",
+        "core/table.py": "await db.execute(AuditEvent.__table__.update().values(action='x'))",
+        "core/table2.py": "await db.execute(AuditEvent.__table__.delete())",
+        "core/legacy.py": "session.query(AuditEvent).filter_by(id=i).delete()",
+        "core/raw.py": "await db.execute(text(\"Update audit_events SET action = 'x'\"))",
+        "core/raw2.py": 'await db.execute(text("DELETE FROM audit_events"))',
+        "core/raw3.py": "op.execute('delete from \"audit_events\" where true')",
+        "core/raw4.py": 'await db.execute(text("TRUNCATE sessions, audit_events"))',
+        # Not mutations: inserting, reading, and names that only contain the words.
+        "audit/ok.py": "db.add(AuditEvent(action='x'))\nselect(AuditEvent)\nrecord_audit_events()",
+        "auth/ok.py": "await db.execute(update(AuthSession).values(revoked_at=now))",
+    }.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(code)
+
+    reported = files_that_mutate_audit_events(tmp_path)
+
+    assert [line.split(":")[0] for line in reported] == [
+        "audit/purge.py",
+        "audit/service.py",
+        "core/legacy.py",
+        "core/raw.py",
+        "core/raw2.py",
+        "core/raw3.py",
+        "core/raw4.py",
+        "core/table.py",
+        "core/table2.py",
     ]

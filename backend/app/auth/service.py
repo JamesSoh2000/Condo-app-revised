@@ -2,7 +2,8 @@
 caller's view of their account and sessions (P2-02).
 
 `login`, `touch_session`, `logout`, `logout_all` and `revoke_session` are use-cases and commit once
-each (CLAUDE.md rule 5); `start_session`, `revoke_all_sessions` and the readers never commit.
+each (CLAUDE.md rule 5); `start_session`, `revoke_all_sessions` and the readers never commit. Each
+use-case but `touch_session` records its audit event (P2-04) in that same commit.
 """
 
 from collections import defaultdict
@@ -14,6 +15,8 @@ from anyio import to_thread
 from sqlalchemy import ColumnElement, and_, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import actions
+from app.audit.service import record_audit
 from app.auth.models import AuthSession
 from app.auth.schemas import (
     MeBuildingOut,
@@ -52,6 +55,11 @@ class CurrentSession(NamedTuple):
     user: User
 
 
+class NewSession(NamedTuple):
+    token: str
+    id: UUID
+
+
 class InvalidCredentials(Unauthorized):
     code = "invalid_credentials"
     title = "Unauthorized"
@@ -82,6 +90,15 @@ async def login(
     # argon2 is CPU-bound and memory-hard: run it off the event loop.
     matches = await to_thread.run_sync(verify_password, password, usable or DUMMY_HASH)
     if found is None or usable is None or not matches or not found.is_active:
+        # Never the attempted email or password; the user's id only when the email matched one.
+        await record_audit(
+            db,
+            action=actions.AUTH_LOGIN_FAILED,
+            entity_type="user",
+            metadata={"user_id": found.id} if found is not None else None,
+        )
+        # Committed although the login fails: the router commits nothing on an error.
+        await db.commit()
         raise InvalidCredentials(detail="The email or password is incorrect.")
     if needs_rehash(usable):
         upgraded = await to_thread.run_sync(hash_password, password)
@@ -91,32 +108,44 @@ async def login(
             .where(User.id == found.id, User.password_hash == usable)
             .values(password_hash=upgraded)
         )
-    token = await start_session(db, found.id, user_agent=user_agent, ip=ip)
+    session = await _new_session(db, found.id, user_agent=user_agent, ip=ip)
+    await record_audit(
+        db,
+        action=actions.AUTH_LOGGED_IN,
+        entity_type="session",
+        entity_id=session.id,
+        actor_user_id=found.id,
+    )
     await db.commit()
-    return token
+    return session.token
 
 
 async def start_session(
     db: AsyncSession, user_id: UUID, *, user_agent: str | None, ip: str | None
 ) -> str:
     """Add a session for `user_id` and return its raw token. Flushes, never commits."""
+    return (await _new_session(db, user_id, user_agent=user_agent, ip=ip)).token
+
+
+async def _new_session(
+    db: AsyncSession, user_id: UUID, *, user_agent: str | None, ip: str | None
+) -> NewSession:
     now = clock.now()
     token = generate_token()
-    db.add(
-        AuthSession(
-            user_id=user_id,
-            token_hash=hash_token(token),
-            created_at=now,
-            last_seen_at=now,
-            expires_at=now + timedelta(days=settings.session_absolute_days),
-            idle_expires_at=now + await idle_window(db, user_id),
-            # Postgres text can't hold NUL (review round 2).
-            user_agent=user_agent.replace("\x00", "")[:300] if user_agent else None,
-            ip=ip,
-        )
+    session = AuthSession(
+        user_id=user_id,
+        token_hash=hash_token(token),
+        created_at=now,
+        last_seen_at=now,
+        expires_at=now + timedelta(days=settings.session_absolute_days),
+        idle_expires_at=now + await idle_window(db, user_id),
+        # Postgres text can't hold NUL (review round 2).
+        user_agent=user_agent.replace("\x00", "")[:300] if user_agent else None,
+        ip=ip,
     )
+    db.add(session)
     await db.flush()
-    return token
+    return NewSession(token, session.id)
 
 
 async def idle_window(db: AsyncSession, user_id: UUID) -> timedelta:
@@ -178,11 +207,22 @@ async def logout(db: AsyncSession, token: str | None) -> None:
     """Revoke the session `token` names, if it is live. Unknown or missing tokens are a no-op."""
     if not token:
         return
-    await db.execute(
-        update(AuthSession)
-        .where(AuthSession.token_hash == hash_token(token), AuthSession.revoked_at.is_(None))
-        .values(revoked_at=clock.now())
-    )
+    revoked = (
+        await db.execute(
+            update(AuthSession)
+            .where(AuthSession.token_hash == hash_token(token), AuthSession.revoked_at.is_(None))
+            .values(revoked_at=clock.now())
+            .returning(AuthSession.id, AuthSession.user_id)
+        )
+    ).one_or_none()
+    if revoked is not None:
+        await record_audit(
+            db,
+            action=actions.AUTH_LOGGED_OUT,
+            entity_type="session",
+            entity_id=revoked.id,
+            actor_user_id=revoked.user_id,
+        )
     await db.commit()
 
 
@@ -202,7 +242,15 @@ async def revoke_all_sessions(db: AsyncSession, user_id: UUID) -> int:
 
 
 async def logout_all(db: AsyncSession, user_id: UUID) -> None:
-    await revoke_all_sessions(db, user_id)
+    count = await revoke_all_sessions(db, user_id)
+    await record_audit(
+        db,
+        action=actions.AUTH_LOGGED_OUT_ALL,
+        entity_type="user",
+        entity_id=user_id,
+        actor_user_id=user_id,
+        metadata={"count": count},
+    )
     await db.commit()
 
 
@@ -241,6 +289,13 @@ async def revoke_session(db: AsyncSession, user_id: UUID, session_id: UUID) -> N
     if revoked is None:
         # The same answer whether the session is someone else's or doesn't exist (ADR-0004).
         raise NotFound(detail="Session not found.")
+    await record_audit(
+        db,
+        action=actions.AUTH_SESSION_REVOKED,
+        entity_type="session",
+        entity_id=session_id,
+        actor_user_id=user_id,
+    )
     await db.commit()
 
 
