@@ -12,6 +12,4 @@ BUILDING_PREFIX = "/api/buildings/{building_id}"
 def building_router(*, tags: list[str | Enum]) -> APIRouter:
     """A router whose every route sits under the building prefix and depends on
     `get_tenant_context`. Include it in the app without a prefix of its own."""
-    return APIRouter(
-        prefix=BUILDING_PREFIX, tags=tags, dependencies=[Depends(get_tenant_context)]
-    )
+    return APIRouter(prefix=BUILDING_PREFIX, tags=tags, dependencies=[Depends(get_tenant_context)])

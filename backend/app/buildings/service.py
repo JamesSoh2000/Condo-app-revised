@@ -9,7 +9,9 @@ from app.tenancy.context import TenantContext
 
 
 async def get_building(db: AsyncSession, ctx: TenantContext) -> BuildingOut:
-    building = (await db.execute(select(Building).where(Building.id == ctx.building_id))).scalar_one()
+    building = (
+        await db.execute(select(Building).where(Building.id == ctx.building_id))
+    ).scalar_one()
     return BuildingOut(
         id=building.id,
         name=building.name,

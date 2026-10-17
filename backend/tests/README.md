@@ -75,7 +75,10 @@ async def test_resident_cannot_see_other_residents_package(as_user, world, packa
 
     hidden = await assert_not_visible(client, "GET", url, code="package_not_found")
     missing = await assert_not_visible(
-        client, "GET", f"/api/buildings/{world.a.id}/packages/{uuid.uuid4()}", code="package_not_found"
+        client,
+        "GET",
+        f"/api/buildings/{world.a.id}/packages/{uuid.uuid4()}",
+        code="package_not_found",
     )
     assert without_request_id(hidden) == without_request_id(missing)
 

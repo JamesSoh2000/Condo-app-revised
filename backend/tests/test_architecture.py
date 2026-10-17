@@ -29,7 +29,7 @@ BUILDING_PREFIX = "/api/buildings/{building_id}"
 TENANT_GUARDS = frozenset({get_tenant_context, get_own_membership})
 AUTH_DEPENDENCIES = frozenset({get_current_user, get_current_session})
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
-# The only places allowed to commit (CLAUDE.md rule 5): write use-cases and the process entry points.
+# The only places allowed to commit (CLAUDE.md rule 5): write use-cases and process entry points.
 COMMIT_ALLOWED = ("**/service.py", "cli.py", "seed.py", "worker.py", "jobs/worker.py")
 
 

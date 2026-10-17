@@ -46,9 +46,7 @@ def _probe_router() -> APIRouter:
         probe_logger.info("probe_called")
         return _out(ctx)
 
-    @router.get(
-        "/probe/manager", dependencies=[Depends(require_roles(Role.PROPERTY_MANAGEMENT))]
-    )
+    @router.get("/probe/manager", dependencies=[Depends(require_roles(Role.PROPERTY_MANAGEMENT))])
     async def manager(ctx: Ctx) -> dict[str, object]:
         return _out(ctx)
 
@@ -299,9 +297,7 @@ async def test_role_removed_between_requests_applies_to_the_next_request(probe, 
     assert_problem(second, 403, "forbidden_role")
 
 
-async def test_membership_suspended_between_requests_is_404_on_the_next_request(
-    probe, db, world
-):
+async def test_membership_suspended_between_requests_is_404_on_the_next_request(probe, db, world):
     url = f"{building_url(world.a.id)}/probe/any"
     async with probe() as c:
         await login_as(db, c, world.a_resident1.user)
@@ -475,7 +471,7 @@ def test_resident_only_context_is_not_staff():
 
 
 class _JsonLines(logging.Handler):
-    """Formats each record when it is emitted, in the emitting task's context, as production does."""
+    """Formats each record as it is emitted, in the emitting task's context, as production does."""
 
     def __init__(self) -> None:
         super().__init__()

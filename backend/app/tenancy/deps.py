@@ -69,7 +69,7 @@ async def get_tenant_context(
                 _text_array(
                     BuildingFeature.feature,
                     BuildingFeature.building_id == Building.id,
-                    BuildingFeature.enabled,
+                    BuildingFeature.enabled.is_(True),
                 ).label("features"),
             )
             .join(Building, Building.id == BuildingMembership.building_id)
