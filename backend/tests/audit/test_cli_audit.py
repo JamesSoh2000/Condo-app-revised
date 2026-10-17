@@ -138,7 +138,8 @@ async def test_at_most_200_rows_newest_first(db, frozen_clock):
     assert [r.metadata["n"] for r in rows] == list(range(204, 4, -1))
 
 
-async def test_same_instant_events_keep_insertion_order_newest_first(db):
+async def test_same_instant_events_keep_insertion_order_newest_first(db, frozen_clock):
+    # Frozen, so created_at ties and only the id orders them (review round 2, Codex).
     for n in range(3):
         await record_audit(db, action="test.recorded", entity_type="test", metadata={"n": n})
     await db.flush()

@@ -1,6 +1,7 @@
 """`record_audit` and the auth events it records (P2-04 criteria 1-4 and 7-9)."""
 
 import json
+import sys
 from typing import Annotated
 from uuid import UUID, uuid7
 
@@ -186,6 +187,49 @@ def _cyclic(kind: str) -> object:
     else:
         value.append(value)
     return value
+
+
+def _deep(depth: int) -> object:
+    value: object = None
+    for _ in range(depth):
+        value = [value]
+    return value
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        # Review round 2 (Codex L1, Claude L2): deeper than the recursion limit, no cycle.
+        {"changes": _deep(sys.getrecursionlimit() + 10)},
+        {"changes": {"x": _deep(sys.getrecursionlimit() + 10)}},
+        # Review round 2 (Claude L3): Postgres JSONB can't hold NUL; it would fail the commit.
+        {"field": "a\x00b"},
+        {"fie\x00ld": "x"},
+        {"changes": [{"field": "\x00"}]},
+        {"changes": {"fie\x00ld": 1}},
+    ],
+)
+async def test_record_audit_refuses_deep_nesting_and_nul_characters(db, metadata):
+    with pytest.raises(ValueError):
+        await record_audit(db, action="test.recorded", entity_type="test", metadata=metadata)
+    assert not db.new
+
+
+@pytest.mark.parametrize("metadata", [["user_id"], "user_id", 1])
+async def test_record_audit_refuses_metadata_that_is_not_a_dict(db, metadata):
+    # Review round 2 (Claude L4): was an AttributeError.
+    with pytest.raises(ValueError):
+        await record_audit(db, action="test.recorded", entity_type="test", metadata=metadata)
+    assert not db.new
+
+
+async def test_moderately_nested_metadata_is_accepted(db):
+    await record_audit(
+        db, action="test.recorded", entity_type="test", metadata={"changes": _deep(20)}
+    )
+    await db.flush()
+    [event] = await _events(db)
+    assert event.metadata_ == {"changes": _deep(20)}
 
 
 @pytest.mark.parametrize("kind", ["dict", "list"])

@@ -23,6 +23,7 @@ from app.users.models import User
 # Matched anywhere in a key, in any case: `new_password`, `resetToken`, `Set-Cookie`.
 _SECRET_KEY = re.compile(r"password|token|secret|cookie|authorization", re.IGNORECASE)
 MAX_VALUE_BYTES = 1024
+MAX_DEPTH = 32
 _ACTION = re.compile(r"[a-z][a-z_]*\.[a-z][a-z_]*")
 _ACTION_MAX = 64
 _ENTITY_TYPE_MAX = 40
@@ -41,8 +42,8 @@ async def record_audit(
     """Add an audit event to `db`'s transaction. Never commits.
 
     `metadata` holds IDs and field names only (CLAUDE.md rule 10): a key naming a secret, a value
-    over 1 KiB as JSON, or a value that isn't JSON (UUIDs become strings) raises `ValueError`, and
-    nothing is added. `request_id` comes from the request's logging context; null outside one.
+    over 1 KiB as JSON, a value that isn't JSON (UUIDs become strings), nesting deeper than 32 or a
+    NUL character raises `ValueError`, and nothing is added. `request_id` comes from the request's logging context; null outside one.
     """
     if not _ACTION.fullmatch(action) or len(action) > _ACTION_MAX:
         raise ValueError(f"audit action must be '<domain>.<past_verb>', got {action!r}")
@@ -63,29 +64,37 @@ async def record_audit(
     )
 
 
-def _sanitize(metadata: dict[str, Any]) -> dict[str, Any]:
-    # Serialized first: json refuses a self-referencing container before _check_keys recurses into
-    # it (review round 1, Codex L1).
-    encoded = _to_json(metadata)
-    _check_keys(metadata)
+def _sanitize(metadata: object) -> dict[str, Any]:
+    if not isinstance(metadata, dict):
+        raise ValueError("audit metadata must be a dict")
+    # Walked before json sees it: the depth limit also stops a self-referencing container, and
+    # nothing below recurses deep enough to raise RecursionError (review rounds 1 and 2).
+    _check_structure(metadata)
     for key, value in metadata.items():
         if len(_to_json(value).encode()) > MAX_VALUE_BYTES:
             raise ValueError(f"audit metadata value for {key!r} is over {MAX_VALUE_BYTES} bytes")
     # Round-tripped, so what is stored is exactly what was checked (UUIDs as strings).
-    result: dict[str, Any] = json.loads(encoded)
+    result: dict[str, Any] = json.loads(_to_json(metadata))
     return result
 
 
-def _check_keys(value: object) -> None:
-    """Refuse a secret-looking key at any depth: `{"changes": {"password": …}}` too."""
-    if isinstance(value, dict):
-        for key, inner in value.items():
-            if not isinstance(key, str) or _SECRET_KEY.search(key):
-                raise ValueError(f"audit metadata key {key!r} is not allowed")
-            _check_keys(inner)
-    elif isinstance(value, list | tuple):
-        for inner in value:
-            _check_keys(inner)
+def _check_structure(metadata: dict[str, Any]) -> None:
+    """Refuse a secret-looking key at any depth (`{"changes": {"password": …}}` too), nesting
+    deeper than `MAX_DEPTH`, and NUL in any key or string, which Postgres JSONB can't store."""
+    pending: list[tuple[object, int]] = [(metadata, 1)]
+    while pending:
+        value, depth = pending.pop()
+        if depth > MAX_DEPTH:
+            raise ValueError(f"audit metadata is nested deeper than {MAX_DEPTH}")
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                if not isinstance(key, str) or _SECRET_KEY.search(key) or "\x00" in key:
+                    raise ValueError(f"audit metadata key {key!r} is not allowed")
+                pending.append((inner, depth + 1))
+        elif isinstance(value, list | tuple):
+            pending.extend((inner, depth + 1) for inner in value)
+        elif isinstance(value, str) and "\x00" in value:
+            raise ValueError("audit metadata strings must not contain NUL")
 
 
 def _to_json(value: object) -> str:
