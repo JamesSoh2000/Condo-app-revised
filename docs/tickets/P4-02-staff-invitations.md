@@ -108,6 +108,13 @@ security interview topic.
   with `func.lower(User.email) == func.lower(:input)`; send mail only to the stored address. `EmailStr` adds
   `email-validator` as a dependency.
 
+## Carried from P2-03 (do while framing)
+
+- Add this ticket's routes that work without a session to `backend/app/auth/allowlist.py::AUTH_ALLOWLIST`
+  as `(method, path)` pairs; the fitness test `test_every_api_route_requires_a_session_unless_allowlisted`
+  fails otherwise, and the allowlist holds only routes that exist (PR #59 D1).
+- Routes: invitation lookup and accept.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

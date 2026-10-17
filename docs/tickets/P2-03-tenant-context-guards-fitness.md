@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P2-02, P1-05 |
 | Replaces old | M3-T04, M3-T09 (read API), M3-T10 (backend part), M2-T07 (HTTP helpers) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 

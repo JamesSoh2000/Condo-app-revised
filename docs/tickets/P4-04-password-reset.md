@@ -90,6 +90,13 @@ This completes demo journey 7, and it is one of the most commonly attacked flows
 - Revoke all the user's sessions on reset (`UPDATE sessions SET revoked_at = now WHERE user_id = … AND
   revoked_at IS NULL`, index `ix_sessions_user_id_live`); `resolve_session` needs no change.
 
+## Carried from P2-03 (do while framing)
+
+- Add this ticket's routes that work without a session to `backend/app/auth/allowlist.py::AUTH_ALLOWLIST`
+  as `(method, path)` pairs; the fitness test `test_every_api_route_requires_a_session_unless_allowlisted`
+  fails otherwise, and the allowlist holds only routes that exist (PR #59 D1).
+- Routes: password-reset request and confirm.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

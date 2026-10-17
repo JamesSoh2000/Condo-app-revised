@@ -126,3 +126,16 @@ tracked). Two slips the implementer caught before review, not logged as rows: a 
 `assert x == [...] or y == [...]` (vacuous; rewritten before the first run), and a mutation probe (`sorted()`
 removed) that no test caught until one was added. The P2-01b step 8 note was applied: CI evidence is the full
 `gh pr checks` listing, and `ruff --no-cache` is carried to P2-03 for `make check`.
+
+| 2026-10-17 | P2-03 | The "no opaque routes" fitness check reported only non-`APIRoute`s whose own path was under `/api`; a sub-app mounted at `/` (empty path) served an unguarded `/api/buildings/…` route that every check accepted | review round 1, Codex (proof test) and Claude (Sonnet), Medium | judged a route by its path string instead of by the paths it can serve; the meta-tests covered only mounts under `/api`. Pattern "fix not tested on adjacent cases" (promoted) applied to a new gate: the neighbours of a mount at `/api/x` include a mount at `/` | `opaque_routes` reports every non-`APIRoute`; `test_meta_root_mount_is_reported` (root, `/static`, `Host`, `WebSocketRoute`) |
+| 2026-10-17 | P2-03 | The commit grep matched only `.commit(`: an alias, raw `COMMIT` and `async with db.begin():` in a router passed | review round 1 (Claude), Low (L4) | same blind spot: the literal spelling the ticket named, not the other ways to commit | `_COMMIT` widened + meta cases; the remaining spellings (round 2 L2) in P2-07 |
+| 2026-10-17 | P2-03 | The log test reset its stale context values only after its assertions, so a failure would leak them into later tests | review round 1 (Claude), Low (L6) | cleanup written inline, not in a fixture | `stale_log_context` fixture with `finally` |
+
+P2-03 step 8 note: the mount and commit-grep findings are the promoted "fix not tested on adjacent cases" pattern
+again, this time on a brand-new gate, not on a fix: the lesson's wording names fixes only. Next ticket: extend
+the `CLAUDE.md` lesson to "a new check or gate: list the other ways to reach the state it forbids, and add a
+meta-test for each", or add it to `docs/templates/REVIEW_PROMPT.md`'s fitness section. Two slips the implementer
+caught before review, not logged as rows: the log context variables leaked between requests (a test caught it
+during implementation; fixed with a per-request reset), and the first mutation run showed no test proved
+`building_router()` itself attaches the guard (test added).
+
