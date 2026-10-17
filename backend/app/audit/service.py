@@ -43,7 +43,8 @@ async def record_audit(
 
     `metadata` holds IDs and field names only (CLAUDE.md rule 10): a key naming a secret, a value
     over 1 KiB as JSON, a value that isn't JSON (UUIDs become strings), nesting deeper than 32 or a
-    NUL character raises `ValueError`, and nothing is added. `request_id` comes from the request's logging context; null outside one.
+    NUL character raises `ValueError`, and nothing is added. `request_id` comes from the request's
+    logging context; null outside one.
     """
     if not _ACTION.fullmatch(action) or len(action) > _ACTION_MAX:
         raise ValueError(f"audit action must be '<domain>.<past_verb>', got {action!r}")
