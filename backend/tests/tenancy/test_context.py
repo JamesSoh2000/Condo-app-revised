@@ -1,5 +1,6 @@
 """The tenant context and its guards (P2-03 criteria 1-6, 8-10; ADR-0004)."""
 
+import asyncio
 import json
 import logging
 import uuid
@@ -12,7 +13,7 @@ from starlette.requests import Request
 
 from app.buildings.enums import Feature
 from app.buildings.models import Building, BuildingFeature
-from app.logging_config import JsonFormatter
+from app.logging_config import JsonFormatter, building_id_ctx, user_id_ctx
 from app.memberships.enums import MembershipStatus, Role
 from app.memberships.models import BuildingMembership, MembershipRole
 from app.tenancy.context import TenantContext
@@ -437,7 +438,10 @@ async def test_tenant_context_is_one_query_even_with_role_and_feature_guards(
 async def test_tenant_context_carries_the_membership_roles_and_enabled_features(db, world):
     request = Request({"type": "http", "method": "GET", "path": "/", "headers": []})
 
-    ctx = await get_tenant_context(request, world.a.id, world.a_council.user, db)
+    # In a context of its own: outside a request, nothing resets the log context variables.
+    ctx = await asyncio.create_task(
+        get_tenant_context(request, world.a.id, world.a_council.user, db)
+    )
 
     assert ctx == TenantContext(
         user_id=world.a_council.user.id,
@@ -499,6 +503,9 @@ def json_logs():
 
 
 async def test_building_request_logs_carry_building_and_user(probe, db, world, json_logs):
+    # A value left in the caller's context (a direct call, a script) must not reach any request.
+    building_id_ctx.set("stale")
+    user_id_ctx.set("stale")
     async with probe() as c:
         await login_as(db, c, world.a_resident1.user)
         await c.get(f"{building_url(world.a.id)}/probe/any")
@@ -513,3 +520,5 @@ async def test_building_request_logs_carry_building_and_user(probe, db, world, j
     assert building_line.items() >= ids.items()
     assert "building_id" not in me_line
     assert "user_id" not in me_line
+    building_id_ctx.set(None)
+    user_id_ctx.set(None)
