@@ -1,7 +1,8 @@
 """Database assertions for tests that run inside the per-test transaction (tests/conftest.py)."""
 
 import inspect
-from collections.abc import Awaitable
+from collections.abc import Coroutine
+from typing import Any
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -9,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def assert_integrity_error(
-    db: AsyncSession, awaitable: Awaitable[object], *, constraint: str
+    db: AsyncSession, awaitable: Coroutine[Any, Any, object], *, constraint: str
 ) -> IntegrityError:
     """Await `awaitable` in a savepoint and assert it violates `constraint`; return the error.
 
@@ -17,7 +18,12 @@ async def assert_integrity_error(
     outer one: without the savepoint, every later query in the test would fail. Rolling back to
     the savepoint undoes only what `awaitable` did; rows flushed before stay. Any error other than
     an `IntegrityError` propagates.
+
+    A coroutine, not any awaitable: a coroutine runs only when awaited here, inside the savepoint,
+    while a task or future may already have run outside it.
     """
+    if not inspect.iscoroutine(awaitable):
+        raise TypeError(f"pass a coroutine (call the async function), got {awaitable!r}")
     started = False
     try:
         # begin_nested() flushes pending rows before the savepoint exists. Flush them here, outside
@@ -35,6 +41,6 @@ async def assert_integrity_error(
                 pytest.fail(f"expected an IntegrityError on {constraint!r}, got one on {name!r}")
             return exc
     finally:
-        if not started and inspect.iscoroutine(awaitable):
+        if not started:
             awaitable.close()  # never awaited: don't leave a "never awaited" warning behind
     pytest.fail(f"no IntegrityError raised (expected one on {constraint!r})")
