@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Login and logout run one at a time, in order, and a login whose form went away while it waited is
- * dropped (inbox B-3). Tests 1–3 are Codex's review round 3 proofs, kept as regression tests; the third
- * is turned from "shows the bug" into the behaviour we want.
+ * dropped (inbox B-3). Tests 1–3 come from Codex's review round 3 proofs. The first now asserts the
+ * queued order (a second logout waits for the first) and the third the fixed outcome instead of the bug.
  */
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -30,18 +30,12 @@ function submit(email: string) {
 describe('auth calls run one at a time (review round 3, Codex M2 and High)', () => {
   it('waits for every outstanding logout after Back/Forward remounts the shell', async () => {
     let signedIn = true;
-    let finishFirst!: (response: Response) => void;
-    let finishSecond!: (response: Response) => void;
-    let logoutCount = 0;
+    const finishes: ((response: Response) => void)[] = [];
     const fetchMock = stubApi({
-      'GET /api/auth/me': () => signedIn ? json(RESIDENT_ME) : problem(401, 'not_authenticated'),
+      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'not_authenticated')),
       'POST /api/auth/logout': () => {
         signedIn = false;
-        logoutCount += 1;
-        return new Promise<Response>((resolve) => {
-          if (logoutCount === 1) finishFirst = resolve;
-          else finishSecond = resolve;
-        });
+        return new Promise<Response>((resolve) => finishes.push(resolve));
       },
       'POST /api/auth/login': () => {
         signedIn = true;
@@ -51,27 +45,30 @@ describe('auth calls run one at a time (review round 3, Codex M2 and High)', () 
     const app = renderApp(['/login', '/Packages']);
     await screen.findByText('Alex Chen');
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
-    await waitFor(() => expect(logoutCount).toBe(1));
+    await waitFor(() => expect(finishes).toHaveLength(1));
 
     act(() => app.navigate()(-1));
     await screen.findByRole('heading', { name: /sign in/i });
     act(() => app.navigate()(1));
     await screen.findByText('Alex Chen');
-    // The cached /me is fresh; remounting loses the pending button state.
+    // The cached /me is fresh; remounting loses the pending button state, so a second logout is possible.
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
-    await waitFor(() => expect(logoutCount).toBe(2));
-    await act(() => Promise.resolve(finishSecond(noContent())));
+    await settle();
+    // It waits for the first one instead of overtaking it.
+    expect(finishes).toHaveLength(1);
+
+    await act(() => Promise.resolve(finishes[0](noContent())));
+    await waitFor(() => expect(finishes).toHaveLength(2));
     await screen.findByRole('heading', { name: /sign in/i });
     submit('resident1@example.test');
     await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: /sign in/i }).disabled).toBe(true));
-    // Drain the real submission, rather than just checking before validation finishes.
     await settle();
-    const loginRanBeforeFirstLogoutSettled = calls(fetchMock).includes('POST /api/auth/login');
-    // Settle the older response and leave no outstanding mutation for later tests.
-    await act(() => Promise.resolve(finishFirst(noContent())));
-    expect(loginRanBeforeFirstLogoutSettled).toBe(false);
+    expect(calls(fetchMock)).not.toContain('POST /api/auth/login');
+
+    await act(() => Promise.resolve(finishes[1](noContent())));
     // Once both logouts are done, the queued login goes out and signs the user in.
     expect(await screen.findByText('Alex Chen')).toBeTruthy();
+    expect(calls(fetchMock).filter((c) => c === 'POST /api/auth/login')).toHaveLength(1);
   });
 
   it('does not submit credentials from an unmounted login form when logout settles', async () => {

@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import { api } from '@/api/client';
 import { ApiError } from '@/api/errors';
-import { whenLogoutSettled } from '@/app/AuthProvider';
+import { runAuthCall } from '@/app/authQueue';
 import { safeNext } from '@/app/safeNext';
 
 // The backend takes any non-empty email string (a malformed one is just unknown: 401, not 422), so the
@@ -47,6 +47,14 @@ export function LoginPage() {
   // An object, so the same message twice is still a new value and moves focus again.
   const [failure, setFailure] = useState<{ message: string } | null>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
+  // False once this form is gone (Back, another page): a login still queued for it must not run.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const {
     register,
     handleSubmit,
@@ -60,18 +68,24 @@ export function LoginPage() {
 
   const onSubmit = async (body: LoginForm) => {
     setFailure(null);
-    // A logout still in flight would delete the cookie this login sets (see whenLogoutSettled).
-    await whenLogoutSettled();
+    let sent: boolean;
     try {
-      await api.post('/api/auth/login', { body });
+      // Queued behind any logout still in flight, whose response would delete this login's cookie.
+      sent = await runAuthCall(async () => {
+        if (!mounted.current) return false;
+        await api.post('/api/auth/login', { body });
+        return true;
+      });
     } catch (error) {
+      if (!mounted.current) return;
       resetField('password');
       setFailure({ message: loginErrorMessage(error) });
       return;
     }
+    if (!sent) return;
     // Nothing cached before this login (another user's data, a lost session's) may show after it.
     queryClient.clear();
-    navigate(safeNext(params.get('next')), { replace: true });
+    if (mounted.current) navigate(safeNext(params.get('next')), { replace: true });
   };
 
   return (
