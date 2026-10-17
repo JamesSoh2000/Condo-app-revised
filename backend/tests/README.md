@@ -42,24 +42,53 @@ unit-addressed route only its 404 rules out the occupancy filter (`a_pending` ha
 ## The 10 cases with the world
 
 The table is in [docs/ENGINEERING_PRACTICES.md §7](../../docs/ENGINEERING_PRACTICES.md#7-testing-standards).
-Log a client in with `await login_as(db, client, world.a_manager.user)` (`tests/helpers/auth.py`, P2-01b): it
-creates the session row directly, so the world's users need no password. Freeze time with the `frozen_clock`
-fixture (`frozen_clock.advance(minutes=5)`); code reads it through `app.core.clock.now()`. The other HTTP
-helpers arrive with tenancy: `as_user` and `assert_cross_building_404` and the other tenant
-helpers in `tests/helpers/tenancy.py` in P2-03
-([P2-03](../../docs/tickets/P2-03-tenant-context-guards-fitness.md)). Until then the persona is the whole
-recipe:
+Apply every row that fits to each tenant endpoint. The helpers:
 
-| # | Case | Who |
-|---|---|---|
-| 1 | Happy path per allowed role | `a_manager`, `a_security`, `a_resident1`, … |
-| 2 | Unauthenticated | the client without `login_as` (401 `not_authenticated`) |
-| 3 | Member of another building | `b_manager` or `b_resident1` on a building-A route; `multi` with the wrong building's role |
-| 4 | Same building, wrong role | `a_security` on a management route, `a_resident1` on a staff route |
-| 5 | Same building, another resident's record | `a_resident2` on `a_resident1`'s record; `a_former` on a record in 101 after `T1` |
-| 6 | Pending / suspended | `a_pending`, `a_suspended` |
-| 7 | Related ID from another building | `world.b_101.id` in a building-A body |
-| 8–10 | Invalid transition, retry, concurrency | per endpoint |
+- `client = await as_user(world.a_manager.user)` (fixture in `tests/conftest.py`): a client of its own,
+  logged in, so a test can hold several users. `login_as(db, client, user)` (`tests/helpers/auth.py`)
+  switches an existing client, such as an `app_client` with test-only routes, to another user. Neither needs
+  a password: they create the session row directly.
+- `tests/helpers/tenancy.py`: `assert_cross_building_404`, `assert_forbidden_role`, `assert_not_visible`
+  (each sends one request and checks the problem+json), `assert_problem`, and `without_request_id` to
+  compare two 404 bodies.
+- `frozen_clock` freezes time (`frozen_clock.advance(minutes=5)`); code reads it through
+  `app.core.clock.now()`.
+
+| # | Case | Who | Assert |
+|---|---|---|---|
+| 1 | Happy path per allowed role | `a_manager`, `a_security`, `a_resident1`, … | 2xx and the exact body |
+| 2 | Unauthenticated | `client` without logging in | `assert_problem(r, 401, "not_authenticated")` |
+| 3 | Member of another building | `b_manager`/`b_resident1` on a building-A route; `multi` with the wrong building's role | `assert_cross_building_404(c, "GET", url)` |
+| 4 | Same building, wrong role | `a_security` on a management route, `a_resident1` on a staff route | `assert_forbidden_role(c, "POST", url, json=...)` |
+| 5 | Same building, another resident's record | `a_resident2` on `a_resident1`'s record; `a_former` on a record in 101 after `T1` | `assert_not_visible(c, "GET", url, code="package_not_found")`, same body as a random id |
+| 6 | Pending / suspended | `a_pending`, `a_suspended` | `assert_cross_building_404` |
+| 7 | Related ID from another building | `world.b_101.id` in a building-A body | 404 or 422, then count the rows: none written |
+| 8–10 | Invalid transition, retry, concurrency | per endpoint | 409 `invalid_transition`; the original result; one winner |
+
+Rows 2, 3 and 6 also run automatically for every building route in `tests/test_architecture.py` (fitness
+test 3), but only as "the guard is there". A route's own test still covers them with its real body.
+
+```python
+async def test_resident_cannot_see_other_residents_package(as_user, world, package_of_resident1):
+    client = await as_user(world.a_resident2.user)
+    url = f"/api/buildings/{world.a.id}/packages/{package_of_resident1.id}"
+
+    hidden = await assert_not_visible(client, "GET", url, code="package_not_found")
+    missing = await assert_not_visible(
+        client, "GET", f"/api/buildings/{world.a.id}/packages/{uuid.uuid4()}", code="package_not_found"
+    )
+    assert without_request_id(hidden) == without_request_id(missing)
+
+
+async def test_security_cannot_create_a_notice(as_user, world):
+    client = await as_user(world.a_security.user)
+    await assert_forbidden_role(client, "POST", f"/api/buildings/{world.a.id}/notices", json={...})
+```
+
+New building routes come from `building_router(tags=[...])` (`app/tenancy/router.py`); add role and feature
+checks with `dependencies=[Depends(require_roles(Role.X)), Depends(require_feature(Feature.Y))]`. Test-only
+routes under the building prefix go through `app_client(router, prefix="")`, as in
+`tests/tenancy/test_context.py`.
 
 ## Factories
 

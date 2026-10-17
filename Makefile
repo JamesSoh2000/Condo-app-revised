@@ -55,8 +55,8 @@ test: db-guard ## Backend tests, against condo_test on the compose db (needs `ma
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) TEST_DATABASE_URL=$(TEST_DATABASE_URL) uv run pytest
 
 lint: ## ruff, the format check, eslint and the Base44 import fence self-test
-	$(BACKEND) uv run ruff check .
-	$(BACKEND) uv run ruff format --check .
+	$(BACKEND) uv run ruff check --no-cache .
+	$(BACKEND) uv run ruff format --no-cache --check .
 	$(FRONTEND) npm run lint
 	bash scripts/check-eslint-fence.sh
 
