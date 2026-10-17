@@ -56,18 +56,20 @@ function BuildingLoaded({ children }: { children: ReactNode }) {
   const { reset } = useBuildingContext();
   const queryClient = useQueryClient();
 
-  if (building.data) return children;
+  // Checked before the cached data: a refetch that fails keeps the old `data`, and a 401 or 404 means it
+  // must not be shown any more (review round 1). Other errors (5xx, network) keep the page on cached data.
+  const status = building.error instanceof ApiError ? building.error.status : null;
   // A 401 is AuthProvider's (it goes to the login page); until then, nothing to show.
-  if (building.isPending || (building.error instanceof ApiError && building.error.status === 401)) {
-    return <LoadingScreen />;
-  }
-  if (building.error instanceof ApiError && building.error.status === 404) {
+  if (status === 401) return <LoadingScreen />;
+  if (status === 404) {
     const chooseAgain = () => {
       reset();
       void queryClient.invalidateQueries({ queryKey: ['me'] });
     };
     return <LostAccessScreen onChooseAgain={chooseAgain} />;
   }
+  if (building.data) return children;
+  if (building.isPending) return <LoadingScreen />;
   return (
     <section className="py-12 text-center">
       <h1 className="mb-2 text-2xl font-semibold">Something went wrong</h1>

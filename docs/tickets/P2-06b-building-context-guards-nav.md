@@ -92,10 +92,11 @@ counterpart here.
    case).
 7. **Feature guard.** **Given** a page whose feature the selected building has not enabled (the multi user,
    security in Birch, on `/ManagementMaintenance`; Birch has only packages), **then** `/403`; the same user in
-   Maple sees the page.
+   Maple, where they are a resident, opens a page needing that feature (`/Maintenance`) and sees it.
 8. **Lost access mid-session [rows 2, 3].** **Given** `/me` lists an active membership but
-   `GET /api/buildings/{id}` answers 404 (removed since `/me` was loaded), **then** the shell shows "You no
-   longer have access to this building" with no data from it, and a button that reloads `/me` and goes back
+   `GET /api/buildings/{id}` answers 404 (removed since `/me` was loaded), on the first load or on a later
+   refetch of a building already shown, **then** the shell shows "You no longer have access to this
+   building" with no data from it, and a button that reloads `/me` and goes back
    to the selection; a 401 there goes to the login page (P2-06a's listener).
 9. **No selection survives the user (missed case).** **Given** a signed-in user with a stored selection,
    **when** they log out, or a 401 resets the session, **then** the stored selection is gone, so the next
@@ -156,6 +157,11 @@ counterpart here.
   - AC2 sharpens the parent's AC4 ("each tab keeps its own selection after reload"): one shared cookie, and
     each tab's requests go only to its own building.
   - AC3 makes "data never mixes" testable: the aborted request and the removed queries.
+  - AC7's positive case (review round 1, Codex): it first said the multi user "in Maple sees the page"
+    (`/ManagementMaintenance`), but that user is a resident in Maple and the page is for staff, so the role
+    guard would rightly refuse it. It now names `/Maintenance`, the resident page with the same feature; the
+    feature check is still proven both ways.
+  - AC8 covers a 404 after the building loaded as well as on the first load (review round 1).
   - New: AC4 (default and picker), AC5 (a stored ID is checked against `/me`: tenant rows 3 and 6), AC6 and
     AC7 (role and feature guards, which the parent had in scope but no criterion), AC8 (lost access), AC9
     (the missed case: a second user in the same tab), AC10 (seed), AC11 (keys and `signal`), AC12 (the

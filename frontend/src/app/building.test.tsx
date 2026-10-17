@@ -424,6 +424,96 @@ describe('lost access mid-session (criterion 8; tenant rows 2 and 3)', () => {
   });
 });
 
+describe('lost access after the building loaded (review round 1, Claude H1 and Codex High)', () => {
+  /** Signed in on `path` with Maple loaded; `answer` then decides every later building request. */
+  async function loadedThen(path: string, answer: () => Response) {
+    let later: (() => Response) | null = null;
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      [`GET /api/buildings/${MAPLE.id}`]: () => (later ? later() : json(buildingOut(MAPLE, ['resident']))),
+    });
+    const app = renderApp([path]);
+    await screen.findByText(/being migrated|coming soon/i);
+    later = answer;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id] }));
+    return { app, fetchMock };
+  }
+
+  it('hides the page when a background refetch answers 404, and Choose again recovers', async () => {
+    await loadedThen('/Packages', () => problem(404, 'building_not_found'));
+
+    expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
+    expect(screen.queryByText(/being migrated/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /choose again/i }));
+    await waitFor(() => expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id));
+    // /me still lists Maple, so it is selected again and asked again: the same 404, the same screen.
+    expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
+  });
+
+  it('keeps showing the page when a background refetch fails with a server error', async () => {
+    const { app } = await loadedThen('/Packages', () => problem(500, 'internal_error'));
+    // The refetch really failed (after its retries), with the old data kept.
+    await waitFor(() => expect(app.queryClient.getQueryState(['b', MAPLE.id, 'building'])?.status).toBe('error'));
+    await settle();
+
+    expect(screen.getByText(/being migrated/i)).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: /no longer have access/i })).toBeNull();
+  });
+
+  it('goes to the login page when a background refetch answers 401', async () => {
+    await loadedThen('/Packages', () => problem(401, 'not_authenticated'));
+
+    await waitFor(() => expect(location()).toMatch(/^\/login/));
+    expect(screen.queryByText(/being migrated/i)).toBeNull();
+  });
+
+  it('shows the status screen when a /me refetch says the membership is no longer active', async () => {
+    let me: Me = RESIDENT_ME;
+    const fetchMock = stubApi({ 'GET /api/auth/me': () => json(me) });
+    const app = renderApp(['/Packages']);
+    await screen.findByText(/being migrated/i);
+    const before = buildingCalls(fetchMock).length;
+
+    me = meWith(membership(MAPLE, { status: 'suspended' }));
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+
+    expect(await screen.findByRole('heading', { name: /access is suspended/i })).toBeTruthy();
+    expect(screen.queryByText(/being migrated/i)).toBeNull();
+    await settle();
+    expect(buildingCalls(fetchMock)).toHaveLength(before);
+    expect(sessionStorage.getItem(KEY)).toBeNull();
+  });
+});
+
+describe('another user in /me (review round 1, Claude M1)', () => {
+  it('drops the previous user’s building data and selection when /me answers for someone else', async () => {
+    // Tab 1 works as Alex in Maple; another tab logs in as Kim (one cookie jar), so /me now answers Kim.
+    let me: Me = RESIDENT_ME;
+    let mapleCalls = 0;
+    stubApi({
+      ...MULTI_ROUTES,
+      'GET /api/auth/me': () => json(me),
+      [`GET /api/buildings/${MAPLE.id}`]: () => {
+        mapleCalls += 1;
+        return json(buildingOut(MAPLE, mapleCalls === 1 ? ['resident', 'security'] : ['resident']));
+      },
+    });
+    const app = renderApp(['/SecurityPackages']);
+    await screen.findByText(/being migrated/i);
+    expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
+
+    me = MULTI_ME;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+
+    // Kim has two active buildings: the picker, not Alex's Maple, and nothing of Alex's building cached.
+    expect(await screen.findByRole('heading', { name: /choose a building/i })).toBeTruthy();
+    expect(sessionStorage.getItem(KEY)).toBeNull();
+    expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b'] })).toEqual([]);
+    expect(screen.getByRole('banner').textContent).toContain('Kim Laurent');
+  });
+});
+
 describe('no selection outlives the user (criterion 9)', () => {
   it('clears the stored building on logout', async () => {
     let signedIn = true;

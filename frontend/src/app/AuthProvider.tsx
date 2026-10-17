@@ -57,6 +57,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     locationRef.current = location;
   }, [location]);
 
+  // `/me` answering for another user than before means another tab logged in on the shared cookie: drop
+  // everything cached for the previous user, and their building selection (review round 1, Claude M1).
+  useEffect(() => {
+    let userId = queryClient.getQueryData<Me>(['me'])?.user.id;
+    return queryClient.getQueryCache().subscribe((event) => {
+      if (event.type !== 'updated' || event.query.queryHash !== '["me"]') return;
+      const next = (event.query.state.data as Me | undefined)?.user.id;
+      if (next === undefined) return;
+      if (userId !== undefined && next !== userId) {
+        queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' });
+        clearSelectedBuilding();
+      }
+      userId = next;
+    });
+  }, [queryClient]);
+
   useEffect(
     () =>
       onUnauthenticated(({ method, path }) => {

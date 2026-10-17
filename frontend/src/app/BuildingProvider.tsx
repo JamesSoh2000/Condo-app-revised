@@ -29,6 +29,13 @@ const BuildingContext = createContext<BuildingContextValue | null>(null);
  */
 export function BuildingProvider({ children }: { children: ReactNode }) {
   const { data: me } = useMe();
+  // Remounted for another user (another tab logged in on the shared cookie): nothing of the previous
+  // user's selection survives in this tab's state (AuthProvider drops their cached data).
+  return <UserBuildingProvider key={me?.user.id}>{children}</UserBuildingProvider>;
+}
+
+function UserBuildingProvider({ children }: { children: ReactNode }) {
+  const { data: me } = useMe();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [stored, setStored] = useState(readSelectedBuilding);
@@ -42,8 +49,9 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
 
   // Keep the tab's storage equal to the effective selection: the default once chosen, nothing once invalid.
   useEffect(() => {
-    writeSelectedBuilding(buildingId);
-  }, [buildingId]);
+    // Re-run on `stored` too: after reset() the default can be the same building as before.
+    if (readSelectedBuilding() !== buildingId) writeSelectedBuilding(buildingId);
+  }, [buildingId, stored]);
 
   const select = useCallback(
     (id: string) => {
@@ -63,7 +71,7 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
 
   const reset = useCallback(() => {
     queryClient.removeQueries({ queryKey: ['b'] });
-    writeSelectedBuilding(null);
+    // The effect above then stores whatever is selected next (the default, or nothing: the picker).
     setStored(null);
   }, [queryClient]);
 
