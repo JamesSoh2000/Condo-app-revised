@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Self-test for the ESLint Base44 fence (ADR-0011, ADR-0015). Today no file under src/features or src/app
-# exists, so `eslint .` alone would pass even if the fence were misconfigured or crashed. This pipes known
-# variants through eslint (nothing is written to disk) and checks that the fence fires, or stays quiet.
+# Self-test for the ESLint Base44 fence and the TypeScript rules (ADR-0011, ADR-0015). `eslint .` alone passes
+# when the code is clean, even if the fence were misconfigured or crashed. This pipes known variants
+# through eslint (nothing is written to disk) and checks that each rule fires, or stays quiet.
 # Usage: bash scripts/check-eslint-fence.sh   (from anywhere in the repo; needs frontend/node_modules)
 set -uo pipefail
 
@@ -9,9 +9,12 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../frontend"
 # Severity 2 = "error". A rule downgraded to "warn" must count as missing: CI runs eslint --quiet.
 fence='"ruleId":"(no-restricted-imports|no-restricted-syntax)","severity":2'
 hooks='"ruleId":"react-hooks/rules-of-hooks","severity":2'
+# ADR-0015 (P2-06a): exhaustive-deps and the type-aware rules are errors on TypeScript files.
+deps='"ruleId":"react-hooks/exhaustive-deps","severity":2'
+typed='"ruleId":"@typescript-eslint/no-floating-promises","severity":2'
 failures=0
 
-check() { # $1 = fence|hooks|none, $2 = filename eslint should assume, $3 = code
+check() { # $1 = fence|hooks|deps|typed|none, $2 = filename eslint should assume, $3 = code
   local out status got
   out="$(printf '%s\n' "$3" | npx eslint --stdin --stdin-filename "$2" -f json 2>&1)"
   status=$?
@@ -21,6 +24,10 @@ check() { # $1 = fence|hooks|none, $2 = filename eslint should assume, $3 = code
     got=fence
   elif grep -qE "$hooks" <<<"$out"; then
     got=hooks
+  elif grep -qE "$deps" <<<"$out"; then
+    got=deps
+  elif grep -qE "$typed" <<<"$out"; then
+    got=typed
   else
     got=none
   fi
@@ -46,8 +53,15 @@ check fence src/features/x.ts "export const t = () => import(\`@/api/base44Clien
 check fence src/features/x.tsx "import { createClient } from '@base44/sdk'; export { createClient };"
 check fence src/app/y.jsx "export const m = () => import('@base44/sdk');"
 check fence src/app/y.js "import { base44 } from '@/api/base44Client.js'; export { base44 };"
+# Inside src/api the legacy Base44 barrels are siblings; the typed client must not import them either.
+check fence src/api/fence-probe.ts "import { base44 } from './base44Client'; export { base44 };"
+check fence src/api/fence-probe.ts "export * from './entities.js';"
+check fence src/api/fence-probe.ts "import { User } from '@/api/entities'; export { User };"
+check none src/api/fence-probe.ts "import { ApiError } from './errors'; export { ApiError };"
 # TypeScript files get the same hooks rule as legacy JSX.
 check hooks src/features/h.tsx "import { useState } from 'react'; export function A({ c }: { c: boolean }) { if (c) { useState(0); } return null; }"
+check deps src/features/d.tsx "import { useEffect } from 'react'; export function D({ id }: { id: string }) { useEffect(() => { console.log(id); }, []); return null; }"
+check typed src/features/p.ts "export async function f(): Promise<void> {} export function g(): void { f(); }"
 # Ordinary imports in new code, and Base44 in legacy pages, stay allowed.
 check none src/features/ok.ts "import { useQuery } from '@tanstack/react-query'; export const q = useQuery;"
 check none src/features/ok2.ts "export const lazy = () => import('./other');"

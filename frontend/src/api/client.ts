@@ -11,10 +11,18 @@ import type { paths } from './schema';
 const UNAUTHENTICATED = 'auth:unauthenticated';
 const events = new EventTarget();
 
-/** Calls `listener` after every 401 response (P2-06 sends the user to the login page). Returns an unsubscribe. */
-export function onUnauthenticated(listener: () => void): () => void {
-  events.addEventListener(UNAUTHENTICATED, listener);
-  return () => events.removeEventListener(UNAUTHENTICATED, listener);
+/** The request that got a 401: a wrong password (`POST /api/auth/login`) is not a lost session. */
+export interface UnauthenticatedRequest {
+  method: string;
+  /** The URL's path, without the query string. */
+  path: string;
+}
+
+/** Calls `listener` after every 401 response (`AuthProvider` sends the user to the login page). Returns an unsubscribe. */
+export function onUnauthenticated(listener: (request: UnauthenticatedRequest) => void): () => void {
+  const handler = (event: Event) => listener((event as CustomEvent<UnauthenticatedRequest>).detail);
+  events.addEventListener(UNAUTHENTICATED, handler);
+  return () => events.removeEventListener(UNAUTHENTICATED, handler);
 }
 
 const middleware: Middleware = {
@@ -23,8 +31,11 @@ const middleware: Middleware = {
     request.headers.set('X-Requested-With', 'fetch');
     return request;
   },
-  async onResponse({ response, options }) {
-    if (response.status === 401) events.dispatchEvent(new Event(UNAUTHENTICATED));
+  async onResponse({ request, response, options }) {
+    if (response.status === 401) {
+      const detail: UnauthenticatedRequest = { method: request.method, path: new URL(request.url).pathname };
+      events.dispatchEvent(new CustomEvent(UNAUTHENTICATED, { detail }));
+    }
     // Only when the caller expects JSON (openapi-fetch's default); `parseAs: 'text' | 'blob' | …` is theirs.
     if (response.ok && (options.parseAs ?? 'json') === 'json') await assertJsonBody(response);
     return response;
@@ -53,9 +64,21 @@ async function assertJsonBody(response: Response): Promise<void> {
 
 type Result<T> = { data?: T; error?: unknown; response: Response };
 
-/** The data of a successful result; throws `ApiError` for an error response. */
+/**
+ * The data of a successful result; throws `ApiError` for an error response, and for an empty 2xx other than
+ * 204, which would otherwise resolve `undefined` under a non-nullable type.
+ */
 export function unwrap<T>(result: Result<T>): T {
-  if (!result.response.ok) throw toApiError(result.response, result.error);
+  const { response } = result;
+  if (!response.ok) throw toApiError(response, result.error);
+  if (result.data === undefined && response.status !== 204) {
+    throw new ApiError({
+      status: response.status,
+      code: 'http_error',
+      title: 'Empty response',
+      requestId: response.headers.get('X-Request-ID'),
+    });
+  }
   return result.data as T;
 }
 

@@ -87,7 +87,7 @@ describe('typed success', () => {
 describe('generated types (criterion 1)', () => {
   it('rejects a path the backend does not have', () => {
     // Compile-time only (tsc checks test files): a renamed or removed backend path fails typecheck.
-    expectTypeOf(api.get)
+    expectTypeOf<typeof api.get>()
       .parameter(0)
       .toEqualTypeOf<
         | '/api/auth/me'
@@ -297,5 +297,105 @@ describe('401 emits auth:unauthenticated (criterion 7)', () => {
     await api.get('/api/version').catch(() => undefined);
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('the 401 event names the request (P2-06a criteria 2 and 6)', () => {
+  it('passes the method and path of the request that got the 401', async () => {
+    const listener = vi.fn();
+    const unsubscribe = onUnauthenticated(listener);
+    fetchMock.mockResolvedValue(problem(401, { title: 't', status: 401, code: 'invalid_credentials', request_id: 'r' }));
+
+    await api.post('/api/auth/login', { body: { email: 'a@example.test', password: 'x' } }).catch(() => undefined);
+    unsubscribe();
+
+    expect(listener).toHaveBeenCalledExactlyOnceWith({ method: 'POST', path: '/api/auth/login' });
+  });
+
+  it('gives the path without the query string', async () => {
+    const listener = vi.fn();
+    const unsubscribe = onUnauthenticated(listener);
+    fetchMock.mockResolvedValue(problem(401, { title: 't', status: 401, code: 'unauthorized', request_id: 'r' }));
+
+    await api.get('/api/auth/sessions', { params: { query: { limit: 5 } } } as never).catch(() => undefined);
+    unsubscribe();
+
+    expect(listener).toHaveBeenCalledExactlyOnceWith({ method: 'GET', path: '/api/auth/sessions' });
+  });
+});
+
+describe('an empty 2xx other than 204 (P2-06a criterion 10)', () => {
+  it.each([
+    ['with Content-Length: 0', { 'Content-Length': '0' }],
+    ['without Content-Length', {}],
+  ])('throws http_error from api.get for an empty 200 %s', async (_label, headers) => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 200, headers: { 'X-Request-ID': 'req-empty', ...headers } }));
+
+    const error = await api.get('/api/auth/me').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 200, code: 'http_error', requestId: 'req-empty' });
+  });
+
+  it('throws http_error from api.post for an empty 201', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 201 }));
+
+    await expect(api.post('/api/auth/logout')).rejects.toMatchObject({ status: 201, code: 'http_error' });
+  });
+
+  it('throws from unwrap for an empty raw-client 200', async () => {
+    const { unwrap } = await import('./client');
+    fetchMock.mockResolvedValue(new Response(null, { status: 200 }));
+
+    const result = await client.GET('/api/auth/me');
+
+    expect(() => unwrap(result)).toThrow(ApiError);
+  });
+
+  it('still resolves undefined for a 204 through api.post', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(api.post('/api/auth/logout')).resolves.toBeUndefined();
+  });
+});
+
+describe('ApiError.retryAfter (P2-06a criterion 3)', () => {
+  function limited(retryAfter?: string) {
+    return problem(
+      429,
+      { title: 'Too Many Requests', status: 429, code: 'rate_limited', request_id: 'r', retry_after: 7 },
+      retryAfter === undefined ? {} : { 'Retry-After': retryAfter },
+    );
+  }
+
+  it('reads whole seconds from the Retry-After header', async () => {
+    fetchMock.mockResolvedValue(limited('42'));
+
+    const error = await api.post('/api/auth/logout').catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ status: 429, code: 'rate_limited', retryAfter: 42 });
+  });
+
+  it.each([undefined, '', 'soon', '-3', '1.5', '1e3', 'Wed, 21 Oct 2026 07:28:00 GMT', '99999999999999999999'])(
+    'is null for Retry-After %j',
+    async (header) => {
+      fetchMock.mockResolvedValue(limited(header));
+
+      const error = await api.post('/api/auth/logout').catch((e: unknown) => e);
+
+      expect(error).toMatchObject({ status: 429, retryAfter: null });
+    },
+  );
+
+  it('accepts 0', async () => {
+    fetchMock.mockResolvedValue(limited('0'));
+
+    await expect(api.post('/api/auth/logout')).rejects.toMatchObject({ retryAfter: 0 });
+  });
+
+  it('is null on an error without the header', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 500 }));
+
+    await expect(api.get('/api/version')).rejects.toMatchObject({ retryAfter: null });
   });
 });
