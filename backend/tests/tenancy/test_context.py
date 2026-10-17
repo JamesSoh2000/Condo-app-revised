@@ -41,6 +41,11 @@ def _probe_router() -> APIRouter:
     def _out(ctx: TenantContext) -> dict[str, object]:
         return {"membership_id": str(ctx.membership_id), "roles": sorted(ctx.roles)}
 
+    @router.get("/probe/bare")
+    async def bare() -> dict[str, str]:
+        """No context parameter: only the router-level guard protects it."""
+        return {"leaked": "yes"}
+
     @router.get("/probe/any")
     async def any_member(ctx: Ctx) -> dict[str, object]:
         probe_logger.info("probe_called")
@@ -227,6 +232,16 @@ async def test_another_buildings_manager_gets_404_not_403_on_a_role_route(probe,
     async with probe() as c:
         await login_as(db, c, world.b_manager.user)
         await assert_cross_building_404(c, "GET", f"{building_url(world.a.id)}/probe/manager")
+
+
+async def test_building_router_guards_a_route_that_never_asks_for_the_context(probe, db, world):
+    async with probe() as c:
+        await login_as(db, c, world.b_resident1.user)
+        await assert_cross_building_404(c, "GET", f"{building_url(world.a.id)}/probe/bare")
+        await login_as(db, c, world.a_resident1.user)
+        allowed = await c.get(f"{building_url(world.a.id)}/probe/bare")
+
+    assert allowed.status_code == 200, allowed.text
 
 
 def test_require_roles_needs_at_least_one_role():
