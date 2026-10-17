@@ -63,6 +63,26 @@ describe('login (P2-06a criterion 1)', () => {
     expect(location()).toBe('/Packages');
   });
 
+  it.each(['%2Flogin%2F', '%2F%256cogin'])('lands on home for a login alias in next=%s (review round 1)', async (next) => {
+    backend(() => noContent());
+    renderApp([`/login?next=${next}`]);
+
+    fillAndSubmit('resident1@example.test', 'DevPassword!2026');
+
+    expect(await screen.findByRole('heading', { name: /home/i })).toBeTruthy();
+    expect(location()).toBe('/');
+  });
+
+  it('sends a password of 128 code points that is longer in UTF-16 (review round 1)', async () => {
+    const fetchMock = backend(() => noContent());
+    renderApp(['/login']);
+
+    fillAndSubmit('resident1@example.test', '🔒'.repeat(65));
+
+    await waitFor(() => expect(location()).toBe('/'));
+    expect(calls(fetchMock)).toContain('POST /api/auth/login');
+  });
+
   it('ignores an unsafe next (criterion 8)', async () => {
     backend(() => noContent());
     renderApp(['/login?next=%2F%2Fevil.example']);
@@ -190,11 +210,30 @@ describe('failed login (criteria 2, 3 and 4)', () => {
     expect(email().getAttribute('aria-invalid')).toBe('true');
   });
 
+  it('sends an email of 320 code points that is longer in UTF-16 (review round 1 neighbour)', async () => {
+    const fetchMock = backend(() => noContent());
+    renderApp(['/login']);
+
+    fillAndSubmit(`${'é'.repeat(100)}${'𝒶'.repeat(200)}@ex.test`, 'DevPassword!2026');
+
+    await waitFor(() => expect(calls(fetchMock)).toContain('POST /api/auth/login'));
+  });
+
+  it('refuses an email over 320 code points, without a request', async () => {
+    const fetchMock = backend(() => noContent());
+    renderApp(['/login']);
+
+    fillAndSubmit(`${'a'.repeat(312)}@ex.test1`, 'DevPassword!2026');
+
+    await waitFor(() => expect(email().getAttribute('aria-invalid')).toBe('true'));
+    expect(calls(fetchMock)).toEqual([]);
+  });
+
   it('refuses a password longer than the backend accepts, without a request', async () => {
     const fetchMock = backend(() => noContent());
     renderApp(['/login']);
 
-    fillAndSubmit('resident1@example.test', 'x'.repeat(129));
+    fillAndSubmit('resident1@example.test', '🔒'.repeat(129));
 
     await waitFor(() => expect(password().getAttribute('aria-invalid')).toBe('true'));
     expect(calls(fetchMock)).toEqual([]);

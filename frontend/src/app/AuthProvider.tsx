@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { api, onUnauthenticated } from '@/api/client';
 import type { components } from '@/api/schema';
-import { loginPath } from '@/app/safeNext';
+import { isLoginPath, loginPath } from '@/app/safeNext';
 
 export type Me = components['schemas']['MeOut'];
 
@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (method === 'POST' && path === '/api/auth/login') return;
         queryClient.clear();
         const current = locationRef.current;
-        if (current.pathname.toLowerCase() !== '/login') navigate(loginPath(current), { replace: true });
+        if (!isLoginPath(current.pathname)) navigate(loginPath(current), { replace: true });
       }),
     [queryClient, navigate],
   );

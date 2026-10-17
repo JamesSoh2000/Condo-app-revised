@@ -179,6 +179,29 @@ describe('session lost (criterion 6)', () => {
     expect(screen.queryByText('Alex Chen')).toBeNull();
   });
 
+  it('keeps the home page query in next (review round 1)', async () => {
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      'GET /api/auth/sessions': () => problem(401, 'unauthorized'),
+    });
+    renderApp(['/?tab=2']);
+    await screen.findByText('Alex Chen');
+
+    await act(() => api.get('/api/auth/sessions').catch(() => undefined));
+
+    await waitFor(() => expect(location()).toBe('/login?next=%2F%3Ftab%3D2'));
+  });
+
+  it('does not navigate on a login-page alias such as /login/', async () => {
+    stubApi({ 'GET /api/auth/sessions': () => problem(401, 'unauthorized') });
+    renderApp(['/login/?next=%2FPackages']);
+    await screen.findByRole('heading', { name: /sign in/i });
+
+    await act(() => api.get('/api/auth/sessions').catch(() => undefined));
+
+    expect(location()).toBe('/login/?next=%2FPackages');
+  });
+
   it('ignores the 401 of the login call itself (criterion 2)', async () => {
     stubApi({
       'GET /api/auth/me': () => json(RESIDENT_ME),

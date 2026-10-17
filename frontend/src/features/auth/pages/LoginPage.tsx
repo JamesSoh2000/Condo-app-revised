@@ -10,10 +10,19 @@ import { ApiError } from '@/api/errors';
 import { safeNext } from '@/app/safeNext';
 
 // The backend takes any non-empty email string (a malformed one is just unknown: 401, not 422), so the
-// form checks no email format either. Lengths match app/auth/schemas.py::LoginIn.
+// form checks no email format either. Lengths match app/auth/schemas.py::LoginIn, which counts code points;
+// JavaScript's length counts UTF-16 units (an emoji is 2), hence codePoints().
+const codePoints = (value: string) => [...value].length;
 const schema = z.object({
-  email: z.string().trim().min(1, 'Enter your email.').max(320, 'This email is too long.'),
-  password: z.string().min(1, 'Enter your password.').max(128, 'This password is too long.'),
+  email: z
+    .string()
+    .trim()
+    .min(1, 'Enter your email.')
+    .refine((value) => codePoints(value) <= 320, 'This email is too long.'),
+  password: z
+    .string()
+    .min(1, 'Enter your password.')
+    .refine((value) => codePoints(value) <= 128, 'This password is too long.'),
 });
 type LoginForm = z.infer<typeof schema>;
 
