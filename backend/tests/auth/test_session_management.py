@@ -176,7 +176,9 @@ def _schema_properties(spec: dict, schema: dict, seen: set[str]) -> set[str]:
         return _schema_properties(spec, spec["components"]["schemas"][name], seen)
     names = set(schema.get("properties", {}))
     children = [*schema.get("properties", {}).values()]
-    children += [schema[k] for k in ("items", "additionalProperties") if isinstance(schema.get(k), dict)]
+    children += [
+        schema[k] for k in ("items", "additionalProperties") if isinstance(schema.get(k), dict)
+    ]
     children += [s for k in ("anyOf", "allOf", "oneOf") for s in schema.get(k, [])]
     for child in children:
         names |= _schema_properties(spec, child, seen)
@@ -372,7 +374,7 @@ async def test_revoke_all_sessions_revokes_live_ones_and_never_commits(db, world
     count = await service.revoke_all_sessions(db, user.id)
 
     assert count == 2
-    assert all((await _session(db, t)).revoked_at is not None for t in live)
+    assert all([(await _session(db, t)).revoked_at is not None for t in live])
     assert (await _session(db, already)).revoked_at == revoked_before
     assert (await _session(db, untouched)).revoked_at is None
 

@@ -1,21 +1,33 @@
-"""Session lifecycle (ADR-0003): login, resolving a cookie, activity refresh, logout.
+"""Session lifecycle (ADR-0003): login, resolving a cookie, activity refresh, logout, and the
+caller's view of their account and sessions (P2-02).
 
-`login`, `touch_session` and `logout` are use-cases and commit once each (CLAUDE.md rule 5);
-`start_session` and `resolve_session` only flush or read.
+`login`, `touch_session`, `logout`, `logout_all` and `revoke_session` are use-cases and commit once
+each (CLAUDE.md rule 5); `start_session`, `revoke_all_sessions` and the readers never commit.
 """
 
-from datetime import timedelta
+from collections import defaultdict
+from datetime import datetime, timedelta
 from typing import NamedTuple
 from uuid import UUID
 
 from anyio import to_thread
-from sqlalchemy import exists, func, select, update
+from sqlalchemy import ColumnElement, and_, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import AuthSession
+from app.auth.schemas import (
+    MeBuildingOut,
+    MeMembershipOut,
+    MeOccupancyOut,
+    MeOut,
+    MeUserOut,
+    SessionOut,
+)
+from app.buildings.models import Building
 from app.core import clock
 from app.core.config import settings
-from app.core.errors import Unauthorized
+from app.core.errors import NotFound, Unauthorized
+from app.core.pagination import CursorParams, Page, paginate
 from app.core.security import (
     DUMMY_HASH,
     generate_token,
@@ -25,8 +37,9 @@ from app.core.security import (
     needs_rehash,
     verify_password,
 )
-from app.memberships.enums import STAFF_ROLES, MembershipStatus
-from app.memberships.models import BuildingMembership, MembershipRole
+from app.memberships.enums import STAFF_ROLES, MembershipStatus, Role
+from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
+from app.units.models import Unit
 from app.users.models import User
 
 # Activity moves last_seen_at and idle_expires_at forward at most this often: one write per user
@@ -125,21 +138,25 @@ async def idle_window(db: AsyncSession, user_id: UUID) -> timedelta:
 
 async def resolve_session(db: AsyncSession, token: str) -> CurrentSession | None:
     """The live session the token names, with its active user; None otherwise. One query."""
-    now = clock.now()
     row = (
         await db.execute(
             select(AuthSession, User)
             .join(User, User.id == AuthSession.user_id)
             .where(
-                AuthSession.token_hash == hash_token(token),
-                AuthSession.revoked_at.is_(None),
-                AuthSession.expires_at > now,
-                AuthSession.idle_expires_at > now,
-                User.is_active,
+                AuthSession.token_hash == hash_token(token), _is_live(clock.now()), User.is_active
             )
         )
     ).one_or_none()
     return None if row is None else CurrentSession(*row)
+
+
+def _is_live(now: datetime) -> ColumnElement[bool]:
+    """Not revoked, and before both deadlines."""
+    return and_(
+        AuthSession.revoked_at.is_(None),
+        AuthSession.expires_at > now,
+        AuthSession.idle_expires_at > now,
+    )
 
 
 async def touch_session(db: AsyncSession, session: AuthSession) -> None:
@@ -167,3 +184,151 @@ async def logout(db: AsyncSession, token: str | None) -> None:
         .values(revoked_at=clock.now())
     )
     await db.commit()
+
+
+async def revoke_all_sessions(db: AsyncSession, user_id: UUID) -> int:
+    """Revoke every session of the user not yet revoked; return how many. Never commits.
+
+    For logout-all, and later password reset and deactivation (ADR-0003). Takes effect on the
+    next request: `resolve_session` reads `revoked_at` every time.
+    """
+    revoked = await db.scalars(
+        update(AuthSession)
+        .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+        .values(revoked_at=clock.now())
+        .returning(AuthSession.id)
+    )
+    return len(revoked.all())
+
+
+async def logout_all(db: AsyncSession, user_id: UUID) -> None:
+    await revoke_all_sessions(db, user_id)
+    await db.commit()
+
+
+async def list_sessions(
+    db: AsyncSession, current: AuthSession, params: CursorParams
+) -> Page[SessionOut]:
+    """The user's live sessions, newest first; `current` marks the one making the request."""
+    stmt = select(AuthSession).where(AuthSession.user_id == current.user_id, _is_live(clock.now()))
+    return await paginate(
+        db,
+        stmt,
+        AuthSession.id,
+        params,
+        lambda row: SessionOut(
+            id=row.id,
+            created_at=row.created_at,
+            last_seen_at=row.last_seen_at,
+            user_agent=row.user_agent,
+            current=row.id == current.id,
+        ),
+    )
+
+
+async def revoke_session(db: AsyncSession, user_id: UUID, session_id: UUID) -> None:
+    """Revoke one live session of the user. Anyone else's, or one no longer live: `NotFound`."""
+    revoked = await db.scalar(
+        update(AuthSession)
+        .where(
+            AuthSession.id == session_id,
+            AuthSession.user_id == user_id,
+            _is_live(clock.now()),
+        )
+        .values(revoked_at=clock.now())
+        .returning(AuthSession.id)
+    )
+    if revoked is None:
+        # The same answer whether the session is someone else's or doesn't exist (ADR-0004).
+        raise NotFound(detail="Session not found.")
+    await db.commit()
+
+
+async def get_me(db: AsyncSession, user: User) -> MeOut:
+    """The shell's bootstrap: the user and every membership the UI must show. Two queries.
+
+    Deactivated memberships and inactive buildings are left out: the user can do nothing there
+    and there is nothing to explain. Pending, denied and suspended ones stay, so the UI can say
+    why the building is closed to them.
+    """
+    rows = (
+        await db.execute(
+            select(
+                BuildingMembership.id,
+                BuildingMembership.status,
+                Building.id.label("building_id"),
+                Building.name,
+                Building.slug,
+                Building.timezone,
+                Building.locale,
+                UnitOccupancy.unit_id,
+                Unit.label,
+                Unit.tower,
+                UnitOccupancy.relationship,
+            )
+            .join(Building, Building.id == BuildingMembership.building_id)
+            # At most one current occupancy per membership (uq_unit_occupancies_current_membership),
+            # so these outer joins never repeat a membership.
+            .outerjoin(
+                UnitOccupancy,
+                and_(
+                    UnitOccupancy.membership_id == BuildingMembership.id,
+                    UnitOccupancy.ended_at.is_(None),
+                ),
+            )
+            .outerjoin(
+                Unit,
+                and_(
+                    Unit.building_id == UnitOccupancy.building_id,
+                    Unit.id == UnitOccupancy.unit_id,
+                ),
+            )
+            .where(
+                BuildingMembership.user_id == user.id,
+                BuildingMembership.status != MembershipStatus.DEACTIVATED,
+                Building.is_active,
+            )
+            .order_by(Building.name, Building.id)
+        )
+    ).all()
+    roles: defaultdict[UUID, list[Role]] = defaultdict(list)
+    if rows:
+        for membership_id, role in await db.execute(
+            select(MembershipRole.membership_id, MembershipRole.role).where(
+                MembershipRole.membership_id.in_([row.id for row in rows])
+            )
+        ):
+            roles[membership_id].append(role)
+    return MeOut(
+        user=MeUserOut(
+            id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            phone=user.phone,
+            locale=user.locale,
+        ),
+        memberships=[
+            MeMembershipOut(
+                membership_id=row.id,
+                status=row.status,
+                # Sorted by value: Postgres would order the enum by declaration.
+                roles=sorted(roles[row.id]),
+                building=MeBuildingOut(
+                    id=row.building_id,
+                    name=row.name,
+                    slug=row.slug,
+                    timezone=row.timezone,
+                    locale=row.locale,
+                ),
+                occupancy=None
+                if row.unit_id is None
+                else MeOccupancyOut(
+                    unit_id=row.unit_id,
+                    unit_label=row.label,
+                    tower=row.tower,
+                    relationship=row.relationship,
+                ),
+            )
+            for row in rows
+        ],
+    )
