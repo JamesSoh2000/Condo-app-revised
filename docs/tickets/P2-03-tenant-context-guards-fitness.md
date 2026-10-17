@@ -114,6 +114,16 @@ Test-infrastructure follow-ups from PR #50 (P1-05); take in scope or move each t
 - `make check` runs mypy on `app/` only; the P1-05 test modules pass it when named explicitly. Adding
   `tests/` to the gate tightens it.
 
+## Carried from P2-02 (decide while framing)
+
+- Review round 1 Low 1 (PR #58): nothing in `backend/app` sets `Cache-Control`. Authenticated API responses
+  (`/api/auth/me`, `/api/auth/sessions`, and every building route this ticket adds) should send
+  `Cache-Control: no-store`, so a browser or proxy cache can't keep a user's data after logout. One place for
+  all of them (a middleware or the building router), with a test, rather than per route.
+- From the P2-01b step 8 note (`docs/AGENT_MISTAKES_LOG.md`): `make check`'s ruff steps should run with
+  `--no-cache`, so a stale `.ruff_cache` can't hide a lint error locally (tightens a gate; P2-02 ran
+  `ruff check --no-cache` by hand).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
