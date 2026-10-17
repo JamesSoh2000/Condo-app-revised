@@ -86,6 +86,24 @@ Sharpen these and add the tenant-table rows and a missed case when framing.
 - P2-06a removed `LanguageProvider` from the shell (it calls Base44 on mount). The nav labels are English
   until a slice brings i18n back without Base44.
 
+## Carried from P2-06a (do while framing)
+
+- **Run the shell on `make prodlike`** in a browser (favicon, CSP, login/logout): P2-06a could not (Docker was
+  unavailable); CI's smoke only checks that the SPA is served.
+- **Auth queue is per tab** (`src/app/authQueue.ts::runAuthCall`): a slow logout in tab A can delete a session tab B
+  just created. Decide whether to serialize across tabs with Web Locks (`navigator.locks`), with the in-module
+  chain as the jsdom fallback.
+- **No timeout on login/logout:** one hung call holds the queue until the browser times it out. Consider a
+  timeout signal on both, showing the generic error.
+- **A late logout drops `next`:** when it settles while the user is back on `/login?next=…`, it navigates to bare
+  `/login`. Skip that navigate on a login path.
+- **Signed-in user on `/login`** sees the form; consider redirecting to `/`.
+- The header menu for "Log out" (P2-06a has a plain button), and deleting `Layout.jsx`.
+- The Base44 Vite plugin's two dev-only injections and `main.jsx`'s `sandbox:*` `postMessage`s: remove when no
+  legacy page needs them.
+- Building hooks: pass React Query's `signal` (`src/api/README.md`) and rely on P2-06a's cache clears at login,
+  logout and 401.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

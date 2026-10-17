@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P2-02, P1-07 |
 | Replaces old | M4-T02, M3-T10 (frontend part) |
-| Status | in progress |
+| Status | done |
 
 Split from [P2-06](./P2-06-frontend-auth-shell.md) (see there why). The building context, the membership,
 role and feature guards and the navigation are [P2-06b](./P2-06b-building-context-guards-nav.md).

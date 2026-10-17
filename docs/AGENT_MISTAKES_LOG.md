@@ -146,10 +146,16 @@ during implementation; fixed with a per-request reset), and the first mutation r
 | 2026-10-17 | P2-06a | `safeNext` compared the path with `=== '/login'`, so `/login/` and `/%6cogin` (which the router also matches) passed; `loginPath` dropped `?tab=2` on `/` | review round 1, Codex (M2, L3) and Claude (L1) | checked the literal ticket input, not the router's matching rules | `safeNext.ts::isLoginPath` + 7 rejected inputs |
 | 2026-10-17 | P2-06a | Form limits used JavaScript `.length` (UTF-16 units) against Python `max_length` (code points): a 65-emoji password was refused client-side | review round 1, Codex (M1) and Claude (L2) | assumed the two languages count string length the same way | code-point `refine` on email and password + tests |
 | 2026-10-17 | P2-06a | Logout's response (which deletes the cookie) could land after a newer login and delete its session | review round 2, Codex (M1) | didn't consider that the server revokes before the response arrives | `whenLogoutSettled` + tests |
-| 2026-10-17 | P2-06a | The round-2 fix tracked only the latest logout and didn't drop a login whose form had unmounted: Back/Forward and a second form reach the same race | review round 3, Codex (**High**, M) and Claude (M1, L1); ticket blocked (inbox B-3) | fixed the reported sequence, not the other ways to reach it (pattern "fix not tested on adjacent cases", recurring) | pending (inbox B-3) |
+| 2026-10-17 | P2-06a | The round-2 fix tracked only the latest logout and didn't drop a login whose form had unmounted: Back/Forward and a second form reach the same race | review round 3, Codex (**High**, M) and Claude (M1, L1); ticket blocked (inbox B-3) | fixed the reported sequence, not the other ways to reach it (pattern "fix not tested on adjacent cases", recurring) | fixed after James allowed round 4 (inbox B-3): one auth queue + `mounted` check; Codex's proofs kept as `authQueue.test.tsx` |
 
 P2-04 step 8 note: "fix not tested on adjacent cases" recurred over three rounds on a single validator, even
 with the `CLAUDE.md` lesson in place. Next ticket's first follow-up: add an input-class checklist for any
 validator or sanitizer (type, empty/falsy, depth, cycles, size boundary, encoding/NUL/surrogates, case) to
 `docs/templates/REVIEW_PROMPT.md` or the `CLAUDE.md` lesson, so the implementer enumerates the classes before the
 first review instead of discovering them one per round.
+
+P2-06a step 8 note: "fix not tested on adjacent cases" recurred again (round 2's fix covered the reported
+sequence, round 3 found two other routes to the same state), with the `CLAUDE.md` lesson in place. For concurrency
+fixes the neighbours are other interleavings: a second instance of the same action, a remount (Back/Forward), an
+abandoned caller, a failure instead of success. Next ticket's first follow-up: add that list to the `CLAUDE.md`
+lesson (or the REVIEW_PROMPT input-class checklist proposed after P2-04).
