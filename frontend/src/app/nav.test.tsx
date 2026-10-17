@@ -4,10 +4,14 @@
  * Each `describe` names the criterion it proves (docs/tickets/P2-06c-…md). Expected nav items are written
  * out per persona, not computed with the helpers the nav uses.
  */
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { components } from '@/api/schema';
+import { createQueryClient } from '@/app/queryClient';
+import { AppRoutes } from '@/app/routes';
 import {
   BIRCH,
   MAPLE,
@@ -147,14 +151,11 @@ describe('navigation from the page table (criterion 1)', () => {
     expect(nav()).toBeNull();
   });
 
-  it.each([
-    ['404', () => problem(404, 'not_found')],
-    ['401', () => problem(401, 'not_authenticated')],
-  ])('hides the nav when a building refetch answers %s over cached data (1d)', async (_label, failure) => {
+  it('hides the nav when a building refetch answers 404 over cached data (1d)', async () => {
     let fail = false;
     stubApi({
       ...persona(['resident']),
-      [`GET /api/buildings/${MAPLE.id}`]: () => (fail ? failure() : json(buildingOut(MAPLE, ['resident']))),
+      [`GET /api/buildings/${MAPLE.id}`]: () => (fail ? problem(404, 'not_found') : json(buildingOut(MAPLE, ['resident']))),
     });
     const app = renderApp(['/']);
     await findNavItems();
@@ -163,6 +164,32 @@ describe('navigation from the page table (criterion 1)', () => {
     await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
 
     await waitFor(() => expect(nav()).toBeNull());
+    expect(screen.getByRole('heading', { name: /no longer have access/i })).toBeTruthy();
+  });
+
+  it('hides the nav on a building refetch 401 by itself, before any redirect (1d)', async () => {
+    let fail = false;
+    stubApi({
+      ...persona(['resident']),
+      [`GET /api/buildings/${MAPLE.id}`]: () =>
+        fail ? problem(401, 'not_authenticated') : json(buildingOut(MAPLE, ['resident'])),
+    });
+    // No AuthProvider: its 401 redirect would remove the whole shell and hide what the nav does by itself.
+    const queryClient = createQueryClient({ retryDelay: 0 });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/']}>
+          <AppRoutes />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await findNavItems();
+
+    fail = true;
+    await act(() => queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+
+    await waitFor(() => expect(nav()).toBeNull());
+    expect(screen.getByRole('banner')).toBeTruthy();
   });
 
   it('makes no request of its own: the building is requested once, by the guards (1d)', async () => {
@@ -377,8 +404,6 @@ describe('header account menu (criterion 4)', () => {
     openAccountMenu();
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
     expect((await screen.findByRole('alert')).textContent).toContain('Could not log out');
-    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-    fireEvent.click(button());
     fireEvent.click(button());
 
     expect(button().getAttribute('aria-expanded')).toBe('false');

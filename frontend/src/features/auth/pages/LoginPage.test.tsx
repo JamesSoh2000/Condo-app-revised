@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { RESIDENT_ME, calls, json, noContent, problem, renderApp, stubApi, type Handler } from '@/test/renderApp';
@@ -30,6 +30,18 @@ function backend(login: Handler) {
     'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'unauthorized')),
   });
 }
+
+/**
+ * Waits for the page's own session check (P2-06c 7d: `/me` once on open). Its 401 clears the cache, so a
+ * test about what the login itself clears or keeps sets its data after this.
+ */
+async function sessionChecked(fetchMock: ReturnType<typeof stubApi>) {
+  await waitFor(() => expect(calls(fetchMock)).toContain('GET /api/auth/me'));
+  await act(() => new Promise<void>((resolve) => setTimeout(resolve, 25)));
+}
+
+/** Every request except that session check. */
+const sent = (fetchMock: ReturnType<typeof stubApi>) => calls(fetchMock).filter((c) => c !== 'GET /api/auth/me');
 
 function fillAndSubmit(emailValue: string, passwordValue: string) {
   fireEvent.change(email(), { target: { value: emailValue } });
@@ -104,8 +116,9 @@ describe('login (P2-06a criterion 1)', () => {
   });
 
   it('drops data cached before the login', async () => {
-    backend(() => noContent());
+    const fetchMock = backend(() => noContent());
     const app = renderApp(['/login']);
+    await sessionChecked(fetchMock);
     app.queryClient.setQueryData(['b', 'old-building', 'packages'], [{ id: 1 }]);
 
     fillAndSubmit('resident1@example.test', 'DevPassword!2026');
@@ -117,8 +130,9 @@ describe('login (P2-06a criterion 1)', () => {
 
 describe('failed login (criteria 2, 3 and 4)', () => {
   it('shows the generic message for a wrong password, focuses it, empties the password and stays', async () => {
-    backend(() => problem(401, 'invalid_credentials'));
+    const fetchMock = backend(() => problem(401, 'invalid_credentials'));
     const app = renderApp(['/login?next=%2FPackages']);
+    await sessionChecked(fetchMock);
     app.queryClient.setQueryData(['version'], { git_sha: 'x' });
 
     fillAndSubmit('resident1@example.test', 'wrong-password');
@@ -197,7 +211,7 @@ describe('failed login (criteria 2, 3 and 4)', () => {
     expect(field.getAttribute('aria-invalid')).toBe('true');
     const describedBy = field.getAttribute('aria-describedby')!;
     expect(document.getElementById(describedBy)?.textContent).toMatch(/enter your/i);
-    expect(calls(fetchMock)).toEqual([]);
+    expect(sent(fetchMock)).toEqual([]);
   });
 
   it('marks both fields when both are empty', async () => {
@@ -226,7 +240,7 @@ describe('failed login (criteria 2, 3 and 4)', () => {
     fillAndSubmit(`${'a'.repeat(312)}@ex.test1`, 'DevPassword!2026');
 
     await waitFor(() => expect(email().getAttribute('aria-invalid')).toBe('true'));
-    expect(calls(fetchMock)).toEqual([]);
+    expect(sent(fetchMock)).toEqual([]);
   });
 
   it('refuses a password longer than the backend accepts, without a request', async () => {
@@ -236,7 +250,7 @@ describe('failed login (criteria 2, 3 and 4)', () => {
     fillAndSubmit('resident1@example.test', '🔒'.repeat(129));
 
     await waitFor(() => expect(password().getAttribute('aria-invalid')).toBe('true'));
-    expect(calls(fetchMock)).toEqual([]);
+    expect(sent(fetchMock)).toEqual([]);
   });
 
   it('labels both fields', () => {

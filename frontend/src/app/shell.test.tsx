@@ -259,12 +259,24 @@ describe('logout still in flight when the user logs in again (review round 2, Co
   });
 });
 
+/**
+ * `/me` answers 200 until `GET /api/auth/sessions` answers 401, then 401 too: the session is gone for every
+ * call (the login page checks `/me` again, P2-06c 7d).
+ */
+function sessionLostAfterSessionsCall() {
+  let lost = false;
+  return {
+    'GET /api/auth/me': () => (lost ? problem(401, 'unauthorized') : json(RESIDENT_ME)),
+    'GET /api/auth/sessions': () => {
+      lost = true;
+      return problem(401, 'unauthorized');
+    },
+  };
+}
+
 describe('session lost (criterion 6)', () => {
   it('clears the cache and goes to /login with next when another call answers 401', async () => {
-    stubApi({
-      'GET /api/auth/me': () => json(RESIDENT_ME),
-      'GET /api/auth/sessions': () => problem(401, 'unauthorized'),
-    });
+    stubApi(sessionLostAfterSessionsCall());
     const app = renderApp(['/Packages?tab=2']);
     await screen.findByText('Alex Chen');
     app.queryClient.setQueryData(['b', 'some-building', 'packages'], [{ id: 1 }]);
@@ -278,10 +290,7 @@ describe('session lost (criterion 6)', () => {
   });
 
   it('keeps the home page query in next (review round 1)', async () => {
-    stubApi({
-      'GET /api/auth/me': () => json(RESIDENT_ME),
-      'GET /api/auth/sessions': () => problem(401, 'unauthorized'),
-    });
+    stubApi(sessionLostAfterSessionsCall());
     renderApp(['/?tab=2']);
     await screen.findByText('Alex Chen');
 

@@ -437,10 +437,11 @@ describe('lost access mid-session (criterion 8; tenant rows 2 and 3)', () => {
 
 describe('lost access after the building loaded (review round 1, Claude H1 and Codex High)', () => {
   /** Signed in on `path` with Maple loaded; `answer` then decides every later building request. */
-  async function loadedThen(path: string, answer: () => Response) {
+  /** `meLater` answers /me from then on (a lost session makes /me 401 too: the login page checks it). */
+  async function loadedThen(path: string, answer: () => Response, meLater?: () => Response) {
     let later: (() => Response) | null = null;
     const fetchMock = stubApi({
-      'GET /api/auth/me': () => json(RESIDENT_ME),
+      'GET /api/auth/me': () => (later && meLater ? meLater() : json(RESIDENT_ME)),
       [`GET /api/buildings/${MAPLE.id}`]: () => (later ? later() : json(buildingOut(MAPLE, ['resident']))),
     });
     const app = renderApp([path]);
@@ -502,7 +503,8 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
   });
 
   it('goes to the login page when a background refetch answers 401', async () => {
-    await loadedThen('/Packages', () => problem(401, 'not_authenticated'));
+    const lost = () => problem(401, 'not_authenticated');
+    await loadedThen('/Packages', lost, lost);
 
     await waitFor(() => expect(location()).toMatch(/^\/login/));
     expect(screen.queryByText(/being migrated/i)).toBeNull();

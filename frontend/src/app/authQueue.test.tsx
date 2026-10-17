@@ -297,9 +297,10 @@ describe('login and logout time out (P2-06c criterion 7b)', () => {
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
     await waitFor(() => expect(calls(fetchMock)).toContain('POST /api/auth/logout'));
 
-    await act(() => vi.advanceTimersByTimeAsync(AUTH_TIMEOUT_MS - 1));
+    // shouldAdvanceTime lets real time move the clock too, hence the margin.
+    await act(() => vi.advanceTimersByTimeAsync(AUTH_TIMEOUT_MS - 1_000));
     expect(screen.queryByRole('alert')).toBeNull();
-    await act(() => vi.advanceTimersByTimeAsync(1));
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
 
     expect((await screen.findByRole('alert')).textContent).toContain('Could not log out, try again');
     expect(screen.getByTestId('location').textContent).toBe('/');

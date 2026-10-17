@@ -1,14 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useLocation, useNavigate, type Location } from 'react-router-dom';
 
 import { api, onUnauthenticated } from '@/api/client';
 import type { components } from '@/api/schema';
 import { runAuthCall } from '@/app/authQueue';
-import { clearSelectedBuilding } from '@/app/buildingStorage';
+import { clearTabChoices } from '@/app/buildingStorage';
 import { isLoginPath, loginPath } from '@/app/safeNext';
 
 export type Me = components['schemas']['MeOut'];
+
+/** The router's current location, readable after the component that started a call has unmounted. */
+const CurrentLocation = createContext<{ readonly current: Location } | null>(null);
 
 /** The signed-in user and their memberships (P2-02). A 401 means there is no session. */
 export function useMe() {
@@ -26,15 +29,18 @@ export function useMe() {
 export function useLogout() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useContext(CurrentLocation);
   const [error, setError] = useState(false);
   const mutation = useMutation({
     // Navigating and clearing happen inside the queued call, so a login queued after it runs after them.
     mutationFn: () =>
-      runAuthCall(async () => {
-        await api.post('/api/auth/logout');
-        navigate('/login', { replace: true });
+      runAuthCall(async (signal) => {
+        await api.post('/api/auth/logout', { signal });
+        // Already on the login page (a 401 sent the user there while this call was in flight): stay, and
+        // keep its `next` (P2-06c).
+        if (!isLoginPath(location?.current.pathname ?? '')) navigate('/login', { replace: true });
         queryClient.clear();
-        clearSelectedBuilding();
+        clearTabChoices();
       }),
     onMutate: () => setError(false),
     onError: () => setError(true),
@@ -67,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (next === undefined) return;
       if (userId !== undefined && next !== userId) {
         queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' });
-        clearSelectedBuilding();
+        clearTabChoices();
       }
       userId = next;
     });
@@ -78,12 +84,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onUnauthenticated(({ method, path }) => {
         if (method === 'POST' && path === '/api/auth/login') return;
         queryClient.clear();
-        clearSelectedBuilding();
+        clearTabChoices();
         const current = locationRef.current;
         if (!isLoginPath(current.pathname)) navigate(loginPath(current), { replace: true });
       }),
     [queryClient, navigate],
   );
 
-  return children;
+  return <CurrentLocation.Provider value={locationRef}>{children}</CurrentLocation.Provider>;
 }
