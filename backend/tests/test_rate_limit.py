@@ -224,7 +224,7 @@ def test_windows_are_aligned_to_their_length_since_the_epoch():
     assert window_start(at, FIFTEEN_MINUTES) == datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
     assert window_start(at, timedelta(minutes=10)) == datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
     assert window_start(at, timedelta(hours=1)) == datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
-    assert window_start(at, timedelta(seconds=7)) == datetime(2026, 1, 15, 12, 7, 26, tzinfo=UTC)
+    assert window_start(at, timedelta(seconds=7)) == datetime(2026, 1, 15, 12, 7, 25, tzinfo=UTC)
 
 
 async def test_login_is_allowed_again_when_the_window_passes(client, db, frozen_clock):

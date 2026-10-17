@@ -15,7 +15,8 @@ export interface paths {
         put?: never;
         /**
          * Login
-         * @description Log in: 204 with the session cookie, or 401 `invalid_credentials` for any failure.
+         * @description Log in: 204 with the session cookie, 401 `invalid_credentials` for any failure, or 429
+         *     `rate_limited` (with Retry-After) after too many attempts from the IP or for the email.
          */
         post: operations["auth_login"];
         delete?: never;
@@ -445,6 +446,15 @@ export interface operations {
             };
             /** @description Validation Error */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

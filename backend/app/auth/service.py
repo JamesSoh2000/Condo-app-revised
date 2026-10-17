@@ -42,6 +42,7 @@ from app.core.security import (
 )
 from app.memberships.enums import STAFF_ROLES, MembershipStatus, Role
 from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
+from app.rate_limits.service import RateLimiter, ip_key
 from app.units.models import Unit
 from app.users.models import User
 
@@ -66,14 +67,26 @@ class InvalidCredentials(Unauthorized):
 
 
 async def login(
-    db: AsyncSession, *, email: str, password: str, user_agent: str | None, ip: str | None
+    db: AsyncSession,
+    limiter: RateLimiter,
+    *,
+    email: str,
+    password: str,
+    user_agent: str | None,
+    ip: str | None,
 ) -> str:
     """Check the credentials and start a session; return the raw token for the cookie.
 
     Every failure (unknown email, no or unparsable hash, wrong password, inactive user) raises the
     same `InvalidCredentials` after exactly one argon2 verification, so neither the body nor the
     timing tells them apart.
+
+    Every attempt counts against the client's IP, then the email (P2-05), before anything is looked
+    up: a limited attempt costs no argon2 and answers the same whether the email exists. The counts
+    commit on the limiter's own sessions; `db` has not begun yet.
     """
+    await limiter.enforce(ip_key("login", ip), settings.rate_limit_login_ip)
+    await limiter.enforce(await limiter.email_key("login", email), settings.rate_limit_login_email)
     # lower() on both sides in Postgres: the same function as uq_users_lower_email (P1-02).
     found = (
         await db.execute(
