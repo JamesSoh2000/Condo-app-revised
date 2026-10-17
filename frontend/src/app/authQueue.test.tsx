@@ -155,4 +155,30 @@ describe('auth calls run one at a time (review round 3, Codex M2 and High)', () 
     expect(finishOldLogin).toBeUndefined();
     expect(screen.getByRole('banner').textContent).toContain('New User');
   });
+  it('does not pull the user back to next when the form went away while its login was in flight', async () => {
+    let finishLogin!: (response: Response) => void;
+    let signedIn = false;
+    stubApi({
+      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'not_authenticated')),
+      'POST /api/auth/login': () =>
+        new Promise<Response>((resolve) => {
+          finishLogin = (response) => {
+            signedIn = true;
+            resolve(response);
+          };
+        }),
+    });
+    const app = renderApp(['/login?next=%2FPackages']);
+    await screen.findByRole('heading', { name: /sign in/i });
+    submit('resident1@example.test');
+    await waitFor(() => expect(finishLogin).toBeDefined());
+
+    act(() => app.navigate()('/no-such-page'));
+    await screen.findByRole('heading', { name: /page not found/i });
+    await act(() => Promise.resolve(finishLogin(noContent())));
+    await settle();
+
+    // The session exists (the server set the cookie), but the user stays where they went.
+    expect(screen.getByTestId('location').textContent).toBe('/no-such-page');
+  });
 });
