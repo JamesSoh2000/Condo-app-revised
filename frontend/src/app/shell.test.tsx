@@ -29,7 +29,7 @@ describe('RequireAuth (P2-06a criterion 7)', () => {
     expect(screen.queryByText('Alex Chen')).toBeNull();
     expect(screen.queryByRole('heading', { name: /packages/i })).toBeNull();
 
-    await act(async () => answer(json(RESIDENT_ME)));
+    act(() => answer(json(RESIDENT_ME)));
     expect(await screen.findByRole('heading', { name: /packages/i })).toBeTruthy();
     expect(screen.getByText('Alex Chen')).toBeTruthy();
   });
@@ -63,14 +63,14 @@ describe('RequireAuth (P2-06a criterion 7)', () => {
   });
 
   it('passes React Query’s signal to the /me request (criterion 11)', async () => {
-    const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME) });
+    const fetchMock = stubApi({ 'GET /api/auth/me': () => new Promise<Response>(() => {}) });
 
     const { queryClient } = renderApp(['/']);
-    await screen.findByText('Alex Chen');
+    await screen.findByRole('status');
 
     const request = fetchMock.mock.calls[0][0];
     expect(request.signal.aborted).toBe(false);
-    // Cancelling the query aborts the request it started.
+    // Cancelling the in-flight query aborts the request it started.
     await act(() => queryClient.cancelQueries({ queryKey: ['me'] }));
     expect(request.signal.aborted).toBe(true);
   });

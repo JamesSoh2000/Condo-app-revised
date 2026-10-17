@@ -69,7 +69,7 @@ export function renderApp(entries: string[]): RenderedApp {
   function Probe() {
     navigate = useNavigate();
     const location = useLocation();
-    return <output data-testid="location">{location.pathname + location.search}</output>;
+    return <div data-testid="location">{location.pathname + location.search}</div>;
   }
   render(
     <QueryClientProvider client={queryClient}>
