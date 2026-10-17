@@ -31,9 +31,23 @@ export function runAuthCall<T>(call: (signal: AbortSignal) => Promise<T>): Promi
     }
   };
   const locks = 'locks' in navigator ? navigator.locks : undefined;
-  // The DOM typings give `request` the callback's return type unwrapped once too few (Promise<Promise<T>>);
-  // the browser resolves it to T, as with any promise returned from a then callback.
-  const result = tail.then(() => (locks ? (locks.request(LOCK, timed) as Promise<T>) : timed()));
+  const locked = async () => {
+    let started = false;
+    try {
+      // The DOM typings give `request` the callback's return type unwrapped once too few
+      // (Promise<Promise<T>>); the browser resolves it to T, as with any promise returned from a then.
+      return await (locks!.request(LOCK, () => {
+        started = true;
+        return timed();
+      }) as Promise<T>);
+    } catch (error) {
+      // A lock manager that refuses (a sandboxed or opaque origin) must not stop every login and logout:
+      // run the call without it, as without navigator.locks (review round 1, F4). A call that ran fails as is.
+      if (started) throw error;
+      return timed();
+    }
+  };
+  const result = tail.then(() => (locks ? locked() : timed()));
   tail = result.catch(() => undefined);
   return result;
 }

@@ -348,3 +348,26 @@ describe('login and logout time out (P2-06c criterion 7b)', () => {
     expect(seen?.aborted).toBe(false);
   });
 });
+
+describe('a lock manager that refuses (review round 1, Claude F4)', () => {
+  it('still runs the call when navigator.locks.request rejects before granting the lock', async () => {
+    const request = vi.fn(() => Promise.reject(new DOMException('The request is not allowed', 'SecurityError')));
+    Object.defineProperty(navigator, 'locks', { value: { request }, configurable: true });
+
+    await expect(runAuthCall(() => Promise.resolve(1))).resolves.toBe(1);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run the call twice when it fails inside the lock', async () => {
+    fakeLocks();
+    let runs = 0;
+
+    await expect(
+      runAuthCall(() => {
+        runs += 1;
+        return Promise.reject(new Error('logout failed'));
+      }),
+    ).rejects.toThrow('logout failed');
+    expect(runs).toBe(1);
+  });
+});

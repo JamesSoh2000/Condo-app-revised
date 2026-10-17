@@ -354,6 +354,140 @@ describe('council "view as" (criterion 3)', () => {
   });
 });
 
+describe('review round 1 (Claude F1–F3, Codex M1 and L1)', () => {
+  // F1 / Codex M1: AC3f's "/me refetch" half. Ported from Codex's proof.
+  it('drops the toggle and shows the full nav when only a /me refetch removes council (3f)', async () => {
+    let roles: Role[] = ['council', 'resident'];
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => json({ ...RESIDENT_ME, memberships: [membership(MAPLE, { roles })] }),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, roles)),
+    });
+    const app = renderApp(['/']);
+    await findNavItems();
+    openAccountMenu();
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    const buildingsBefore = calls(fetchMock).filter((c) => c.startsWith('GET /api/buildings/')).length;
+
+    roles = ['resident'];
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await waitFor(() =>
+      expect(app.queryClient.getQueryData<Me>(['me'])?.memberships[0].roles).toEqual(['resident']),
+    );
+
+    // At once, from /me alone: no toggle.
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    // The building is asked again, so the nav's (and the guards') roles catch up with /me.
+    await waitFor(() =>
+      expect(calls(fetchMock).filter((c) => c.startsWith('GET /api/buildings/')).length).toBe(buildingsBefore + 1),
+    );
+    await waitFor(() => expect(navItems()).toEqual(RESIDENT_ITEMS));
+  });
+
+  it('does not refetch the building on a /me refetch whose roles did not change', async () => {
+    const fetchMock = stubApi(persona(['council', 'resident']));
+    const app = renderApp(['/']);
+    await findNavItems();
+    await settle();
+    const before = calls(fetchMock).filter((c) => c.startsWith('GET /api/buildings/')).length;
+
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await settle();
+
+    expect(calls(fetchMock).filter((c) => c.startsWith('GET /api/buildings/'))).toHaveLength(before);
+  });
+
+  // F2 / Codex L1: ported from Codex's proof.
+  it('opening the menu on a stale building answer makes no request', async () => {
+    const fetchMock = stubApi(persona(['council', 'resident']));
+    const app = renderApp(['/']);
+    await findNavItems();
+    act(() => {
+      app.queryClient.setQueryData(['b', MAPLE.id, 'building'], buildingOut(MAPLE, ['council', 'resident']), {
+        updatedAt: Date.now() - 31_000,
+      });
+    });
+    const before = calls(fetchMock);
+
+    openAccountMenu();
+    fireEvent.click(screen.getByRole('radio', { name: 'Resident' }));
+    await settle();
+
+    expect(calls(fetchMock)).toEqual(before);
+  });
+
+  // F3: closing the panel unmounted the focused <select>.
+  it('returns focus to the account button after switching building', async () => {
+    stubApi({
+      'GET /api/auth/me': () => json({ ...RESIDENT_ME, memberships: [membership(MAPLE), membership(BIRCH)] }),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['resident'])),
+    });
+    sessionStorage.setItem(BUILDING_KEY, MAPLE.id);
+    renderApp(['/']);
+    await findNavItems();
+
+    openAccountMenu();
+    const select = screen.getByLabelText(/building/i);
+    select.focus();
+    fireEvent.change(select, { target: { value: BIRCH.id } });
+
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /account menu/i }));
+  });
+
+  // 3e, the paths the round-1 review found untested for the view.
+  it('forgets the view at login', async () => {
+    let signedIn = false;
+    stubApi({
+      ...persona(['council', 'resident']),
+      'GET /api/auth/me': () =>
+        signedIn
+          ? json({ ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: ['council', 'resident'] })] })
+          : problem(401, 'not_authenticated'),
+      'POST /api/auth/login': () => {
+        signedIn = true;
+        return noContent();
+      },
+    });
+    renderApp(['/login']);
+    await screen.findByRole('heading', { name: /sign in/i });
+    await settle();
+    // Left by an earlier user of this tab, after the login page's own check.
+    sessionStorage.setItem(VIEW_KEY, 'resident');
+
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'council@example.test' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'DevPassword!2026' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await findNavItems()).toEqual([...COMMON_ITEMS, 'Daily notices', 'Maintenance']);
+    expect(sessionStorage.getItem(VIEW_KEY)).toBeNull();
+  });
+
+  it('forgets the view on a 401 reset', async () => {
+    let lost = false;
+    stubApi({
+      ...persona(['council', 'resident']),
+      'GET /api/auth/me': () =>
+        lost
+          ? problem(401, 'not_authenticated')
+          : json({ ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: ['council', 'resident'] })] }),
+      'GET /api/auth/sessions': () => {
+        lost = true;
+        return problem(401, 'not_authenticated');
+      },
+    });
+    renderApp(['/']);
+    await findNavItems();
+    openAccountMenu();
+    fireEvent.click(screen.getByRole('radio', { name: 'Resident' }));
+    expect(sessionStorage.getItem(VIEW_KEY)).toBe('resident');
+
+    const { api } = await import('@/api/client');
+    await act(() => api.get('/api/auth/sessions').catch(() => undefined));
+
+    await waitFor(() => expect(location()).toMatch(/^\/login/));
+    expect(sessionStorage.getItem(VIEW_KEY)).toBeNull();
+  });
+});
+
 describe('header account menu (criterion 4)', () => {
   const button = () => screen.getByRole('button', { name: /account menu/i });
 

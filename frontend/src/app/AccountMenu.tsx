@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useMe } from '@/app/AuthProvider';
 import { useBuilding, useBuildingContext } from '@/app/BuildingProvider';
 import type { ViewAs } from '@/app/buildingStorage';
-import { canViewAs } from '@/app/MainNav';
+import { useCanViewAs } from '@/app/MainNav';
 
 /**
  * The header's account menu (P2-06c): a disclosure, so a button that shows a panel (WAI-ARIA disclosure
@@ -50,7 +50,15 @@ export function AccountMenu({ onLogout, loggingOut }: { onLogout: () => void; lo
       {open && (
         <div id={panelId} className="absolute right-0 z-10 mt-2 flex w-64 flex-col gap-3 rounded border bg-white p-3 shadow">
           <p className="text-sm text-slate-600">Signed in as {me?.user.email}</p>
-          {buildingId !== null && <BuildingChoices onSwitch={() => setOpen(false)} />}
+          {buildingId !== null && (
+            <BuildingChoices
+              onSwitch={() => {
+                // The focused <select> goes with the panel: keep keyboard users' place (review round 1, F3).
+                setOpen(false);
+                button.current?.focus();
+              }}
+            />
+          )}
           <button
             type="button"
             className="rounded border px-3 py-1 text-sm disabled:opacity-50"
@@ -68,7 +76,9 @@ export function AccountMenu({ onLogout, loggingOut }: { onLogout: () => void; lo
 /** The tab's building (its name, or a switcher with several active memberships) and council "view as". */
 function BuildingChoices({ onSwitch }: { onSwitch: () => void }) {
   const { buildingId, active, select, viewAs, setViewAs } = useBuildingContext();
-  const { data: building } = useBuilding();
+  // Reads what the guards loaded: opening the menu must not ask for the building again (review round 1, F2).
+  const { data: building } = useBuilding({ refetchOnMount: false });
+  const canViewAs = useCanViewAs(building);
   const name = useId();
 
   return (
@@ -94,7 +104,7 @@ function BuildingChoices({ onSwitch }: { onSwitch: () => void }) {
           </select>
         </label>
       )}
-      {building && canViewAs(building) && (
+      {canViewAs && (
         <fieldset className="text-sm">
           <legend className="mb-1">View as</legend>
           {(['management', 'resident'] as const satisfies readonly ViewAs[]).map((view) => (

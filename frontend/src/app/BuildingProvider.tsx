@@ -72,6 +72,18 @@ function UserBuildingProvider({ children }: { children: ReactNode }) {
     if (old !== null && old !== buildingId) queryClient.removeQueries({ queryKey: ['b', old] });
   }, [buildingId, queryClient]);
 
+  // `/me` saying the roles in the selected building changed means the building's answer (the guards' and the
+  // nav's roles) is out of date: ask again (review round 1, F1).
+  const roles = active.find((m) => m.building.id === buildingId)?.roles.join(',');
+  const seen = useRef({ buildingId, roles });
+  useEffect(() => {
+    const last = seen.current;
+    seen.current = { buildingId, roles };
+    if (buildingId !== null && last.buildingId === buildingId && last.roles !== roles) {
+      void queryClient.invalidateQueries({ queryKey: ['b', buildingId, 'building'] });
+    }
+  }, [buildingId, roles, queryClient]);
+
   const select = useCallback(
     (id: string) => {
       if (id === buildingId || !active.some((m) => m.building.id === id)) return;
@@ -119,11 +131,15 @@ export function useBuildingId(): string {
   return buildingId;
 }
 
-/** The selected building as its member sees it: the caller's roles there and its features. */
-export function useBuilding() {
+/**
+ * The selected building as its member sees it: the caller's roles there and its features. A component that
+ * only shows what is already loaded passes `refetchOnMount: false`, so mounting it sends no request.
+ */
+export function useBuilding({ refetchOnMount = true }: { refetchOnMount?: boolean } = {}) {
   const buildingId = useBuildingId();
   return useQuery({
     queryKey: ['b', buildingId, 'building'],
+    refetchOnMount,
     queryFn: ({ signal }) =>
       api.get('/api/buildings/{building_id}', { params: { path: { building_id: buildingId } }, signal }),
   });

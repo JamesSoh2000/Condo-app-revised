@@ -433,3 +433,20 @@ describe('a signed-in user on /login (P2-06c criterion 7d)', () => {
     expect(calls(fetchMock).slice(before)).toEqual(['GET /api/auth/me']);
   });
 });
+
+describe('the /login session check after its answer (review round 1, Claude F5)', () => {
+  it('does not pull the user back when they left /login while the check was in flight', async () => {
+    let answerMe!: (response: Response) => void;
+    stubApi({ 'GET /api/auth/me': () => new Promise<Response>((resolve) => (answerMe = resolve)) });
+    const app = renderApp(['/login?next=%2FPackages']);
+    await screen.findByRole('heading', { name: /sign in/i });
+    await waitFor(() => expect(answerMe).toBeDefined());
+
+    act(() => app.navigate()('/no-such-page'));
+    await screen.findByRole('heading', { name: /page not found/i });
+    await act(() => Promise.resolve(answerMe(json(RESIDENT_ME))));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(location()).toBe('/no-such-page');
+  });
+});
