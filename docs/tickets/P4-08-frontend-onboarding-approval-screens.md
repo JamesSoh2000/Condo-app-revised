@@ -79,6 +79,12 @@ Consumes `auth_signup`, `join_*`, `onboarding_*` and `members_*`.
 2. Why disable the button *and* rely on the server's conditional update?
 3. How do you explain "owner vs tenant vs household" to a non-technical resident in the UI?
 
+## Carried from P2-06b
+
+- `NoMembershipScreen` (`frontend/src/features/membership/MembershipScreens.tsx`) should let the user enter a
+  join link or code (P2-06's scope). P2-06b left the field out because the join route and its lookup didn't
+  exist; add it with the join flow. `DeniedScreen` should show the manager's reason once P4-05 returns one.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

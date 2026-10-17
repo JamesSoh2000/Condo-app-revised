@@ -50,6 +50,30 @@ To sharpen when framing.
 3. **Given** a council member toggling "view as", **then** the requests the app makes are the same before and
    after, and no nav item appears that the member's roles and the building's features don't allow.
 
+## Carried from P2-06b (do while framing; first items first)
+
+1. **Lesson first (playbook step 8; carried from P2-06a, not done in P2-06b).** Extend `CLAUDE.md`'s
+   "test the fix on its neighbours" lesson: for state and concurrency fixes the neighbours are the other ways
+   to reach the state: a second instance of the action, a remount (Back/Forward), an abandoned caller, a
+   failure instead of success, and a server-driven change (a refetch, a `/me` answer) instead of a user action.
+   P2-06b hit it twice more (`docs/AGENT_MISTAKES_LOG.md`, P2-06b rows).
+2. **Known defect, review round 3 (Codex, Medium, unfixed in PR #64):** in
+   `frontend/src/app/BuildingProvider.tsx::UserBuildingProvider` a building selected **by default** (the only
+   active membership) is never kept in `stored`, which only `select()` and `reset()` set.
+   - Only Maple active, then a `/me` refresh adds Birch: the picker comes back instead of keeping Maple.
+   - Stored Maple suspended, Birch selected by default, then Maple reactivated: the tab silently switches back
+     to Maple.
+
+   Fix test-first with these two scenarios: render, let the default settle, change `/me`, invalidate
+   `['me']`, wait, and assert the storage and the building shown. Keep the default as the tab's choice.
+   Decide whether a stored choice that went invalid is forgotten for good.
+3. **Untested, review round 3 (Claude L1, L2):**
+   - a regression test for the `key={me?.user.id}` remount: user A *picks* Maple, then `/me` answers user B,
+     who is active in Maple and Birch; expect the picker;
+   - `BuildingLoaded`'s own 401 branch, without `AuthProvider`'s redirect;
+   - `select()` ignoring an inactive ID.
+4. Move P2-06b's header `BuildingSwitcher` (`frontend/src/app/AppShell.tsx`) into the header menu.
+
 ## Must explain (learning checkpoint)
 
 1. Why does council "view as" never change API permissions?

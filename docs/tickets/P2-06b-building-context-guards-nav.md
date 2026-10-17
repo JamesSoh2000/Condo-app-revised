@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P2-06a |
 | Replaces old | M4-T05, M3-T10 (frontend part) |
-| Status | in progress |
+| Status | done |
 
 Split from [P2-06](./P2-06-frontend-auth-shell.md) (see there why). Login, logout, `/me`, `RequireAuth`, the
 new shell and the placeholders are [P2-06a](./P2-06a-frontend-auth-core.md). Split again while framing

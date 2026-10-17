@@ -159,3 +159,13 @@ sequence, round 3 found two other routes to the same state), with the `CLAUDE.md
 fixes the neighbours are other interleavings: a second instance of the same action, a remount (Back/Forward), an
 abandoned caller, a failure instead of success. Next ticket's first follow-up: add that list to the `CLAUDE.md`
 lesson (or the REVIEW_PROMPT input-class checklist proposed after P2-04).
+
+| 2026-10-17 | P2-06b | `BuildingLoaded` returned the cached page before looking at the error, so a refetch answering 404 (membership removed) kept the building on screen; the only test started from a 404 on the first load | review round 1, Claude (H1) and Codex, **High** | tested the first-load path only; didn't ask what React Query does with `data` when a refetch fails | tests `lost access after the building loaded › …` |
+| 2026-10-17 | P2-06b | `/me` answering for another user (another tab's login) kept the previous user's building cache and choice | review round 1, Claude (M1), Medium | considered logout, 401 and login, not a user change seen by refetch | D5 + test `another user in /me › …` |
+| 2026-10-17 | P2-06b | Old building's queries removed only in `select()`, so a `/me`-driven change of selection kept them | review round 2, Codex (M1), Medium | fixed the user path, not the server-driven path to the same state: pattern "fix not tested on adjacent cases", again with the lesson in place | effect on any change + 2 tests |
+| 2026-10-17 | P2-06b | "Choose again" set a state that was already `null`, so nothing re-rendered; the round-1 test passed vacuously and its comment claimed otherwise | review round 2, Claude (M1), Medium | asserted the end state, not that the action did anything (pattern "check passes vacuously" again) | `epoch` + tests asserting one new request per click |
+| 2026-10-17 | P2-06b | A default selection is never kept as the tab's choice, so a later `/me` change moves it | review round 3, Codex (M), Medium, **unfixed** (final round) | state set on some paths (`select`, `reset`) but not the default path: same pattern as round 2 | carried to P2-06c |
+
+P2-06b step 8 note: "fix not tested on adjacent cases" appeared twice more here (rounds 2 and 3), both times a
+state reached by a server-driven change (`/me` refetch) instead of the user action the fix covered. P2-06a's note
+asked this ticket to extend the `CLAUDE.md` lesson first; it didn't. That is P2-06c's first carried item.
