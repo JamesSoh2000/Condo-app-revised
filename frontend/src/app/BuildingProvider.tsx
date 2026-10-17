@@ -133,13 +133,14 @@ export function useBuildingId(): string {
 
 /**
  * The selected building as its member sees it: the caller's roles there and its features. A component that
- * only shows what is already loaded passes `refetchOnMount: false`, so mounting it sends no request.
+ * only shows what the guards loaded passes `passive: true`: it then never sends the request itself (not on
+ * mount, not when nothing is cached), but still sees every answer and error the query gets.
  */
-export function useBuilding({ refetchOnMount = true }: { refetchOnMount?: boolean } = {}) {
+export function useBuilding({ passive = false }: { passive?: boolean } = {}) {
   const buildingId = useBuildingId();
   return useQuery({
     queryKey: ['b', buildingId, 'building'],
-    refetchOnMount,
+    enabled: !passive,
     queryFn: ({ signal }) =>
       api.get('/api/buildings/{building_id}', { params: { path: { building_id: buildingId } }, signal }),
   });

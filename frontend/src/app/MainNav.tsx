@@ -35,7 +35,9 @@ export function MainNav() {
 }
 
 function BuildingNav() {
-  const building = useBuilding();
+  // Passive: on a page without a building guard (/403, onboarding) nothing loads the building, and the nav
+  // must not be the one to (review round 2). It shows once the guards' answer is cached.
+  const building = useBuilding({ passive: true });
   const { viewAs } = useBuildingContext();
   const canViewAs = useCanViewAs(building.data);
   // Like BuildingLoaded: a 401 or 404 on a refetch means the cached building must not be shown any more.

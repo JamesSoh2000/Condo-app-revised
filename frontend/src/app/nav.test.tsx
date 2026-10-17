@@ -488,6 +488,37 @@ describe('review round 1 (Claude F1–F3, Codex M1 and L1)', () => {
   });
 });
 
+describe('review round 2 (Codex L1)', () => {
+  // Ported from Codex's round-2 proof: these routes have no building guard, so nothing else loads the building.
+  it.each(['/403', '/Onboarding', '/ResidentSetup'])(
+    'the nav requests nothing on the session-only route %s (1d)',
+    async (path) => {
+      const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME) });
+      renderApp([path]);
+      await screen.findByRole('button', { name: /account menu/i });
+      openAccountMenu();
+      await settle();
+
+      expect(calls(fetchMock)).toEqual(['GET /api/auth/me']);
+      expect(nav()).toBeNull();
+    },
+  );
+
+  it('still shows the nav on /403 when the building is already loaded', async () => {
+    const fetchMock = stubApi(persona(['resident']));
+    const app = renderApp(['/']);
+    await findNavItems();
+    const before = calls(fetchMock);
+
+    act(() => app.navigate()('/403'));
+    await screen.findByRole('heading', { name: /can’t open this page/i });
+    await settle();
+
+    expect(navItems()).toEqual(RESIDENT_ITEMS);
+    expect(calls(fetchMock)).toEqual(before);
+  });
+});
+
 describe('header account menu (criterion 4)', () => {
   const button = () => screen.getByRole('button', { name: /account menu/i });
 

@@ -70,16 +70,19 @@ export function LoginPage() {
   // Already signed in (a bookmark, Back, another tab's login): go where the login would have gone. Queued
   // like a login, so a logout still in flight answers first, and skipped if the form is gone by then. A
   // 401 is AuthProvider's (it clears the tab; on this page it navigates nowhere); other errors show the form.
-  const next = params.get('next');
+  // `next` is read when /me answers: Back or Forward between two /login URLs keeps this page mounted and
+  // changes only the search (review round 2).
+  const next = useRef<string | null>(null);
+  next.current = params.get('next');
   useEffect(() => {
     runAuthCall(async (signal) => {
       if (!mounted.current) return;
       const me = await api.get('/api/auth/me', { signal });
       if (!mounted.current) return;
       queryClient.setQueryData(['me'], me);
-      navigate(safeNext(next), { replace: true });
+      navigate(safeNext(next.current), { replace: true });
     }).catch(() => undefined);
-  }, [navigate, next, queryClient]);
+  }, [navigate, queryClient]);
 
   const onSubmit = async (body: LoginForm) => {
     setFailure(null);

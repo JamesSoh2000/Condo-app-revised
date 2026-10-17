@@ -450,3 +450,20 @@ describe('the /login session check after its answer (review round 1, Claude F5)'
     expect(location()).toBe('/no-such-page');
   });
 });
+
+describe('the /login session check follows the current next (review round 2, Codex M1)', () => {
+  // Ported from Codex's round-2 proof: Back changes only the search, so LoginPage stays mounted.
+  it('uses the next of the URL when /me answers, not the one it was sent with', async () => {
+    let answerMe!: (response: Response) => void;
+    stubApi({ 'GET /api/auth/me': () => new Promise<Response>((resolve) => (answerMe = resolve)) });
+    const app = renderApp(['/login?next=%2FPackages', '/login?next=%2FMaintenance']);
+    await waitFor(() => expect(answerMe).toBeDefined());
+
+    act(() => app.navigate()(-1));
+    expect(location()).toBe('/login?next=%2FPackages');
+    await act(() => Promise.resolve(answerMe(json(RESIDENT_ME))));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(location()).toBe('/Packages');
+  });
+});

@@ -76,8 +76,8 @@ export function AccountMenu({ onLogout, loggingOut }: { onLogout: () => void; lo
 /** The tab's building (its name, or a switcher with several active memberships) and council "view as". */
 function BuildingChoices({ onSwitch }: { onSwitch: () => void }) {
   const { buildingId, active, select, viewAs, setViewAs } = useBuildingContext();
-  // Reads what the guards loaded: opening the menu must not ask for the building again (review round 1, F2).
-  const { data: building } = useBuilding({ refetchOnMount: false });
+  // Reads what the guards loaded: opening the menu must not ask for the building (review rounds 1 and 2).
+  const { data: building } = useBuilding({ passive: true });
   const canViewAs = useCanViewAs(building);
   const name = useId();
 
