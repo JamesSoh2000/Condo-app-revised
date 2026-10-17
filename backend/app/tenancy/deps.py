@@ -59,6 +59,11 @@ async def get_tenant_context(
 ) -> TenantContext:
     """The caller's active membership in `building_id`, with its roles and the building's enabled
     features, in one query; otherwise 404 `building_not_found`."""
+    # For the request log (another task: it reads request.state) and for logs in this request. The
+    # user is known either way, so a refused request still says who tried; the building only once
+    # the caller may act there.
+    request.state.user_id = user.id
+    user_id_ctx.set(str(user.id))
     row = (
         await db.execute(
             select(
@@ -83,11 +88,8 @@ async def get_tenant_context(
     ).one_or_none()
     if row is None:
         raise _not_found()
-    # For the request log (another task: it reads request.state) and for logs in this request.
     request.state.building_id = building_id
-    request.state.user_id = user.id
     building_id_ctx.set(str(building_id))
-    user_id_ctx.set(str(user.id))
     return TenantContext(
         user_id=user.id,
         building_id=building_id,

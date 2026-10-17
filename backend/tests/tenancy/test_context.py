@@ -518,3 +518,16 @@ async def test_building_request_logs_carry_building_and_user(probe, db, world, j
     assert "user_id" not in me_line
     building_id_ctx.set(None)
     user_id_ctx.set(None)
+
+
+async def test_refused_building_request_logs_the_user_but_not_the_building(
+    probe, db, world, json_logs
+):
+    async with probe() as c:
+        await login_as(db, c, world.b_resident1.user)
+        response = await c.get(f"{building_url(world.a.id)}/probe/any")
+
+    [line] = [line for line in json_logs if line["message"] == "request_completed"]
+    assert response.status_code == 404
+    assert line["user_id"] == str(world.b_resident1.user.id)
+    assert "building_id" not in line
