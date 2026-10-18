@@ -211,3 +211,11 @@ P3-01a step 8 note: "fix not tested on adjacent cases" appeared again (round 2 r
 and lease fixes). The P2-06c/P2-07 follow-up (a written neighbour list per fix, in the PR, before the next
 reviewer) was still not in `.claude/commands/build-ticket.md`; that change is the first follow-up for the next
 ticket. New pattern, 1 of 2: "SQL shape copied from the docs without checking the plan" (`IN (… LIMIT …)`).
+
+| 2026-10-18 | P3-04a | Made completion race-safe on the success path (conditional update, re-read the winner) but not on the failure path: a loser whose checks saw bytes re-posted after the winner committed answered 422 for a `ready` file | review round 1 (Codex gpt-6.1-sol), Medium | the CLAUDE.md lesson names "a failure instead of success" for state and concurrency fixes; the list was not written before the first review | failed-check re-read + `test_every_failed_check_after_a_winner_returns_the_winner` |
+| 2026-10-18 | P3-04a | Checked a filename for control characters in an `after` validator, so `APIModel`'s `str_strip_whitespace` removed a leading or trailing `\n`/`\t`/`\u2028` first and they passed | review round 1 (Codex), Low | didn't think about what the base model does to the value before the validator sees it | `mode="before"` + edge cases in `test_invalid_filename_or_size_is_422` |
+
+P3-04a step 8 note: the P3-01a follow-up (a written neighbour list per fix before the next reviewer) is now a line
+in `.claude/commands/build-ticket.md` step 4. "Race fix covers success but not failure" is a recurrence of the
+existing `CLAUDE.md` lesson, not a new pattern. New pattern, 1 of 2: "validator runs after the base model's
+normalisation".

@@ -96,6 +96,12 @@ class Conflict(_StatusError):
     status, code, title = 409, "conflict", "Conflict"
 
 
+class UnprocessableContent(_StatusError):
+    """A well-formed request the domain refuses (a file too large, of the wrong type)."""
+
+    status, code, title = 422, "unprocessable_content", "Unprocessable Content"
+
+
 class RateLimited(_StatusError):
     status, code, title = 429, "rate_limited", "Too Many Requests"
 

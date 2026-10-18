@@ -64,9 +64,11 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P3-01b](./P3-01b-scheduler-cleanup-and-cli.md) | Scheduler, cleanup jobs and jobs CLI (split from P3-01) | B | 1 | P3-01a, P2-05, P2-01b | todo | — |
 | [P3-02](./P3-02-transactional-email.md) | Transactional email | B | 2 | P3-01a | todo | — |
 | [P3-03](./P3-03-notifications-api.md) | In-app notifications API | A | 2 | P3-01a, P2-03 | todo | — |
-| [P3-04](./P3-04-private-file-uploads.md) | Private file uploads | A | 1 | P2-03, P0-04a | todo | — |
+| [P3-04a](./P3-04a-file-registry-and-uploads.md) | File registry and direct uploads (split from [P3-04](./P3-04-private-file-uploads.md)) | A | 1 | P2-03, P0-04a | done | — |
+| [P3-04b](./P3-04b-file-downloads-and-claim.md) | File downloads and `claim_file` (split from P3-04) | A | 1 | P3-04a | todo | — |
+| [P3-04c](./P3-04c-file-cleanup-job.md) | File cleanup job (split from P3-04) | A | 1 | P3-04b, P3-01b | todo | — |
 | [P3-05](./P3-05-frontend-notification-center.md) | Frontend notification center with polling | B | 2 | P3-03, P2-06c | todo | — |
-| [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04, P2-06b | todo | — |
+| [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04b, P2-06b | todo | — |
 | [P4-01](./P4-01-units-api.md) | Units API | A | 2 | P2-03, P2-04 | todo | — |
 | [P4-02](./P4-02-staff-invitations.md) | Staff invitations | A | 1 | P3-02, P2-04, P2-03, P2-05 | todo | — |
 | [P4-03](./P4-03-bootstrap-building-command.md) | Bootstrap-building operator command | A | 1 | P4-02, P4-01, P1-06 | todo | — |
@@ -76,7 +78,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-07](./P4-07-frontend-account-screens.md) | Frontend account screens | B | 2 | P4-02, P4-04, P2-06c | todo | — |
 | [P4-08](./P4-08-frontend-onboarding-approval-screens.md) | Frontend onboarding and approval screens | B | 2 | P4-05, P4-06, P2-06c | todo | — |
 | [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07, P4-08, P4-03, P1-08 | todo | — |
-| [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04 | todo | — |
+| [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04b | todo | — |
 | [P5-02a](./P5-02a-package-create-and-read.md) | Package create and read | A | 1 | P5-01, P3-03, P2-04, P4-01 | todo | — |
 | [P5-02b](./P5-02b-package-pickup-and-return.md) | Package pickup and return | A | 1 | P5-02a | todo | — |
 | [P5-03](./P5-03-security-packages-page.md) | Security packages page | B | 2 | P5-02a, P5-02b, P3-06 | todo | — |

@@ -31,11 +31,31 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      # The S3 emulator, the same image as docker-compose.yml's `s3` (ADR-0007). The files tests create a
+      # versioned bucket of their own per run (backend/tests/files/conftest.py), so no init script runs here.
+      s3:
+        image: localstack/localstack:4.14.0
+        env:
+          SERVICES: s3
+          AWS_DEFAULT_REGION: ca-central-1
+        ports:
+          - 4566:4566
+        options: >-
+          --health-cmd "curl -fsS http://localhost:4566/_localstack/health"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
     env:
       APP_ENV: test
       # Migrations and `alembic check` run against this database; tests use TEST_DATABASE_URL.
       DATABASE_URL: postgresql+asyncpg://postgres:devpassword@localhost:5432/condo_dev
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:devpassword@localhost:5432/condo_test
+      # The emulator above, read only by backend/tests/files/conftest.py. It accepts any credentials, so
+      # these are not secrets.
+      TEST_S3_ENDPOINT_URL: http://localhost:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
 
     defaults:
       run:
