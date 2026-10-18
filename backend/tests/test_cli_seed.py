@@ -446,7 +446,14 @@ def test_cli_help_lists_every_command() -> None:
     result = runner.invoke(cli.app, ["--help"])
 
     assert result.exit_code == 0
-    for command in ("seed", "bootstrap-building", "audit", "jobs-status", "email-test"):
+    for command in (
+        "seed",
+        "bootstrap-building",
+        "audit",
+        "jobs-status",
+        "jobs-retry",
+        "email-test",
+    ):
         assert command in result.output
 
 
@@ -454,7 +461,6 @@ def test_cli_help_lists_every_command() -> None:
     ("command", "ticket"),
     [
         ("bootstrap-building", "P4-03"),
-        ("jobs-status", "P3-01b"),
         ("email-test", "P3-02"),
     ],
 )

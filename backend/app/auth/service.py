@@ -12,7 +12,7 @@ from typing import NamedTuple
 from uuid import UUID
 
 from anyio import to_thread
-from sqlalchemy import ColumnElement, and_, exists, func, select, update
+from sqlalchemy import ColumnElement, and_, delete, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
@@ -49,6 +49,9 @@ from app.users.models import User
 # Activity moves last_seen_at and idle_expires_at forward at most this often: one write per user
 # per 5 minutes instead of one per request.
 REFRESH_EVERY = timedelta(minutes=5)
+# An ended session's row (with its IP and user agent) is kept this long for investigations that
+# start from an audit event, then deleted by `sessions.cleanup` (P3-01b D1).
+SESSION_RETENTION = timedelta(days=30)
 
 
 class CurrentSession(NamedTuple):
@@ -252,6 +255,27 @@ async def revoke_all_sessions(db: AsyncSession, user_id: UUID) -> int:
         .returning(AuthSession.id)
     )
     return len(revoked.all())
+
+
+async def delete_ended_sessions(db: AsyncSession) -> int:
+    """Delete sessions that ended (revoked, or past either deadline) more than SESSION_RETENTION
+    ago; return how many. Never commits.
+
+    An ended session never becomes live again: `touch_session` moves `idle_expires_at` only for a
+    session `resolve_session` found live.
+    """
+    cutoff = clock.now() - SESSION_RETENTION
+    result = await db.execute(
+        delete(AuthSession).where(
+            or_(
+                AuthSession.revoked_at < cutoff,
+                AuthSession.expires_at < cutoff,
+                AuthSession.idle_expires_at < cutoff,
+            )
+        )
+    )
+    deleted: int = result.rowcount  # type: ignore[attr-defined]
+    return deleted
 
 
 async def logout_all(db: AsyncSession, user_id: UUID) -> None:

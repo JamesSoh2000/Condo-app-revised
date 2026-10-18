@@ -219,3 +219,12 @@ P3-04a step 8 note: the P3-01a follow-up (a written neighbour list per fix befor
 in `.claude/commands/build-ticket.md` step 4. "Race fix covers success but not failure" is a recurrence of the
 existing `CLAUDE.md` lesson, not a new pattern. New pattern, 1 of 2: "validator runs after the base model's
 normalisation".
+
+| 2026-10-18 | P3-01b | `jobs-retry` read the clock, then ran one conditional update; a retry delayed between the two could pass the 7-day check while the daily scrub emptied the payload, and re-queue a job with no link | review round 1 (Codex gpt-6.1-sol), Medium | the concurrency list before review had "a second retry" but not "the other writer of the same row" (the scrub) at the boundary | lock the row, then read the clock + `test_a_retry_delayed_across_the_boundary_does_not_requeue_a_scrubbed_job` and three neighbour tests |
+| 2026-10-18 | P3-01b | The `sessions.cleanup` test's absolute-expiry case also had an expired idle deadline, so deleting the `expires_at` clause passed; the mutation list probed `idle_expires_at` but not `expires_at` | review round 1 (Codex), gap | mutated one clause of an `OR` and assumed the others were covered the same way | isolated case; mutation R4 |
+
+P3-01b step 8 note: first ticket with the neighbour list written in the PR before the next reviewer (the
+build-ticket step 4 line). Round 2 (fresh Codex) found nothing, where P3-01a's and P2-07's round 2 each
+reopened round 1's fixes. "Concurrency list missed another writer of the same row" is a recurrence of the
+`CLAUDE.md` lesson ("every other way to reach the same state"), not a new pattern. New pattern, 1 of 2:
+"one clause of an `OR` left untested because the fixture also satisfied another".

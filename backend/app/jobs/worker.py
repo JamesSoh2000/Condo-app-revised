@@ -19,7 +19,7 @@ import socket
 import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -32,6 +32,7 @@ from app.core import clock
 from app.core.database import AsyncSessionLocal, dispose_database_engine
 from app.jobs import registry
 from app.jobs.models import Job, JobStatus
+from app.jobs.service import enqueue
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +45,11 @@ MAX_BACKOFF = timedelta(hours=1)
 # Touched every loop and before every job; the Docker healthcheck fails when it is older than
 # 120 s, above HANDLER_TIMEOUT (docker-compose.yml, compose.prodlike.yml).
 HEARTBEAT_FILE = Path(tempfile.gettempdir()) / "worker_heartbeat"
-# Modules whose `@job_handler`s the worker runs. P3-01b and P3-02 add theirs here.
-HANDLER_MODULES: tuple[str, ...] = ()
+# Modules whose `@job_handler`s the worker runs. P3-02 adds its own here.
+HANDLER_MODULES: tuple[str, ...] = ("app.jobs.handlers", "app.rate_limits.jobs", "app.auth.jobs")
+# Enqueued once per UTC day by the scheduler (P3-01b), with the key `<kind>:<yyyy-mm-dd>`.
+RECURRING_KINDS: tuple[str, ...] = ("jobs.cleanup", "rate_limits.cleanup", "sessions.cleanup")
+SCHEDULE_INTERVAL = 60.0
 
 
 @dataclass(frozen=True)
@@ -113,6 +117,8 @@ class Worker:
         handler_timeout: float = HANDLER_TIMEOUT,
         heartbeat_interval: float = HEARTBEAT_INTERVAL,
         jitter: Callable[[], float] = _jitter,
+        recurring: Sequence[str] = RECURRING_KINDS,
+        schedule_interval: float = SCHEDULE_INTERVAL,
     ) -> None:
         self._sessions = sessions
         self.worker_id = (
@@ -121,6 +127,8 @@ class Worker:
         self._handler_timeout = handler_timeout
         self._heartbeat_interval = heartbeat_interval
         self._jitter = jitter
+        self._recurring = tuple(recurring)
+        self._schedule_interval = schedule_interval
         self._counts = {"succeeded": 0, "retried": 0, "dead": 0}
 
     async def run_once(self, batch: int = 10, stop: asyncio.Event | None = None) -> int:
@@ -144,14 +152,54 @@ class Worker:
     async def run_forever(
         self, stop: asyncio.Event, *, batch: int = 10, idle_sleep: float = 1.0
     ) -> None:
-        """Run until `stop` is set; the job running then finishes first."""
-        heartbeats = asyncio.create_task(self._heartbeats(stop))
+        """Run until `stop` is set; the job running then finishes first.
+
+        Schedules the recurring jobs before the first claim, then every `schedule_interval`.
+        """
+        await self._schedule_logged()
+        timers = [
+            asyncio.create_task(self._heartbeats(stop)),
+            asyncio.create_task(self._scheduler(stop)),
+        ]
         try:
             await self._loop(stop, batch, idle_sleep)
         finally:
-            heartbeats.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await heartbeats
+            for timer in timers:
+                timer.cancel()
+            for timer in timers:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await timer
+
+    async def schedule(self) -> list[str]:
+        """Enqueue today's job of each recurring kind not yet enqueued; return the kinds added.
+
+        The key `<kind>:<UTC date>` is unique (`enqueue`'s ON CONFLICT DO NOTHING), so a restart,
+        a second worker or a later tick the same day adds nothing.
+        """
+        today = clock.now().astimezone(UTC).date().isoformat()
+        added: list[str] = []
+        async with self._sessions() as db:
+            for kind in self._recurring:
+                if await enqueue(db, kind, {}, dedupe_key=f"{kind}:{today}") is not None:
+                    added.append(kind)
+            await db.commit()
+        return added
+
+    async def _scheduler(self, stop: asyncio.Event) -> None:
+        while not stop.is_set():
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=self._schedule_interval)
+            if not stop.is_set():
+                await self._schedule_logged()
+
+    async def _schedule_logged(self) -> None:
+        if not self._recurring:
+            return
+        try:
+            await self.schedule()
+        except Exception as exc:
+            # As `worker_loop_error`: type only, and the next tick tries again.
+            logger.error("scheduler_error", extra={"error_type": type(exc).__name__})
 
     async def _heartbeats(self, stop: asyncio.Event) -> None:
         """Log `worker_heartbeat` every interval, also while a long batch runs (review round 1)."""

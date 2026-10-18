@@ -18,6 +18,8 @@ from app.audit.service import AuditQuery, UnknownFilterValue, find_audit_events
 from app.core import clock
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, dispose_database_engine
+from app.jobs.report import render_status
+from app.jobs.service import JobNotRetryable, job_status, retry_dead_job
 from app.seed import SeedRefusedError, check_seed_allowed, seed, seed_password_for
 
 app = typer.Typer(help="Condo management operator commands.", no_args_is_help=True)
@@ -130,6 +132,40 @@ def audit_command(
     typer.echo(output[0])
 
 
+@app.command("jobs-status")
+def jobs_status_command() -> None:
+    """Print job counts by status, the oldest due job's age and the latest dead jobs."""
+    output: list[str] = []
+
+    async def work(db: AsyncSession) -> None:
+        output.append(render_status(await job_status(db), now=clock.now()))
+
+    run_in_session(work)
+    typer.echo(output[0])
+
+
+@app.command("jobs-retry")
+def jobs_retry_command(job_id: str = typer.Argument(..., help="The dead job's id.")) -> None:
+    """Re-queue a job that died in the last 7 days, with its attempts reset."""
+    try:
+        # Parsed before any session; not echoed, since it is untrusted terminal input.
+        parsed = UUID(job_id)
+    except ValueError:
+        typer.echo("error: not a job id (expected a UUID)", err=True)
+        raise typer.Exit(1) from None
+
+    async def work(db: AsyncSession) -> None:
+        await retry_dead_job(db, parsed)
+
+    try:
+        # A refusal raises inside `work`, so `run_in_session` commits nothing.
+        run_in_session(work)
+    except JobNotRetryable as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"requeued {parsed}")
+
+
 def _placeholder(name: str, ticket: str) -> None:
     def command() -> None:
         typer.echo(f"error: {name} is not implemented yet; {ticket} adds it", err=True)
@@ -140,7 +176,6 @@ def _placeholder(name: str, ticket: str) -> None:
 
 # Fail loudly: a script that calls a placeholder must not mistake it for success.
 _placeholder("bootstrap-building", "P4-03")
-_placeholder("jobs-status", "P3-01b")
 _placeholder("email-test", "P3-02")
 
 

@@ -50,6 +50,14 @@ Number is P3-04's.
 
 `backend/app/files/{storage,jobs}.py` (or `service.py`), the scheduler's registration, `backend/tests/files/*`.
 
+## Carried from P3-01b
+
+- Register the handler module in `backend/app/jobs/worker.py::HANDLER_MODULES` and the kind in
+  `RECURRING_KINDS` (one daily job, key `"files.cleanup:<UTC date>"`); update
+  `backend/tests/jobs/test_scheduler.py::test_the_recurring_kinds_are_the_three_cleanups_every_60_seconds`.
+- Handlers use `ctx.db`, never commit, and finish within `HANDLER_TIMEOUT` (50 s). See
+  `docs/explanations/P3-01b-scheduler-cleanup-and-cli.md` §8.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

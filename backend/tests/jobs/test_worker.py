@@ -58,6 +58,8 @@ async def insert_running(sessions: Sessions, *, locked_until, attempts: int, max
 
 def worker(sessions: Sessions, **kwargs: Any) -> Worker:
     kwargs.setdefault("worker_id", "worker-a")
+    # No recurring jobs (P3-01b): these tests count every job the loop runs.
+    kwargs.setdefault("recurring", ())
     return Worker(sessions, **kwargs)
 
 

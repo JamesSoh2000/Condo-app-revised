@@ -52,6 +52,9 @@ class JsonFormatter(logging.Formatter):
             "succeeded",
             "retried",
             "dead",
+            # The cleanup jobs (P3-01b).
+            "deleted",
+            "scrubbed",
         ]
 
         for field in extra_fields:

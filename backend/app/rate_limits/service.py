@@ -112,8 +112,7 @@ async def delete_expired_rate_limits(
     """Delete windows that started more than `older_than` ago; return how many. Never commits.
 
     No policy window is longer than a day (`RatePolicy`), so the default only deletes ended windows.
-    TODO(P3-01): schedule it as the `rate_limits.cleanup` job
-    (docs/tickets/P3-01-job-queue-and-worker.md).
+    Run daily by the `rate_limits.cleanup` job (`app/rate_limits/jobs.py`, P3-01b).
     """
     result = await db.execute(
         delete(RateLimit).where(RateLimit.window_start < clock.now() - older_than)
