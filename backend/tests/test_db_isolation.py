@@ -5,6 +5,8 @@ transaction, the second proves both were rolled back.
 """
 
 import contextlib
+import os
+import re
 from collections.abc import Callable, Iterator
 from typing import Annotated, Any
 
@@ -22,7 +24,12 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.dependencies import get_db_session
 from app.main import app
-from tests.conftest import BACKEND_DIR, UnsafeTestDatabaseError, assert_safe_test_database_url
+from tests.conftest import (
+    BACKEND_DIR,
+    UnsafeTestDatabaseError,
+    assert_safe_test_database_url,
+    per_run_database_url,
+)
 
 
 @pytest.mark.anyio
@@ -173,6 +180,63 @@ def test_guard_accepts_a_separate_test_database():
     assert_safe_test_database_url(
         "postgresql+asyncpg://postgres:pw@localhost:5432/condo_test",
         "postgresql+asyncpg://postgres:pw@localhost:5432/condo_dev",
+    )
+
+
+# P2-07 criterion 1: each test session gets a database of its own
+
+CONFIGURED = "postgresql+asyncpg://postgres:pw@localhost:5432/condo_test"
+DEV = "postgresql+asyncpg://postgres:pw@localhost:5432/condo_dev"
+
+
+def test_per_run_database_is_unique_and_ends_in_test():
+    first, second = per_run_database_url(CONFIGURED, DEV), per_run_database_url(CONFIGURED, DEV)
+
+    assert first != second
+    for url in (first, second):
+        parsed = make_url(url)
+        assert parsed.database is not None
+        assert re.fullmatch(rf"condo_run_{os.getpid()}_[0-9a-f]{{8}}_test", parsed.database)
+        # Only the name changes: same server, user and password.
+        assert parsed.set(database="condo_test") == make_url(CONFIGURED)
+        assert parsed.password == "pw"  # noqa: S105 (test fixture)
+
+
+def test_per_run_database_name_fits_postgres_identifier_limit():
+    long_name = "a" * 58 + "_test"
+
+    url = per_run_database_url(CONFIGURED.replace("condo_test", long_name), DEV)
+
+    name = make_url(url).database
+    assert name is not None
+    assert len(name.encode()) <= 63
+    assert name.endswith("_test")
+    assert f"_run_{os.getpid()}_" in name
+
+
+@pytest.mark.parametrize(
+    "configured",
+    [
+        "postgresql+asyncpg://postgres:pw@localhost:5432/condo_dev",
+        "postgresql+asyncpg://postgres:pw@localhost:5432/condo_test?database=condo_dev",
+    ],
+)
+def test_per_run_database_refuses_an_unsafe_configured_url(configured: str):
+    with pytest.raises(UnsafeTestDatabaseError):
+        per_run_database_url(configured, DEV)
+
+
+@pytest.mark.anyio
+async def test_the_session_database_is_this_runs_own(engine: AsyncEngine):
+    configured = make_url(settings.test_database_url).database
+    assert configured is not None
+
+    async with engine.connect() as conn:
+        connected_to = await conn.scalar(text("SELECT current_database()"))
+
+    assert connected_to != configured
+    assert re.fullmatch(
+        rf"{configured.removesuffix('_test')}_run_{os.getpid()}_[0-9a-f]{{8}}_test", connected_to
     )
 
 

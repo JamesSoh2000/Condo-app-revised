@@ -62,12 +62,24 @@ class _TrackingLimiter(RateLimiter):
         return await super().hit(key, limit, window)
 
 
+# Every key the `committing` tests write for real.
+COMMITTED_KEYS = (
+    _email_key("failed@example.com"),
+    "login:ip:127.0.0.1",
+    "test:rollback",
+    "test:concurrent",
+)
+
+
 @pytest.fixture
 async def committing(engine: AsyncEngine) -> AsyncIterator[_TrackingLimiter]:
     """A limiter on connections of its own that really commit, as in production.
 
-    Its rows outlive the test's transaction, so the fixture deletes every key it used afterwards.
+    Its rows outlive the test's transaction, so the fixture deletes every key it used afterwards,
+    and the tests' fixed keys before, in case a killed run left them (P2-05 review round 1, L4).
     """
+    async with engine.begin() as conn:
+        await conn.execute(delete(RateLimit).where(RateLimit.key.in_(COMMITTED_KEYS)))
     limiter = _TrackingLimiter(async_sessionmaker(engine, expire_on_commit=False))
     try:
         yield limiter

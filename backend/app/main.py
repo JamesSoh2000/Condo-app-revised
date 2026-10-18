@@ -44,8 +44,10 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.project_name,
         lifespan=lifespan,
-        docs_url="/api/docs",
-        openapi_url="/api/openapi.json",
+        # Off in staging and production by default (settings.api_docs_enabled). The schema itself is
+        # still built by `app.openapi()`, which `make gen-api` calls.
+        docs_url="/api/docs" if settings.api_docs_enabled else None,
+        openapi_url="/api/openapi.json" if settings.api_docs_enabled else None,
         redoc_url=None,
         generate_unique_id_function=operation_id,
     )

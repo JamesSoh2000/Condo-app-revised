@@ -4,6 +4,7 @@ Each check is a function over an app (or a source tree) returning its violations
 at the bottom can prove it fails on a bad route, not just that it passes on today's code.
 """
 
+import ast
 import re
 import uuid
 from collections.abc import Callable, Iterator
@@ -32,6 +33,9 @@ AUTH_DEPENDENCIES = frozenset({get_current_user, get_current_session})
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # The only places allowed to commit (CLAUDE.md rule 5): write use-cases and process entry points.
 COMMIT_ALLOWED = ("**/service.py", "cli.py", "seed.py", "worker.py", "jobs/worker.py")
+# Helpers that live in an allowed module but must never commit themselves (CLAUDE.md rule 5): the
+# file rule can't see them (P2-04 mutation M2). Add `notify`, `enqueue`, `attach_file` with them.
+NON_COMMITTING_HELPERS: dict[str, tuple[str, ...]] = {"audit/service.py": ("record_audit",)}
 
 
 def dependency_calls(dependant: Dependant) -> Iterator[Callable[..., Any]]:
@@ -56,8 +60,10 @@ def _under(path: str, prefix: str) -> bool:
 
 
 def _api_routes(application: FastAPI) -> Iterator[APIRoute]:
+    """Every `APIRoute`, under /api or not: one at `/admin/export` is reachable too (P2-03 review
+    round 2, L1). FastAPI's docs routes are plain Starlette routes, so they aren't among them."""
     for route in application.routes:
-        if isinstance(route, APIRoute) and _under(route.path, "/api"):
+        if isinstance(route, APIRoute):
             yield route
 
 
@@ -95,7 +101,7 @@ def unguarded_building_routes(application: FastAPI) -> list[str]:
 
 
 def unauthenticated_routes(application: FastAPI) -> list[str]:
-    """Fitness test 2: every /api route needs a session, unless `AUTH_ALLOWLIST` names it."""
+    """Fitness test 2: every route needs a session, unless `AUTH_ALLOWLIST` names it."""
     violations = []
     for route in _api_routes(application):
         if not AUTH_DEPENDENCIES.isdisjoint(dependency_calls(route.dependant)):
@@ -114,17 +120,45 @@ def stale_allowlist_entries(application: FastAPI) -> list[str]:
 
 # `.commit(`, and its neighbours that commit too: an alias (`save = db.commit`), raw SQL `COMMIT`
 # (not `COMMITTED`), and `.begin()`, whose context manager commits on exit (Claude review round 1).
-_COMMIT = re.compile(r"\.commit\b|\bCOMMIT\b|\.begin\(")
+# Also a string that starts with SQL `commit` in any case, and the quoted `AUTOCOMMIT` isolation
+# level; not a bare case-insensitive word, which comments and `autocommit=False` contain (P2-07).
+_COMMIT = re.compile(
+    r"\.commit\b|\bCOMMIT\b|\.begin\("
+    r"|(?i:[\"']\s*commit\b)"
+    r"|(?i:[\"']autocommit[\"'])"
+)
+
+
+def _helper_commits(root: Path) -> Iterator[str]:
+    """Each `NON_COMMITTING_HELPERS` function whose own body commits, or that no longer exists."""
+    for name, helpers in NON_COMMITTING_HELPERS.items():
+        path = root / name
+        if not path.is_file():
+            yield from (f"{name}::{helper}: no such file" for helper in helpers)
+            continue
+        source = path.read_text()
+        functions = {
+            node.name: node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        }
+        for helper in helpers:
+            if helper not in functions:
+                yield f"{name}::{helper}: no such function"
+            elif _COMMIT.search(ast.get_source_segment(source, functions[helper]) or ""):
+                yield f"{name}::{helper}"
 
 
 def files_that_commit(root: Path) -> list[str]:
-    """Fitness test 4: committing (see `_COMMIT`) only where COMMIT_ALLOWED says."""
+    """Fitness test 4: committing (see `_COMMIT`) only where COMMIT_ALLOWED says, and never inside a
+    `NON_COMMITTING_HELPERS` function."""
     allowed = {p for pattern in COMMIT_ALLOWED for p in root.glob(pattern)}
-    return sorted(
+    outside = [
         str(path.relative_to(root))
         for path in root.rglob("*.py")
         if path not in allowed and _COMMIT.search(path.read_text())
-    )
+    ]
+    return sorted([*outside, *_helper_commits(root)])
 
 
 # Writing to audit_events other than by INSERT: the ORM statements, the Core table's own, a legacy
@@ -282,6 +316,43 @@ def test_meta_unauthenticated_route_fails_check_2():
     assert unauthenticated_routes(_app_with(router)) == ["POST /api/things"]
 
 
+def test_meta_unauthenticated_route_outside_api_fails_check_2():
+    """P2-03 review round 2, L1: the walk covered only /api routes (P2-07 criterion 3)."""
+    router = APIRouter(prefix="/admin", tags=["meta"])
+    router.get("/export")(_ok)
+
+    assert unauthenticated_routes(_app_with(router)) == ["GET /admin/export"]
+
+
+def test_meta_tenant_guard_outside_api_fails_check_1():
+    router = APIRouter(prefix="/admin", tags=["meta"])
+    router.get("/export", dependencies=[Depends(get_tenant_context)])(_ok)
+
+    assert unguarded_building_routes(_app_with(router)) == [
+        f"/admin/export: a tenant guard outside {BUILDING_PREFIX}"
+    ]
+
+
+def test_meta_allowlist_entry_outside_api_is_a_real_route(monkeypatch):
+    monkeypatch.setattr(
+        "tests.test_architecture.AUTH_ALLOWLIST", AUTH_ALLOWLIST | {("GET", "/admin/export")}
+    )
+    router = APIRouter(prefix="/admin", tags=["meta"])
+    router.get("/export")(_ok)
+    test_app = _app_with(router)
+
+    assert stale_allowlist_entries(test_app) == []
+    assert unauthenticated_routes(test_app) == []
+
+
+def test_docs_routes_stay_out_of_checks_1_and_2():
+    """FastAPI's docs routes are plain Starlette routes: no dependency tree to walk."""
+    paths = {getattr(r, "path", None) for r in app.routes if not isinstance(r, APIRoute)}
+
+    assert _docs_paths(app) <= paths
+    assert unauthenticated_routes(app) == []
+
+
 def test_meta_tenant_guard_outside_the_prefix_fails_check_1():
     router = APIRouter(prefix="/api/things", tags=["meta"])
     router.get("", dependencies=[Depends(get_tenant_context)])(_ok)
@@ -344,7 +415,9 @@ def test_meta_stale_allowlist_entry_is_reported(monkeypatch):
     assert stale_allowlist_entries(app) == ["POST /api/auth/signup"]
 
 
-def test_meta_commit_outside_a_service_is_reported(tmp_path):
+def test_meta_commit_outside_a_service_is_reported(tmp_path, monkeypatch):
+    # The helper check has its own meta-tests; this tree has no audit/service.py.
+    monkeypatch.setattr("tests.test_architecture.NON_COMMITTING_HELPERS", {})
     for name, code in {
         "packages/service.py": "await db.commit()",
         "packages/router.py": "await db.commit()",
@@ -357,6 +430,15 @@ def test_meta_commit_outside_a_service_is_reported(tmp_path):
         "files/router.py": 'await db.execute(text("COMMIT"))',
         "moves/router.py": "async with db.begin():",
         "moves/service.py": "async with db.begin():",
+        # Lower-case SQL and AUTOCOMMIT (P2-07 criterion 4):
+        "raw/lower.py": 'await db.execute(text("commit"))',
+        "raw/semicolon.py": "await db.execute(text('COMMIT;'))",
+        "raw/triple.py": 'await db.execute(text("""\n    commit;\n"""))',
+        "raw/isolation.py": 'engine = create_async_engine(url, isolation_level="AUTOCOMMIT")',
+        "raw/options.py": "conn.execution_options(isolation_level='autocommit')",
+        # Not commits: a session keyword, the word in comments and in an isolation level's name.
+        "ok/keyword.py": "sessionmaker(autocommit=False, expire_on_commit=False)",
+        "ok/comment.py": "# its refresh commits; (commit 2153) caller commits\nREAD_COMMITTED=1",
     }.items():
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text(code)
@@ -366,7 +448,49 @@ def test_meta_commit_outside_a_service_is_reported(tmp_path):
         "files/router.py",
         "moves/router.py",
         "packages/router.py",
+        "raw/isolation.py",
+        "raw/lower.py",
+        "raw/options.py",
+        "raw/semicolon.py",
+        "raw/triple.py",
         "units/router.py",
+    ]
+
+
+def test_meta_commit_inside_a_non_committing_helper_is_reported(tmp_path, monkeypatch):
+    """`record_audit` lives in a service module, which may commit; its body may not (P2-04 M2)."""
+    monkeypatch.setattr(
+        "tests.test_architecture.NON_COMMITTING_HELPERS",
+        {"audit/service.py": ("record_audit", "other_helper")},
+    )
+    (tmp_path / "audit").mkdir()
+    (tmp_path / "audit/service.py").write_text(
+        "async def record_audit(db):\n"
+        "    db.add(1)\n"
+        "    await db.commit()\n"
+        "\n"
+        "async def other_helper(db):\n"
+        "    db.add(1)\n"
+        "\n"
+        "async def use_case(db):\n"
+        "    await record_audit(db)\n"
+        "    await db.commit()\n"
+    )
+
+    assert files_that_commit(tmp_path) == ["audit/service.py::record_audit"]
+
+
+def test_meta_stale_non_committing_helper_is_reported(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "tests.test_architecture.NON_COMMITTING_HELPERS",
+        {"audit/service.py": ("record_audit",), "jobs/service.py": ("enqueue",)},
+    )
+    (tmp_path / "audit").mkdir()
+    (tmp_path / "audit/service.py").write_text("async def renamed_record_audit(db):\n    pass\n")
+
+    assert files_that_commit(tmp_path) == [
+        "audit/service.py::record_audit: no such function",
+        "jobs/service.py::enqueue: no such file",
     ]
 
 

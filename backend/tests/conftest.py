@@ -1,6 +1,7 @@
 """Shared test fixtures.
 
-The test database (`TEST_DATABASE_URL`) is rebuilt once per session with `alembic upgrade head`.
+Each session builds a database of its own, named after `TEST_DATABASE_URL`
+(`condo_test` → `condo_run_<pid>_<hex>_test`), with `alembic upgrade head`, and drops it at the end.
 Each test then runs on one connection inside an outer transaction that is rolled back at the end.
 The test's session and each request's session join it with
 `join_transaction_mode="create_savepoint"`, so `commit()` in code under test only releases a
@@ -9,6 +10,7 @@ savepoint (docs/ARCHITECTURE.md §14).
 
 import asyncio
 import os
+import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -39,6 +41,8 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 CSRF_HEADERS = {"X-Requested-With": "fetch", "Origin": settings.trusted_origins[0]}
 # asyncpg lets these query parameters override the host/port/database parsed from the URL.
 _CONNECTION_OVERRIDE_PARAMS = frozenset({"database", "dbname", "host", "port", "dsn"})
+# Postgres truncates longer identifiers, which could cut off the `_test` suffix.
+_MAX_DATABASE_NAME_BYTES = 63
 
 
 class UnsafeTestDatabaseError(RuntimeError):
@@ -62,6 +66,24 @@ def assert_safe_test_database_url(test_url: str, dev_url: str) -> None:
     # host/port comparison miss the same database.
     if test_db.database == dev_db.database:
         raise UnsafeTestDatabaseError("TEST_DATABASE_URL must not name the DATABASE_URL database")
+
+
+def per_run_database_url(test_url: str, dev_url: str) -> str:
+    """`test_url` with a database name of this run's own: `<stem>_run_<pid>_<8 hex>_test`.
+
+    Concurrent runs on one server (worktrees, reviewers) then never drop each other's schema. The
+    random part keeps two runs apart when their pids are equal (separate containers or PID
+    namespaces on one server). Both names pass `assert_safe_test_database_url`.
+    """
+    assert_safe_test_database_url(test_url, dev_url)
+    url = make_url(test_url)
+    assert url.database is not None  # the guard refuses a URL without one
+    suffix = f"_run_{os.getpid()}_{secrets.token_hex(4)}_test"
+    stem = url.database.removesuffix("_test")
+    stem = stem.encode()[: _MAX_DATABASE_NAME_BYTES - len(suffix)].decode(errors="ignore")
+    per_run = url.set(database=stem + suffix).render_as_string(hide_password=False)
+    assert_safe_test_database_url(per_run, dev_url)
+    return per_run
 
 
 async def _recreate_test_schema(test_url: str) -> None:
@@ -99,21 +121,24 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture(scope="session")
-def migrated_test_database() -> str:
-    """Rebuild the test database's schema with the real migrations, once per session.
+def migrated_test_database() -> Iterator[str]:
+    """This run's own database, built with the real migrations and dropped when the session ends,
+    pass or fail (`per_run_database_url`).
 
     Sync on purpose: Alembic's env.py calls asyncio.run(), which can't run inside the test loop.
     """
-    test_url = settings.test_database_url
-    assert_safe_test_database_url(test_url, settings.database_url)
-    asyncio.run(_recreate_test_schema(test_url))
-
-    alembic_cfg = Config(str(BACKEND_DIR / "alembic.ini"))
-    alembic_cfg.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
-    alembic_cfg.attributes["database_url"] = test_url
-    alembic_cfg.attributes["configure_logger"] = False
-    command.upgrade(alembic_cfg, "head")
-    return test_url
+    test_url = per_run_database_url(settings.test_database_url, settings.database_url)
+    try:
+        # Inside the try: a setup that fails after creating the database still drops it.
+        asyncio.run(_recreate_test_schema(test_url))
+        alembic_cfg = Config(str(BACKEND_DIR / "alembic.ini"))
+        alembic_cfg.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
+        alembic_cfg.attributes["database_url"] = test_url
+        alembic_cfg.attributes["configure_logger"] = False
+        command.upgrade(alembic_cfg, "head")
+        yield test_url
+    finally:
+        asyncio.run(_drop_database(test_url))
 
 
 @pytest.fixture

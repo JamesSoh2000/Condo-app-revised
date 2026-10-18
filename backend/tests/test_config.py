@@ -335,3 +335,28 @@ def test_host_prefixed_cookie_needs_secure_in_every_env():
 def test_session_settings_must_be_usable(override):
     with pytest.raises(ValidationError):
         Settings(_env_file=None, **override)
+
+
+# P2-07 criterion 5: docs routes are served in dev and test only, unless API_DOCS_ENABLED says so
+
+
+@pytest.mark.parametrize(
+    ("values", "enabled"),
+    [
+        ({}, True),
+        ({"app_env": "test"}, True),
+        (STAGING, False),
+        ({**PROD, "trusted_origins": ["https://condo.example.org"]}, False),
+    ],
+    ids=["dev", "test", "staging", "prod"],
+)
+def test_api_docs_default_follows_the_environment(values, enabled):
+    assert Settings(_env_file=None, **values).api_docs_enabled is enabled
+
+
+@pytest.mark.parametrize(("app_env", "value"), [("prod", "true"), ("dev", "false")])
+def test_api_docs_flag_loads_from_env(monkeypatch, app_env, value):
+    monkeypatch.setenv("API_DOCS_ENABLED", value)
+    values = {**PROD, "trusted_origins": ["https://condo.example.org"], "app_env": app_env}
+
+    assert Settings(_env_file=None, **values).api_docs_enabled is (value == "true")
