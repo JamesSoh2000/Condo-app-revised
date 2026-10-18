@@ -129,11 +129,12 @@ sweep can't tell a dead run from a live one in another container. Drop leftovers
 
 ```bash
 docker compose exec db psql -U postgres -Atc \
-  "SELECT format('DROP DATABASE %I WITH (FORCE);', datname) FROM pg_database WHERE datname LIKE '%\_run\_%\_test'" \
+  "SELECT format('DROP DATABASE %I WITH (FORCE);', datname) FROM pg_database WHERE datname ~ '_(run|migrations)_[0-9]+_[0-9a-f]{8}_test$'" \
   | docker compose exec -T db psql -U postgres
 ```
 
 ## Migration tests
 
 Tests that run migrations up and down take the `scratch_database_url` fixture: an empty database named for
-the process (`condo_migrations_<pid>_test`), dropped afterwards, so concurrent runs don't collide on it.
+the run (`condo_migrations_<pid>_<8 hex>_test`, the same scheme as the session database), dropped afterwards,
+so concurrent runs don't collide on it.

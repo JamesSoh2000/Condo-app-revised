@@ -226,6 +226,27 @@ def test_per_run_database_refuses_an_unsafe_configured_url(configured: str):
         per_run_database_url(configured, DEV)
 
 
+def test_equal_pids_still_get_distinct_databases(monkeypatch):
+    """Separate containers sharing one server can have the same pid (Codex review round 1)."""
+    monkeypatch.setattr(os, "getpid", lambda: 45)
+
+    names = {
+        make_url(per_run_database_url(CONFIGURED, DEV, kind=kind)).database
+        for kind in ("run", "run", "migrations", "migrations")
+    }
+
+    assert len(names) == 4
+    for name in names:
+        assert re.fullmatch(r"condo_(run|migrations)_45_[0-9a-f]{8}_test", str(name))
+
+
+def test_the_scratch_database_is_named_per_run(scratch_database_url: str):
+    """The migration tests' scratch database uses the same scheme as the session's."""
+    name = make_url(scratch_database_url).database
+
+    assert re.fullmatch(rf"condo_migrations_{os.getpid()}_[0-9a-f]{{8}}_test", str(name))
+
+
 @pytest.mark.anyio
 async def test_the_session_database_is_this_runs_own(engine: AsyncEngine):
     configured = make_url(settings.test_database_url).database

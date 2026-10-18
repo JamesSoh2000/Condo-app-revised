@@ -68,17 +68,18 @@ def assert_safe_test_database_url(test_url: str, dev_url: str) -> None:
         raise UnsafeTestDatabaseError("TEST_DATABASE_URL must not name the DATABASE_URL database")
 
 
-def per_run_database_url(test_url: str, dev_url: str) -> str:
-    """`test_url` with a database name of this run's own: `<stem>_run_<pid>_<8 hex>_test`.
+def per_run_database_url(test_url: str, dev_url: str, kind: str = "run") -> str:
+    """`test_url` with a database name of this run's own: `<stem>_<kind>_<pid>_<8 hex>_test`.
 
-    Concurrent runs on one server (worktrees, reviewers) then never drop each other's schema. The
-    random part keeps two runs apart when their pids are equal (separate containers or PID
-    namespaces on one server). Both names pass `assert_safe_test_database_url`.
+    Concurrent runs on one server (worktrees, reviewers) then never drop each other's databases.
+    The random part keeps two runs apart when their pids are equal (separate containers or PID
+    namespaces on one server; Codex review round 1). Both names pass
+    `assert_safe_test_database_url`.
     """
     assert_safe_test_database_url(test_url, dev_url)
     url = make_url(test_url)
     assert url.database is not None  # the guard refuses a URL without one
-    suffix = f"_run_{os.getpid()}_{secrets.token_hex(4)}_test"
+    suffix = f"_{kind}_{os.getpid()}_{secrets.token_hex(4)}_test"
     stem = url.database.removesuffix("_test")
     stem = stem.encode()[: _MAX_DATABASE_NAME_BYTES - len(suffix)].decode(errors="ignore")
     per_run = url.set(database=stem + suffix).render_as_string(hide_password=False)
@@ -145,12 +146,12 @@ def migrated_test_database() -> Iterator[str]:
 def scratch_database_url() -> Iterator[str]:
     """An empty database of this process's own, for tests that run migrations up and down.
 
-    Named per process, so concurrent test runs on one server (worktrees, reviewers) don't share it,
-    and dropped afterwards.
+    Named like the session's (`<stem>_migrations_<pid>_<8 hex>_test`), so concurrent test runs on
+    one server don't share it, and dropped afterwards.
     """
-    url = make_url(settings.test_database_url).set(database=f"condo_migrations_{os.getpid()}_test")
-    scratch = url.render_as_string(hide_password=False)
-    assert_safe_test_database_url(scratch, settings.database_url)
+    scratch = per_run_database_url(
+        settings.test_database_url, settings.database_url, kind="migrations"
+    )
     try:
         # Inside the try: a setup that fails after creating the database still drops it.
         asyncio.run(_recreate_test_schema(scratch))
