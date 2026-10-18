@@ -9,7 +9,10 @@ reads this explanation instead of the PR, so it must be accurate and honest abou
 
 You built this code, so you will remember what you meant to write. The explanation must describe what is in
 the code now, after the review rounds. Do the **reality pass** (`docs/AI_AGENT_PLAYBOOK.md#the-reality-pass`)
-before the first sentence and before every edit:
+before the first sentence. Write it last: after the final `MERGE`, the rebase and green CI. For an edit, re-read
+only what changed since the source revision (the playbook's "Editing": `--name-status`, also after a rebase,
+where changes inherited from `main` count), plus the callers and callees of changed symbols; skip the pass when only the explanation and
+bookkeeping files changed:
 1. **Re-read, don't recall.** From disk at the source revision: the diff, every file and symbol you will cite
    (the whole function, not a search hit), the assertions of the tests you will cite, the final migration, the
    PR's current description and review comments. Run the tests you will cite. Your memory of the conversation
@@ -29,8 +32,9 @@ Inputs to read first:
 - the ticket `docs/tickets/$ARGUMENTS-*.md`: its risk tier decides the form; its Frame notes and "Must
   explain" questions feed §2 and §9
 - the ADRs it links, and any ADR the PR adds (`git diff --name-only origin/main...HEAD -- docs/adr`)
-- the PR description and discussion: `gh pr view --json number,title,body,comments,reviews,headRefOid`.
-  The plan, "Decisions and alternatives", "Independent review" (every round, with the commit each round
+- the PR description and discussion: `gh pr view --json number,title,body,comments,reviews,headRefOid`,
+  fetched once (on an edit, only `comments,reviews,headRefOid`; the body is already in context unless the PR
+  was edited). The plan, "Decisions and alternatives", "Independent review" (every round, with the commit each round
   reviewed) and "Follow-ups"
 - the diff `git diff origin/main...HEAD`, and any file it touches or calls (read-only)
 

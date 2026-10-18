@@ -18,8 +18,8 @@
 ### Describe the code that exists, not the one you meant to write
 
 You built this, so you remember intent, and the code has changed since (review rounds, CI fixes). Do the
-**reality pass** from the [playbook](../AI_AGENT_PLAYBOOK.md#the-reality-pass) before writing and before every
-edit:
+**reality pass** from the [playbook](../AI_AGENT_PLAYBOOK.md#the-reality-pass) before writing, and again on
+what changed before an edit. Write it last: after the final review `MERGE`, the rebase and green CI.
 
 - **Re-read, don't recall.** Read the diff, the files and symbols you cite, and the tests' assertions from disk
   at the source revision; run the tests you cite. Your memory of the conversation is a hypothesis.
@@ -62,7 +62,8 @@ decision without recorded rationale is a gap to close in the PR, or to state (`/
 
 - The **source revision** is `git rev-parse HEAD` before your own commit. Check in the PR's "Independent
   review" section that the final review round reviewed that commit; if it didn't, name the one it did.
-- When you **edit** the explanation after later commits, redo the reality pass on what changed, set the source
+- When you **edit** the explanation after later commits, redo the reality pass on what changed (see "Editing" in
+  the playbook; bookkeeping-only changes need none), set the source
   revision to the new head, and add an `> **Updated** (pre-merge): …` line saying which commits were read and
   what changed in the text.
 - Never write a merge SHA before the merge exists, and don't try to put your own commit's SHA in the file.

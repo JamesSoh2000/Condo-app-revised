@@ -103,6 +103,8 @@ Command: [`/review-ticket`](../.claude/commands/review-ticket.md), run as a **su
 [templates/REVIEW_PROMPT.md](./templates/REVIEW_PROMPT.md).
 
 - Isolated from the implementation *conversation*, not from the code: it reads any file it needs, read-only.
+  It lists the diff with `git diff --stat main...HEAD`, then reads **every** changed path's patch one at a
+  time (`-- <path>`): the stat orders the reading, it never replaces it. It fetches the PR body once per round.
 - Adversarial; the ticket's acceptance criteria and `CLAUDE.md` are the yardstick. Every finding needs a
   concrete failure scenario and, where possible, a failing proof test.
 - It also checks the frame diff (criteria not loosened) and the [protected gates](#protected-gates).
@@ -124,6 +126,11 @@ explanation's "Not verified" section.
 
 ### Step 6 — Explain (implementer, after re-reading the code)
 
+**Timing: write it last.** Start step 6 only when the final review round returned `MERGE`, the branch is
+rebased onto the latest `main`, and CI is green on that head. Then the code the explanation describes is
+normally the code that merges, so it is written once and not edited. The commits after it are normally only
+the explanation itself and the bookkeeping commit (step 7), which describe nothing.
+
 Command: [`/explain-ticket`](../.claude/commands/explain-ticket.md), run by the **implementer itself**, the
 parent session that ran steps 1–5, writing `docs/explanations/<ticket>-<slug>.md` from
 [templates/EXPLANATION.md](./templates/EXPLANATION.md). It is committed to the PR as its last code commit, and
@@ -139,8 +146,8 @@ verified.
 #### The reality pass
 
 The writer is the one that built the code, so the danger is **intent versus reality**: explaining what it
-meant to write, not what is in the code after the review rounds. Four steps, before the first sentence and
-again before every later edit:
+meant to write, not what is in the code after the review rounds. Four steps, before the first sentence and,
+for an edit, again on what changed (see "Editing" below):
 
 1. **Re-read, don't recall.** From disk at the source revision, read the diff (`git diff origin/main...HEAD`),
    the files and symbols you will cite (the whole function or component, not a search hit), the tests that
@@ -166,10 +173,19 @@ The header's **Reality check** line records what was re-read and run. **Remember
 a rationale that exists only in the conversation is first written into the PR's "Decisions and alternatives"
 (only what you actually knew), then cited from there. Otherwise write "Rationale not recorded".
 
-**Editing.** When a commit after the explanation changes code, tests, config or docs it describes (a later
-review round, a CI fix, a rebase that conflicted in the ticket's files, a mismatch from step 3 above), repeat
-the reality pass on what changed, edit the explanation, update its header (source revision, and an "Updated"
-note saying what changed), and commit it. Never patch a sentence without re-reading the code it describes.
+**Editing is the exception.** To see what changed since the source revision, run
+`git diff --name-status <source revision>..HEAD`. After a rebase onto a moved `main` that tree diff also lists
+`main`'s own changes, which can alter what the explanation says (a helper the ticket calls): read that list for
+every file the explanation cites and their callers and callees, and redo the pass on any that appear.
+`git range-diff <source revision>...HEAD` (a `=` commit is unchanged) only shows the ticket's own patches
+are intact; it never clears a change inherited from `main`. **Bookkeeping files** are `docs/tickets/README.md`, `docs/HUMAN_INBOX.md`,
+`docs/AGENT_MISTAKES_LOG.md`, the explanation, and the ticket's own file only in its Status and Follow-ups. If
+nothing else changed (read the bookkeeping patch itself, it is short), there is no edit and no new pass. When a
+commit after the explanation changes code, tests, config or docs it describes (a CI fix, a rebase that
+conflicted in the ticket's files, a mismatch from step 3 above), repeat the reality pass **on the changed files,
+the files that call or are called by a changed symbol, and every claim that cites any of them**; edit those
+claims, update the header (source revision, and an "Updated" note saying what changed), and commit it. Never
+patch a sentence without re-reading the code it describes.
 
 | Rule | Why |
 |---|---|
@@ -195,9 +211,12 @@ the inbox, so all three land atomically. The agent merges only when **all** of t
 - [ ] Every acceptance criterion maps to a passing test or recorded evidence in the PR.
 - [ ] The explanation exists and `scripts/check-explanation-refs.py` passes.
 - [ ] Nothing after the explanation changes what it describes: `git diff <explanation commit> HEAD` touches
-      only bookkeeping files, and a rebase after it resolved no conflict in the ticket's files (git doesn't
-      record that: the merging session confirms it). Otherwise the implementer repeats the reality pass on
-      the changed files and updates the explanation first.
+      only bookkeeping files (after a rebase, also `git diff --name-status <explanation commit> HEAD` shows no
+      file the explanation cites, or their callers and callees, changed by `main`; `git range-diff` alone
+      doesn't prove that), and a rebase after it resolved no conflict in the ticket's files (git doesn't record
+      that: the merging session confirms it). Otherwise the implementer repeats the reality pass as under
+      "Editing" above and updates the affected claims first. A bookkeeping-only change needs no re-read of
+      the code, only of its own patch.
 - [ ] The explanation's **Reality check** line says what was re-read and run; no cited test went unrun without
       saying so.
 - [ ] No protected gate was loosened.
@@ -329,6 +348,9 @@ When the last ticket of a phase merges, the agent:
 
 - **`CLAUDE.md`** at the repo root: ≤ 150 lines of commands, layout, rules and links.
 - **Project commands** in [`.claude/commands/`](../.claude/README.md) encode this loop.
+- **Keep context small** ([CLAUDE.md](../CLAUDE.md) "Context hygiene"): list a large diff with `--stat`, then
+  read each path's patch; fetch only the PR fields a step needs, once. This changes how you read, never what
+  you read: a reviewer still reads every changed path.
 - **Give an agent** the ticket file plus whatever `CLAUDE.md` links to. Do not paste whole design documents.
 - **Never let an agent:**
   - run commands against staging or production data

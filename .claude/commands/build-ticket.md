@@ -35,16 +35,19 @@ only after re-reading the code, never from memory of what you built.
      `n/a: why`.
    - Repeat with **new** subagents until every required reviewer says `VERDICT: MERGE`, at most 3 rounds.
      An open Critical/High after round 3 is stop rule 4.
-5. **Explain** (step 6). Rebase onto `origin/main` first if `main` has moved, so the source revision the
-   explanation records is normally the one that merges. Run `.claude/commands/explain-ticket.md` for
-   $ARGUMENTS yourself, in the worktree. Do its reality pass first: re-read the diff, the cited files and the
+5. **Explain** (step 6), last before the bookkeeping commit. Start only when the final review round said
+   `MERGE`. Rebase onto `origin/main` first if `main` has moved, push, and wait for green CI, so the source
+   revision the explanation records is the one that merges and it is normally written once. Run
+   `.claude/commands/explain-ticket.md` for $ARGUMENTS yourself, in the worktree. Do its reality pass first: re-read the diff, the cited files and the
    tests' assertions from disk, and run the tests you will cite. If the pass shows the code contradicting the
    PR's plan or decisions by accident, treat it as a review finding: fix it test-first and run one more
    review round with a new fresh reviewer, then redo the pass and update the explanation. A deliberate
    deviation goes in the PR below the Plan. If a decision has no recorded rationale, add what you actually
-   knew to the PR first (or write "Rationale not recorded"). **Any later commit** that touches what the
-   explanation describes (a review round, a CI fix, a rebase that conflicted in the ticket's files) means
-   redoing the pass on the changed files and updating the explanation before the merge gate.
+   knew to the PR first (or write "Rationale not recorded"). A later commit that touches what the
+   explanation describes (a CI fix, a rebase that conflicted in the ticket's files) means redoing the pass on
+   the changed files, their callers and callees, and updating the claims that cite them before the merge gate.
+   See the playbook's "Editing" for how to check (`--name-status`, also after a rebase) and what
+   counts as bookkeeping; a bookkeeping-only change needs no new pass. Fetch the PR once for this step.
 6. **Bookkeeping commit** on the branch: the ticket's status `done` in `docs/tickets/README.md`; autonomous
    lasting decisions added to the inbox's "Decisions to audit"; confirmed findings added to
    `docs/AGENT_MISTAKES_LOG.md`; follow-ups that need action added to their ticket, the index or the inbox.

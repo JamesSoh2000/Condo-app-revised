@@ -19,14 +19,16 @@ not what is in the code after three review rounds of fixes.
 ## Decision
 
 - **The implementer (parent) session writes the explanation in step 6 and edits it** whenever a later commit
-  touches what it describes: a review round, a CI fix, a rebase that conflicted in the ticket's files, a
-  mismatch found while writing. No subagent writes or updates it.
+  touches what it describes: a CI fix, a rebase that conflicted in the ticket's files, a mismatch found
+  while writing. It is written last, after the final `MERGE`, the rebase and green CI, so edits are the
+  exception (amended 2026-10-18). No subagent writes or updates it.
 - **Review is not affected.** The implementer still never reviews its own work; every reviewer is a fresh
   session.
 - **The risk is reduced by a reality pass**, defined in the
   [playbook](../AI_AGENT_PLAYBOOK.md#the-reality-pass) and the [template](../templates/EXPLANATION.md):
-  1. Re-read, don't recall. Before writing and before every edit, re-read the diff, the files and symbols to
-     be cited, and the tests from disk at the source revision, and run the tests to be cited. Memory of the
+  1. Re-read, don't recall. Before writing, re-read the diff, the files and symbols to be cited, and the tests
+     from disk at the source revision, and run the tests to be cited. Before an edit, do the same for what
+     changed since (the changed files, their callers and callees, and the claims that cite them). Memory of the
      conversation is a hypothesis to check, not a source.
   2. Keep three kinds of statement apart: **implemented behaviour** (what the code does now), **design
      rationale** (why, labelled recorded or inferred) and **limitations** (what it does not do, what is not

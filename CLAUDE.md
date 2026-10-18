@@ -102,12 +102,21 @@ if it didn't.
 5. Branch `<ticket-id lowercase>-<slug>` (`p2-03-tenant-context`) in its own worktree. Rebase onto the
    latest `main` before review and before merge.
 6. **Never review your own work.** The review runs in fresh sessions (subagents). Fix confirmed findings
-   test-first; at most 3 review rounds. You write and edit the explanation yourself, after a reality pass:
-   re-read the diff, the cited files and the tests from disk, run them, and keep implemented behaviour,
-   design rationale and limitations apart. What you remember of building it is not a source (ADR-0017).
+   test-first; at most 3 review rounds. You write the explanation yourself, last (after the final `MERGE`,
+   the rebase and green CI), following a reality pass: re-read the diff, the cited files and the tests from
+   disk, run them, and keep implemented behaviour, design rationale and limitations apart. What you
+   remember of building it is not a source (ADR-0017).
 7. Merge (`gh pr merge --squash`) only when the playbook's **merge gate** passes. End with the handoff block.
 8. In explanations and answers, reference code as `path::symbol`, not bare line numbers. Name the PR and
    revision you describe, and mark a "why" no record states as inferred.
+
+## Context hygiene
+
+Everything a command prints is re-read on every later turn, so don't print the same text twice.
+- Large diff: `git diff --stat` first, then one path's patch at a time. A reviewer still reads every changed
+  path; the stat orders the reading and never replaces it.
+- `gh pr view --json <only the fields you need>` (`-q` to cut further), once per step. Fetch again only after
+  the PR changed (a push, a review round, a comment).
 
 ## Never
 
