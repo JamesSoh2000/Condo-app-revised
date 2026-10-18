@@ -52,3 +52,9 @@ class FileOut(APIModel):
     size_bytes: int
     original_name: str
     created_at: datetime
+
+
+class FileDownloadOut(APIModel):
+    # A GET for the file's checked version; it stops working at `expires_at`.
+    url: str
+    expires_at: datetime

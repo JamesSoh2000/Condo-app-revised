@@ -3,7 +3,7 @@
 Locally `S3_ENDPOINT_URL` points the API at the emulator and presigned URLs use
 `S3_PUBLIC_ENDPOINT_URL`, the address the browser can reach; in production both are unset (the
 settings validator enforces it) and boto3 talks to AWS. The bucket is read from settings on every
-call. P3-04b adds `presign_get`, P3-04c `delete_versions`.
+call. P3-04c adds `delete_versions`.
 """
 
 from dataclasses import dataclass
@@ -123,3 +123,22 @@ async def get_range(key: str, version_id: str, length: int) -> bytes:
             body.close()
 
     return await anyio.to_thread.run_sync(call)
+
+
+async def presign_get(key: str, version_id: str, disposition: str, *, expires_in: int) -> str:
+    """A GET URL for one version of `key`, valid `expires_in` seconds; S3 serves it with this
+    `Content-Disposition`."""
+
+    def sign() -> str:
+        return _presigning_client().generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": settings.s3_bucket_name,
+                "Key": key,
+                "VersionId": version_id,
+                "ResponseContentDisposition": disposition,
+            },
+            ExpiresIn=expires_in,
+        )
+
+    return await anyio.to_thread.run_sync(sign)

@@ -2,7 +2,7 @@ from uuid import UUID
 
 from app.core.errors import problem_responses
 from app.files import service
-from app.files.schemas import FileCreate, FileOut, FileUploadOut
+from app.files.schemas import FileCreate, FileDownloadOut, FileOut, FileUploadOut
 from app.tenancy.deps import Ctx, DbSession
 from app.tenancy.router import building_router
 
@@ -21,3 +21,10 @@ async def complete(file_id: UUID, ctx: Ctx, db: DbSession) -> FileOut:
     """After the upload: check the stored object and mark the file `ready`. Uploader only;
     repeating it returns the same file."""
     return await service.complete_file(db, ctx, file_id)
+
+
+@router.get("/files/{file_id}/download-url", responses=problem_responses(401, 404))
+async def download_url(file_id: UUID, ctx: Ctx, db: DbSession) -> FileDownloadOut:
+    """A link to a `ready` file, valid 60 seconds. Until the file is attached, only its uploader
+    may have one; afterwards, the record it is attached to decides."""
+    return await service.download_url(db, ctx, file_id)

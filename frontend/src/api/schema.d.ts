@@ -245,6 +245,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/buildings/{building_id}/files/{file_id}/download-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Url
+         * @description A link to a `ready` file, valid 60 seconds. Until the file is attached, only its uploader
+         *     may have one; afterwards, the record it is attached to decides.
+         */
+        get: operations["files_download_url"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/buildings/{building_id}/notifications": {
         parameters: {
             query?: never;
@@ -371,6 +392,16 @@ export interface components {
             content_type: string;
             /** Size Bytes */
             size_bytes: number;
+        };
+        /** FileDownloadOut */
+        FileDownloadOut: {
+            /** Url */
+            url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /** FileOut */
         FileOut: {
@@ -1090,6 +1121,56 @@ export interface operations {
                 };
             };
             /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    files_download_url: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileDownloadOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
