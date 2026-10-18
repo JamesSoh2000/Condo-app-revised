@@ -420,8 +420,9 @@ def test_handler_timeout_is_below_the_lease():
 # Criterion 15
 
 
+@pytest.mark.parametrize("stop_signal", [signal.SIGTERM, signal.SIGINT])
 async def test_sigterm_finishes_current_job_releases_the_rest_and_exits_0(
-    committed_sessions, migrated_test_database: str, tmp_path: Path
+    committed_sessions, migrated_test_database: str, tmp_path: Path, stop_signal: signal.Signals
 ):
     started = tmp_path / "started"
     ids = [
@@ -442,7 +443,7 @@ async def test_sigterm_finishes_current_job_releases_the_rest_and_exits_0(
                 break
             await asyncio.sleep(0.05)
         assert started.exists(), process.communicate()[0] if process.poll() is not None else ""
-        process.send_signal(signal.SIGTERM)
+        process.send_signal(stop_signal)
         output, _ = await asyncio.to_thread(process.communicate, timeout=30)
     finally:
         if process.poll() is None:
