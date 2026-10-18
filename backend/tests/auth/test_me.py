@@ -1,5 +1,7 @@
 """GET /api/auth/me (P2-02 criteria 1-4, 7, 9-11)."""
 
+from typing import Any
+
 import pytest
 from sqlalchemy import event
 
@@ -14,14 +16,15 @@ pytestmark = pytest.mark.anyio
 ME = "/api/auth/me"
 
 
-async def _me(client, db, user) -> dict:
+async def _me(client, db, user) -> dict[str, Any]:
     await login_as(db, client, user)
     response = await client.get(ME)
     assert response.status_code == 200, response.text
-    return response.json()
+    body: dict[str, Any] = response.json()
+    return body
 
 
-def _by_slug(body: dict) -> dict[str, dict]:
+def _by_slug(body: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {m["building"]["slug"]: m for m in body["memberships"]}
 
 

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import pytest
 from fastapi import APIRouter, Depends
@@ -305,7 +306,8 @@ async def test_email_key_uses_postgres_lower_so_unicode_spellings_share_a_counte
 
 
 async def _login_through_proxy(peer: str, forwarded_for: str) -> int:
-    wrapped = ProxyHeadersMiddleware(app, trusted_hosts="10.213.208.10")
+    # Starlette's and uvicorn's ASGI type hints differ for the same callable; both accept it.
+    wrapped: Any = ProxyHeadersMiddleware(cast(Any, app), trusted_hosts="10.213.208.10")
     async with AsyncClient(
         transport=ASGITransport(app=wrapped, client=(peer, 40000)),
         base_url="http://test",
@@ -389,7 +391,7 @@ async def test_cleanup_deletes_windows_older_than_a_day_and_never_commits(db, fr
         commits.append("commit")
         await original_commit()
 
-    db.commit = no_commit  # type: ignore[method-assign]
+    db.commit = no_commit
 
     deleted = await delete_expired_rate_limits(db)
 

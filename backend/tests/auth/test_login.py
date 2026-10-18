@@ -2,9 +2,11 @@
 
 import hashlib
 import logging
+from collections.abc import Callable
 from datetime import timedelta
 
 import pytest
+from anyio import to_thread
 from argon2 import PasswordHasher
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,8 +32,21 @@ async def _user(db: AsyncSession, **overrides) -> User:
 
 
 def _set_cookie(response) -> str:
+    header: str
     [header] = response.headers.get_list("set-cookie")
     return header
+
+
+def _recording(
+    verified: list[str], verify: Callable[[str, str], bool] | None = None
+) -> Callable[[str, str], bool]:
+    """A `verify_password` stand-in: records each hash it gets, then answers as `verify` (or no)."""
+
+    def spy(password: str, password_hash: str) -> bool:
+        verified.append(password_hash)
+        return verify(password, password_hash) if verify else False
+
+    return spy
 
 
 def _attributes(header: str) -> dict[str, str]:
@@ -168,7 +183,7 @@ async def test_every_credential_failure_is_the_same_401_and_writes_nothing(clien
     await make_user(db, email="corrupt@example.com", password_hash="not-a-hash-é")  # noqa: S106
     await _user(db, email="inactive@example.com", is_active=False)
     verified: list[str] = []
-    real_verify = service.verify_password
+    real_verify = verify_password
 
     def spy(password: str, password_hash: str) -> bool:
         verified.append(password_hash)
@@ -316,7 +331,7 @@ async def test_login_records_user_agent_truncated_and_client_ip(client, db):
 )
 async def test_malformed_login_body_is_422_and_verifies_nothing(client, monkeypatch, body):
     verified: list[str] = []
-    monkeypatch.setattr(service, "verify_password", lambda p, h: verified.append(h) or False)
+    monkeypatch.setattr(service, "verify_password", _recording(verified))
 
     response = await client.post("/api/auth/login", json=body)
 
@@ -416,10 +431,7 @@ def _unusable(kind: str) -> str:
 async def test_unusable_argon2_hash_is_verified_as_dummy(client, db, monkeypatch, kind):
     await make_user(db, email="broken@example.com", password_hash=_unusable(kind))
     verified: list[str] = []
-    real_verify = service.verify_password
-    monkeypatch.setattr(
-        service, "verify_password", lambda p, h: verified.append(h) or real_verify(p, h)
-    )
+    monkeypatch.setattr(service, "verify_password", _recording(verified, verify_password))
 
     response = await client.post(
         "/api/auth/login", json={"email": "broken@example.com", "password": PASSWORD}
@@ -435,7 +447,7 @@ async def test_unusable_argon2_hash_is_verified_as_dummy(client, db, monkeypatch
 @pytest.mark.parametrize("email", ["a\x00b@example.com", "\x00", "a@example.com\x00"])
 async def test_email_with_a_nul_character_is_422_not_500(app_client, monkeypatch, email):
     verified: list[str] = []
-    monkeypatch.setattr(service, "verify_password", lambda p, h: verified.append(h) or False)
+    monkeypatch.setattr(service, "verify_password", _recording(verified))
     async with app_client(raise_app_exceptions=False) as c:
         response = await c.post("/api/auth/login", json={"email": email, "password": PASSWORD})
 
@@ -519,10 +531,7 @@ async def test_non_canonical_or_out_of_bounds_parameters_verify_as_dummy(
 ):
     await make_user(db, email="odd@example.com", password_hash=DUMMY_HASH.replace(old, new, 1))
     verified: list[str] = []
-    real_verify = service.verify_password
-    monkeypatch.setattr(
-        service, "verify_password", lambda p, h: verified.append(h) or real_verify(p, h)
-    )
+    monkeypatch.setattr(service, "verify_password", _recording(verified, verify_password))
 
     response = await client.post(
         "/api/auth/login", json={"email": "odd@example.com", "password": PASSWORD}
@@ -558,7 +567,7 @@ async def test_login_holds_no_transaction_while_verifying(client, db, db_connect
     # The test's own savepoint; a request still inside its transaction would show its own.
     before = db_connection.sync_connection.get_nested_transaction()
     during: list[object] = []
-    real_verify = service.verify_password
+    real_verify = verify_password
 
     def spy(password: str, password_hash: str) -> bool:
         during.append(db_connection.sync_connection.get_nested_transaction())
@@ -584,10 +593,10 @@ async def test_rehash_does_not_overwrite_a_password_changed_meanwhile(client, db
     weak = PasswordHasher(time_cost=1, memory_cost=8 * 1024, parallelism=1).hash(PASSWORD)
     await make_user(db, email="race@example.com", password_hash=weak)
     changed = hash_password("changed-meanwhile-2026")
-    real_run_sync = service.to_thread.run_sync
+    real_run_sync = to_thread.run_sync
 
     async def run_sync(func, *args):
-        if func is service.hash_password:
+        if func is hash_password:
             # A password reset lands while login computes the upgraded hash.
             await db.execute(
                 text("UPDATE users SET password_hash = :h WHERE email = 'race@example.com'"),
@@ -595,7 +604,7 @@ async def test_rehash_does_not_overwrite_a_password_changed_meanwhile(client, db
             )
         return await real_run_sync(func, *args)
 
-    monkeypatch.setattr(service.to_thread, "run_sync", run_sync)
+    monkeypatch.setattr(to_thread, "run_sync", run_sync)
 
     response = await client.post(
         "/api/auth/login", json={"email": "race@example.com", "password": PASSWORD}

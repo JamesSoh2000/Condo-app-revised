@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -19,6 +20,7 @@ from app.core.errors import (
     NotFound,
     RateLimited,
     Unauthorized,
+    _StatusError,
 )
 from app.core.schemas import InputModel
 from app.logging_config import JsonFormatter
@@ -60,7 +62,7 @@ async def conflict_typed_extra() -> None:
     )
 
 
-DOMAIN_ERRORS: dict[str, type[DomainError]] = {
+DOMAIN_ERRORS: dict[str, type[_StatusError]] = {
     "not_found": NotFound,
     "forbidden": Forbidden,
     "unauthorized": Unauthorized,
@@ -99,10 +101,10 @@ async def boom() -> None:
     raise RuntimeError("secret dsn")
 
 
-def assert_problem(response, status: int, code: str) -> dict[str, object]:
+def assert_problem(response, status: int, code: str) -> dict[str, Any]:
     assert response.status_code == status
     assert response.headers["content-type"] == "application/problem+json"
-    body = response.json()
+    body: dict[str, Any] = response.json()
     assert body.keys() >= PROBLEM_MEMBERS
     assert body["status"] == status
     assert body["code"] == code
@@ -228,7 +230,8 @@ async def test_each_domain_error_has_its_status_and_default_code(app_client, nam
 
 
 def test_domain_error_default_codes_are_snake_case():
-    for error in [*DOMAIN_ERRORS.values(), RateLimited]:
+    errors: list[type[_StatusError]] = [*DOMAIN_ERRORS.values(), RateLimited]
+    for error in errors:
         assert re.fullmatch(r"[a-z]+(_[a-z]+)*", error.code), error
 
 
@@ -352,7 +355,7 @@ def test_domain_error_subclasses_take_no_positional_arguments(error):
 
 def test_rate_limited_takes_retry_after_first_and_the_rest_by_keyword():
     with pytest.raises(TypeError):
-        RateLimited(30, "too_many")  # type: ignore[misc]
+        RateLimited(30, "too_many")  # type: ignore[call-arg]
 
     assert RateLimited(retry_after=30, code="login_rate_limited").code == "login_rate_limited"
     assert RateLimited(30).headers["Retry-After"] == "30"

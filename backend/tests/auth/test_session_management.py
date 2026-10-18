@@ -1,6 +1,7 @@
 """Session list, revoke one, logout-all, revoke_all_sessions (P2-02 criteria 5-8, 12-16)."""
 
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import uuid7
 
 import pytest
@@ -48,7 +49,7 @@ def assert_cookie_deleted(response) -> None:
 
 
 async def _session(db, token: str) -> AuthSession:
-    row = (
+    row: AuthSession = (
         await db.scalars(select(AuthSession).where(AuthSession.token_hash == hash_token(token)))
     ).one()
     await db.refresh(row)
@@ -166,7 +167,7 @@ def _keys(value) -> set[str]:
     return set()
 
 
-def _schema_properties(spec: dict, schema: dict, seen: set[str]) -> set[str]:
+def _schema_properties(spec: dict[str, Any], schema: dict[str, Any], seen: set[str]) -> set[str]:
     """Every property name reachable from `schema`, following `$ref`s."""
     if "$ref" in schema:
         name = schema["$ref"].rsplit("/", 1)[-1]

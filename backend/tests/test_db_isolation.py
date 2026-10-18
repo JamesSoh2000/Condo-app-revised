@@ -307,7 +307,8 @@ async def _create_request_probe_table(db: AsyncSession) -> None:
 
 
 async def _count_request_probe(db: AsyncSession) -> int:
-    return (await db.execute(text("SELECT count(*) FROM _request_probe"))).scalar_one()
+    count: int = (await db.execute(text("SELECT count(*) FROM _request_probe"))).scalar_one()
+    return count
 
 
 @contextlib.contextmanager

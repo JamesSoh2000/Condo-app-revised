@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -76,6 +78,7 @@ def test_s3_endpoints_default_to_real_aws(monkeypatch):
 
 @pytest.mark.parametrize("field", ["s3_endpoint_url", "s3_public_endpoint_url"])
 def test_prod_rejects_s3_emulator_endpoints(field):
+    endpoint: dict[str, Any] = {field: "http://localhost:4566"}
     with pytest.raises(ValidationError, match="must not be set in production"):
         Settings(
             _env_file=None,
@@ -84,7 +87,7 @@ def test_prod_rejects_s3_emulator_endpoints(field):
             secret_key="not-the-default-secret",  # noqa: S106 (test fixture, not a real secret)
             s3_bucket_name="condo-app-prod-files",
             ses_from_email="noreply@example.org",
-            **{field: "http://localhost:4566"},
+            **endpoint,
         )
 
 
@@ -101,7 +104,8 @@ def test_prod_accepts_settings_without_s3_endpoints():
     assert settings.s3_endpoint_url is None
 
 
-PROD = {
+# Any-valued, so `Settings(**PROD)` type-checks: each key goes to a differently typed field.
+PROD: dict[str, Any] = {
     "app_env": "prod",
     "secret_key": "not-the-default-secret",  # (test fixture, not a real secret)
     "s3_bucket_name": "condo-app-prod-files",
@@ -178,7 +182,7 @@ def test_old_allowed_origins_setting_is_gone():
 
 
 # P1-06: staging gets the checks that keep dev values out; prod-only checks stay prod-only.
-STAGING = {
+STAGING: dict[str, Any] = {
     "app_env": "staging",
     "secret_key": "not-the-default-secret",  # (test fixture, not a real secret)
     "trusted_origins": ["https://staging.condo.example.org"],

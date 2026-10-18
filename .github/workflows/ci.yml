@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     # Real Postgres, the same major as docker-compose.yml (Dependabot doesn't update this block; bump both
-    # together). The test suite creates condo_test itself.
+    # together). Each test run creates and drops its own database, named after TEST_DATABASE_URL's.
     services:
       postgres:
         image: postgres:18
@@ -79,9 +79,9 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
-      # Static types, strict for app/.
+      # Static types, strict for app/; tests/ too, with untyped defs allowed (pyproject's overrides).
       - name: Mypy
-        run: uv run mypy app
+        run: uv run mypy app tests
 
       # Exactly one migration head. Runs before `upgrade`, which would otherwise fail first with
       # "Multiple head revisions" and hide the real problem.
