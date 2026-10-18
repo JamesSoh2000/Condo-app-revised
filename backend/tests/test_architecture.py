@@ -37,7 +37,15 @@ COMMIT_ALLOWED = ("**/service.py", "cli.py", "seed.py", "worker.py", "jobs/worke
 # file rule can't see them (P2-04 mutation M2). Add `notify`, `attach_file` with them.
 NON_COMMITTING_HELPERS: dict[str, tuple[str, ...]] = {
     "audit/service.py": ("record_audit",),
-    "jobs/service.py": ("enqueue",),
+    "jobs/service.py": (
+        "enqueue",
+        "delete_old_succeeded_jobs",
+        "scrub_dead_jobs",
+        "job_status",
+        "retry_dead_job",
+    ),
+    "auth/service.py": ("delete_ended_sessions",),
+    "rate_limits/service.py": ("delete_expired_rate_limits",),
 }
 
 

@@ -2,7 +2,8 @@
 
 `sessions` gives the worker savepoint sessions on the test's connection, rolled back with the test.
 `committed_sessions` gives real sessions on the per-run database, for tests that need real
-concurrency or a second connection; it deletes the `test.*` jobs they commit.
+concurrency or a second connection; it deletes every job they commit (the `test.*` ones, and the
+recurring jobs a real worker schedules, P3-01b).
 """
 
 from collections.abc import AsyncIterator, Callable
@@ -97,13 +98,13 @@ def sessions(db_connection: AsyncConnection) -> Sessions:
 
 @pytest.fixture
 async def committed_sessions(engine: AsyncEngine) -> AsyncIterator[Sessions]:
-    """Real sessions on the per-run database. Deletes every `test.*` job afterwards."""
+    """Real sessions on the per-run database. Deletes every job afterwards."""
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         yield factory
     finally:
         async with factory() as db:
-            await db.execute(delete(Job).where(Job.kind.like("test.%")))
+            await db.execute(delete(Job))
             await db.commit()
 
 
