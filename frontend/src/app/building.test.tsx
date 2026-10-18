@@ -3,10 +3,16 @@
  * P2-06b: the building context (one building per tab, in sessionStorage) and the membership, role and
  * feature guards. Each `describe` names the criterion it proves (docs/tickets/P2-06b-…md).
  */
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { components } from '@/api/schema';
+import { BuildingProvider, useBuildingContext } from '@/app/BuildingProvider';
+import { RequireAuth } from '@/app/guards';
+import { createQueryClient } from '@/app/queryClient';
+import { AppRoutes } from '@/app/routes';
 import {
   BIRCH,
   MAPLE,
@@ -16,6 +22,7 @@ import {
   json,
   membership,
   noContent,
+  openAccountMenu,
   problem,
   renderApp,
   stubApi,
@@ -74,6 +81,7 @@ describe('membership screens, no building calls (criterion 1)', () => {
     renderApp(['/Packages']);
 
     expect(await screen.findByRole('heading', { name: heading })).toBeTruthy();
+    openAccountMenu();
     expect(screen.getByRole('button', { name: /log out/i })).toBeTruthy();
     await settle();
     expect(buildingCalls(fetchMock)).toEqual([]);
@@ -245,6 +253,7 @@ describe('switching buildings (criteria 3 and 11)', () => {
     await waitFor(() => expect(mapleRequest).toBeDefined());
     expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id] })).toHaveLength(1);
 
+    openAccountMenu();
     fireEvent.change(screen.getByLabelText(/building/i), { target: { value: BIRCH.id } });
 
     expect(await findInMain('Birch Court')).toBeTruthy();
@@ -266,6 +275,7 @@ describe('switching buildings (criteria 3 and 11)', () => {
     await screen.findByText(/being migrated/i);
     app.queryClient.setQueryData(['b', MAPLE.id, 'packages'], ['a Maple package']);
 
+    openAccountMenu();
     fireEvent.change(screen.getByLabelText(/building/i), { target: { value: BIRCH.id } });
 
     await waitFor(() => expect(location()).toBe('/'));
@@ -279,6 +289,7 @@ describe('switching buildings (criteria 3 and 11)', () => {
     renderApp(['/']);
 
     await findInMain('Maple Tower');
+    openAccountMenu();
     expect(screen.queryByLabelText(/building/i)).toBeNull();
     expect(screen.getByRole('banner').textContent).toContain('Maple Tower');
   });
@@ -426,10 +437,11 @@ describe('lost access mid-session (criterion 8; tenant rows 2 and 3)', () => {
 
 describe('lost access after the building loaded (review round 1, Claude H1 and Codex High)', () => {
   /** Signed in on `path` with Maple loaded; `answer` then decides every later building request. */
-  async function loadedThen(path: string, answer: () => Response) {
+  /** `meLater` answers /me from then on (a lost session makes /me 401 too: the login page checks it). */
+  async function loadedThen(path: string, answer: () => Response, meLater?: () => Response) {
     let later: (() => Response) | null = null;
     const fetchMock = stubApi({
-      'GET /api/auth/me': () => json(RESIDENT_ME),
+      'GET /api/auth/me': () => (later && meLater ? meLater() : json(RESIDENT_ME)),
       [`GET /api/buildings/${MAPLE.id}`]: () => (later ? later() : json(buildingOut(MAPLE, ['resident']))),
     });
     const app = renderApp([path]);
@@ -491,7 +503,8 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
   });
 
   it('goes to the login page when a background refetch answers 401', async () => {
-    await loadedThen('/Packages', () => problem(401, 'not_authenticated'));
+    const lost = () => problem(401, 'not_authenticated');
+    await loadedThen('/Packages', lost, lost);
 
     await waitFor(() => expect(location()).toMatch(/^\/login/));
     expect(screen.queryByText(/being migrated/i)).toBeNull();
@@ -582,8 +595,11 @@ describe('another user in /me (review round 1, Claude M1)', () => {
 describe('no selection outlives the user (criterion 9)', () => {
   it('clears the stored building on logout', async () => {
     let signedIn = true;
-    stubApi({
-      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'not_authenticated')),
+    // After logout /me is held: the login page's session check (P2-06c 7d) can't be what clears the storage.
+    let releaseCheck: ((response: Response) => void) | undefined;
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () =>
+        signedIn ? json(RESIDENT_ME) : new Promise<Response>((resolve) => (releaseCheck = resolve)),
       'POST /api/auth/logout': () => {
         signedIn = false;
         return noContent();
@@ -593,10 +609,15 @@ describe('no selection outlives the user (criterion 9)', () => {
     await findInMain('Maple Tower');
     expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
 
+    openAccountMenu();
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
 
     await waitFor(() => expect(location()).toBe('/login'));
+    await waitFor(() => expect(releaseCheck).toBeDefined());
     expect(sessionStorage.getItem(KEY)).toBeNull();
+    expect(calls(fetchMock).filter((c) => c === 'GET /api/auth/me')).toHaveLength(2);
+    // Free the auth queue (module state) for the next test.
+    await act(() => Promise.resolve(releaseCheck!(problem(401, 'not_authenticated'))));
   });
 
   it('clears the stored building when a 401 resets the session', async () => {
@@ -615,8 +636,6 @@ describe('no selection outlives the user (criterion 9)', () => {
   });
 
   it('does not hand the previous user’s building to the next user who logs in', async () => {
-    // Left by an earlier user of this tab whose session ended without this tab seeing it.
-    sessionStorage.setItem(KEY, BIRCH.id);
     let signedIn = false;
     const fetchMock = stubApi({
       ...MULTI_ROUTES,
@@ -628,6 +647,11 @@ describe('no selection outlives the user (criterion 9)', () => {
     });
     renderApp(['/login']);
     await screen.findByRole('heading', { name: /sign in/i });
+    // The login page's own session check (P2-06c 7d) answers 401 and clears the tab; set the leftover after it.
+    await waitFor(() => expect(calls(fetchMock)).toContain('GET /api/auth/me'));
+    await settle();
+    // Left by an earlier user of this tab whose session ended without this tab seeing it.
+    sessionStorage.setItem(KEY, BIRCH.id);
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'multi@example.test' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'DevPassword!2026' } });
@@ -648,5 +672,140 @@ describe('the 403 page', () => {
     expect(await screen.findByRole('heading', { name: /can’t open this page/i })).toBeTruthy();
     expect(screen.getByRole('banner').textContent).toContain('Alex Chen');
     expect(screen.getByRole('link', { name: /home page/i }).getAttribute('href')).toBe('/');
+  });
+});
+
+describe('a default selection is the tab’s choice (P2-06c criterion 5; P2-06b review round 3, Codex M)', () => {
+  it('keeps the only active building when /me then adds another (5a)', async () => {
+    let me = meWith(membership(MAPLE));
+    stubApi({ ...MULTI_ROUTES, 'GET /api/auth/me': () => json(me) });
+    const app = renderApp(['/']);
+    expect(await findInMain('Maple Tower')).toBeTruthy();
+    await settle();
+
+    me = meWith(membership(MAPLE), membership(BIRCH, { roles: ['security'] }));
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await settle();
+
+    expect(screen.queryByRole('heading', { name: /choose a building/i })).toBeNull();
+    expect(within(main()).getByText('Maple Tower')).toBeTruthy();
+    expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
+  });
+
+  it('stays in the default building when the stored one comes back (5b)', async () => {
+    sessionStorage.setItem(KEY, MAPLE.id);
+    let me = meWith(membership(MAPLE, { status: 'suspended' }), membership(BIRCH, { roles: ['security'] }));
+    stubApi({ ...MULTI_ROUTES, 'GET /api/auth/me': () => json(me) });
+    const app = renderApp(['/']);
+    expect(await findInMain('Birch Court')).toBeTruthy();
+    await settle();
+    expect(sessionStorage.getItem(KEY)).toBe(BIRCH.id);
+
+    me = meWith(membership(MAPLE), membership(BIRCH, { roles: ['security'] }));
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await settle();
+
+    expect(within(main()).getByText('Birch Court')).toBeTruthy();
+    expect(within(main()).queryByText('Maple Tower')).toBeNull();
+    expect(sessionStorage.getItem(KEY)).toBe(BIRCH.id);
+  });
+
+  it('forgets a stored choice that went invalid, as a reload would (5c)', async () => {
+    sessionStorage.setItem(KEY, MAPLE.id);
+    let me = meWith(membership(MAPLE, { status: 'suspended' }), membership(BIRCH), membership(CEDAR));
+    stubApi({ ...MULTI_ROUTES, 'GET /api/auth/me': () => json(me) });
+    const app = renderApp(['/']);
+    expect(await screen.findByRole('heading', { name: /choose a building/i })).toBeTruthy();
+    await settle();
+    expect(sessionStorage.getItem(KEY)).toBeNull();
+
+    me = meWith(membership(MAPLE), membership(BIRCH), membership(CEDAR));
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await settle();
+
+    expect(screen.getByRole('heading', { name: /choose a building/i })).toBeTruthy();
+    expect(sessionStorage.getItem(KEY)).toBeNull();
+  });
+});
+
+describe('regression tests carried from P2-06b review round 3 (P2-06c criterion 6)', () => {
+  it('shows the picker when /me answers for user B after user A picked Maple (the key remount)', async () => {
+    let me: Me = MULTI_ME;
+    stubApi({ ...MULTI_ROUTES, 'GET /api/auth/me': () => json(me) });
+    const app = renderApp(['/']);
+    await pick('Maple Tower');
+    expect(await findInMain('Maple Tower')).toBeTruthy();
+    expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
+
+    me = {
+      user: { ...MULTI_ME.user, id: 'user-b', email: 'b@example.test', full_name: 'Bea B' },
+      memberships: [membership(MAPLE), membership(BIRCH)],
+    };
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+
+    expect(await screen.findByRole('heading', { name: /choose a building/i })).toBeTruthy();
+    expect(sessionStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('shows only the loading screen on a building 401 when nothing redirects (BuildingLoaded’s own branch)', async () => {
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      [`GET /api/buildings/${MAPLE.id}`]: () => problem(401, 'not_authenticated'),
+    });
+    // No AuthProvider: its 401 redirect would hide what BuildingLoaded renders by itself.
+    render(
+      <QueryClientProvider client={createQueryClient({ retryDelay: 0 })}>
+        <MemoryRouter initialEntries={['/Packages']}>
+          <AppRoutes />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getAllByRole('status').length).toBeGreaterThan(0));
+    await settle();
+    expect(screen.getByRole('banner')).toBeTruthy();
+    expect(screen.queryByText(/being migrated/i)).toBeNull();
+    expect(screen.queryByRole('heading', { name: /something went wrong/i })).toBeNull();
+    expect(screen.getByRole('status').textContent).toMatch(/loading/i);
+  });
+
+  it('ignores select() with an inactive building: no storage write, no navigation', async () => {
+    stubApi({
+      ...MULTI_ROUTES,
+      'GET /api/auth/me': () => json({ ...MULTI_ME, memberships: [...MULTI_ME.memberships, membership(CEDAR, { status: 'suspended' })] }),
+    });
+    sessionStorage.setItem(KEY, MAPLE.id);
+    let context: ReturnType<typeof useBuildingContext> | undefined;
+    function Probe() {
+      context = useBuildingContext();
+      return null;
+    }
+    let path = '';
+    function Where() {
+      path = useLocation().pathname;
+      return null;
+    }
+    render(
+      <QueryClientProvider client={createQueryClient({ retryDelay: 0 })}>
+        <MemoryRouter initialEntries={['/Maintenance']}>
+          <RequireAuth>
+            <BuildingProvider>
+              <Probe />
+            </BuildingProvider>
+          </RequireAuth>
+          <Where />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(context?.buildingId).toBe(MAPLE.id));
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+
+    act(() => context!.select(CEDAR.id));
+    await settle();
+
+    expect(context!.buildingId).toBe(MAPLE.id);
+    expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
+    expect(writes).not.toHaveBeenCalled();
+    expect(path).toBe('/Maintenance');
   });
 });

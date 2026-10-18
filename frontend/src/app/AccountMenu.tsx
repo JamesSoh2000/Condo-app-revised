@@ -1,0 +1,131 @@
+import { useEffect, useId, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+
+import { useMe } from '@/app/AuthProvider';
+import { useBuilding, useBuildingContext } from '@/app/BuildingProvider';
+import type { ViewAs } from '@/app/buildingStorage';
+import { useCanViewAs } from '@/app/MainNav';
+
+/**
+ * The header's account menu (P2-06c): a disclosure, so a button that shows a panel (WAI-ARIA disclosure
+ * pattern), not an ARIA `menu`, which can't hold the `<select>` and radio buttons it contains. Escape and a
+ * click outside close it; Escape returns focus to the button. It is open only at the location it was opened
+ * at, so following a link (or Back) closes it (review round 2, Claude L4).
+ */
+export function AccountMenu({ onLogout, loggingOut }: { onLogout: () => void; loggingOut: boolean }) {
+  const { data: me } = useMe();
+  const { buildingId } = useBuildingContext();
+  const { key } = useLocation();
+  const [openAt, setOpenAt] = useState<string | null>(null);
+  const open = openAt === key;
+  const setOpen = (value: boolean) => setOpenAt(value ? key : null);
+  const panelId = useId();
+  const root = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: MouseEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpenAt(null);
+    };
+    document.addEventListener('mousedown', onPointer);
+    return () => document.removeEventListener('mousedown', onPointer);
+  }, [open]);
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== 'Escape' || !open) return;
+    setOpen(false);
+    button.current?.focus();
+  };
+
+  return (
+    <div ref={root} className="relative" onKeyDown={onKeyDown}>
+      <button
+        ref={button}
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen(!open)}
+        className="rounded border px-3 py-1 text-sm"
+      >
+        <span className="sr-only">Account menu: </span>
+        <span>{me?.user.full_name}</span>
+        <span aria-hidden> ▾</span>
+      </button>
+      {open && (
+        <div id={panelId} className="absolute right-0 z-10 mt-2 flex w-64 flex-col gap-3 rounded border bg-white p-3 shadow">
+          <p className="text-sm text-slate-600">Signed in as {me?.user.email}</p>
+          {buildingId !== null && (
+            <BuildingChoices
+              onSwitch={() => {
+                // The focused <select> goes with the panel: keep keyboard users' place (review round 1, F3).
+                setOpen(false);
+                button.current?.focus();
+              }}
+            />
+          )}
+          <button
+            type="button"
+            className="rounded border px-3 py-1 text-sm disabled:opacity-50"
+            onClick={onLogout}
+            disabled={loggingOut}
+          >
+            Log out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The tab's building (its name, or a switcher with several active memberships) and council "view as". */
+function BuildingChoices({ onSwitch }: { onSwitch: () => void }) {
+  const { buildingId, active, select, viewAs, setViewAs } = useBuildingContext();
+  // Reads what the guards loaded: opening the menu must not ask for the building (review rounds 1 and 2).
+  const { data: building } = useBuilding({ passive: true });
+  const canViewAs = useCanViewAs(building);
+  const name = useId();
+
+  return (
+    <>
+      {active.length === 1 ? (
+        <p className="text-sm font-medium">{active[0].building.name}</p>
+      ) : (
+        <label className="flex flex-col gap-1 text-sm">
+          <span>Building</span>
+          <select
+            className="rounded border px-2 py-1"
+            value={buildingId ?? ''}
+            onChange={(event) => {
+              select(event.target.value);
+              onSwitch();
+            }}
+          >
+            {active.map((m) => (
+              <option key={m.building.id} value={m.building.id}>
+                {m.building.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {canViewAs && (
+        <fieldset className="text-sm">
+          <legend className="mb-1">View as</legend>
+          {(['management', 'resident'] as const satisfies readonly ViewAs[]).map((view) => (
+            <label key={view} className="mr-4 inline-flex items-center gap-1">
+              <input
+                type="radio"
+                name={name}
+                value={view}
+                checked={viewAs === view}
+                onChange={() => setViewAs(view)}
+              />
+              {view === 'management' ? 'Management' : 'Resident'}
+            </label>
+          ))}
+        </fieldset>
+      )}
+    </>
+  );
+}

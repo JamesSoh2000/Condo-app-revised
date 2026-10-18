@@ -94,6 +94,14 @@ The journeys above. Run 5 times locally in a row to check flakiness before mergi
   `RATE_LIMIT_LOGIN_EMAIL` (JSON `{"limit", "window_seconds"}`) for the e2e environment, or log in once per
   persona and reuse the storage state (PR #61 review round 1, L2).
 
+## Carried from P2-06c (do while framing)
+
+- The `condo.auth` Web Lock (`frontend/src/app/authQueue.ts::runAuthCall`) is proven only with a fake lock
+  manager. With two browser contexts sharing storage, or two pages of one context, add a journey: a slow logout
+  in page A, a login in page B, B stays signed in (PR #65 D4).
+- The account menu opens with Enter (checked in P2-06c's stack run) and Space (native `<button>`, never
+  checked). Add both to a journey.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

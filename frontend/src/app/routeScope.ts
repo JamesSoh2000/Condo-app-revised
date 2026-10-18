@@ -1,7 +1,7 @@
 /**
  * Pages exposed in the demo: the "Demo" tier of the page → scope map in docs/PRODUCT_SCOPE.md.
  * Every other Base44 page stays in the repo but is not routed and not shown in navigation (ADR-0011).
- * Names are `pages.config.js` keys, plus `Contacts`, which App.jsx registers itself.
+ * Names are the Base44 page names (files in src/pages), as their routes were.
  */
 export const DEMO_PAGES = [
   'Home',

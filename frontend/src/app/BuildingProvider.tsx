@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
 import type { components } from '@/api/schema';
 import { useMe } from '@/app/AuthProvider';
-import { readSelectedBuilding, writeSelectedBuilding } from '@/app/buildingStorage';
+import { readSelectedBuilding, readViewAs, writeSelectedBuilding, writeViewAs, type ViewAs } from '@/app/buildingStorage';
 
 type Membership = components['schemas']['MeMembershipOut'];
 
@@ -20,6 +20,9 @@ interface BuildingContextValue {
   reset: () => void;
   /** Changes at each reset(), so what depends on the building renders again. */
   epoch: number;
+  /** Council "view as", stored per tab; only the navigation reads it, and only for a council member. */
+  viewAs: ViewAs;
+  setViewAs: (view: ViewAs) => void;
 }
 
 const BuildingContext = createContext<BuildingContextValue | null>(null);
@@ -49,9 +52,12 @@ function UserBuildingProvider({ children }: { children: ReactNode }) {
       ? active[0].building.id
       : null;
 
-  // Keep the tab's storage equal to the effective selection: the default once chosen, nothing once invalid.
+  // The effective selection becomes the tab's choice, in state and storage: a default is kept when /me later
+  // adds a building, and an invalid choice is forgotten, so it can't come back on its own (P2-06c; review
+  // round 3 of P2-06b). The tab then holds what a reload would give.
   useEffect(() => {
     // Re-run on `stored` too: after reset() the default can be the same building as before.
+    if (stored !== buildingId) setStored(buildingId);
     if (readSelectedBuilding() !== buildingId) writeSelectedBuilding(buildingId);
   }, [buildingId, stored]);
 
@@ -65,6 +71,18 @@ function UserBuildingProvider({ children }: { children: ReactNode }) {
     previous.current = buildingId;
     if (old !== null && old !== buildingId) queryClient.removeQueries({ queryKey: ['b', old] });
   }, [buildingId, queryClient]);
+
+  // `/me` saying the roles in the selected building changed means the building's answer (the guards' and the
+  // nav's roles) is out of date: ask again (review round 1, F1).
+  const roles = active.find((m) => m.building.id === buildingId)?.roles.join(',');
+  const seen = useRef({ buildingId, roles });
+  useEffect(() => {
+    const last = seen.current;
+    seen.current = { buildingId, roles };
+    if (buildingId !== null && last.buildingId === buildingId && last.roles !== roles) {
+      void queryClient.invalidateQueries({ queryKey: ['b', buildingId, 'building'] });
+    }
+  }, [buildingId, roles, queryClient]);
 
   const select = useCallback(
     (id: string) => {
@@ -87,9 +105,15 @@ function UserBuildingProvider({ children }: { children: ReactNode }) {
     setEpoch((n) => n + 1);
   }, [queryClient]);
 
+  const [viewAs, setView] = useState(readViewAs);
+  const setViewAs = useCallback((view: ViewAs) => {
+    writeViewAs(view);
+    setView(view);
+  }, []);
+
   const value = useMemo(
-    () => ({ buildingId, active, select, reset, epoch }),
-    [buildingId, active, select, reset, epoch],
+    () => ({ buildingId, active, select, reset, epoch, viewAs, setViewAs }),
+    [buildingId, active, select, reset, epoch, viewAs, setViewAs],
   );
   return <BuildingContext.Provider value={value}>{children}</BuildingContext.Provider>;
 }
@@ -107,11 +131,16 @@ export function useBuildingId(): string {
   return buildingId;
 }
 
-/** The selected building as its member sees it: the caller's roles there and its features. */
-export function useBuilding() {
+/**
+ * The selected building as its member sees it: the caller's roles there and its features. A component that
+ * only shows what the guards loaded passes `passive: true`: it then never sends the request itself (not on
+ * mount, not when nothing is cached), but still sees every answer and error the query gets.
+ */
+export function useBuilding({ passive = false }: { passive?: boolean } = {}) {
   const buildingId = useBuildingId();
   return useQuery({
     queryKey: ['b', buildingId, 'building'],
+    enabled: !passive,
     queryFn: ({ signal }) =>
       api.get('/api/buildings/{building_id}', { params: { path: { building_id: buildingId } }, signal }),
   });

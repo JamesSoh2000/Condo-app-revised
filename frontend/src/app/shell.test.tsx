@@ -10,6 +10,7 @@ import {
   json,
   membership,
   noContent,
+  openAccountMenu,
   problem,
   renderApp,
   stubApi,
@@ -140,8 +141,15 @@ describe('home and placeholders (criterion 1)', () => {
 describe('logout (criterion 5)', () => {
   it('calls the API, empties the cache and shows /login; Back renders no authenticated content', async () => {
     let signedIn = true;
+    // The login page's session check (P2-06c 7d) is held, so its 401 can't do the clearing asserted here.
+    let releaseCheck: ((response: Response) => void) | undefined;
     const fetchMock = stubApi({
-      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'unauthorized')),
+      'GET /api/auth/me': () =>
+        signedIn
+          ? json(RESIDENT_ME)
+          : releaseCheck === undefined
+            ? new Promise<Response>((resolve) => (releaseCheck = resolve))
+            : problem(401, 'unauthorized'),
       'POST /api/auth/logout': () => {
         signedIn = false;
         return noContent();
@@ -150,12 +158,15 @@ describe('logout (criterion 5)', () => {
     const app = renderApp(['/', '/Packages']);
     await screen.findByText('Alex Chen');
 
+    openAccountMenu();
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
 
     await waitFor(() => expect(location()).toBe('/login'));
     expect(calls(fetchMock)).toContain('POST /api/auth/logout');
     expect(app.queryClient.getQueryCache().getAll()).toEqual([]);
     expect(screen.queryByText('Alex Chen')).toBeNull();
+    await waitFor(() => expect(releaseCheck).toBeDefined());
+    await act(() => Promise.resolve(releaseCheck!(problem(401, 'unauthorized'))));
 
     act(() => app.navigate()(-1));
 
@@ -174,6 +185,7 @@ describe('logout (criterion 5)', () => {
     const app = renderApp(['/']);
     await screen.findByText('Alex Chen');
 
+    openAccountMenu();
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('Could not log out, try again');
@@ -201,6 +213,7 @@ describe('logout still in flight when the user logs in again (review round 2, Co
     });
     const app = renderApp(['/Packages']);
     await screen.findByText('Alex Chen');
+    openAccountMenu();
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
     await waitFor(() => expect(signedIn).toBe(false));
     // A refetch sees the revocation first and sends the user to the login page.
@@ -237,6 +250,7 @@ describe('logout still in flight when the user logs in again (review round 2, Co
     signedIn = true;
     const app = renderApp(['/']);
     await screen.findByText('Alex Chen');
+    openAccountMenu();
     fireEvent.click(screen.getByRole('button', { name: /log out/i }));
     signedIn = false;
     await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
@@ -254,12 +268,24 @@ describe('logout still in flight when the user logs in again (review round 2, Co
   });
 });
 
+/**
+ * `/me` answers 200 until `GET /api/auth/sessions` answers 401, then 401 too: the session is gone for every
+ * call (the login page checks `/me` again, P2-06c 7d).
+ */
+function sessionLostAfterSessionsCall() {
+  let lost = false;
+  return {
+    'GET /api/auth/me': () => (lost ? problem(401, 'unauthorized') : json(RESIDENT_ME)),
+    'GET /api/auth/sessions': () => {
+      lost = true;
+      return problem(401, 'unauthorized');
+    },
+  };
+}
+
 describe('session lost (criterion 6)', () => {
   it('clears the cache and goes to /login with next when another call answers 401', async () => {
-    stubApi({
-      'GET /api/auth/me': () => json(RESIDENT_ME),
-      'GET /api/auth/sessions': () => problem(401, 'unauthorized'),
-    });
+    stubApi(sessionLostAfterSessionsCall());
     const app = renderApp(['/Packages?tab=2']);
     await screen.findByText('Alex Chen');
     app.queryClient.setQueryData(['b', 'some-building', 'packages'], [{ id: 1 }]);
@@ -273,10 +299,7 @@ describe('session lost (criterion 6)', () => {
   });
 
   it('keeps the home page query in next (review round 1)', async () => {
-    stubApi({
-      'GET /api/auth/me': () => json(RESIDENT_ME),
-      'GET /api/auth/sessions': () => problem(401, 'unauthorized'),
-    });
+    stubApi(sessionLostAfterSessionsCall());
     renderApp(['/?tab=2']);
     await screen.findByText('Alex Chen');
 
@@ -319,5 +342,158 @@ describe('session lost (criterion 6)', () => {
     await act(() => api.get('/api/auth/sessions').catch(() => undefined));
 
     expect(location()).toBe('/login?next=%2FPackages');
+  });
+});
+
+describe('a late logout keeps next (P2-06c criterion 7c)', () => {
+  it('leaves /login?next=… as it is when the logout settles there', async () => {
+    let signedIn = true;
+    let finishLogout!: (response: Response) => void;
+    stubApi({
+      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'not_authenticated')),
+      'POST /api/auth/logout': () => {
+        signedIn = false;
+        return new Promise<Response>((resolve) => (finishLogout = resolve));
+      },
+    });
+    const app = renderApp(['/Packages']);
+    await screen.findByText('Alex Chen');
+    openAccountMenu();
+    fireEvent.click(screen.getByRole('button', { name: /log out/i }));
+    await waitFor(() => expect(signedIn).toBe(false));
+    // A refetch sees the revoked session first and sends the user to the login page, keeping next.
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await waitFor(() => expect(location()).toBe('/login?next=%2FPackages'));
+
+    await act(() => Promise.resolve(finishLogout(noContent())));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(location()).toBe('/login?next=%2FPackages');
+    expect(screen.getByRole('heading', { name: /sign in/i })).toBeTruthy();
+  });
+});
+
+describe('a signed-in user on /login (P2-06c criterion 7d)', () => {
+  it.each([
+    ['/login?next=%2FPackages', '/Packages'],
+    ['/login', '/'],
+    ['/login?next=%2F%2Fevil.example', '/'],
+  ])('sends %s on to %s when /me answers 200', async (entry, target) => {
+    stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME) });
+
+    renderApp([entry]);
+
+    await waitFor(() => expect(location()).toBe(target));
+    expect(await screen.findByText('Alex Chen')).toBeTruthy();
+  });
+
+  it.each([
+    ['a 401', () => problem(401, 'not_authenticated')],
+    ['a 500', () => problem(500, 'internal_error')],
+    ['a network error', () => Promise.reject(new TypeError('Failed to fetch'))],
+  ])('shows the form and stays for %s', async (_label, answer) => {
+    const fetchMock = stubApi({ 'GET /api/auth/me': answer });
+
+    renderApp(['/login?next=%2FPackages']);
+
+    await waitFor(() => expect(calls(fetchMock)).toContain('GET /api/auth/me'));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(location()).toBe('/login?next=%2FPackages');
+    expect(screen.getByRole('heading', { name: /sign in/i })).toBeTruthy();
+  });
+
+  it('checks only after a logout in flight, and not at all if the form is gone by then', async () => {
+    let signedIn = true;
+    let finishLogout!: (response: Response) => void;
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'not_authenticated')),
+      'POST /api/auth/logout': () => new Promise<Response>((resolve) => (finishLogout = resolve)),
+    });
+    const app = renderApp(['/Packages']);
+    await screen.findByText('Alex Chen');
+    openAccountMenu();
+    fireEvent.click(screen.getByRole('button', { name: /log out/i }));
+    await waitFor(() => expect(calls(fetchMock)).toContain('POST /api/auth/logout'));
+    const before = calls(fetchMock).length;
+
+    // The session is still live (the server has not answered): an early check would send the user back.
+    act(() => app.navigate()('/login'));
+    await screen.findByRole('heading', { name: /sign in/i });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(calls(fetchMock).slice(before)).toEqual([]);
+    act(() => app.navigate()('/no-such-page'));
+    await screen.findByRole('heading', { name: /page not found/i });
+
+    signedIn = false;
+    await act(() => Promise.resolve(finishLogout(noContent())));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    // The logout went to /login (the 404 page is not a login path); that new form checks once.
+    await waitFor(() => expect(location()).toBe('/login'));
+    expect(calls(fetchMock).slice(before)).toEqual(['GET /api/auth/me']);
+  });
+});
+
+describe('the /login session check after its answer (review round 1, Claude F5)', () => {
+  it('does not pull the user back when they left /login while the check was in flight', async () => {
+    let answerMe!: (response: Response) => void;
+    stubApi({ 'GET /api/auth/me': () => new Promise<Response>((resolve) => (answerMe = resolve)) });
+    const app = renderApp(['/login?next=%2FPackages']);
+    await screen.findByRole('heading', { name: /sign in/i });
+    await waitFor(() => expect(answerMe).toBeDefined());
+
+    act(() => app.navigate()('/no-such-page'));
+    await screen.findByRole('heading', { name: /page not found/i });
+    await act(() => Promise.resolve(answerMe(json(RESIDENT_ME))));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(location()).toBe('/no-such-page');
+  });
+});
+
+describe('the /login session check follows the current next (review round 2, Codex M1)', () => {
+  // Ported from Codex's round-2 proof: Back changes only the search, so LoginPage stays mounted.
+  it('uses the next of the URL when /me answers, not the one it was sent with', async () => {
+    let answerMe!: (response: Response) => void;
+    stubApi({ 'GET /api/auth/me': () => new Promise<Response>((resolve) => (answerMe = resolve)) });
+    const app = renderApp(['/login?next=%2FPackages', '/login?next=%2FMaintenance']);
+    await waitFor(() => expect(answerMe).toBeDefined());
+
+    act(() => app.navigate()(-1));
+    expect(location()).toBe('/login?next=%2FPackages');
+    await act(() => Promise.resolve(answerMe(json(RESIDENT_ME))));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(location()).toBe('/Packages');
+  });
+});
+
+describe('the login follows the current next (review round 2, Claude L2)', () => {
+  // Same as the session check above: Back between two /login URLs keeps the form mounted mid-login.
+  it('goes to the next of the URL when the login answers, not the one it was submitted with', async () => {
+    let signedIn = false;
+    let answerLogin!: (response: Response) => void;
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'unauthorized')),
+      'POST /api/auth/login': () =>
+        new Promise<Response>((resolve) => {
+          answerLogin = (response) => {
+            signedIn = true;
+            resolve(response);
+          };
+        }),
+    });
+    const app = renderApp(['/login?next=%2FPackages', '/login?next=%2FMaintenance']);
+    await screen.findByRole('heading', { name: /sign in/i });
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'resident1@example.test' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'DevPassword!2026' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await waitFor(() => expect(calls(fetchMock)).toContain('POST /api/auth/login'));
+
+    act(() => app.navigate()(-1));
+    expect(location()).toBe('/login?next=%2FPackages');
+    await act(() => Promise.resolve(answerLogin(noContent())));
+
+    await waitFor(() => expect(location()).toBe('/Packages'));
   });
 });

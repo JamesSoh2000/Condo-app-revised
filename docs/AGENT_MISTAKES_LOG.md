@@ -169,3 +169,22 @@ lesson (or the REVIEW_PROMPT input-class checklist proposed after P2-04).
 P2-06b step 8 note: "fix not tested on adjacent cases" appeared twice more here (rounds 2 and 3), both times a
 state reached by a server-driven change (`/me` refetch) instead of the user action the fix covered. P2-06a's note
 asked this ticket to extend the `CLAUDE.md` lesson first; it didn't. That is P2-06c's first carried item.
+
+| 2026-10-17 | P2-06c | View as read only the building's cached roles, so a `/me` refetch dropping `council` kept the toggle and the council view for up to 30 s | review round 1, Claude (F1, **High**) and Codex (M1, Medium) | the frame listed "a `/me` or building refetch" (AC3f) but only the building path was tested: the server-driven neighbour again, with the lesson in place | D9 + test `› … only a /me refetch removes council (3f)` |
+| 2026-10-17 | P2-06c | Opening the account menu sent `GET /api/buildings/{id}` when the cached answer was stale | review round 1, Claude (F2) and Codex (L1), Low | a presentation component mounted a fetching query observer (pattern "network call hidden in a presentation component", 1) | `refetchOnMount: false`, later `passive` |
+| 2026-10-17 | P2-06c | A building switch unmounted the focused `<select>`, dropping keyboard focus to `<body>` | review round 1, Claude (F3), Low | no keyboard path tested after the action | focus the account button + test |
+| 2026-10-17 | P2-06c | A lock manager that rejects `navigator.locks.request` would fail every login and logout | review round 1, Claude (F4), Low | only the "has locks" and "no locks" branches were considered, not "locks that refuse" | fallback when the call never started + 2 tests |
+| 2026-10-17 | P2-06c | The `/login` session check redirected to the `next` of the render that started it; Back between two `/login` URLs keeps the page mounted | review round 2, Codex (M1), Medium | the `mounted` check covered leaving the page, not a remount-free URL change (the Back/Forward neighbour) | `next` ref + test |
+| 2026-10-17 | P2-06c | The nav itself requested the building on `/403`, `/Onboarding`, `/ResidentSetup` (no guard loads it there) | review round 2, Codex (L1), Low | round 1's fix covered the menu on a guarded page, not the nav on unguarded routes (pattern "network call hidden in a presentation component", 2: promote) | `useBuilding({ passive: true })` + 3 tests |
+| 2026-10-17 | P2-06c | The login submit still used the stale `next` that round 2 fixed in the session check | review round 2, Claude (L2), Low | fixed one of two call sites with the same closure | same ref + test |
+| 2026-10-17 | P2-06c | The account menu stayed open after a route change | review round 2, Claude (L4), Low | closing cases listed from user gestures only | open state keyed to the location + test |
+| 2026-10-17 | P2-06c | That fix reopens the panel on Back to the entry it was opened at, and a `/me`-driven building change leaves it open | review round 3, Claude and Codex, Low, **unfixed** (final round) | the fix was tested going forward only, not Back or a server-driven change: the two neighbours the `CLAUDE.md` lesson names | carried to P4-07 |
+
+P2-06c step 8 note: "fix not tested on adjacent cases" appeared in every round here (round 1 F1, round 2 M1 and
+L2, round 3 on L4's fix), each time on a neighbour the `CLAUDE.md` lesson already names (a server-driven change,
+Back/Forward, a second call site). The lesson alone is not preventing it. Next ticket's first follow-up: before
+asking for a review round, write the neighbour list for each fix into the PR's review section with the test for
+each (or "n/a: why"), so a reviewer sees which ones were skipped. "Network call hidden in a presentation
+component" reached 2 (round 1 F2, round 2 L1): promote it in the next ticket PR, e.g. a test helper that asserts
+the request list of the shell on a session-only route, or a `CLAUDE.md` line that shell and nav components only
+read queries passively.

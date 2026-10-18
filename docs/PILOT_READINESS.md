@@ -140,8 +140,8 @@ Not legal advice. Get qualified advice for the specific building.
   - a rollback plan
 - [ ] Unit import (CSV → CLI with dry run), and staff provisioning via invitations.
 - [ ] Resident onboarding plan: join link and QR poster, the manager approval workload, and a support script.
-- [ ] Remove the Base44 SDK and plugin entirely. Runtime network traffic shows no `base44` calls, and
-      deferred routes are unreachable.
+- [ ] Remove the Base44 SDK entirely (the Base44 Vite plugin went in P2-06c). Runtime network traffic shows
+      no `base44` calls, and deferred routes are unreachable.
 
 ## 8. Quality and acceptance
 

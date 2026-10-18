@@ -70,6 +70,18 @@ Consumes `invitations_get_public`, `invitations_accept`, `auth_password_reset_re
 `frontend/src/features/auth/components/PasswordField.tsx`, `frontend/src/features/auth/api.ts`,
 `frontend/src/app/routes.tsx`.
 
+## Carried from P2-06c (do while framing)
+
+The header account menu (`frontend/src/app/AccountMenu.tsx`) left four Lows open after P2-06c's last review
+round (PR #65 round 3). Fix them test-first if this ticket touches the menu, or say why not:
+- Back to the history entry where the panel was opened shows it again: `open = openAt === key`, and the entry
+  keeps its key. Clear `openAt` when the key changes.
+- A `/me`-driven change of the selected building (the old one suspended) leaves the panel open with new
+  contents. Also close it when `buildingId` changes.
+- During a building 401/404 the nav hides but the menu still offers "View as" from the cached roles. Apply the
+  same 401/404 check in `BuildingChoices` (or in `useCanViewAs`).
+- Click outside listens to `mousedown`; iOS Safari may send none for a tap on empty space. Use `pointerdown`.
+
 ## Must explain (learning checkpoint)
 
 1. Why does the forgot-password screen never say whether the email exists?

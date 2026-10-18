@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { api } from '@/api/client';
 import { ApiError } from '@/api/errors';
 import { runAuthCall } from '@/app/authQueue';
-import { clearSelectedBuilding } from '@/app/buildingStorage';
+import { clearTabChoices } from '@/app/buildingStorage';
 import { safeNext } from '@/app/safeNext';
 
 // The backend takes any non-empty email string (a malformed one is just unknown: 401, not 422), so the
@@ -67,14 +67,31 @@ export function LoginPage() {
     if (failure) summaryRef.current?.focus();
   }, [failure]);
 
+  // Already signed in (a bookmark, Back, another tab's login): go where the login would have gone. Queued
+  // like a login, so a logout still in flight answers first, and skipped if the form is gone by then. A
+  // 401 is AuthProvider's (it clears the tab; on this page it navigates nowhere); other errors show the form.
+  // `next` is read when /me (or a login) answers: Back or Forward between two /login URLs keeps this page
+  // mounted and changes only the search (review round 2).
+  const next = useRef<string | null>(null);
+  next.current = params.get('next');
+  useEffect(() => {
+    runAuthCall(async (signal) => {
+      if (!mounted.current) return;
+      const me = await api.get('/api/auth/me', { signal });
+      if (!mounted.current) return;
+      queryClient.setQueryData(['me'], me);
+      navigate(safeNext(next.current), { replace: true });
+    }).catch(() => undefined);
+  }, [navigate, queryClient]);
+
   const onSubmit = async (body: LoginForm) => {
     setFailure(null);
     let sent: boolean;
     try {
       // Queued behind any logout still in flight, whose response would delete this login's cookie.
-      sent = await runAuthCall(async () => {
+      sent = await runAuthCall(async (signal) => {
         if (!mounted.current) return false;
-        await api.post('/api/auth/login', { body });
+        await api.post('/api/auth/login', { body, signal });
         return true;
       });
     } catch (error) {
@@ -87,8 +104,8 @@ export function LoginPage() {
     // Nothing cached before this login (another user's data, a lost session's) may show after it, and the
     // tab's building is chosen again from this user's memberships.
     queryClient.clear();
-    clearSelectedBuilding();
-    if (mounted.current) navigate(safeNext(params.get('next')), { replace: true });
+    clearTabChoices();
+    if (mounted.current) navigate(safeNext(next.current), { replace: true });
   };
 
   return (
