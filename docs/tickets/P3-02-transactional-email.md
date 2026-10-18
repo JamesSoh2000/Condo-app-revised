@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P3-01 |
 | Replaces old | M5-T08 (email), M3-T13 (delivery part), M14-T04 (staging use, now D-06), M14-T17 |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
