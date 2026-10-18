@@ -85,6 +85,8 @@ def test_allowlist_is_comma_separated_from_the_environment(monkeypatch: pytest.M
         "ann..lee@example.test",
         ".ann@example.test",
         "@" + "b" * 64 + ".test",
+        "\u00e9@example.test",
+        "@\u00e9xample.test",
     ],
 )
 def test_malformed_allowlist_entry_fails(value: str) -> None:
@@ -160,6 +162,7 @@ def test_prod_email_from_is_not_the_dev_default() -> None:
         "a@example.org, b@example.org",
         "Maple <no-reply@example.org>\r\nBcc: x@example.org",
         "Maple <no..reply@example.org>",
+        "Maple <\u00e9@example.org>",
     ],
 )
 def test_email_from_is_one_address(value: str) -> None:
@@ -167,7 +170,15 @@ def test_email_from_is_one_address(value: str) -> None:
         make(email_from=value)
 
 
-@pytest.mark.parametrize("value", ["no-reply@example.org", '"Maple, Tower" <no-reply@example.org>'])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "no-reply@example.org",
+        '"Maple, Tower" <no-reply@example.org>',
+        # Only the address must be ASCII; the email library encodes a non-ASCII display name.
+        "Tour \u00c9rable <no-reply@example.org>",
+    ],
+)
 def test_email_from_accepts_an_address_with_or_without_a_name(value: str) -> None:
     assert make(email_from=value).email_from == value
 

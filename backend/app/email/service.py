@@ -44,13 +44,23 @@ async def queue_email(
         raise ValueError(f"`context` must be JSON that Postgres can store: {exc}") from None
     if _has_nul(context):
         raise ValueError("`context` must not contain NUL characters")
-    if dedupe_key is not None and (len(dedupe_key) > MAX_DEDUPE_KEY or "\x00" in dedupe_key):
-        raise ValueError(f"`dedupe_key` must be at most {MAX_DEDUPE_KEY} characters, no NUL")
+    if dedupe_key is not None and not _is_storable_key(dedupe_key):
+        raise ValueError(
+            f"`dedupe_key` must be at most {MAX_DEDUPE_KEY} characters of UTF-8, no NUL"
+        )
     # Rendered now as well as when sent: a missing template or variable fails here, in the
     # caller, instead of as a dead job.
     render_email(template, context, locale)
     payload = {"to": to, "template": template, "locale": locale, "context": context}
     return await enqueue(db, "email.send", payload, dedupe_key=dedupe_key)
+
+
+def _is_storable_key(key: str) -> bool:
+    try:
+        key.encode()
+    except UnicodeEncodeError:
+        return False
+    return len(key) <= MAX_DEDUPE_KEY and "\x00" not in key
 
 
 def _has_nul(value: Any) -> bool:

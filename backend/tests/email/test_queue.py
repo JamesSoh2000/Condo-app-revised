@@ -83,6 +83,11 @@ BAD_ARGUMENTS: list[tuple[str, dict[str, Any]]] = [
     ("local part over 64", {"to": "a" * 65 + "@example.test"}),
     ("domain label over 63", {"to": "a@" + "b" * 64 + ".test"}),
     ("domain trailing dot", {"to": "a@example.test."}),
+    # Review round 3: addresses are ASCII (no SMTPUTF8), so the 64 and 254 limits are octets too.
+    ("lone surrogate in to", {"to": "\ud800@example.test"}),
+    ("non-ASCII local part", {"to": "\u00e9" * 33 + "@example.test"}),
+    ("non-ASCII domain", {"to": "a@\u00e9xample.test"}),
+    ("dedupe key with a lone surrogate", {"dedupe_key": "email:\ud800"}),
     ("context not JSON", {"context": {"when": object()}}),
     ("context key not a string", {"context": {1: "x"}}),
     ("context not a dict", {"context": ["x"]}),

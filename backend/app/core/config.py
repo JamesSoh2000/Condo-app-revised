@@ -263,9 +263,14 @@ class Settings(BaseSettings):
 
 
 def is_email_address(value: str) -> bool:
-    """One bare address (no display name), at most 254 characters."""
+    """One bare ASCII address (no display name, no SMTPUTF8), at most 254 characters.
+
+    ASCII, so the length limits are octets and no lone surrogate reaches the database (review
+    round 3).
+    """
     return (
-        len(value) <= MAX_EMAIL_ADDRESS_LENGTH
+        value.isascii()
+        and len(value) <= MAX_EMAIL_ADDRESS_LENGTH
         and EMAIL_ADDRESS.fullmatch(value) is not None
         and len(value.rpartition("@")[0]) <= MAX_LOCAL_PART_LENGTH
     )

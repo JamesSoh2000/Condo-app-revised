@@ -41,6 +41,7 @@ def committed_db(
         "a@example.test, b@example.test",
         "a@example.test\nBcc: b@x.test",
         "ann..lee@example.test",
+        "\u00e9@example.test",
     ],
 )
 def test_bad_address_exits_1_without_a_session(
