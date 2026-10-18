@@ -45,6 +45,7 @@ NON_COMMITTING_HELPERS: dict[str, tuple[str, ...]] = {
         "retry_dead_job",
     ),
     "auth/service.py": ("delete_ended_sessions",),
+    "email/service.py": ("queue_email",),
     "rate_limits/service.py": ("delete_expired_rate_limits",),
 }
 

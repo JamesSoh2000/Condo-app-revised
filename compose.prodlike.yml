@@ -28,6 +28,8 @@ services:
       S3_PUBLIC_ENDPOINT_URL: http://localhost:4566
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
+      # Email links point at Caddy, where this stack serves the SPA.
+      APP_BASE_URL: http://localhost:8080
       # Caddy is the only proxy whose X-Forwarded-* headers gunicorn trusts (127.0.0.1 on staging).
       FORWARDED_ALLOW_IPS: 10.213.208.10
     # No ports: only Caddy reaches the API, as on staging.

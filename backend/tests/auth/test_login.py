@@ -94,6 +94,9 @@ async def test_cookie_is_host_prefixed_and_secure_with_staging_settings(client, 
         secret_key="not-the-default-secret",  # noqa: S106 (test value)
         trusted_origins=["https://staging.example.org"],
         s3_bucket_name="condo-staging-files",
+        # Required in staging since P3-02.
+        app_base_url="https://staging.example.org",
+        email_recipient_allowlist="@example.org",
     )
     assert (staging.session_cookie_name, staging.session_cookie_secure) == ("__Host-session", True)
     monkeypatch.setattr(settings, "session_cookie_name", staging.session_cookie_name)

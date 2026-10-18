@@ -55,6 +55,9 @@ class JsonFormatter(logging.Formatter):
             # The cleanup jobs (P3-01b).
             "deleted",
             "scrubbed",
+            # Email (P3-02): never the address, only its domain.
+            "recipient_domain",
+            "email_template",
         ]
 
         for field in extra_fields:

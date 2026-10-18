@@ -369,6 +369,10 @@ uses `dedupe_key = "<kind>:<yyyy-mm-dd>"` so that a restart cannot double-schedu
 - Jinja2 templates with text + HTML parts, sent with `aiosmtplib`.
 - Local: Mailpit. Cloud (from milestone D): the SES SMTP endpoint (credentials from SSM).
 - Staging restricts recipients with SES sandbox verified identities.
+- Built in P3-02: `app.email.service.queue_email` checks and renders the template in the caller's transaction,
+  then enqueues `email.send`; templates live in `app/email/templates/<locale>/<name>.{subject.txt,txt,html}`.
+  `EMAIL_RECIPIENT_ALLOWLIST` (required on staging) makes the handler skip any other recipient. The operator
+  CLI `email-test --to ADDRESS` queues a test message.
 
 ## 10. Notifications
 

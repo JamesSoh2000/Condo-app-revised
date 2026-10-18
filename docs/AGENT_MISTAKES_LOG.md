@@ -226,10 +226,16 @@ normalisation".
 | 2026-10-18 | P3-02 | Kept SMTP reply text in retryable errors and relied on the worker's exact-value redaction; a 451 reply quoting a context value with quotes (Python escapes them in the exception text) left a reset token in `last_error` | review round 1 (Codex `gpt-6.1-sol`), **High** | trusted a redaction that matches exact strings with text another component re-encodes | reply text never stored (`handler.py::_raise_for_reply`), 5 reply-path tests |
 | 2026-10-18 | P3-02 | `queue_email` accepted values Postgres's JSONB or the jobs table refuse (NaN/Infinity), so the insert aborted the caller's transaction; the JSON log formatter silently dropped `recipient_domain` | review round 1 (Codex), Medium + Low | validated with Python's defaults (`allow_nan=True`), not the database's rules; asserted on `LogRecord`s, not the formatter's output | `allow_nan=False`, NUL/surrogate checks; log tests format with `JsonFormatter` |
 | 2026-10-18 | P3-02 | Address and loopback checks missed `ann..lee@`, `.ann@`, and `https://127.1`-style IPv4 shorthands | review round 2 (Codex), Medium ×2 | hand-written address pattern without the dot-atom rule; loopback check via `ipaddress` only, which refuses the forms browsers accept | dot-atom + RFC 5321 limits; `inet_aton` fallback in `_is_loopback` |
-| 2026-10-18 | P3-02 | Round 1's "reject what the insert refuses" fix covered the context (NUL, surrogates) but not the same input in `to` and `dedupe_key`; ticket blocked after round 3 | review round 3 (Codex), Medium + Low | the neighbour list named other values, not other **fields** reaching the same insert. Recurrence of the `CLAUDE.md` lesson "every other way to reach the same state" | ASCII-only addresses, UTF-8 dedupe keys (87431ca, unreviewed). Candidate fitness test: one validator per payload field reaching `enqueue` |
+| 2026-10-18 | P3-02 | Round 1's "reject what the insert refuses" fix covered the context (NUL, surrogates) but not the same input in `to` and `dedupe_key`; ticket blocked after round 3 | review round 3 (Codex), Medium + Low | the neighbour list named other values, not other **fields** reaching the same insert. Recurrence of the `CLAUDE.md` lesson "every other way to reach the same state" | ASCII-only addresses, UTF-8 dedupe keys (87431ca; not reviewed, accepted by James, B-4 option B). Candidate fitness test: one validator per payload field reaching `enqueue` |
 
 P3-01b step 8 note: first ticket with the neighbour list written in the PR before the next reviewer (the
 build-ticket step 4 line). Round 2 (fresh Codex) found nothing, where P3-01a's and P2-07's round 2 each
 reopened round 1's fixes. "Concurrency list missed another writer of the same row" is a recurrence of the
 `CLAUDE.md` lesson ("every other way to reach the same state"), not a new pattern. New pattern, 1 of 2:
 "one clause of an `OR` left untested because the fixture also satisfied another".
+
+P3-02 step 8 note: "validated input with Python's rules, not the database's" appeared twice in one ticket
+(round 1: NaN/Infinity in JSONB; round 3: lone surrogates in `to` and `dedupe_key`). Promote it in the next
+ticket's PR, as its first follow-up: a fitness test that every function calling `enqueue` with caller input
+round-trips its payload through Postgres-safe JSON (`allow_nan=False`, UTF-8, no NUL), or a `CLAUDE.md` lesson
+if a test can't express it.

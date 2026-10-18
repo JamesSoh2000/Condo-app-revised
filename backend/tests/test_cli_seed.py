@@ -461,7 +461,6 @@ def test_cli_help_lists_every_command() -> None:
     ("command", "ticket"),
     [
         ("bootstrap-building", "P4-03"),
-        ("email-test", "P3-02"),
     ],
 )
 def test_cli_placeholders_exit_nonzero_naming_their_ticket(command: str, ticket: str) -> None:

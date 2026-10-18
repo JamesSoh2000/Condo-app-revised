@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="{{ locale }}">
+<body style="margin: 0; padding: 24px; font-family: Arial, Helvetica, sans-serif; color: #1f2933;">
+  <p style="margin: 0 0 16px; font-size: 18px; font-weight: bold;">{{ building_name | default(sender_name) }}</p>
+  {% block body %}{% endblock %}
+  <hr style="margin: 24px 0 12px; border: none; border-top: 1px solid #d9dee3;">
+  <p style="margin: 0; font-size: 12px; color: #616e7c;">
+    Sent by {{ building_name | default(sender_name) }} · <a href="{{ app_base_url }}">{{ app_base_url }}</a>
+  </p>
+</body>
+</html>

@@ -115,6 +115,15 @@ Manual steps for criteria 2–5, with the commands recorded in the PR.
 3. Why is the database on a separate EBS volume with `prevent_destroy`?
 4. Why must secret values never go into Terraform variables or state?
 
+## Carried from P3-02 (do while framing)
+
+- When staging's SSM parameters set `EMAIL_FROM` (the verified SES sender), remove the unused `SES_FROM_EMAIL`
+  setting and its production check from `backend/app/core/config.py` and the env files. In the same block, fix
+  the `email_recipient_allowlist` comment: staging's refusal of an empty allowlist is in
+  `validate_email_settings`, not `validate_production_settings` (P3-02 explanation §7).
+- Staging needs `SMTP_USERNAME`, `SMTP_PASSWORD` (secret), `SMTP_STARTTLS=true`, `APP_BASE_URL` (https, not
+  localhost) and a non-empty `EMAIL_RECIPIENT_ALLOWLIST`; the settings validator refuses to start without them.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
