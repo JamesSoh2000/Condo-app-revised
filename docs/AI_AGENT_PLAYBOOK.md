@@ -175,8 +175,10 @@ a rationale that exists only in the conversation is first written into the PR's 
 
 **Editing is the exception.** To see what changed since the source revision, run
 `git diff --name-status <source revision>..HEAD`. After a rebase onto a moved `main` that tree diff also lists
-`main`'s own changes, so use `git range-diff <source revision>...HEAD` instead: a commit marked `=` is
-unchanged, a `!` is not. **Bookkeeping files** are `docs/tickets/README.md`, `docs/HUMAN_INBOX.md`,
+`main`'s own changes, which can alter what the explanation says (a helper the ticket calls): read that list for
+every file the explanation cites and their callers and callees, and redo the pass on any that appear.
+`git range-diff <source revision>...HEAD` (a `=` commit is unchanged) only shows the ticket's own patches
+are intact; it never clears a change inherited from `main`. **Bookkeeping files** are `docs/tickets/README.md`, `docs/HUMAN_INBOX.md`,
 `docs/AGENT_MISTAKES_LOG.md`, the explanation, and the ticket's own file only in its Status and Follow-ups. If
 nothing else changed (read the bookkeeping patch itself, it is short), there is no edit and no new pass. When a
 commit after the explanation changes code, tests, config or docs it describes (a CI fix, a rebase that
@@ -209,8 +211,9 @@ the inbox, so all three land atomically. The agent merges only when **all** of t
 - [ ] Every acceptance criterion maps to a passing test or recorded evidence in the PR.
 - [ ] The explanation exists and `scripts/check-explanation-refs.py` passes.
 - [ ] Nothing after the explanation changes what it describes: `git diff <explanation commit> HEAD` touches
-      only bookkeeping files (after a rebase, `git range-diff <explanation commit>...HEAD` shows the ticket's
-      commits unchanged), and a rebase after it resolved no conflict in the ticket's files (git doesn't record
+      only bookkeeping files (after a rebase, also `git diff --name-status <explanation commit> HEAD` shows no
+      file the explanation cites, or their callers and callees, changed by `main`; `git range-diff` alone
+      doesn't prove that), and a rebase after it resolved no conflict in the ticket's files (git doesn't record
       that: the merging session confirms it). Otherwise the implementer repeats the reality pass as under
       "Editing" above and updates the affected claims first. A bookkeeping-only change needs no re-read of
       the code, only of its own patch.

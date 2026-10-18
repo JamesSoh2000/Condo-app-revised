@@ -10,8 +10,8 @@ reads this explanation instead of the PR, so it must be accurate and honest abou
 You built this code, so you will remember what you meant to write. The explanation must describe what is in
 the code now, after the review rounds. Do the **reality pass** (`docs/AI_AGENT_PLAYBOOK.md#the-reality-pass`)
 before the first sentence. Write it last: after the final `MERGE`, the rebase and green CI. For an edit, re-read
-only what changed since the source revision (the playbook's "Editing": `--name-status`, or `git range-diff`
-after a rebase), plus the callers and callees of changed symbols; skip the pass when only the explanation and
+only what changed since the source revision (the playbook's "Editing": `--name-status`, also after a rebase,
+where changes inherited from `main` count), plus the callers and callees of changed symbols; skip the pass when only the explanation and
 bookkeeping files changed:
 1. **Re-read, don't recall.** From disk at the source revision: the diff, every file and symbol you will cite
    (the whole function, not a search hit), the assertions of the tests you will cite, the final migration, the

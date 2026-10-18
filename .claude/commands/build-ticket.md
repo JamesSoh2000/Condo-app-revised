@@ -46,7 +46,7 @@ only after re-reading the code, never from memory of what you built.
    knew to the PR first (or write "Rationale not recorded"). A later commit that touches what the
    explanation describes (a CI fix, a rebase that conflicted in the ticket's files) means redoing the pass on
    the changed files, their callers and callees, and updating the claims that cite them before the merge gate.
-   See the playbook's "Editing" for how to check (`--name-status`, or `git range-diff` after a rebase) and what
+   See the playbook's "Editing" for how to check (`--name-status`, also after a rebase) and what
    counts as bookkeeping; a bookkeeping-only change needs no new pass. Fetch the PR once for this step.
 6. **Bookkeeping commit** on the branch: the ticket's status `done` in `docs/tickets/README.md`; autonomous
    lasting decisions added to the inbox's "Decisions to audit"; confirmed findings added to
