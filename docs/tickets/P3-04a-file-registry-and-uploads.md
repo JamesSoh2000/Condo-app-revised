@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P2-03, P0-04a |
 | Replaces old | M5-T05 (part of [P3-04](./P3-04-private-file-uploads.md)) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 

@@ -29,6 +29,10 @@ only after re-reading the code, never from memory of what you built.
      both in the PR's "Independent review" section: the commit reviewed, and for each fix the concrete
      failure and the evidence (the failing-then-passing test). A fix that chose between approaches also
      gets a block in "Decisions and alternatives". Push, wait for CI.
+   - Before the next round, list each fix's neighbours in the PR's "Independent review" section (error
+     paths, malformed input, the changed path's other options, other ways to reach the same state, and for
+     state or concurrency fixes the cases in `CLAUDE.md` "Lessons learned"), each with its test or
+     `n/a: why`.
    - Repeat with **new** subagents until every required reviewer says `VERDICT: MERGE`, at most 3 rounds.
      An open Critical/High after round 3 is stop rule 4.
 5. **Explain** (step 6). Rebase onto `origin/main` first if `main` has moved, so the source revision the

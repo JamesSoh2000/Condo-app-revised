@@ -48,7 +48,9 @@ weekend of console clicking ([ADR-0008](../adr/0008-single-ec2-compose-caddy.md)
     - **IAM instance role:**
       - `AmazonSSMManagedInstanceCore`
       - ECR pull for the repo
-      - S3 read/write on the files bucket
+      - S3 read/write on the files bucket, including `s3:ListBucket` on it: without it a HEAD on a key not yet
+        uploaded returns 403 instead of 404, and `POST /files/{id}/complete` answers 500 instead of 409
+        `upload_incomplete` (P3-04a, PR #70 follow-up)
       - S3 put/get/list on backups and artifacts
       - `ssm:GetParameters*` on `/condo/staging/*` plus KMS decrypt for `aws/ssm`
       - CloudWatch Logs create/put on `/condo/staging/*`

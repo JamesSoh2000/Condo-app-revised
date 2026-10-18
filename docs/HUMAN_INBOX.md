@@ -37,6 +37,10 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | Date | Ticket | Decision | Where recorded | Reversible? |
 |---|---|---|---|---|
+| 2026-10-18 | P3-04a | P3-04 split into **P3-04a** (table, uploads, completion), **P3-04b** (`download-url`, `claim_file`) and **P3-04c** (`files.cleanup`, after P3-01b's scheduler). P5-01 and P3-06 now depend on P3-04b | `docs/tickets/P3-04-private-file-uploads.md`; index | yes |
+| 2026-10-18 | P3-04a | Who may upload each purpose: `package_photo` security + manager, `maintenance_photo` resident + manager, `notice_attachment` manager only (PDF only). Others get 403 | PR #70 D4; `backend/app/files/purposes.py::PURPOSES` | yes (one line per rule) |
+| 2026-10-18 | P3-04a | The upload policy allows **exactly** the declared size (tighter than P3-04's `1..max`), and `complete` is idempotent: a second or losing completion returns the stored file and never re-pins | PR #70 D1, D3 | yes |
+| 2026-10-18 | P3-04a | Run-specific (your instruction): both review rounds by a fresh Codex gpt-6.1-sol (high), no Claude reviewer | PR #70 "Independent review" | n/a |
 | 2026-10-18 | P3-01a | The worker claims **one job per claim** (`UPDATE … WHERE id = (SELECT … LIMIT 1 FOR UPDATE SKIP LOCKED)`), up to `batch` per `run_once`, instead of a batch under one lease. Three review sessions broke the batch form (double runs, jobs dead-lettered unrun, and `IN (… LIMIT 1 …)` leasing several rows under stale statistics) | PR #69 D9; `backend/app/jobs/worker.py::_claim` | yes |
 | 2026-10-18 | P3-01a | Handlers have a hard **50 s timeout** (below the 60 s lease), and a finishing update applies only while the worker still holds the lease. P3-02's SMTP handler and every later handler must fit in 50 s | PR #69 D4; `backend/app/jobs/worker.py::HANDLER_TIMEOUT` | yes |
 | 2026-10-18 | P3-01a | The queue's time is the app clock (`clock.now()` bound into SQL), not Postgres `now()`. Fine on one host; revisit if workers run on several hosts | PR #69 D2 | yes |
