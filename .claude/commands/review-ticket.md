@@ -11,8 +11,8 @@ files. No human reviews this PR after you (ADR-0014): your verdict decides wheth
    decisions and, from round 2, the earlier findings and answers.
 2. Get the diff: `git diff --stat main...HEAD` and `git log main..HEAD --oneline` first, then the patch of
    **every** changed path, one at a time (`git diff main...HEAD -- <path>`; one command when the diff is
-   small). The stat orders your reading and never replaces it: config, CI and migrations are read like code.
-   Name any path you read only as a stat (lockfiles, generated types) in the verdict. Diff the ticket file
+   small). The stat orders your reading and never replaces it: config, CI, migrations, lockfiles and generated
+   files are read like code, and no verdict is issued with a changed path unread. Diff the ticket file
    separately to check the framing.
 3. Read any file in the repo you need to judge the diff: helpers it calls (`visible_*`, `get_tenant_context`,
    `claim_file`…), the models its migration touches, existing migrations, tests. Reading is unrestricted;
