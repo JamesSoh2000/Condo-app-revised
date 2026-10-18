@@ -12,6 +12,7 @@ import importlib
 import logging
 import os
 import random
+import re
 import secrets
 import signal
 import socket
@@ -83,9 +84,12 @@ def describe_error(
         detail = type(orig).__name__ + (f", SQLSTATE {code}" if code else "")
         return f"{type(exc).__name__}: database error ({detail}); message withheld"
     text = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
-    for key in sensitive_keys:
-        for secret in _strings(payload.get(key)):
-            text = text.replace(secret, "[redacted]")
+    secrets_ = {s for key in sensitive_keys for s in _strings(payload.get(key))}
+    if secrets_:
+        # One pass, longest first: replacing a shorter value (a URL prefix) first would break a
+        # longer one that contains it and leave its token behind.
+        pattern = "|".join(re.escape(s) for s in sorted(secrets_, key=len, reverse=True))
+        text = re.sub(pattern, "[redacted]", text)
     return text[:MAX_ERROR_LENGTH]
 
 
@@ -193,7 +197,9 @@ class Worker:
         )
         claim = (
             update(Job)
-            .where(Job.id.in_(due))
+            # `=` a scalar subquery, not `IN`: Postgres may run `IN (… LIMIT 1 …)` as a semi-join
+            # that re-runs the subquery per row and leases several jobs (flaky-test diagnosis).
+            .where(Job.id == due.scalar_subquery())
             .values(
                 status=JobStatus.RUNNING,
                 attempts=Job.attempts + 1,
@@ -204,7 +210,7 @@ class Worker:
             .execution_options(synchronize_session=False)
         )
         async with self._sessions() as db:
-            row = (await db.execute(claim)).first()
+            row = (await db.execute(claim)).one_or_none()
             await db.commit()
         return None if row is None else ClaimedJob(*row)
 

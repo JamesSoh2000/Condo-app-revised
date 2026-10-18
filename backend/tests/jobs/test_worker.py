@@ -14,7 +14,7 @@ from typing import Any
 
 import asyncpg  # type: ignore[import-untyped]
 import pytest
-from sqlalchemy import insert, select, update
+from sqlalchemy import insert, select, text, update
 from sqlalchemy.exc import InvalidRequestError, PendingRollbackError, StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -738,3 +738,52 @@ async def test_heartbeat_is_logged_while_a_batch_runs(sessions, handlers: Calls,
     )
 
     assert seen == [False, False, True], "one beat during the batch, before its third job"
+
+
+# Flaky-test diagnosis (Codex gpt-6-astra, medium): each test failed before its fix.
+
+
+async def test_one_claim_leases_exactly_one_job_whatever_the_statistics(sessions, db_connection):
+    """Root cause of the intermittent failures: with stale statistics (a rolled-back row that
+    ANALYZE counted), Postgres ran `id IN (SELECT … LIMIT 1 FOR UPDATE SKIP LOCKED)` as a
+    semi-join that re-ran the subquery per row, so one claim leased every due job and the worker
+    ran only the first; the rest sat `running` until their lease ran out."""
+    async with sessions() as db:
+        await enqueue(db, "test.old", {})
+        await db.execute(text("ANALYZE jobs"))
+        await db.rollback()
+    assert await db_connection.scalar(text("SELECT count(*) FROM jobs")) == 0
+    async with sessions() as db:
+        for n in range(3):
+            await enqueue(db, "test.echo", {"n": n}, max_attempts=1)
+        await db.commit()
+
+    claimed = await worker(sessions)._claim()
+
+    assert claimed is not None
+    async with sessions() as db:
+        statuses = sorted(job.status for job in (await db.scalars(select(Job))).all())
+    assert statuses == sorted([JobStatus.RUNNING, JobStatus.QUEUED, JobStatus.QUEUED])
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"links": ["https://example.test/reset?token=", "https://example.test/reset?token=TOKEN"]},
+        {"a": "https://example.test/reset?token=", "b": "https://example.test/reset?token=TOKEN"},
+        {"a": "reset?token=TOKEN", "b": "TOKEN-and-more"},
+    ],
+    ids=["one-key", "two-keys", "offset-overlap"],
+)
+def test_overlapping_sensitive_values_are_all_redacted(payload: dict[str, Any]):
+    """Medium: replacing a shorter value first (a URL prefix) broke the longer one containing it,
+    leaving its token. Longest first, in one pass."""
+    keys = tuple(payload)
+    values = [
+        v for value in payload.values() for v in (value if isinstance(value, list) else [value])
+    ]
+    message = "failed sending " + " and ".join(values)
+
+    described = describe_error(RuntimeError(message), payload, keys)
+
+    assert "TOKEN" not in described
