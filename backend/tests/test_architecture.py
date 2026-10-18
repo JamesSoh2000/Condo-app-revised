@@ -137,9 +137,10 @@ def _helper_commits(root: Path) -> Iterator[str]:
             yield from (f"{name}::{helper}: no such file" for helper in helpers)
             continue
         source = path.read_text()
+        # Module level only: a method of the same name is another function (Codex review round 2).
         functions = {
             node.name: node
-            for node in ast.walk(ast.parse(source))
+            for node in ast.parse(source).body
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
         }
         for helper in helpers:
@@ -478,6 +479,27 @@ def test_meta_commit_inside_a_non_committing_helper_is_reported(tmp_path, monkey
     )
 
     assert files_that_commit(tmp_path) == ["audit/service.py::record_audit"]
+
+
+def test_meta_helper_is_the_module_level_function(tmp_path, monkeypatch):
+    """A method of the same name neither hides a committing helper nor stands in for a missing one
+    (Codex review round 2)."""
+    monkeypatch.setattr(
+        "tests.test_architecture.NON_COMMITTING_HELPERS",
+        {"shadowed/service.py": ("record_audit",), "stale/service.py": ("record_audit",)},
+    )
+    method = "class Recorder:\n    def record_audit(self):\n        return None\n"
+    for name, code in {
+        "shadowed/service.py": "async def record_audit(db):\n    await db.commit()\n\n" + method,
+        "stale/service.py": method,
+    }.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(code)
+
+    assert files_that_commit(tmp_path) == [
+        "shadowed/service.py::record_audit",
+        "stale/service.py::record_audit: no such function",
+    ]
 
 
 def test_meta_stale_non_committing_helper_is_reported(tmp_path, monkeypatch):

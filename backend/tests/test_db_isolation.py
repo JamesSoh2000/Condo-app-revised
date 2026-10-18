@@ -240,11 +240,31 @@ def test_equal_pids_still_get_distinct_databases(monkeypatch):
         assert re.fullmatch(r"condo_(run|migrations)_45_[0-9a-f]{8}_test", str(name))
 
 
-def test_the_scratch_database_is_named_per_run(scratch_database_url: str):
-    """The migration tests' scratch database uses the same scheme as the session's."""
-    name = make_url(scratch_database_url).database
+def assert_named_per_run(url: str, kind: str, configured_url: str) -> None:
+    """`url` names `<stem>_<kind>_<pid>_<8 hex>_test`, with `configured_url`'s stem (maybe cut)."""
+    configured = make_url(configured_url).database
+    assert configured is not None
+    match = re.fullmatch(
+        rf"(.+)_{kind}_{os.getpid()}_[0-9a-f]{{8}}_test", str(make_url(url).database)
+    )
 
-    assert re.fullmatch(rf"condo_migrations_{os.getpid()}_[0-9a-f]{{8}}_test", str(name))
+    assert match is not None
+    assert configured.removesuffix("_test").startswith(match[1])
+
+
+def test_the_scratch_database_is_named_per_run(scratch_database_url: str):
+    """The migration tests' scratch database uses the same scheme as the session's, whatever
+    `TEST_DATABASE_URL` names (Codex review round 2)."""
+    assert_named_per_run(scratch_database_url, "migrations", settings.test_database_url)
+
+
+@pytest.mark.parametrize("configured", ["reviewer_test", "a" * 58 + "_test"])
+def test_per_run_name_keeps_the_configured_stem(configured: str):
+    configured_url = CONFIGURED.replace("condo_test", configured)
+
+    assert_named_per_run(
+        per_run_database_url(configured_url, DEV, kind="migrations"), "migrations", configured_url
+    )
 
 
 @pytest.mark.anyio
