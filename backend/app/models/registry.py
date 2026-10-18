@@ -7,6 +7,7 @@ autogenerate. `tests/test_schema_buildings_units.py` fails if an `app/**/models.
 import app.audit.models
 import app.auth.models
 import app.buildings.models
+import app.jobs.models
 import app.memberships.models
 import app.rate_limits.models
 import app.units.models

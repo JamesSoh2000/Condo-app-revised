@@ -34,8 +34,11 @@ SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # The only places allowed to commit (CLAUDE.md rule 5): write use-cases and process entry points.
 COMMIT_ALLOWED = ("**/service.py", "cli.py", "seed.py", "worker.py", "jobs/worker.py")
 # Helpers that live in an allowed module but must never commit themselves (CLAUDE.md rule 5): the
-# file rule can't see them (P2-04 mutation M2). Add `notify`, `enqueue`, `attach_file` with them.
-NON_COMMITTING_HELPERS: dict[str, tuple[str, ...]] = {"audit/service.py": ("record_audit",)}
+# file rule can't see them (P2-04 mutation M2). Add `notify`, `attach_file` with them.
+NON_COMMITTING_HELPERS: dict[str, tuple[str, ...]] = {
+    "audit/service.py": ("record_audit",),
+    "jobs/service.py": ("enqueue",),
+}
 
 
 def dependency_calls(dependant: Dependant) -> Iterator[Callable[..., Any]]:

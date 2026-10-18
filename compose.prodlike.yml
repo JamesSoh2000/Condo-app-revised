@@ -16,7 +16,7 @@ services:
     pull_policy: never
     # Inline instead of backend/.env.dev: that file sets GIT_SHA=local, which would hide the image's own
     # build metadata.
-    environment:
+    environment: &api-environment
       APP_ENV: dev
       LOG_LEVEL: INFO
       TRUSTED_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
@@ -50,6 +50,34 @@ services:
       timeout: 5s
       retries: 12
       start_period: 5s
+    networks:
+      - prodlike_net
+
+  # The background job worker (P3-01a): the same image and settings as the API, no ports.
+  worker:
+    image: condo-api:${API_IMAGE_TAG:?set API_IMAGE_TAG, or use make prodlike}
+    pull_policy: never
+    environment: *api-environment
+    command: python -m app.worker
+    depends_on:
+      db:
+        condition: service_healthy
+    # The image's healthcheck calls the API; the worker has none. Healthy while the loop touches its
+    # heartbeat file (app/jobs/worker.py::HEARTBEAT_FILE) at least every 120 s.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, sys, tempfile, time; p = os.path.join(tempfile.gettempdir(), 'worker_heartbeat'); sys.exit(time.time() - os.path.getmtime(p) > 120)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # SIGTERM lets the current job finish (P3-01a); a handler is cancelled after 50 s.
+    stop_grace_period: 60s
     networks:
       - prodlike_net
 

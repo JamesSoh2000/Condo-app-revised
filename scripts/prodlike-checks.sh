@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks of the prod-like stack's own wiring that scripts/smoke.sh can't see from outside (P1-08):
-# - api and db publish no host port and mount no source directory; the API runs one gunicorn worker
+# - api, worker and db publish no host port and mount no source directory; the API runs one gunicorn worker
 # - the API trusts forwarded headers from Caddy only
 # - TRUSTED_ORIGINS and the build metadata
 # Run against a running stack (`make prodlike`), from the repo root. Exits 1 if any check failed.
@@ -32,6 +32,7 @@ sys.exit(1 if service.get("ports") or binds else 0)' "$config" "$1"
 }
 check "api publishes no port and mounts no source" isolated api
 check "db publishes no port and mounts no source" isolated db
+check "worker publishes no port and mounts no source" isolated worker
 
 # One gunicorn worker: the master process plus exactly one worker process (the image has no `ps`). The
 # pattern is split so this probe's own command line doesn't match it.

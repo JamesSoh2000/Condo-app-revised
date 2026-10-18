@@ -1,4 +1,4 @@
-# P3-01 — Job queue and worker
+# P3-01 — Job queue and worker (split)
 
 | Field | Value |
 |---|---|
@@ -6,20 +6,42 @@
 | Risk tier | 1 |
 | Depends on | P1-04, P0-05 |
 | Replaces old | M5-T07, M5-T09, M14-T16 (demo subset) |
-| Status | todo |
+| Status | split into [P3-01a](./P3-01a-job-queue-and-worker.md), [P3-01b](./P3-01b-scheduler-cleanup-and-cli.md) |
 
-## Goal
+
+Split while framing (2026-10-18). "P3-01" in other tickets' text means both parts; the
+[ticket index](./README.md) lists which part each dependent actually needs (P3-02, P3-03 and D-02 need
+P3-01a: `enqueue`, the worker and its compose service).
+
+| Part | Scope | Acceptance criteria (original numbers) |
+|---|---|---|
+| [P3-01a](./P3-01a-job-queue-and-worker.md) | `jobs` table, `enqueue`, handler registry, worker (`run_once`, `run_forever`, shutdown, heartbeat), compose `worker` service; the P2-07 carries | 1–8 (sharpened), plus new 10–17 |
+| [P3-01b](./P3-01b-scheduler-cleanup-and-cli.md) | Scheduler loop, `jobs.cleanup`, `rate_limits.cleanup`, the session cleanup (P2-01b carry), CLI `jobs-status` and `jobs-retry` | 9 |
+
+## Why split
+
+- Size: the estimate for the whole ticket was ~560 non-test lines (model and migration ~100, `enqueue` and
+  registry ~70, worker with shutdown, heartbeat and lease guards ~190, entrypoint and logging ~25, compose
+  and wiring checks ~40, scheduler and three cleanup jobs ~70, CLI ~65), over ~400.
+- Order: the queue and worker are what P3-02 (email) and P3-03 (notifications) build on, so they go first;
+  the scheduler, cleanups and CLI only add jobs and read the table.
+- No criterion was dropped or loosened: criteria 1–8 are in P3-01a (sharpened), 9 in P3-01b. "Must explain"
+  questions 1–4 are answered by P3-01a's explanation; P3-01b has its own.
+
+## Original ticket (for reference)
+
+### Goal
 
 Code can `enqueue()` background jobs inside a business transaction. A separate worker process claims and
 runs them reliably: retries with backoff, recovery from crashes, dead-lettering, deduplication and recurring
 jobs.
 
-## Why
+### Why
 
 This solves the dual-write problem for email and powers all background work without Redis or Celery
 ([ADR-0006](../adr/0006-postgres-job-queue.md)).
 
-## Scope
+### Scope
 
 - In:
   - **`jobs` table** (`app/jobs/models.py`):
@@ -61,11 +83,11 @@ This solves the dual-write problem for email and powers all background work with
   - email (P3-02)
   - notification fan-out (P3-03)
 
-## Interfaces
+### Interfaces
 
 `enqueue()`, `@job_handler`, `PermanentJobError`, CLI `jobs-status` and `jobs-retry`.
 
-## Acceptance criteria
+### Acceptance criteria
 
 1. **Given** `enqueue` inside a transaction that rolls back, **then** no job exists. If it commits, the job is
    `queued`.
@@ -84,19 +106,19 @@ This solves the dual-write problem for email and powers all background work with
 9. **Given** the scheduler runs twice on the same day (simulated restart), **then** one `jobs.cleanup` job
    exists for that date.
 
-## Test plan
+### Test plan
 
 - `tests/jobs/test_queue.py` and `tests/jobs/test_worker.py`, using the test-only handlers `test.echo`,
   `test.fail` and `test.flaky`.
 - Commands: `make test`; manual `docker compose kill -s SIGTERM worker` during a slow test job.
 
-## Likely files
+### Likely files
 
 `backend/app/jobs/{models,service,registry,worker,scheduler}.py`, `backend/app/worker.py`,
 `backend/app/cli.py`, `docker-compose.yml`, `compose.prodlike.yml`,
 `backend/migrations/versions/<new>.py`, `backend/tests/jobs/*`.
 
-## Must explain (learning checkpoint)
+### Must explain (learning checkpoint)
 
 1. Walk through two workers running the claim query at the same instant. Why does each get different rows?
 2. What happens if the worker crashes after the handler ran but before the status update? Why is that
@@ -104,13 +126,13 @@ This solves the dual-write problem for email and powers all background work with
 3. Why jitter in the backoff?
 4. Why does each job run in its own transaction rather than one per batch?
 
-## Carried from P2-01b (do while framing)
+### Carried from P2-01b (do while framing)
 
 - Expired and revoked `sessions` rows are never deleted, and there is no per-user cap on live sessions
   (PR #57 review round 2 L3). Add a periodic job that deletes rows past `expires_at`/`idle_expires_at` or
   revoked for some retention period, and decide on a cap.
 
-## Carried from P2-07 (do while framing)
+### Carried from P2-07 (do while framing)
 
 - Add `enqueue` (in its service module) to `NON_COMMITTING_HELPERS` in `backend/tests/test_architecture.py`, so
   fitness test 4 fails if it ever commits (CLAUDE.md rule 5).
@@ -118,7 +140,7 @@ This solves the dual-write problem for email and powers all background work with
   expects the whole stem of `TEST_DATABASE_URL`'s name, so it fails when the stem is longer than about 39
   bytes (the per-run name truncates it). Use `assert_named_per_run` there, as the scratch-name test does.
 
-## Frame notes (filled by the agent in step 1)
+### Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
 - Criteria loosened (with reason; also listed in the inbox):

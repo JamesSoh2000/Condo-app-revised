@@ -44,6 +44,14 @@ class JsonFormatter(logging.Formatter):
             "error_type",
             "error_message",
             "reason",
+            # The job worker (P3-01a).
+            "worker_id",
+            "job_id",
+            "job_kind",
+            "attempt",
+            "succeeded",
+            "retried",
+            "dead",
         ]
 
         for field in extra_fields:

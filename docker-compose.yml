@@ -47,6 +47,42 @@ services:
     networks:
       - local_net
 
+  # The background job worker (P3-01a, ADR-0006): the app's image and code, no HTTP and no ports.
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - path: ./backend/.env.dev
+        required: true
+      - path: ./backend/.env
+        required: false
+    volumes:
+      - ./backend:/app
+    command: python -m app.worker
+    depends_on:
+      db:
+        condition: service_healthy
+    # The image's healthcheck calls the API; the worker has none. Healthy while the loop touches its
+    # heartbeat file (app/jobs/worker.py::HEARTBEAT_FILE) at least every 120 s.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, sys, tempfile, time; p = os.path.join(tempfile.gettempdir(), 'worker_heartbeat'); sys.exit(time.time() - os.path.getmtime(p) > 120)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # SIGTERM lets the current job finish (P3-01a); a handler is cancelled after 50 s.
+    stop_grace_period: 60s
+    restart: unless-stopped
+    networks:
+      - local_net
+
   db:
     # Bump together with the CI service in .github/workflows/ci.yml. A new major can't open an older
     # major's data directory, so a major bump also gets a new volume name (README "Database upgrades").
