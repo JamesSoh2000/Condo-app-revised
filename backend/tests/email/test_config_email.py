@@ -82,6 +82,9 @@ def test_allowlist_is_comma_separated_from_the_environment(monkeypatch: pytest.M
         "a@b@example.test",
         "@example..test",
         "@-example.test",
+        "ann..lee@example.test",
+        ".ann@example.test",
+        "@" + "b" * 64 + ".test",
     ],
 )
 def test_malformed_allowlist_entry_fails(value: str) -> None:
@@ -92,13 +95,39 @@ def test_malformed_allowlist_entry_fails(value: str) -> None:
 # Criterion 16
 
 
+# Review round 2: the shorthand IPv4 forms browsers read as 127.0.0.1 (and `0` as 0.0.0.0).
+NUMERIC_LOOPBACK = [
+    "https://127.1",
+    "https://2130706433",
+    "https://0177.0.0.1",
+    "https://0x7f000001",
+    "https://0x7f.1",
+    "https://0",
+]
+
+
 @pytest.mark.parametrize("env", ["staging", "prod"])
 @pytest.mark.parametrize(
-    "url", ["http://localhost:5173", "https://127.0.0.1", "https://app.localhost"]
+    "url",
+    ["http://localhost:5173", "https://127.0.0.1", "https://app.localhost", *NUMERIC_LOOPBACK],
 )
 def test_deployed_app_base_url_is_not_loopback(env: str, url: str) -> None:
     with pytest.raises(ValidationError, match="APP_BASE_URL"):
         make(app_env=env, **(DEPLOYED | {"app_base_url": url}))
+
+
+@pytest.mark.parametrize("env", ["staging", "prod"])
+@pytest.mark.parametrize("origin", NUMERIC_LOOPBACK)
+def test_deployed_trusted_origins_reject_numeric_loopback(env: str, origin: str) -> None:
+    with pytest.raises(ValidationError, match="localhost origins"):
+        make(app_env=env, **(DEPLOYED | {"trusted_origins": [origin]}))
+
+
+@pytest.mark.parametrize(
+    "url", ["https://127.example", "https://10.0.0.1", "https://app.127.example.org"]
+)
+def test_deployed_app_base_url_accepts_hosts_that_are_not_loopback(url: str) -> None:
+    assert make(app_env="prod", **(DEPLOYED | {"app_base_url": url})).app_base_url == url
 
 
 def test_prod_app_base_url_is_https() -> None:
@@ -130,6 +159,7 @@ def test_prod_email_from_is_not_the_dev_default() -> None:
         "Maple <no-reply>",
         "a@example.org, b@example.org",
         "Maple <no-reply@example.org>\r\nBcc: x@example.org",
+        "Maple <no..reply@example.org>",
     ],
 )
 def test_email_from_is_one_address(value: str) -> None:

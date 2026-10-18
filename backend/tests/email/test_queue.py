@@ -41,6 +41,13 @@ async def test_queue_email_enqueues_one_email_send_job(db: AsyncSession) -> None
     }
 
 
+@pytest.mark.parametrize(
+    "address", ["first.last@example.test", "a.b.c+tag@example.test", "o'reilly@example.test"]
+)
+async def test_queue_email_accepts_dotted_local_parts(db: AsyncSession, address: str) -> None:
+    assert await queue_email(db, to=address, template="test", context={}) is not None
+
+
 async def test_queue_email_dedupes_on_its_key(db: AsyncSession) -> None:
     first = await queue_email(db, to="a@example.test", template="test", context={}, dedupe_key="k1")
     second = await queue_email(
@@ -69,6 +76,13 @@ BAD_ARGUMENTS: list[tuple[str, dict[str, Any]]] = [
     ("NUL", {"to": "a\x00@example.test"}),
     ("too long", {"to": "a" * 243 + "@example.test"}),
     ("empty", {"to": ""}),
+    # Review round 2: dot-atom local parts, and the RFC 5321 length limits a server would refuse.
+    ("leading dot", {"to": ".ann@example.test"}),
+    ("double dot", {"to": "ann..lee@example.test"}),
+    ("trailing dot", {"to": "ann.@example.test"}),
+    ("local part over 64", {"to": "a" * 65 + "@example.test"}),
+    ("domain label over 63", {"to": "a@" + "b" * 64 + ".test"}),
+    ("domain trailing dot", {"to": "a@example.test."}),
     ("context not JSON", {"context": {"when": object()}}),
     ("context key not a string", {"context": {1: "x"}}),
     ("context not a dict", {"context": ["x"]}),
@@ -104,7 +118,8 @@ async def test_queue_email_rejects_bad_arguments_and_enqueues_nothing(
 
 
 async def test_queue_email_accepts_the_longest_address(db: AsyncSession) -> None:
-    address = "a" * 241 + "@example.test"
+    # A 64-character local part and 63-character labels: every limit at once.
+    address = "a" * 64 + "@" + ".".join(["b" * 63, "c" * 63, "d" * 56]) + ".test"
     assert len(address) == 254
 
     assert await queue_email(db, to=address, template="test", context={}) is not None

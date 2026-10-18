@@ -35,7 +35,13 @@ def committed_db(
 
 
 @pytest.mark.parametrize(
-    "address", ["not-an-address", "a@example.test, b@example.test", "a@example.test\nBcc: b@x.test"]
+    "address",
+    [
+        "not-an-address",
+        "a@example.test, b@example.test",
+        "a@example.test\nBcc: b@x.test",
+        "ann..lee@example.test",
+    ],
 )
 def test_bad_address_exits_1_without_a_session(
     address: str, monkeypatch: pytest.MonkeyPatch

@@ -1,5 +1,6 @@
 import ipaddress
 import re
+import socket
 from datetime import timedelta
 from email.utils import getaddresses
 from functools import lru_cache
@@ -17,11 +18,14 @@ LOCAL_DEV_SECRET_KEY = "change-me-in-local-dev-only"  # noqa: S105
 # labels are letters, digits and inner dashes, with no trailing dot.
 _LABEL = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?"
 _ORIGIN = re.compile(rf"https?://{_LABEL}(\.{_LABEL})*(:[1-9][0-9]{{0,4}})?")
-# One email address, as `queue_email` and the allowlist accept it (P3-02): no whitespace, control
-# characters or the separators of an address list; one `@`; a domain of letter/digit/dash labels.
-_DOMAIN = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*"
-EMAIL_ADDRESS = re.compile(rf"[^@\s\x00-\x1f\x7f,;:<>()\[\]\\\"]+@{_DOMAIN}", re.IGNORECASE)
+# One email address, as `queue_email` and the allowlist accept it (P3-02): a dot-atom local part of
+# at most 64 characters (no whitespace, control characters or address-list separators, no empty
+# atom) and a domain of letter/digit/dash labels of at most 63 (RFC 5321 limits; review round 2).
+_DOMAIN = r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*"
+_ATOM = r"[^@.\s\x00-\x1f\x7f,;:<>()\[\]\\\"]+"
+EMAIL_ADDRESS = re.compile(rf"{_ATOM}(\.{_ATOM})*@{_DOMAIN}", re.IGNORECASE)
 MAX_EMAIL_ADDRESS_LENGTH = 254
+MAX_LOCAL_PART_LENGTH = 64
 DEV_EMAIL_FROM = "Building Management <no-reply@example.com>"
 
 
@@ -260,7 +264,11 @@ class Settings(BaseSettings):
 
 def is_email_address(value: str) -> bool:
     """One bare address (no display name), at most 254 characters."""
-    return len(value) <= MAX_EMAIL_ADDRESS_LENGTH and EMAIL_ADDRESS.fullmatch(value) is not None
+    return (
+        len(value) <= MAX_EMAIL_ADDRESS_LENGTH
+        and EMAIL_ADDRESS.fullmatch(value) is not None
+        and len(value.rpartition("@")[0]) <= MAX_LOCAL_PART_LENGTH
+    )
 
 
 def _is_single_address(value: str) -> bool:
@@ -292,14 +300,21 @@ def _has_default_port(origin: str) -> bool:
 
 
 def _is_loopback(origin: str) -> bool:
-    """localhost, *.localhost, 127.0.0.0/8, ::1 or 0.0.0.0, whatever the scheme or port."""
+    """localhost, *.localhost, 127.0.0.0/8, ::1 or 0.0.0.0, whatever the scheme or port.
+
+    Also the shorthand IPv4 forms browsers accept (`127.1`, `2130706433`, `0x7f.1`, octal), which
+    `inet_aton` reads the same way and `ipaddress` refuses (review round 2).
+    """
     host = urlsplit(origin).hostname or ""
     if host == "localhost" or host.endswith(".localhost"):
         return True
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
-        return False
+        try:
+            address = ipaddress.ip_address(socket.inet_aton(host))
+        except OSError:
+            return False
     return address.is_loopback or address.is_unspecified
 
 
