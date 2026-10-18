@@ -7,6 +7,7 @@ where they can be.
 
 import asyncio
 import contextlib
+import copy
 import importlib
 import logging
 import os
@@ -15,7 +16,6 @@ import secrets
 import signal
 import socket
 import tempfile
-import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
@@ -24,6 +24,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, or_, select, update
+from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -71,8 +72,15 @@ def describe_error(
 ) -> str:
     """`<Type>: <message>`, the sensitive payload values replaced, cut to `MAX_ERROR_LENGTH`.
 
-    Redacted before it is cut, so a secret at the cut can't leave a prefix behind.
+    Redacted before it is cut, so a secret at the cut can't leave a prefix behind. A database
+    error keeps only its types and SQLSTATE: SQLAlchemy's message holds the statement parameters,
+    shortened, so redacting the full values would miss them (review round 1, finding 2).
     """
+    if isinstance(exc, StatementError):
+        orig = exc.orig
+        code = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+        detail = type(orig).__name__ + (f", SQLSTATE {code}" if code else "")
+        return f"{type(exc).__name__}: database error ({detail}); message withheld"
     text = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
     for key in sensitive_keys:
         for secret in _strings(payload.get(key)):
@@ -122,14 +130,34 @@ class Worker:
                 break
             # Per job too: a batch of slow jobs is not a hung worker.
             HEARTBEAT_FILE.touch()
-            await self._process(job)
+            # The batch shares one lease, and the jobs before this one may have used it up: take a
+            # full lease now, or skip the job if another worker has reclaimed it (review round 1).
+            if await self._renew(job):
+                await self._process(job)
         return len(jobs)
 
     async def run_forever(
         self, stop: asyncio.Event, *, batch: int = 10, idle_sleep: float = 1.0
     ) -> None:
         """Run until `stop` is set; the job running then finishes first."""
-        last_beat = time.monotonic()
+        heartbeats = asyncio.create_task(self._heartbeats(stop))
+        try:
+            await self._loop(stop, batch, idle_sleep)
+        finally:
+            heartbeats.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeats
+
+    async def _heartbeats(self, stop: asyncio.Event) -> None:
+        """Log `worker_heartbeat` every interval, also while a long batch runs (review round 1)."""
+        while not stop.is_set():
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=self._heartbeat_interval)
+            if not stop.is_set():
+                logger.info("worker_heartbeat", extra={"worker_id": self.worker_id, **self._counts})
+                self._counts = dict.fromkeys(self._counts, 0)
+
+    async def _loop(self, stop: asyncio.Event, batch: int, idle_sleep: float) -> None:
         while not stop.is_set():
             try:
                 claimed = await self.run_once(batch, stop)
@@ -142,10 +170,6 @@ class Worker:
             else:
                 idle_sleep_now = idle_sleep
             HEARTBEAT_FILE.touch()
-            if time.monotonic() - last_beat >= self._heartbeat_interval:
-                logger.info("worker_heartbeat", extra={"worker_id": self.worker_id, **self._counts})
-                self._counts = dict.fromkeys(self._counts, 0)
-                last_beat = time.monotonic()
             if not claimed:
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(stop.wait(), timeout=idle_sleep_now)
@@ -195,7 +219,8 @@ class Worker:
         if spec is None:
             await self._fail(job, f"no handler registered for job kind {job.kind!r}", dead=True)
             return
-        context_payload = dict(job.payload)
+        # Deep: a handler changing nested values must not change what is redacted or scrubbed.
+        context_payload = copy.deepcopy(job.payload)
         try:
             async with self._sessions() as db:
                 ctx = registry.JobContext(db=db, job_id=job.id, kind=job.kind, attempt=job.attempts)
@@ -256,6 +281,27 @@ class Worker:
             logger.warning("job_lease_lost", extra={"job_id": str(job.id), "job_kind": job.kind})
             return False
         return True
+
+    async def _renew(self, job: ClaimedJob) -> bool:
+        """Extend this worker's lease on `job` to a full `LEASE`; False if it no longer holds it."""
+        async with self._sessions() as db:
+            renewed = await db.execute(
+                update(Job)
+                .where(
+                    Job.id == job.id,
+                    Job.status == JobStatus.RUNNING,
+                    Job.locked_by == self.worker_id,
+                    Job.attempts == job.attempts,
+                )
+                .values(locked_until=clock.now() + LEASE)
+                .returning(Job.id)
+                .execution_options(synchronize_session=False)
+            )
+            held = renewed.first() is not None
+            await db.commit()
+        if not held:
+            logger.warning("job_lease_lost", extra={"job_id": str(job.id), "job_kind": job.kind})
+        return held
 
     async def _release(self, jobs: Sequence[ClaimedJob]) -> None:
         """Give claimed but unstarted jobs back, as if never claimed (shutdown)."""

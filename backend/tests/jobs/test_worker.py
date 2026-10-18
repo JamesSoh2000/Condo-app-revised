@@ -525,3 +525,150 @@ async def test_heartbeat_file_is_touched_per_loop_and_per_job(
     stop.set()
     await asyncio.wait_for(task, timeout=5)
     assert beat.exists(), "touched by an idle loop"
+
+
+# Review round 1 (Codex gpt-6.1-sol): each test failed before its fix.
+
+
+async def test_waiting_batch_job_is_not_run_by_two_live_workers(
+    committed_sessions, handlers: Calls, frozen_clock
+):
+    """Finding 1: jobs later in a batch wait while earlier ones run. Their lease must not lapse
+    unnoticed, or another worker reclaims a job this one is about to run."""
+    runs: list[tuple[int, str]] = []
+    third_started = asyncio.Event()
+    release_third = asyncio.Event()
+
+    @job_handler("test.batchlease")
+    async def batchlease(payload: dict[str, Any], ctx: JobContext) -> None:
+        runs.append((payload["n"], ctx.kind))
+        if payload["n"] < 3:
+            frozen_clock.advance(seconds=40)  # below the handler timeout, past the lease in total
+        elif ctx.attempt == 1:
+            third_started.set()
+            await release_third.wait()
+
+    for n in (1, 2, 3):
+        await add(committed_sessions, "test.batchlease", {"n": n})
+        frozen_clock.advance(seconds=0.001)
+    a = worker(committed_sessions, worker_id="worker-a")
+    b = worker(committed_sessions, worker_id="worker-b")
+
+    task = asyncio.create_task(a.run_once())
+    try:
+        await asyncio.wait_for(third_started.wait(), timeout=5)
+        assert await b.run_once() == 0
+    finally:
+        release_third.set()
+        await task
+
+    assert sorted(n for n, _ in runs) == [1, 2, 3]
+
+
+async def test_job_whose_lease_another_worker_took_is_skipped(committed_sessions, handlers: Calls):
+    """Neighbour of finding 1: if a waiting job of the batch was reclaimed meanwhile, this worker
+    must not run it at all."""
+
+    @job_handler("test.first")
+    async def first(payload: dict[str, Any], ctx: JobContext) -> None:
+        # Meanwhile worker-b reclaims the second job (as after an expired lease).
+        async with committed_sessions() as other:
+            await other.execute(
+                update(Job)
+                .where(Job.id == payload["second"])
+                .values(locked_by="worker-b", attempts=Job.attempts + 1)
+            )
+            await other.commit()
+
+    second_id = await add(committed_sessions, "test.echo", {"n": 2}, run_at=clock.now())
+    first_id = await add(
+        committed_sessions,
+        "test.first",
+        {"second": str(second_id)},
+        run_at=clock.now() - timedelta(seconds=1),
+    )
+
+    assert await worker(committed_sessions, worker_id="worker-a").run_once() == 2
+
+    assert (await load(committed_sessions, first_id)).status is JobStatus.SUCCEEDED
+    assert handlers.of("test.echo") == [], "worker-a skipped the job it no longer holds"
+    second = await load(committed_sessions, second_id)
+    assert (second.status, second.locked_by, second.attempts) == (JobStatus.RUNNING, "worker-b", 2)
+
+
+@pytest.mark.parametrize("kind_length", [65, 64])
+async def test_database_error_keeps_no_parameters_in_last_error(
+    sessions, handlers: Calls, kind_length: int
+):
+    """Finding 2: SQLAlchemy cuts long parameters in its message, so value redaction misses them;
+    a database error is stored without its message. 64 makes the insert valid, then a duplicate."""
+    token = "usable-private-reset-token"  # noqa: S105 (a fake)
+    link = f"https://example.test/reset?token={token}&padding=" + "x" * 600
+
+    @job_handler("test.dbsecret", sensitive_keys=("link",))
+    async def dbsecret(payload: dict[str, Any], ctx: JobContext) -> None:
+        for _ in range(2):  # the second insert breaks the dedupe key's unique constraint
+            await ctx.db.execute(
+                Job.__table__.insert().values(
+                    kind="k" * kind_length, payload={"link": payload["link"]}, dedupe_key=link[:200]
+                )
+            )
+
+    job_id = await add(sessions, "test.dbsecret", {"link": link}, max_attempts=1)
+
+    await worker(sessions).run_once()
+
+    job = await load(sessions, job_id)
+    assert job.status is JobStatus.DEAD
+    assert job.last_error is not None
+    assert token not in job.last_error
+    assert "padding" not in job.last_error
+    expected = "DBAPIError" if kind_length == 65 else "IntegrityError"
+    assert job.last_error.startswith(f"{expected}: database error (")
+
+
+@pytest.mark.parametrize("container", ["dict", "list"])
+async def test_nested_handler_mutation_does_not_remove_redaction_source(
+    sessions, handlers: Calls, container: str
+):
+    """Finding 3: the handler gets a deep copy, so popping a nested secret can't hide it from
+    redaction or from the success scrub."""
+    token = "nested-private-token"  # noqa: S105 (a fake)
+    value: Any = {"token": token} if container == "dict" else [token]
+
+    @job_handler("test.mutatingsecret", sensitive_keys=("credentials",))
+    async def mutating(payload: dict[str, Any], ctx: JobContext) -> None:
+        nested = payload["credentials"]
+        secret = nested.pop("token") if isinstance(nested, dict) else nested.pop()
+        raise RuntimeError(f"failed sending {secret}")
+
+    job_id = await add(sessions, "test.mutatingsecret", {"credentials": value})
+
+    await worker(sessions).run_once()
+
+    job = await load(sessions, job_id)
+    assert job.last_error == "RuntimeError: failed sending [redacted]"
+    assert job.payload == {"credentials": value}
+
+
+async def test_heartbeat_is_logged_while_a_batch_runs(sessions, handlers: Calls, caplog):
+    """Finding 4 (Medium): a batch of slow jobs must not hold back the heartbeat log."""
+    caplog.set_level(logging.INFO, logger="app.jobs.worker")
+    stop = asyncio.Event()
+    seen: list[bool] = []
+
+    @job_handler("test.busy")
+    async def busy(payload: dict[str, Any], ctx: JobContext) -> None:
+        seen.append(any(r.getMessage() == "worker_heartbeat" for r in caplog.records))
+        await asyncio.sleep(0.1)
+        if len(seen) == 3:
+            stop.set()
+
+    for _ in range(3):
+        await add(sessions, "test.busy", {})
+
+    await asyncio.wait_for(
+        worker(sessions, heartbeat_interval=0.15).run_forever(stop, idle_sleep=0.01), timeout=5
+    )
+
+    assert seen == [False, False, True], "one beat during the batch, before its third job"
