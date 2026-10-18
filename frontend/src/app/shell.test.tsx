@@ -467,3 +467,33 @@ describe('the /login session check follows the current next (review round 2, Cod
     expect(location()).toBe('/Packages');
   });
 });
+
+describe('the login follows the current next (review round 2, Claude L2)', () => {
+  // Same as the session check above: Back between two /login URLs keeps the form mounted mid-login.
+  it('goes to the next of the URL when the login answers, not the one it was submitted with', async () => {
+    let signedIn = false;
+    let answerLogin!: (response: Response) => void;
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => (signedIn ? json(RESIDENT_ME) : problem(401, 'unauthorized')),
+      'POST /api/auth/login': () =>
+        new Promise<Response>((resolve) => {
+          answerLogin = (response) => {
+            signedIn = true;
+            resolve(response);
+          };
+        }),
+    });
+    const app = renderApp(['/login?next=%2FPackages', '/login?next=%2FMaintenance']);
+    await screen.findByRole('heading', { name: /sign in/i });
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'resident1@example.test' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'DevPassword!2026' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await waitFor(() => expect(calls(fetchMock)).toContain('POST /api/auth/login'));
+
+    act(() => app.navigate()(-1));
+    expect(location()).toBe('/login?next=%2FPackages');
+    await act(() => Promise.resolve(answerLogin(noContent())));
+
+    await waitFor(() => expect(location()).toBe('/Packages'));
+  });
+});

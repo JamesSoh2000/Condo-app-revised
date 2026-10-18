@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { useMe } from '@/app/AuthProvider';
 import { useBuilding, useBuildingContext } from '@/app/BuildingProvider';
@@ -8,12 +9,16 @@ import { useCanViewAs } from '@/app/MainNav';
 /**
  * The header's account menu (P2-06c): a disclosure, so a button that shows a panel (WAI-ARIA disclosure
  * pattern), not an ARIA `menu`, which can't hold the `<select>` and radio buttons it contains. Escape and a
- * click outside close it; Escape returns focus to the button.
+ * click outside close it; Escape returns focus to the button. It is open only at the location it was opened
+ * at, so following a link (or Back) closes it (review round 2, Claude L4).
  */
 export function AccountMenu({ onLogout, loggingOut }: { onLogout: () => void; loggingOut: boolean }) {
   const { data: me } = useMe();
   const { buildingId } = useBuildingContext();
-  const [open, setOpen] = useState(false);
+  const { key } = useLocation();
+  const [openAt, setOpenAt] = useState<string | null>(null);
+  const open = openAt === key;
+  const setOpen = (value: boolean) => setOpenAt(value ? key : null);
   const panelId = useId();
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -21,7 +26,7 @@ export function AccountMenu({ onLogout, loggingOut }: { onLogout: () => void; lo
   useEffect(() => {
     if (!open) return;
     const onPointer = (event: MouseEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
+      if (!root.current?.contains(event.target as Node)) setOpenAt(null);
     };
     document.addEventListener('mousedown', onPointer);
     return () => document.removeEventListener('mousedown', onPointer);
@@ -40,7 +45,7 @@ export function AccountMenu({ onLogout, loggingOut }: { onLogout: () => void; lo
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
         className="rounded border px-3 py-1 text-sm"
       >
         <span className="sr-only">Account menu: </span>

@@ -522,6 +522,20 @@ describe('review round 2 (Codex L1)', () => {
 describe('header account menu (criterion 4)', () => {
   const button = () => screen.getByRole('button', { name: /account menu/i });
 
+  it('closes when the route changes, as when a nav link is followed (review round 2, Claude L4)', async () => {
+    stubApi(persona(['resident']));
+    renderApp(['/']);
+    await findNavItems();
+
+    fireEvent.click(button());
+    expect(button().getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(within(nav()!).getByRole('link', { name: 'My packages' }));
+
+    await waitFor(() => expect(location()).toBe('/Packages'));
+    expect(button().getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: /log out/i })).toBeNull();
+  });
+
   it('opens a panel with the email, the building and Log out, and closes on Escape with focus back', async () => {
     stubApi(persona(['resident']));
     renderApp(['/']);
