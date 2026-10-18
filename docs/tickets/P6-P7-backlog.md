@@ -61,6 +61,9 @@ interfaces and the decisions to make while framing.
   with cards linking to the slices.
 - Show only enabled features, and only domains that exist. No cards for deferred domains.
 - Replace the legacy `Dashboard` and `Home` pages.
+- Carried from P2-06c: council "view as" (`useBuildingContext().viewAs`, applied only when
+  `useCanViewAs(building)` is true) changes only the nav today. The landing page may use it to pick the council
+  member's cards; it must never reach the API or a guard (PR #65 D3).
 
 ### P6-06 — Minimal profile and staff contacts · Lane B · Tier 2
 - **Goal:** `PATCH /api/auth/me` (full_name, phone, locale) with a profile page, plus
