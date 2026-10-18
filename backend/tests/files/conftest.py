@@ -8,7 +8,9 @@ share objects (the same reason as the per-run database, tests/conftest.py).
 
 import os
 import secrets
+import uuid
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -82,3 +84,29 @@ async def post_form(upload: dict[str, Any], data: bytes, **field_overrides: str)
     fields = {**upload["fields"], **field_overrides}
     async with httpx.AsyncClient() as browser:
         return await browser.post(upload["url"], data=fields, files={"file": ("f", data)})
+
+
+@dataclass
+class Uploaded:
+    file_id: uuid.UUID
+    upload: dict[str, Any]
+
+
+async def upload_ready(
+    client: httpx.AsyncClient, building_id: uuid.UUID, data: bytes, **overrides: object
+) -> Uploaded:
+    """Create, upload and complete a file as `client`'s user; it is `ready` afterwards."""
+    payload = {
+        "purpose": "maintenance_photo",
+        "filename": "leak.png",
+        "content_type": "image/png",
+        "size_bytes": len(data),
+        **overrides,
+    }
+    r = await client.post(f"/api/buildings/{building_id}/files", json=payload)
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert (await post_form(out["upload"], data)).status_code == 204
+    r = await client.post(f"/api/buildings/{building_id}/files/{out['file_id']}/complete")
+    assert r.status_code == 200, r.text
+    return Uploaded(file_id=uuid.UUID(out["file_id"]), upload=out["upload"])
