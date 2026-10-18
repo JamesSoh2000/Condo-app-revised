@@ -155,9 +155,7 @@ async def test_another_buildings_file_is_404_even_if_the_hook_grants(as_user, db
     multi = await as_user(world.multi)
     uploaded = await upload_ready(multi, world.b.id, png(), purpose="package_photo")
     calls: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]] = []
-    purposes.register_can_view(
-        FilePurpose.PACKAGE_PHOTO, recording_hook({world.multi.id}, calls)
-    )
+    purposes.register_can_view(FilePurpose.PACKAGE_PHOTO, recording_hook({world.multi.id}, calls))
 
     assert_problem(await multi.get(url(world.a.id, uploaded.file_id)), 404, "file_not_found")
     await attach(db, uploaded.file_id)
@@ -206,9 +204,7 @@ async def test_hook_grants_and_refuses_an_attached_file(as_user, db, world, hook
         assert r.status_code == 200, r.text
         assert (await fetch(r.json()["url"])).content == data
     for persona in (world.a_council, world.a_resident1):
-        await assert_not_visible(
-            await as_user(persona.user), "GET", link, code="file_not_found"
-        )
+        await assert_not_visible(await as_user(persona.user), "GET", link, code="file_not_found")
 
     assert calls == [
         (world.a.id, persona.user.id, uploaded.file_id)
@@ -220,7 +216,9 @@ async def test_attached_file_without_a_hook_is_hidden_from_its_uploader(as_user,
     resident = await as_user(world.a_resident1.user)
     uploaded = await upload_ready(resident, world.a.id, png())
     # A hook for another purpose doesn't apply.
-    purposes.register_can_view(FilePurpose.PACKAGE_PHOTO, recording_hook({world.a_resident1.user.id}, []))
+    purposes.register_can_view(
+        FilePurpose.PACKAGE_PHOTO, recording_hook({world.a_resident1.user.id}, [])
+    )
     await attach(db, uploaded.file_id)
 
     assert_problem(await resident.get(url(world.a.id, uploaded.file_id)), 404, "file_not_found")

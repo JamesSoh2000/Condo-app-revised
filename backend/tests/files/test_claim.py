@@ -69,9 +69,7 @@ async def a_file(
 
 async def attachment(db: AsyncSession, file_id: uuid.UUID) -> tuple[Any, Any]:
     row = (
-        await db.execute(
-            select(File.attached_type, File.attached_id).where(File.id == file_id)
-        )
+        await db.execute(select(File.attached_type, File.attached_id).where(File.id == file_id))
     ).one()
     return (row.attached_type, row.attached_id)
 
@@ -91,7 +89,12 @@ async def test_uploader_claims_own_ready_file(db, world, no_commit):
     record_id = uuid.uuid4()
 
     claimed = await claim_file(
-        db, ctx_for(world.a_resident1, Role.RESIDENT), file.id, MAINTENANCE, "maintenance_request", record_id
+        db,
+        ctx_for(world.a_resident1, Role.RESIDENT),
+        file.id,
+        MAINTENANCE,
+        "maintenance_request",
+        record_id,
     )
 
     assert claimed.id == file.id
@@ -102,7 +105,12 @@ async def test_uploader_claims_own_ready_file(db, world, no_commit):
 async def test_claim_of_an_unknown_id_is_404(db, world, no_commit):
     with pytest.raises(FileNotFound):
         await claim_file(
-            db, ctx_for(world.a_resident1, Role.RESIDENT), uuid.uuid4(), MAINTENANCE, "r", uuid.uuid4()
+            db,
+            ctx_for(world.a_resident1, Role.RESIDENT),
+            uuid.uuid4(),
+            MAINTENANCE,
+            "r",
+            uuid.uuid4(),
         )
 
 
@@ -112,7 +120,12 @@ async def test_another_buildings_file_is_404_and_stays_unattached(db, world, no_
 
     with pytest.raises(FileNotFound):
         await claim_file(
-            db, ctx_of(world.multi.id, world.a.id, Role.RESIDENT), file.id, PACKAGE, "r", uuid.uuid4()
+            db,
+            ctx_of(world.multi.id, world.a.id, Role.RESIDENT),
+            file.id,
+            PACKAGE,
+            "r",
+            uuid.uuid4(),
         )
 
     assert await attachment(db, file.id) == (None, None)
@@ -158,7 +171,12 @@ async def test_staff_may_claim_another_staff_members_file(db, world, no_commit):
     package_id = uuid.uuid4()
 
     await claim_file(
-        db, ctx_for(world.a_manager, Role.PROPERTY_MANAGEMENT), photo.id, PACKAGE, "package", package_id
+        db,
+        ctx_for(world.a_manager, Role.PROPERTY_MANAGEMENT),
+        photo.id,
+        PACKAGE,
+        "package",
+        package_id,
     )
     # Security uploads package photos too, but never notice attachments.
     with pytest.raises(InvalidFile):

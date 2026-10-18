@@ -1,12 +1,15 @@
-"""What each file purpose accepts (ADR-0007 "Limits"), and the magic numbers that prove a type.
-
-P3-04b adds each purpose's `can_view` hook, registered by the owning domain.
+"""What each file purpose accepts (ADR-0007 "Limits"), the magic numbers that prove a type, and
+who may download an attached file: each purpose's `can_view` hook, registered by the owning domain.
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from app.files.models import FilePurpose
-from app.memberships.enums import Role
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.files.models import File, FilePurpose
+from app.memberships.enums import STAFF_ROLES, Role
+from app.tenancy.context import TenantContext
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_PDF_BYTES = 20 * 1024 * 1024
@@ -40,6 +43,30 @@ PURPOSES: dict[FilePurpose, PurposeRule] = {
         frozenset({"application/pdf"}), MAX_PDF_BYTES, frozenset({Role.PROPERTY_MANAGEMENT})
     ),
 }
+
+
+def is_staff_purpose(rule: PurposeRule) -> bool:
+    """Only staff upload it, so any of its uploaders may attach another one's file."""
+    return rule.uploader_roles <= STAFF_ROLES
+
+
+# Whether the caller may download `file`, a `ready` file of the caller's building that is attached
+# to one of the domain's records (`attached_type`, `attached_id`).
+CanView = Callable[[TenantContext, File, AsyncSession], Awaitable[bool]]
+
+_CAN_VIEW: dict[FilePurpose, CanView] = {}
+
+
+def register_can_view(purpose: FilePurpose, hook: CanView) -> None:
+    """Called once by the domain that owns `purpose` files. Without a hook, an attached file of
+    that purpose is visible to nobody."""
+    if purpose in _CAN_VIEW:
+        raise ValueError(f"a can_view hook for {purpose} is already registered")
+    _CAN_VIEW[purpose] = hook
+
+
+def can_view_hook(purpose: FilePurpose) -> CanView | None:
+    return _CAN_VIEW.get(purpose)
 
 
 def matches_magic(content_type: str, head: bytes) -> bool:
