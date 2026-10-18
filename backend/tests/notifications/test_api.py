@@ -1,4 +1,4 @@
-"""The notification routes (P3-03 criteria 2–5, 7–9) and the 10-case rows that apply to them."""
+"""The notification routes (P3-03 criteria 2-5, 7-9) and the 10-case rows that apply to them."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -100,9 +100,7 @@ async def test_unread_only_and_pagination(
     assert [item["id"] for item in page2["items"]] == [str(first.id)]
     assert page2["next_cursor"] is None
 
-    unread_page = (
-        await client.get(url(world), params={"unread_only": "true", "limit": 1})
-    ).json()
+    unread_page = (await client.get(url(world), params={"unread_only": "true", "limit": 1})).json()
     unread_rest = (
         await client.get(
             url(world),

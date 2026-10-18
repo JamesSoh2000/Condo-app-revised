@@ -1,4 +1,4 @@
-"""`notify` and the recipient helpers (P3-03 criteria 1, 1a–1d, 6, 10–12)."""
+"""`notify` and the recipient helpers (P3-03 criteria 1, 1a-1d, 6, 10-12)."""
 
 import logging
 import time
@@ -344,7 +344,10 @@ async def test_600_recipients_are_inserted_in_one_statement_under_300_ms(
     user_ids = [uuid7() for _ in range(600)]
     await db.execute(
         insert(User).values(
-            [{"id": uid, "email": f"bulk{n}@example.com", "full_name": "x"} for n, uid in enumerate(user_ids)]
+            [
+                {"id": uid, "email": f"bulk{n}@example.com", "full_name": "x"}
+                for n, uid in enumerate(user_ids)
+            ]
         )
     )
     await db.execute(
@@ -407,9 +410,10 @@ async def test_staff_user_ids_returns_active_staff_of_the_building(
 ) -> None:
     # multi is security only in B; b_manager is in B.
     assert await staff_user_ids(db, world.a.id, [Role.SECURITY]) == [world.a_security.user.id]
-    assert set(
-        await staff_user_ids(db, world.a.id, [Role.PROPERTY_MANAGEMENT, Role.COUNCIL])
-    ) == {world.a_manager.user.id, world.a_council.user.id}
+    assert set(await staff_user_ids(db, world.a.id, [Role.PROPERTY_MANAGEMENT, Role.COUNCIL])) == {
+        world.a_manager.user.id,
+        world.a_council.user.id,
+    }
     assert await staff_user_ids(db, world.b.id, [Role.SECURITY]) == [world.multi.id]
     assert await staff_user_ids(db, world.a.id, []) == []
 
@@ -435,7 +439,9 @@ def test_every_kinds_template_renders(kind: str, locale: str) -> None:
     template = KINDS[kind].email_template
     assert template is not None  # all starting kinds email (ticket: "all registered kinds email")
     email = render_email(
-        template, {"title": "A package arrived", "body": "At the desk.", "link": "/packages"}, locale
+        template,
+        {"title": "A package arrived", "body": "At the desk.", "link": "/packages"},
+        locale,
     )
     assert email.subject.endswith("A package arrived")
     assert "At the desk." in email.text

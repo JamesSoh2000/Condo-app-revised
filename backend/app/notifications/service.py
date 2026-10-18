@@ -110,7 +110,9 @@ async def notify(
             user = by_id[user_id]
             if not user.is_active or not is_email_address(user.email):
                 # By id only: never log the address (CLAUDE.md rule 10).
-                logger.info("notify: no email for user %s (inactive or unsendable address)", user_id)
+                logger.info(
+                    "notify: no email for user %s (inactive or unsendable address)", user_id
+                )
                 continue
             await queue_email(
                 db,
@@ -204,9 +206,7 @@ async def list_notifications(
 
 
 async def notification_summary(db: AsyncSession, ctx: TenantContext) -> NotificationSummary:
-    count = await db.scalar(
-        select(func.count()).where(*_own(ctx), Notification.read_at.is_(None))
-    )
+    count = await db.scalar(select(func.count()).where(*_own(ctx), Notification.read_at.is_(None)))
     return NotificationSummary(unread_count=count or 0)
 
 

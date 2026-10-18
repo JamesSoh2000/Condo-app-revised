@@ -93,6 +93,8 @@ describe('generated types (criterion 1)', () => {
         | '/api/auth/me'
         | '/api/auth/sessions'
         | '/api/buildings/{building_id}'
+        | '/api/buildings/{building_id}/notifications'
+        | '/api/buildings/{building_id}/notifications/summary'
         | '/api/health'
         | '/api/ready'
         | '/api/version'
