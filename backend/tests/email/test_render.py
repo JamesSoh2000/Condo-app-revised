@@ -14,6 +14,14 @@ def _email_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     point_settings_at(monkeypatch, 1025)
 
 
+# A layout for temp roots: without it, rendering fails on the missing `base.*` before it reaches
+# the case a test is about (review round 1).
+LAYOUT = {
+    "en/base.txt": "{% block body %}{% endblock %}",
+    "en/base.html": "{% block body %}{% endblock %}",
+}
+
+
 def write(root: Path, files: dict[str, str]) -> Path:
     for name, text in files.items():
         path = root / name
@@ -114,22 +122,25 @@ def test_missing_variable_is_an_error(tmp_path: Path, monkeypatch: pytest.Monkey
     root = write(
         tmp_path,
         {
-            "en/needs.subject.txt": "For {{ name }}",
-            "en/needs.txt": "x",
+            **LAYOUT,
+            "en/needs.subject.txt": "Hello",
+            "en/needs.txt": "{% extends base %}{% block body %}For {{ name }}{% endblock %}",
             "en/needs.html": "x",
         },
     )
     monkeypatch.setattr(templates, "TEMPLATES_DIR", root)
 
-    with pytest.raises(EmailTemplateError, match="needs"):
+    with pytest.raises(EmailTemplateError, match="'name' is undefined"):
         render_email("needs", {}, "en")
+    # The same template renders once the variable is given.
+    assert render_email("needs", {"name": "Ann"}, "en").text == "For Ann"
 
 
 def test_missing_part_is_an_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    root = write(tmp_path, {"en/half.subject.txt": "x", "en/half.txt": "x"})
+    root = write(tmp_path, {**LAYOUT, "en/half.subject.txt": "x", "en/half.txt": "x"})
     monkeypatch.setattr(templates, "TEMPLATES_DIR", root)
 
-    with pytest.raises(EmailTemplateError, match="half"):
+    with pytest.raises(EmailTemplateError, match=r"half\.html"):
         render_email("half", {}, "en")
 
 

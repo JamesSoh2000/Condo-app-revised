@@ -1,6 +1,7 @@
 """The `email.send` handler run by a real `Worker` against a fake SMTP server on a real socket
 (P3-02 criteria 1 to 4, 8, 9, 14, and the skip log of 15)."""
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -12,6 +13,7 @@ from app.email.service import queue_email
 from app.jobs.models import JobStatus
 from app.jobs.registry import HandlerSpec
 from app.jobs.worker import Worker
+from app.logging_config import JsonFormatter
 from tests.conftest import FrozenClock
 from tests.email.conftest import FakeSMTP, point_settings_at
 from tests.jobs.conftest import Sessions, load
@@ -171,7 +173,6 @@ async def test_smtp_5xx_goes_dead_without_retry(
 async def test_smtp_4xx_is_retried_and_error_has_no_context(
     sessions: Sessions, smtp: FakeSMTP, frozen_clock: FrozenClock, command: str
 ) -> None:
-    # The reply quotes a context value, so the redaction is what keeps it out of `last_error`.
     smtp.replies[command] = f"451 4.3.0 try again later {SECRET_NAME}"
     job_id = await queue(sessions)
 
@@ -183,7 +184,43 @@ async def test_smtp_4xx_is_retried_and_error_has_no_context(
     assert job.last_error is not None
     assert "451" in job.last_error
     assert SECRET_NAME not in job.last_error
-    assert "[redacted]" in job.last_error
+
+
+# Review round 1: a reply that echoes the message, with quotes Python escapes in the exception's
+# text, slipped past the exact-value redaction. The reply text is now never kept.
+QUOTED_PRIVATE = 'For "O\'Reilly": https://app.example.org/reset?token=synthetic-reset-token-73'
+
+
+@pytest.mark.parametrize(
+    ("command", "reply", "status", "kept"),
+    [
+        ("DATA", "451 4.3.0 rejected content: {}", JobStatus.QUEUED, "SMTP 451 4.3.0"),
+        ("RCPT", "450 4.2.1 busy: {}", JobStatus.QUEUED, "SMTP 450 4.2.1"),
+        ("MAIL", "421 service closing: {}", JobStatus.QUEUED, "SMTP 421"),
+        ("DATA", "554 5.6.0 rejected content: {}", JobStatus.DEAD, "SMTP 554 5.6.0"),
+        ("RCPT", "550 5.1.1 unknown: {}", JobStatus.DEAD, "SMTP 550 5.1.1"),
+    ],
+)
+async def test_smtp_reply_text_never_reaches_last_error(
+    sessions: Sessions,
+    smtp: FakeSMTP,
+    frozen_clock: FrozenClock,
+    command: str,
+    reply: str,
+    status: JobStatus,
+    kept: str,
+) -> None:
+    smtp.replies[command] = reply.format(QUOTED_PRIVATE)
+    job_id = await queue(sessions, context={"name": QUOTED_PRIVATE})
+
+    await worker(sessions).run_once()
+
+    job = await load(sessions, job_id)
+    assert job.status is status
+    assert job.last_error is not None
+    assert "synthetic-reset-token-73" not in job.last_error
+    assert "Reilly" not in job.last_error
+    assert kept in job.last_error
 
 
 async def test_last_attempt_4xx_goes_dead(
@@ -223,9 +260,12 @@ async def test_non_allowlisted_recipient_is_skipped_and_succeeds(
     assert smtp.messages == []
     skips = [r for r in caplog.records if r.getMessage() == "email_skipped_not_allowlisted"]
     assert len(skips) == 1
-    assert skips[0].__dict__["job_id"] == str(job_id)
-    assert skips[0].__dict__["recipient_domain"] == "gmail.com"
     assert all("someone" not in str(value) for value in vars(skips[0]).values())
+    # What is written out: the JSON formatter keeps only the fields it lists (review round 1).
+    emitted = json.loads(JsonFormatter().format(skips[0]))
+    assert emitted["job_id"] == str(job_id)
+    assert emitted["recipient_domain"] == "gmail.com"
+    assert "someone" not in json.dumps(emitted)
 
 
 async def test_allowlisted_recipient_is_sent(
@@ -250,6 +290,10 @@ async def test_sent_log_has_no_address_or_context(
     assert "email_sent" in text
     assert "private.person" not in text
     assert SECRET_NAME not in text
+    sent = next(r for r in caplog.records if r.getMessage() == "email_sent")
+    emitted = json.loads(JsonFormatter().format(sent))
+    assert emitted["email_template"] == "test"
+    assert emitted["job_id"]
 
 
 # Criterion 14

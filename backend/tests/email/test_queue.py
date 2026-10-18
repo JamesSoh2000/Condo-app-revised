@@ -72,6 +72,18 @@ BAD_ARGUMENTS: list[tuple[str, dict[str, Any]]] = [
     ("context not JSON", {"context": {"when": object()}}),
     ("context key not a string", {"context": {1: "x"}}),
     ("context not a dict", {"context": ["x"]}),
+    # What Postgres's JSONB or the jobs table would refuse, aborting the caller's transaction
+    # (review round 1).
+    ("NaN", {"context": {"n": float("nan")}}),
+    ("Infinity", {"context": {"n": float("inf")}}),
+    ("-Infinity", {"context": {"n": [-float("inf")]}}),
+    ("NUL in a value", {"context": {"name": "a\x00b"}}),
+    ("NUL in a nested value", {"context": {"rows": [{"x": "\x00"}]}}),
+    ("NUL in a key", {"context": {"na\x00me": "x"}}),
+    ("NUL in a tuple", {"context": {"rows": ("ok", "\x00")}}),
+    ("lone surrogate", {"context": {"name": "\ud800"}}),
+    ("dedupe key too long", {"dedupe_key": "k" * 201}),
+    ("dedupe key with NUL", {"dedupe_key": "k\x00"}),
 ]
 
 
@@ -86,6 +98,8 @@ async def test_queue_email_rejects_bad_arguments_and_enqueues_nothing(
     with pytest.raises(ValueError):  # each case has its own message
         await queue_email(db, **(arguments | overrides))
 
+    # Raised before any SQL: the caller's transaction is still usable.
+    assert await db.scalar(select(1)) == 1
     assert await job_count(db) == 0
 
 
@@ -102,14 +116,22 @@ async def test_queue_email_rejects_a_context_missing_a_variable(
     from app.email import templates
 
     (tmp_path / "en").mkdir()
-    for part, text in {"subject.txt": "For {{ name }}", "txt": "x", "html": "x"}.items():
-        (tmp_path / "en" / f"needs.{part}").write_text(text)
+    files = {
+        "base.txt": "{% block body %}{% endblock %}",
+        "base.html": "{% block body %}{% endblock %}",
+        "needs.subject.txt": "For {{ name }}",
+        "needs.txt": "x",
+        "needs.html": "x",
+    }
+    for name, text in files.items():
+        (tmp_path / "en" / name).write_text(text)
     monkeypatch.setattr(templates, "TEMPLATES_DIR", tmp_path)
 
-    with pytest.raises(ValueError, match="needs"):
+    with pytest.raises(ValueError, match="'name' is undefined"):
         await queue_email(db, to="dev@example.test", template="needs", context={})
 
     assert await job_count(db) == 0
+    assert await queue_email(db, to="dev@example.test", template="needs", context={"name": "A"})
 
 
 # Criterion 11

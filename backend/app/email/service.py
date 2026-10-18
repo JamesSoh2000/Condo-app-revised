@@ -12,6 +12,9 @@ from app.core.config import is_email_address
 from app.email.templates import DEFAULT_LOCALE, render_email
 from app.jobs.service import enqueue
 
+# `jobs.dedupe_key` is String(200).
+MAX_DEDUPE_KEY = 200
+
 
 async def queue_email(
     db: AsyncSession,
@@ -33,15 +36,31 @@ async def queue_email(
         raise ValueError("`to` must be one email address")
     if not isinstance(context, dict) or not all(isinstance(key, str) for key in context):
         raise ValueError("`context` must be a dict with string keys")
+    # What the jobs table would refuse must fail here, not abort the caller's transaction with a
+    # database error (review round 1): NaN and infinities, NUL, lone surrogates, a long key.
     try:
-        json.dumps(context)
+        json.dumps(context, allow_nan=False, ensure_ascii=False).encode()
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"`context` must be JSON-serializable: {exc}") from None
+        raise ValueError(f"`context` must be JSON that Postgres can store: {exc}") from None
+    if _has_nul(context):
+        raise ValueError("`context` must not contain NUL characters")
+    if dedupe_key is not None and (len(dedupe_key) > MAX_DEDUPE_KEY or "\x00" in dedupe_key):
+        raise ValueError(f"`dedupe_key` must be at most {MAX_DEDUPE_KEY} characters, no NUL")
     # Rendered now as well as when sent: a missing template or variable fails here, in the
     # caller, instead of as a dead job.
     render_email(template, context, locale)
     payload = {"to": to, "template": template, "locale": locale, "context": context}
     return await enqueue(db, "email.send", payload, dedupe_key=dedupe_key)
+
+
+def _has_nul(value: Any) -> bool:
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        return any(_has_nul(k) or _has_nul(v) for k, v in value.items())
+    if isinstance(value, list | tuple):
+        return any(_has_nul(item) for item in value)
+    return False
 
 
 def is_allowlisted(address: str, allowlist: Sequence[str]) -> bool:

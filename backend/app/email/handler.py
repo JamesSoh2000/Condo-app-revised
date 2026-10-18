@@ -5,9 +5,10 @@ message, before the job is marked `succeeded`, sends it again when the job is re
 """
 
 import logging
+import re
 from email.message import EmailMessage
 from email.utils import format_datetime, make_msgid, parseaddr
-from typing import Any
+from typing import Any, NoReturn
 
 import aiosmtplib
 
@@ -21,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 # Below the worker's 50 s handler timeout, so a hung server fails as an SMTP timeout (retried).
 SMTP_TIMEOUT = 20.0
+_ENHANCED_CODE = re.compile(r"[245]\.[0-9]{1,3}\.[0-9]{1,3}")
+
+
+class SMTPTemporaryError(Exception):
+    """A 4xx reply, retried by the worker. Like `PermanentJobError` here, it holds codes only."""
 
 
 @job_handler("email.send", sensitive_keys=("context",))
@@ -61,20 +67,26 @@ async def send_email(payload: dict[str, Any], ctx: JobContext) -> None:
         )
     except aiosmtplib.SMTPRecipientsRefused as exc:
         # Our one recipient refused: as permanent as its reply code says.
-        if exc.recipients and all(_is_permanent(r.code) for r in exc.recipients):
-            raise PermanentJobError(_describe(exc.recipients[0])) from exc
-        raise
+        if not exc.recipients:
+            raise SMTPTemporaryError("SMTP recipient refused, no reply code") from None
+        _raise_for_reply(exc.recipients[0], all(_is_permanent(r.code) for r in exc.recipients))
     except aiosmtplib.SMTPResponseException as exc:
-        if _is_permanent(exc.code):
-            raise PermanentJobError(_describe(exc)) from exc
-        raise
-    # Connection, timeout and 4xx errors propagate: the worker retries them with backoff.
-    logger.info("email_sent", extra={"job_id": str(ctx.job_id), "template": payload["template"]})
+        _raise_for_reply(exc, _is_permanent(exc.code))
+    # Connection and timeout errors propagate: the worker retries them with backoff.
+    logger.info(
+        "email_sent", extra={"job_id": str(ctx.job_id), "email_template": payload["template"]}
+    )
 
 
 def _is_permanent(code: int) -> bool:
     return 500 <= code <= 599
 
 
-def _describe(exc: aiosmtplib.SMTPResponseException) -> str:
-    return f"SMTP {exc.code}: {exc.message}"
+def _raise_for_reply(reply: aiosmtplib.SMTPResponseException, permanent: bool) -> NoReturn:
+    """Raise with the reply's code and enhanced status code, never its text: a server may quote
+    the message back (the context's links and tokens), and `last_error` keeps what is raised for
+    7 days. Python escapes quotes in that text, so redacting exact values can miss them (review
+    round 1). `from None`, so the reply isn't chained either."""
+    enhanced = _ENHANCED_CODE.match(reply.message)
+    text = f"SMTP {reply.code}" + (f" {enhanced[0]}" if enhanced else "") + " (reply withheld)"
+    raise (PermanentJobError if permanent else SMTPTemporaryError)(text) from None
