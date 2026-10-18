@@ -15,11 +15,16 @@ dependencies = [
     "alembic>=1.13.0,<2.0.0",
     "typer>=0.27.3",
     "argon2-cffi>=25.1.0",
+    # S3 presigning, HEAD and ranged reads for uploads (ADR-0007, P3-04a).
+    "boto3>=1.40",
+    # app.files.storage runs boto3 in anyio's worker threads (it was only a transitive dependency).
+    "anyio>=4.0.0",
 ]
 
 [dependency-groups]
 dev = [
-    "anyio>=4.0.0",
+    # Types for boto3's S3 client, so mypy strict checks app.files.storage.
+    "boto3-stubs[s3]>=1.40",
     "httpx>=0.28.0",
     "mypy>=2.4.0",
     "pre-commit>=4.7.0",
