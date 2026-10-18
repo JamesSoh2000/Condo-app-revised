@@ -59,6 +59,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P2-06b](./P2-06b-building-context-guards-nav.md) | Building context and membership guards (navigation split to P2-06c) | B | 1 | P2-06a | done | — |
 | [P2-06c](./P2-06c-navigation-and-header-menu.md) | Navigation, header menu and council "view as" (split from P2-06b) | B | 1 | P2-06b | done | — |
 | [P2-07](./P2-07-test-infrastructure-hardening.md) | Test infrastructure hardening (P1-05 and P2-03 follow-ups) | B | 3 | P2-03 | done | — |
+| [P2-gate-01](./P2-gate-01-login-rate-limit-gate.md) | Reconcile the login rate-limit exit gate (James's decision) | B | 3 | P2-05, P2-07 | done | — |
 | [P3-01](./P3-01-job-queue-and-worker.md) | Job queue and worker | B | 1 | P1-04, P0-05 | todo | — |
 | [P3-02](./P3-02-transactional-email.md) | Transactional email | B | 2 | P3-01 | todo | — |
 | [P3-03](./P3-03-notifications-api.md) | In-app notifications API | A | 2 | P3-01, P2-03 | todo | — |

@@ -5,7 +5,7 @@
 | Phase / lane | P2 / B |
 | Risk tier | 3 (documentation only) |
 | Depends on | P2-05, P2-07 |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
