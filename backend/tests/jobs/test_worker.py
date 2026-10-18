@@ -496,3 +496,32 @@ async def test_no_heartbeat_before_the_interval(sessions, handlers: Calls, caplo
     await asyncio.wait_for(task, timeout=5)
 
     assert not [r for r in caplog.records if r.getMessage() == "worker_heartbeat"]
+
+
+# Criterion 17: what the compose healthcheck reads
+
+
+async def test_heartbeat_file_is_touched_per_loop_and_per_job(
+    sessions, handlers: Calls, monkeypatch, tmp_path: Path
+):
+    from app.jobs import worker as worker_module
+
+    beat = tmp_path / "worker_heartbeat"
+    monkeypatch.setattr(worker_module, "HEARTBEAT_FILE", beat)
+    touched: list[float] = []
+
+    @job_handler("test.watch")
+    async def watch(payload: dict[str, Any], ctx: JobContext) -> None:
+        touched.append(beat.stat().st_mtime)
+
+    await add(sessions, "test.watch", {})
+    await worker(sessions).run_once()
+    assert touched, "touched before the job ran"
+
+    beat.unlink()
+    stop = asyncio.Event()
+    task = asyncio.create_task(worker(sessions).run_forever(stop, idle_sleep=0.01))
+    await asyncio.sleep(0.1)
+    stop.set()
+    await asyncio.wait_for(task, timeout=5)
+    assert beat.exists(), "touched by an idle loop"

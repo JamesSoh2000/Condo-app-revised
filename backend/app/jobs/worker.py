@@ -39,7 +39,8 @@ HANDLER_TIMEOUT = 50.0
 HEARTBEAT_INTERVAL = 30.0
 MAX_ERROR_LENGTH = 2000
 MAX_BACKOFF = timedelta(hours=1)
-# The Docker healthcheck reads this file's age (docker-compose.yml, compose.prodlike.yml).
+# Touched every loop and before every job; the Docker healthcheck fails when it is older than
+# 120 s, above HANDLER_TIMEOUT (docker-compose.yml, compose.prodlike.yml).
 HEARTBEAT_FILE = Path(tempfile.gettempdir()) / "worker_heartbeat"
 # Modules whose `@job_handler`s the worker runs. P3-01b and P3-02 add theirs here.
 HANDLER_MODULES: tuple[str, ...] = ()
@@ -119,6 +120,8 @@ class Worker:
             if stop is not None and stop.is_set():
                 await self._release(jobs[index:])
                 break
+            # Per job too: a batch of slow jobs is not a hung worker.
+            HEARTBEAT_FILE.touch()
             await self._process(job)
         return len(jobs)
 
