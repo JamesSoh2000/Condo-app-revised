@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
 from app.jobs.models import Job, JobStatus
@@ -171,9 +172,27 @@ async def test_permanent_error_is_dead_after_one_attempt(sessions, handlers: Cal
 
 
 async def test_two_workers_run_each_of_20_jobs_exactly_once(committed_sessions, handlers: Calls):
-    ids = [await add(committed_sessions, "test.slow", {"seconds": 0.02, "n": n}) for n in range(20)]
-    a = worker(committed_sessions, worker_id="worker-a")
-    b = worker(committed_sessions, worker_id="worker-b")
+    ids = [await add(committed_sessions, "test.slow", {"seconds": 0.01, "n": n}) for n in range(20)]
+    overlap = {"open": 0, "max": 0}
+
+    def slow_commits() -> AsyncSession:
+        """A session whose commit waits first, so the other worker's claim runs while this
+        one's rows are still locked and uncommitted (without it the claims hardly overlap)."""
+        session: AsyncSession = committed_sessions()
+        commit = session.commit
+
+        async def slow_commit() -> None:
+            overlap["open"] += 1
+            overlap["max"] = max(overlap["max"], overlap["open"])
+            await asyncio.sleep(0.05)
+            overlap["open"] -= 1
+            await commit()
+
+        session.commit = slow_commit  # type: ignore[method-assign]
+        return session
+
+    a = worker(slow_commits, worker_id="worker-a")
+    b = worker(slow_commits, worker_id="worker-b")
 
     async def drain(w: Worker) -> int:
         total = 0
@@ -183,12 +202,48 @@ async def test_two_workers_run_each_of_20_jobs_exactly_once(committed_sessions, 
 
     claimed = await asyncio.gather(drain(a), drain(b))
 
+    assert overlap["max"] == 2, "the two workers' transactions overlapped"
     assert sum(claimed) == 20
-    assert all(claimed), "both workers claimed jobs, so they really ran concurrently"
+    assert all(claimed), "both workers claimed jobs"
     assert sorted(run[1]["n"] for run in handlers.of("test.slow")) == list(range(20))
     async with committed_sessions() as db:
         jobs = (await db.scalars(select(Job).where(Job.id.in_(ids)))).all()
     assert {(job.status, job.attempts) for job in jobs} == {(JobStatus.SUCCEEDED, 1)}
+
+
+async def test_a_claim_does_not_wait_for_another_workers_open_claim(
+    committed_sessions, handlers: Calls
+):
+    """SKIP LOCKED: while worker A's claim is uncommitted, worker B claims other jobs at once
+    instead of waiting for A (plain FOR UPDATE would block here)."""
+    ids = [await add(committed_sessions, "test.echo", {"n": n}) for n in range(4)]
+    release = asyncio.Event()
+
+    def held_commits() -> AsyncSession:
+        session: AsyncSession = committed_sessions()
+        commit = session.commit
+
+        async def held_commit() -> None:
+            await release.wait()
+            await commit()
+
+        session.commit = held_commit  # type: ignore[method-assign]
+        return session
+
+    a = worker(held_commits, worker_id="worker-a")
+    b = worker(committed_sessions, worker_id="worker-b")
+    a_claim = asyncio.create_task(a.run_once(batch=2))
+    await asyncio.sleep(0.2)  # A has locked its two rows and waits to commit
+
+    try:
+        assert await asyncio.wait_for(b.run_once(batch=10), timeout=2) == 2
+    finally:
+        release.set()
+        await a_claim
+
+    async with committed_sessions() as db:
+        jobs = (await db.scalars(select(Job).where(Job.id.in_(ids)))).all()
+    assert {job.status for job in jobs} == {JobStatus.SUCCEEDED}
 
 
 # Criterion 6
