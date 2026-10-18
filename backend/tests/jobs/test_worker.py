@@ -1,6 +1,7 @@
 """The worker (P3-01a criteria 2 to 6, 8 and 10 to 16)."""
 
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -11,15 +12,17 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+import asyncpg  # type: ignore[import-untyped]
 import pytest
 from sqlalchemy import insert, select, update
+from sqlalchemy.exc import InvalidRequestError, PendingRollbackError, StatementError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
 from app.jobs.models import Job, JobStatus
 from app.jobs.registry import JobContext, job_handler
 from app.jobs.service import enqueue
-from app.jobs.worker import MAX_ERROR_LENGTH, Worker, backoff
+from app.jobs.worker import MAX_ERROR_LENGTH, Worker, backoff, describe_error
 from tests.jobs.conftest import Calls, Sessions, load
 
 pytestmark = pytest.mark.anyio
@@ -233,10 +236,11 @@ async def test_a_claim_does_not_wait_for_another_workers_open_claim(
     a = worker(held_commits, worker_id="worker-a")
     b = worker(committed_sessions, worker_id="worker-b")
     a_claim = asyncio.create_task(a.run_once(batch=2))
-    await asyncio.sleep(0.2)  # A has locked its two rows and waits to commit
+    await asyncio.sleep(0.2)  # A has locked its row and waits to commit
 
     try:
-        assert await asyncio.wait_for(b.run_once(batch=10), timeout=2) == 2
+        # A holds one job (one claim per job): B takes the other three.
+        assert await asyncio.wait_for(b.run_once(batch=10), timeout=2) == 3
     finally:
         release.set()
         await a_claim
@@ -319,7 +323,8 @@ async def test_unknown_kind_is_dead_and_batch_continues(sessions, handlers: Call
 async def test_handler_writes_commit_with_success(sessions, handlers: Calls):
     job_id = await add(sessions, "test.echo", {"child": True})
 
-    await worker(sessions).run_once()
+    # batch=1: the child is due at once, and a larger batch would run it too.
+    await worker(sessions).run_once(batch=1)
 
     assert (await load(sessions, job_id)).status is JobStatus.SUCCEEDED
     async with sessions() as db:
@@ -566,35 +571,95 @@ async def test_waiting_batch_job_is_not_run_by_two_live_workers(
     assert sorted(n for n, _ in runs) == [1, 2, 3]
 
 
-async def test_job_whose_lease_another_worker_took_is_skipped(committed_sessions, handlers: Calls):
-    """Neighbour of finding 1: if a waiting job of the batch was reclaimed meanwhile, this worker
-    must not run it at all."""
+async def test_while_a_job_runs_the_other_due_jobs_stay_queued(sessions, handlers: Calls):
+    """Round 2: a worker reserves only the job it starts. The other due jobs stay `queued` with
+    no attempt charged, free for another worker (replaces round 1's renewal, see D9)."""
+    seen: list[list[tuple[JobStatus, int, str | None]]] = []
 
-    @job_handler("test.first")
-    async def first(payload: dict[str, Any], ctx: JobContext) -> None:
-        # Meanwhile worker-b reclaims the second job (as after an expired lease).
-        async with committed_sessions() as other:
-            await other.execute(
-                update(Job)
-                .where(Job.id == payload["second"])
-                .values(locked_by="worker-b", attempts=Job.attempts + 1)
-            )
-            await other.commit()
+    @job_handler("test.look")
+    async def look(payload: dict[str, Any], ctx: JobContext) -> None:
+        others = await ctx.db.scalars(select(Job).where(Job.id != ctx.job_id))
+        seen.append([(job.status, job.attempts, job.locked_by) for job in others])
 
-    second_id = await add(committed_sessions, "test.echo", {"n": 2}, run_at=clock.now())
-    first_id = await add(
-        committed_sessions,
-        "test.first",
-        {"second": str(second_id)},
-        run_at=clock.now() - timedelta(seconds=1),
-    )
+    for _ in range(3):
+        await add(sessions, "test.look", {})
+
+    assert await worker(sessions).run_once() == 3
+
+    assert seen[0] == [(JobStatus.QUEUED, 0, None)] * 2
+    assert sorted(seen[1]) == sorted([(JobStatus.SUCCEEDED, 1, None), (JobStatus.QUEUED, 0, None)])
+
+
+async def test_waiting_job_is_not_dead_lettered_without_ever_running(
+    committed_sessions, handlers: Calls, frozen_clock
+):
+    """Round 2, finding 2: with a batch claimed at once, worker B reclaimed a job still waiting
+    in A's batch after its lease ran out, charged it an attempt and dead-lettered it unrun."""
+    runs: list[tuple[int, str]] = []
+    b = worker(committed_sessions, worker_id="worker-b")
+
+    @job_handler("test.batchwait")
+    async def batchwait(payload: dict[str, Any], ctx: JobContext) -> None:
+        runs.append((payload["n"], ctx.kind))
+        if payload["n"] < 3:
+            frozen_clock.advance(seconds=40)
+        if payload["n"] == 2:
+            assert await b.run_once() == 1  # B takes job 3, still due and queued
+
+    ids = []
+    for n in (1, 2, 3):
+        ids.append(await add(committed_sessions, "test.batchwait", {"n": n}, max_attempts=1))
+        frozen_clock.advance(seconds=0.001)
 
     assert await worker(committed_sessions, worker_id="worker-a").run_once() == 2
 
-    assert (await load(committed_sessions, first_id)).status is JobStatus.SUCCEEDED
-    assert handlers.of("test.echo") == [], "worker-a skipped the job it no longer holds"
-    second = await load(committed_sessions, second_id)
-    assert (second.status, second.locked_by, second.attempts) == (JobStatus.RUNNING, "worker-b", 2)
+    assert sorted(n for n, _ in runs) == [1, 2, 3]
+    third = await load(committed_sessions, ids[2])
+    assert (third.status, third.attempts) == (JobStatus.SUCCEEDED, 1)
+
+
+async def test_pending_rollback_error_keeps_no_parameters_in_last_error(
+    committed_sessions, handlers: Calls
+):
+    """Round 2, finding 1: a handler that swallows a failed flush leaves the session needing a
+    rollback; the worker's own update then raises `PendingRollbackError`, which is not a
+    `StatementError` but quotes the failed statement's (cut) parameters."""
+    token = "usable-private-reset-token"  # noqa: S105 (a fake)
+    link = f"https://example.test/reset?token={token}&padding=" + "x" * 600
+
+    @job_handler("test.swallow", sensitive_keys=("link",))
+    async def swallow(payload: dict[str, Any], ctx: JobContext) -> None:
+        ctx.db.add(Job(kind="k" * 65, payload={"link": payload["link"]}))
+        with contextlib.suppress(StatementError):
+            await ctx.db.flush()
+
+    job_id = await add(committed_sessions, "test.swallow", {"link": link}, max_attempts=1)
+
+    await worker(committed_sessions).run_once()
+
+    job = await load(committed_sessions, job_id)
+    assert job.status is JobStatus.DEAD
+    assert job.last_error is not None
+    assert token not in job.last_error
+    assert job.last_error.startswith("PendingRollbackError: database error")
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        PendingRollbackError("rolled back: [parameters: ('https://x.test/?token=SECRET...',)]"),
+        InvalidRequestError("SECRET in a message"),
+        asyncpg.exceptions.UniqueViolationError("Key (dedupe_key)=(SECRET) already exists"),
+    ],
+    ids=["PendingRollbackError", "InvalidRequestError", "asyncpg"],
+)
+def test_every_database_error_has_its_message_withheld(exc: Exception):
+    """Neighbours of round 2, finding 1: any SQLAlchemy or asyncpg error, raised directly or
+    through a wrapper, is stored without its message."""
+    described = describe_error(exc, {"link": "unrelated"}, ("link",))
+
+    assert "SECRET" not in described
+    assert described.startswith(f"{type(exc).__name__}: database error")
 
 
 @pytest.mark.parametrize("kind_length", [65, 64])

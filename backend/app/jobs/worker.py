@@ -24,7 +24,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, or_, select, update
-from sqlalchemy.exc import StatementError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -73,11 +73,12 @@ def describe_error(
     """`<Type>: <message>`, the sensitive payload values replaced, cut to `MAX_ERROR_LENGTH`.
 
     Redacted before it is cut, so a secret at the cut can't leave a prefix behind. A database
-    error keeps only its types and SQLSTATE: SQLAlchemy's message holds the statement parameters,
-    shortened, so redacting the full values would miss them (review round 1, finding 2).
+    error (any SQLAlchemy or asyncpg one) keeps only its types and SQLSTATE: its message can quote
+    statement parameters, shortened, so redacting the full values would miss them (review rounds
+    1 and 2).
     """
-    if isinstance(exc, StatementError):
-        orig = exc.orig
+    if isinstance(exc, SQLAlchemyError) or type(exc).__module__.startswith("asyncpg"):
+        orig = getattr(exc, "orig", None) or exc
         code = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
         detail = type(orig).__name__ + (f", SQLSTATE {code}" if code else "")
         return f"{type(exc).__name__}: database error ({detail}); message withheld"
@@ -119,22 +120,22 @@ class Worker:
         self._counts = {"succeeded": 0, "retried": 0, "dead": 0}
 
     async def run_once(self, batch: int = 10, stop: asyncio.Event | None = None) -> int:
-        """Claim up to `batch` due jobs and run them one by one; return how many were claimed.
+        """Run up to `batch` due jobs, claiming each just before it runs; return how many ran.
 
-        If `stop` is set between jobs, the claimed jobs not started yet are released.
+        One claim per job: a job is never leased while it waits behind another, so its lease
+        can't run out unstarted and be reclaimed, charged or dead-lettered (review round 2).
+        Stops early when `stop` is set or nothing is due.
         """
-        jobs = await self._claim(batch)
-        for index, job in enumerate(jobs):
-            if stop is not None and stop.is_set():
-                await self._release(jobs[index:])
+        ran = 0
+        while ran < batch and not (stop is not None and stop.is_set()):
+            job = await self._claim()
+            if job is None:
                 break
-            # Per job too: a batch of slow jobs is not a hung worker.
+            # Per job too: a run of slow jobs is not a hung worker.
             HEARTBEAT_FILE.touch()
-            # The batch shares one lease, and the jobs before this one may have used it up: take a
-            # full lease now, or skip the job if another worker has reclaimed it (review round 1).
-            if await self._renew(job):
-                await self._process(job)
-        return len(jobs)
+            await self._process(job)
+            ran += 1
+        return ran
 
     async def run_forever(
         self, stop: asyncio.Event, *, batch: int = 10, idle_sleep: float = 1.0
@@ -174,7 +175,7 @@ class Worker:
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(stop.wait(), timeout=idle_sleep_now)
 
-    async def _claim(self, batch: int) -> list[ClaimedJob]:
+    async def _claim(self) -> ClaimedJob | None:
         # docs/ARCHITECTURE.md §9, with the clock bound in: SKIP LOCKED gives concurrent claims
         # disjoint rows, and a `running` job past its lease belongs to a worker that died.
         now = clock.now()
@@ -187,7 +188,7 @@ class Worker:
                 )
             )
             .order_by(Job.run_at)
-            .limit(batch)
+            .limit(1)
             .with_for_update(skip_locked=True)
         )
         claim = (
@@ -199,14 +200,13 @@ class Worker:
                 locked_by=self.worker_id,
                 locked_until=now + LEASE,
             )
-            .returning(Job.id, Job.kind, Job.payload, Job.attempts, Job.max_attempts, Job.run_at)
+            .returning(Job.id, Job.kind, Job.payload, Job.attempts, Job.max_attempts)
             .execution_options(synchronize_session=False)
         )
         async with self._sessions() as db:
-            rows = sorted((await db.execute(claim)).all(), key=lambda row: row.run_at)
+            row = (await db.execute(claim)).first()
             await db.commit()
-        # RETURNING has no order: run them oldest due first, as the claim chose them.
-        return [ClaimedJob(r.id, r.kind, r.payload, r.attempts, r.max_attempts) for r in rows]
+        return None if row is None else ClaimedJob(*row)
 
     async def _process(self, job: ClaimedJob) -> None:
         if job.attempts > job.max_attempts:
@@ -281,47 +281,6 @@ class Worker:
             logger.warning("job_lease_lost", extra={"job_id": str(job.id), "job_kind": job.kind})
             return False
         return True
-
-    async def _renew(self, job: ClaimedJob) -> bool:
-        """Extend this worker's lease on `job` to a full `LEASE`; False if it no longer holds it."""
-        async with self._sessions() as db:
-            renewed = await db.execute(
-                update(Job)
-                .where(
-                    Job.id == job.id,
-                    Job.status == JobStatus.RUNNING,
-                    Job.locked_by == self.worker_id,
-                    Job.attempts == job.attempts,
-                )
-                .values(locked_until=clock.now() + LEASE)
-                .returning(Job.id)
-                .execution_options(synchronize_session=False)
-            )
-            held = renewed.first() is not None
-            await db.commit()
-        if not held:
-            logger.warning("job_lease_lost", extra={"job_id": str(job.id), "job_kind": job.kind})
-        return held
-
-    async def _release(self, jobs: Sequence[ClaimedJob]) -> None:
-        """Give claimed but unstarted jobs back, as if never claimed (shutdown)."""
-        async with self._sessions() as db:
-            await db.execute(
-                update(Job)
-                .where(
-                    Job.id.in_([job.id for job in jobs]),
-                    Job.status == JobStatus.RUNNING,
-                    Job.locked_by == self.worker_id,
-                )
-                .values(
-                    status=JobStatus.QUEUED,
-                    attempts=Job.attempts - 1,
-                    locked_by=None,
-                    locked_until=None,
-                )
-                .execution_options(synchronize_session=False)
-            )
-            await db.commit()
 
 
 def load_handlers() -> None:
