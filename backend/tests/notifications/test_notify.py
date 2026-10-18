@@ -23,6 +23,7 @@ from app.users.models import User
 from tests.email.conftest import point_settings_at
 from tests.factories import make_unit
 from tests.helpers.db import assert_integrity_error
+from tests.notifications.conftest import make_notification
 from tests.world import World
 
 pytestmark = pytest.mark.anyio
@@ -263,6 +264,19 @@ async def test_a_recipient_without_a_membership_is_refused(db: AsyncSession, wor
         db,
         notify(db, **arrived(world, [world.no_membership.id])),
         constraint="fk_notifications_building_id_recipient_user_id",
+    )
+
+
+async def test_the_table_refuses_half_an_entity(db: AsyncSession, world: World) -> None:
+    await assert_integrity_error(
+        db,
+        make_notification(db, world.a, world.a_resident1.user.id, entity_type="package"),
+        constraint="ck_notifications_entity_complete",
+    )
+    await assert_integrity_error(
+        db,
+        make_notification(db, world.a, world.a_resident1.user.id, entity_id=uuid.uuid4()),
+        constraint="ck_notifications_entity_complete",
     )
 
 
