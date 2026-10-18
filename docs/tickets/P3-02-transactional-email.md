@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P3-01 |
 | Replaces old | M5-T08 (email), M3-T13 (delivery part), M14-T04 (staging use, now D-06), M14-T17 |
-| Status | todo |
+| Status | in progress |
 
 ## Goal
 
@@ -67,6 +67,32 @@ it simple ([ADR-0006](../adr/0006-postgres-job-queue.md)).
 7. **Given** the prod-like stack (`make prodlike`), **when** `email-test` runs, **then** the message reaches
    Mailpit through the image's worker. (Delivery through SES is checked in D-06.)
 
+Added in framing (see Frame notes):
+
+8. **Given** an SMTP 4xx reply (451 on `RCPT` or `DATA`, mock), **then** the job is retried like criterion 2,
+   and its `last_error` holds no value from `context`.
+9. **Given** a succeeded `email.send` job, **then** its payload has no `context` key (the scrub), and `to`,
+   `template` and `locale` remain.
+10. **Given** a template name that doesn't exist, a name that isn't `[a-z][a-z0-9_]*`, a locale other than
+    `en`/`fr`, a context missing a variable the template uses, a `to` that isn't one address (no `@`, a
+    comma, CR/LF, over 254 characters), or a context that isn't JSON, **then** `queue_email` raises
+    `ValueError` and enqueues nothing.
+11. **Given** `queue_email` inside a transaction that rolls back, **then** no job exists (it never commits).
+12. **Given** `locale="fr"` and no `fr/` file for the template, **then** the `en` file is used, per part.
+13. **Given** a context value with a newline in a value the subject uses, **then** the `Subject` header is one
+    line (no header injection).
+14. **Given** a job whose template no longer exists when it runs, **then** it goes `dead` without retries.
+15. **Allowlist matching:** case-insensitive; `@example.test` matches `a@example.test` and `A@Example.Test`
+    but not `a@sub.example.test` or `a@notexample.test`; an exact-address entry matches only that address;
+    a malformed entry (no `@`, empty, whitespace inside) fails settings validation. The skip log line holds
+    the job id and the recipient's domain, never the full address.
+16. **Given** `APP_ENV=staging` or `prod`, **then** `APP_BASE_URL` must not be a loopback URL, and in prod it
+    must be `https://`; in prod `EMAIL_FROM` must not be the dev default. `EMAIL_FROM` must parse as
+    one address everywhere.
+17. **Given** `email-test --to not-an-address`, **then** it exits 1 with an error and touches no database.
+
+Tenant table (ENGINEERING_PRACTICES §7): n/a, this ticket adds no endpoint.
+
 ## Test plan
 
 - `tests/email/test_render.py`; `tests/email/test_send.py` (a fake SMTP via an `aiosmtplib` mock, or a
@@ -94,7 +120,26 @@ it simple ([ADR-0006](../adr/0006-postgres-job-queue.md)).
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+- Criteria added or sharpened: AC8 to AC17 above. AC8 covers the 4xx half of the retry rule the
+  ticket only stated in scope; AC9 and AC14 make the `sensitive_keys` scrub and a vanished template
+  testable; AC10 to AC13 are the input cases the ticket missed (bad names, locale fallback, header
+  injection through the subject, `to` with CR/LF); AC15 makes "addresses or `@domain` suffixes" precise;
+  AC16 keeps dev values of the new settings out of deployed environments, as the validator already does for
+  the others; AC17 is the CLI's usage error. The tenant table does not apply (no endpoint).
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - Dependencies `jinja2` and `aiosmtplib` (ticket names both).
+  - `queue_email` renders all three parts once at queue time with `StrictUndefined`, so a missing template
+    or variable fails in the caller, not later as a dead job (autonomous; ticket says "validates that the
+    template exists").
+  - A failure in rendering at send time (template gone, AC14) and SMTP 5xx are `PermanentJobError`; 4xx,
+    connection and timeout errors retry (ticket). SMTP timeout 20 s, below the worker's 50 s handler timeout
+    (autonomous).
+  - Allowlist semantics as in AC15; `@domain` matches that domain only, not subdomains (autonomous, simplest
+    reading of "suffix" that can't match `notexample.test`).
+  - `SES_FROM_EMAIL` stays as it is (unused; an existing test passes it). `EMAIL_FROM` is the sender from
+    now on; removing `SES_FROM_EMAIL` is a follow-up for D-01 (autonomous).
+  - Supported locales are `en` and `fr`; `fr/` holds no templates yet, so every part falls back to `en`
+    (ticket).
+- Split: none. Estimate about 330 non-test lines (settings 60, `app/email` 190, templates 40, CLI 20,
+  env example 15).
