@@ -134,6 +134,16 @@ matches the existing Base44 UI ([01 §Onboarding](../PRODUCT_SCOPE.md#onboarding
   (20/10 min; criterion 8's 30 rapid lookups give 429). Use `limiter.enforce(ip_key("signup" | "join", ip),
   …)` before any lookup; document 429. See `docs/explanations/P2-05-rate-limiting.md` §8.
 
+## Carried from P3-03 (do while framing)
+
+From PR #76. The first ticket that calls `notify` (P4-05 or P5-02a, whichever lands first) does both:
+- If the use case also enqueues its own deduplicated jobs in the same transaction, take every dedupe key in one
+  stable order, as `notify` does for its emails (sorted by user id). Otherwise two concurrent operations can
+  deadlock on the jobs table's unique index (Codex review round 2 on P3-03).
+- Make `notify`'s text checks (`backend/app/notifications/service.py::_check_text`) refuse what `str.encode()`
+  can't encode (lone surrogates), with a test. Today asyncpg raises `DBAPIError` instead of the documented
+  `ValueError` (found after P3-03's last review round; unfixed).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

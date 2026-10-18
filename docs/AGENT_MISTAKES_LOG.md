@@ -239,3 +239,14 @@ P3-02 step 8 note: "validated input with Python's rules, not the database's" app
 ticket's PR, as its first follow-up: a fitness test that every function calling `enqueue` with caller input
 round-trips its payload through Postgres-safe JSON (`allow_nan=False`, UTF-8, no NUL), or a `CLAUDE.md` lesson
 if a test can't express it.
+
+| 2026-10-18 | P3-03 | `notify` logged its timing only on non-empty calls and counted an email the dedupe key had dropped, against its own criterion 6 ("on every call") | review round 1 (Codex `gpt-6.1-sol`), Low | wrote the log at the end of the happy path and counted calls, not results | `_log_timing` on both exits, count only non-None job ids + 2 tests |
+| 2026-10-18 | P3-03 | `notify` queued emails in the caller's recipient order; two concurrent calls for one entity in opposite orders deadlocked on the jobs table's unique dedupe keys | review round 2 (Codex `gpt-6.1-sol`), Medium | the concurrency list before review had "a second instance of the action" for mark-read, not for `notify` itself | sorted email loop + `test_concurrency.py` (both-commit, first-rolls-back) |
+| 2026-10-18 | P3-03 | `notify`'s text checks (length, NUL) let a lone surrogate through, so asyncpg raised `DBAPIError` instead of the documented `ValueError` | explainer (the implementer's reality pass, after round 3), Low | **third** occurrence of P3-02's "validated with Python's rules, not the database's" | none yet: carried into P4-05 / P5-02a (whichever calls `notify` first) |
+
+P3-03 step 8 note: "validated input with Python's rules, not the database's" has now appeared in P3-02 (twice) and
+P3-03, and P3-02's note asked for it to be promoted in this ticket's PR, which did not happen. Promote it as the
+**first follow-up of the next ticket**: a fitness test that feeds every caller-input text field of `enqueue`,
+`queue_email` and `notify` a lone surrogate, NUL, NaN and an over-length value and expects `ValueError`, or a
+`CLAUDE.md` lesson if a test can't express it. "Deadlock from unsorted unique-key inserts" is new, 1 of 2.
+

@@ -98,6 +98,16 @@ From the P1-03 reviews (PR #45). `current_occupants(db, building_id, unit_id)` r
 current occupancy **of any membership status**. Keep only active memberships before notifying people or
 accepting one as a package recipient or pickup person, and test it with a suspended occupant.
 
+## Carried from P3-03 (do while framing)
+
+From PR #76. The first ticket that calls `notify` (P4-05 or P5-02a, whichever lands first) does both:
+- If the use case also enqueues its own deduplicated jobs in the same transaction, take every dedupe key in one
+  stable order, as `notify` does for its emails (sorted by user id). Otherwise two concurrent operations can
+  deadlock on the jobs table's unique index (Codex review round 2 on P3-03).
+- Make `notify`'s text checks (`backend/app/notifications/service.py::_check_text`) refuse what `str.encode()`
+  can't encode (lone surrogates), with a test. Today asyncpg raises `DBAPIError` instead of the documented
+  `ValueError` (found after P3-03's last review round; unfixed).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
