@@ -1,4 +1,4 @@
-"""`POST /files` (P3-04a criteria 1–3, 9–11, 16): the presigned POST and the pending row."""
+"""`POST /files` (P3-04a criteria 1-3, 9-11, 16): the presigned POST and the pending row."""
 
 import base64
 import json
@@ -15,6 +15,8 @@ from app.files.purposes import MAX_IMAGE_BYTES, MAX_PDF_BYTES
 from tests.files.conftest import pdf, png, post_form
 from tests.helpers.tenancy import assert_cross_building_404, assert_forbidden_role, assert_problem
 
+pytestmark = pytest.mark.anyio
+
 
 def files_url(building_id: uuid.UUID) -> str:
     return f"/api/buildings/{building_id}/files"
@@ -30,11 +32,11 @@ def body(**overrides: object) -> dict[str, object]:
     }
 
 
-async def file_count(db) -> int:
+async def file_count(db):
     return await db.scalar(select(func.count()).select_from(File))
 
 
-def policy_of(upload: dict) -> dict:
+def policy_of(upload):
     return json.loads(base64.b64decode(upload["fields"]["policy"]))
 
 
@@ -225,9 +227,7 @@ async def test_multi_role_comes_from_this_buildings_membership(as_user, db, worl
 
 
 async def test_unauthenticated_is_401(client, world):
-    assert_problem(
-        await client.post(files_url(world.a.id), json=body()), 401, "not_authenticated"
-    )
+    assert_problem(await client.post(files_url(world.a.id), json=body()), 401, "not_authenticated")
     assert_problem(
         await client.post(f"{files_url(world.a.id)}/{uuid.uuid4()}/complete"),
         401,

@@ -2,8 +2,12 @@
 
 import uuid
 
+import pytest
+
 from app.files.models import File, FilePurpose, FileStatus
 from tests.helpers.db import assert_integrity_error
+
+pytestmark = pytest.mark.anyio
 
 
 def a_file(world, **overrides) -> File:

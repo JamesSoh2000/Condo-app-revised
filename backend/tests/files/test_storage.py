@@ -3,10 +3,13 @@
 from urllib.parse import urlsplit
 
 import httpx
+import pytest
 
 from app.core.config import settings
 from app.files import storage
 from tests.files.conftest import png
+
+pytestmark = pytest.mark.anyio
 
 
 async def test_head_of_a_missing_key_is_none(s3_bucket):

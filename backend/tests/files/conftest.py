@@ -36,7 +36,8 @@ def s3_bucket() -> Iterator[str]:
     client = storage.client()
     name = f"condo-test-{os.getpid()}-{secrets.token_hex(4)}"
     client.create_bucket(
-        Bucket=name, CreateBucketConfiguration={"LocationConstraint": settings.aws_region}
+        Bucket=name,
+        CreateBucketConfiguration={"LocationConstraint": settings.aws_region},  # type: ignore[typeddict-item]
     )
     client.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
     patch = pytest.MonkeyPatch()

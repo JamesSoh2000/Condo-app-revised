@@ -1,7 +1,8 @@
-"""`POST /files/{id}/complete` (P3-04a criteria 4, 5, 12–16): verify the object, pin its version."""
+"""`POST /files/{id}/complete` (P3-04a criteria 4, 5, 12-16): verify the object, pin its version."""
 
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -12,13 +13,15 @@ from app.files.models import File, FileStatus
 from tests.files.conftest import pdf, png, post_form
 from tests.helpers.tenancy import assert_not_visible, assert_problem, without_request_id
 
+pytestmark = pytest.mark.anyio
+
 
 @dataclass
 class Created:
     client: AsyncClient
     file_id: uuid.UUID
     key: str
-    upload: dict
+    upload: dict[str, Any]
     url: str
 
 
@@ -48,7 +51,7 @@ async def resident_file(as_user, world) -> Created:
     return await create(await as_user(world.a_resident1.user), world.a.id)
 
 
-async def row(db, file_id: uuid.UUID) -> File:
+async def row(db, file_id):
     file = await db.get(File, file_id)
     assert file is not None
     await db.refresh(file)
@@ -102,7 +105,7 @@ async def test_each_image_type_passes_its_magic_check(as_user, world, content_ty
         ("image/png", b"\x89PNG\r\n\x1a" + b"\x00" * 57),  # the last signature byte is wrong
         ("image/webp", b"RIFF\x38\x00\x00\x00WAVEfmt " + b"\x00" * 48),
         ("image/heic", b"\x00\x00\x00\x18ftypisom" + b"\x00" * 52),
-        ("image/heic", b"\x00\x00\x00\x18ftyavif" + b"\x00" * 53),
+        ("image/heic", b"\x00\x00\x00\x18ftypavif" + b"\x00" * 52),  # AVIF is AV1, not HEIC
     ],
 )
 async def test_bytes_of_another_type_fail_the_magic_check(as_user, db, world, content_type, data):
@@ -179,9 +182,7 @@ async def test_another_buildings_file_through_this_building_is_404(as_user, db, 
     assert (await row(db, in_b.file_id)).status is FileStatus.PENDING
 
 
-async def test_completing_twice_returns_the_same_file_without_s3(
-    monkeypatch, db, resident_file
-):
+async def test_completing_twice_returns_the_same_file_without_s3(monkeypatch, db, resident_file):
     assert (await post_form(resident_file.upload, png())).status_code == 204
     first = await resident_file.client.post(resident_file.url)
     assert first.status_code == 200
