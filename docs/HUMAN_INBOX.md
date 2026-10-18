@@ -15,6 +15,7 @@ The next `/build-next` unblocks the ticket and moves the item to "Resolved".
 
 | # | Date | Ticket | What's needed | Options (agent's recommendation first) | Blocks |
 |---|---|---|---|---|---|
+| B-4 | 2026-10-18 | [P3-02](./tickets/P3-02-transactional-email.md) (PR #73, branch `p3-02-transactional-email`) | Review round 3 (Codex `gpt-6.1-sol` high, the reviewer you named for this run) said `BLOCK` on one Medium and one Low, both input validation: a lone surrogate or non-ASCII in `to`, and a lone surrogate in `dedupe_key`, reach the insert, where the database error aborts the caller's transaction. No Critical or High is open. Both are fixed test-first in 87431ca, but round 3 was the playbook's last, so the merge gate ("final round `MERGE`") can't pass without you. Rounds 1–2 (one High, four Mediums, one Low) are fixed and accepted by the next round; CI green through 631a456 | **A (recommended):** authorize a round 4 on 87431ca with a fresh reviewer (as B-3 did); on `MERGE` the agent writes the explanation and merges. **B:** accept 87431ca as is (the fixes add `ValueError` checks only) and let the agent merge after the explanation. **C:** revert 87431ca, merge 631a456 (round 2 `MERGE`), and track the two cases as a follow-up | P4-02 (staff invitations), P4-04 (password reset), which queue email |
 
 ## Prerequisites coming up
 
