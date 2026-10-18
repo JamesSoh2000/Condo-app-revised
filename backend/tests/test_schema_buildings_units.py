@@ -13,7 +13,7 @@ from uuid import UUID
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import delete, func, inspect, select, text
+from sqlalchemy import CheckConstraint, delete, func, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -408,9 +408,12 @@ async def test_feature_check_in_the_database_lists_exactly_the_enum_values(db: A
 
 async def test_slug_check_in_the_database_uses_the_models_pattern(db: AsyncSession):
     (model_check,) = (
-        c for c in Building.__table__.constraints if c.name == "ck_buildings_slug_format"
+        c
+        # The `Table`, not `Building.__table__` (typed as a plain `FromClause`).
+        for c in Building.metadata.tables[Building.__tablename__].constraints
+        if isinstance(c, CheckConstraint) and c.name == "ck_buildings_slug_format"
     )
-    (model_pattern,) = re.findall(r"'([^']*)'", str(model_check.sqltext))  # type: ignore[attr-defined]
+    (model_pattern,) = re.findall(r"'([^']*)'", str(model_check.sqltext))
     definition = await _check_definition(db, "ck_buildings_slug_format")
 
     assert re.findall(r"~ '([^']*)'", definition) == [model_pattern]

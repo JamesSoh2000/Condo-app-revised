@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -76,6 +78,7 @@ def test_s3_endpoints_default_to_real_aws(monkeypatch):
 
 @pytest.mark.parametrize("field", ["s3_endpoint_url", "s3_public_endpoint_url"])
 def test_prod_rejects_s3_emulator_endpoints(field):
+    endpoint: dict[str, Any] = {field: "http://localhost:4566"}
     with pytest.raises(ValidationError, match="must not be set in production"):
         Settings(
             _env_file=None,
@@ -84,7 +87,7 @@ def test_prod_rejects_s3_emulator_endpoints(field):
             secret_key="not-the-default-secret",  # noqa: S106 (test fixture, not a real secret)
             s3_bucket_name="condo-app-prod-files",
             ses_from_email="noreply@example.org",
-            **{field: "http://localhost:4566"},
+            **endpoint,
         )
 
 
@@ -101,7 +104,8 @@ def test_prod_accepts_settings_without_s3_endpoints():
     assert settings.s3_endpoint_url is None
 
 
-PROD = {
+# Any-valued, so `Settings(**PROD)` type-checks: each key goes to a differently typed field.
+PROD: dict[str, Any] = {
     "app_env": "prod",
     "secret_key": "not-the-default-secret",  # (test fixture, not a real secret)
     "s3_bucket_name": "condo-app-prod-files",
@@ -178,7 +182,7 @@ def test_old_allowed_origins_setting_is_gone():
 
 
 # P1-06: staging gets the checks that keep dev values out; prod-only checks stay prod-only.
-STAGING = {
+STAGING: dict[str, Any] = {
     "app_env": "staging",
     "secret_key": "not-the-default-secret",  # (test fixture, not a real secret)
     "trusted_origins": ["https://staging.condo.example.org"],
@@ -335,3 +339,28 @@ def test_host_prefixed_cookie_needs_secure_in_every_env():
 def test_session_settings_must_be_usable(override):
     with pytest.raises(ValidationError):
         Settings(_env_file=None, **override)
+
+
+# P2-07 criterion 5: docs routes are served in dev and test only, unless API_DOCS_ENABLED says so
+
+
+@pytest.mark.parametrize(
+    ("values", "enabled"),
+    [
+        ({}, True),
+        ({"app_env": "test"}, True),
+        (STAGING, False),
+        ({**PROD, "trusted_origins": ["https://condo.example.org"]}, False),
+    ],
+    ids=["dev", "test", "staging", "prod"],
+)
+def test_api_docs_default_follows_the_environment(values, enabled):
+    assert Settings(_env_file=None, **values).api_docs_enabled is enabled
+
+
+@pytest.mark.parametrize(("app_env", "value"), [("prod", "true"), ("dev", "false")])
+def test_api_docs_flag_loads_from_env(monkeypatch, app_env, value):
+    monkeypatch.setenv("API_DOCS_ENABLED", value)
+    values = {**PROD, "trusted_origins": ["https://condo.example.org"], "app_env": app_env}
+
+    assert Settings(_env_file=None, **values).api_docs_enabled is (value == "true")

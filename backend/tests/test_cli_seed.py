@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 from app import cli
 from app.buildings.enums import Feature
 from app.buildings.models import Building, BuildingFeature
-from app.core.config import Settings
+from app.core.config import AppEnv, Settings
 from app.core.security import hash_password, needs_rehash, verify_password
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
 from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
@@ -229,7 +229,7 @@ runner = CliRunner()
 
 
 def _cli_settings(
-    monkeypatch: pytest.MonkeyPatch, app_env: str, seed_password: str | None = None
+    monkeypatch: pytest.MonkeyPatch, app_env: AppEnv, seed_password: str | None = None
 ) -> list[str]:
     """Point the CLI at `app_env` and record any attempt to open a session."""
     opened: list[str] = []

@@ -1,6 +1,6 @@
 """Keyset pagination (P1-04 criteria 5-6) over real `buildings` rows."""
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -47,8 +47,8 @@ async def add_buildings(db: AsyncSession, count: int, prefix: str = "page") -> l
     return ids[::-1]
 
 
-async def follow_pages(c, limit: int) -> list[dict[str, object]]:
-    pages = []
+async def follow_pages(c, limit: int) -> list[dict[str, Any]]:
+    pages: list[dict[str, Any]] = []
     params: dict[str, object] = {"limit": limit}
     while True:
         response = await c.get("/api/probe/buildings", params=params)

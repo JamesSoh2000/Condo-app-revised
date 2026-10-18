@@ -155,7 +155,11 @@ async def test_start_occupancy_twice_is_rejected_by_the_current_index(
     db: AsyncSession, setup: Setup
 ):
     """Criterion 1, through the helper."""
-    kwargs = {"building_id": setup.a.id, "membership_id": setup.m.id, "relationship": TENANT}
+    kwargs: dict[str, Any] = {
+        "building_id": setup.a.id,
+        "membership_id": setup.m.id,
+        "relationship": TENANT,
+    }
     await start_occupancy(db, unit_id=setup.u101.id, at=T0, **kwargs)
 
     with pytest.raises(IntegrityError, match="uq_unit_occupancies_current_membership"):
@@ -769,7 +773,7 @@ async def _current_and_history(
 async def test_concurrent_transfers_apply_one_after_the_other(
     engine: AsyncEngine, committed: dict[str, UUID]
 ):
-    ids = {"building_id": committed["a"], "membership_id": committed["m"]}
+    ids: dict[str, Any] = {"building_id": committed["a"], "membership_id": committed["m"]}
 
     await _race(
         engine,
@@ -791,7 +795,7 @@ async def test_concurrent_transfers_apply_one_after_the_other(
 async def test_move_out_racing_a_transfer_ends_the_new_occupancy(
     engine: AsyncEngine, committed: dict[str, UUID]
 ):
-    ids = {"building_id": committed["a"], "membership_id": committed["m"]}
+    ids: dict[str, Any] = {"building_id": committed["a"], "membership_id": committed["m"]}
 
     await _race(
         engine,
@@ -1005,7 +1009,7 @@ async def test_the_membership_lock_leaves_fk_checks_on_the_membership_unblocked(
     engine: AsyncEngine, committed: dict[str, UUID]
 ):
     """ADR-0016: NO KEY UPDATE, so rows that reference the membership can still be written."""
-    ids = {"building_id": committed["a"], "membership_id": committed["m"]}
+    ids: dict[str, Any] = {"building_id": committed["a"], "membership_id": committed["m"]}
     async with engine.connect() as c1, engine.connect() as c2:
         holder = AsyncSessionLocal(bind=c1)
         await transfer_occupancy(holder, new_unit_id=committed["u102"], relationship=TENANT, **ids)

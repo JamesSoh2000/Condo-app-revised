@@ -1,6 +1,7 @@
 # Backend tests
 
-`make test` runs them against real Postgres (`condo_test`, rebuilt with the migrations once per run). Each
+`make test` runs them against real Postgres (a per-run database built from `condo_test`'s name with the
+migrations; see "The session database" below). Each
 test runs inside one transaction that is rolled back at the end; see the docstring of `tests/conftest.py`
 for the rules (`commit()` only releases a savepoint, requests must not run concurrently).
 
@@ -118,9 +119,22 @@ It fails the test if nothing is raised or another constraint is violated. Create
 awaitable, not with `db.add()` before the call: rows pending before it are flushed first, outside the
 savepoint, so their violation is raised as a plain error.
 
+## The session database
+
+`TEST_DATABASE_URL` gives the server and the base name (`condo_test`); each pytest session builds
+`condo_run_<pid>_<8 hex>_test` from it, migrates it, and drops it at the end, pass or fail
+(`tests/conftest.py::per_run_database_url`). Two suites on one server (worktrees, reviewers) never touch each
+other's schema. A run that is killed hard (SIGKILL) leaves its database behind; nothing sweeps them, since a
+sweep can't tell a dead run from a live one in another container. Drop leftovers when no suite is running:
+
+```bash
+docker compose exec db psql -U postgres -Atc \
+  "SELECT format('DROP DATABASE %I WITH (FORCE);', datname) FROM pg_database WHERE datname ~ '_(run|migrations)_[0-9]+_[0-9a-f]{8}_test$'" \
+  | docker compose exec -T db psql -U postgres
+```
+
 ## Migration tests
 
 Tests that run migrations up and down take the `scratch_database_url` fixture: an empty database named for
-the process (`condo_migrations_<pid>_test`), dropped afterwards, so concurrent runs don't collide on it.
-`condo_test` itself is still one per server: run concurrent suites with their own
-`TEST_DATABASE_URL=..._test`.
+the run (`condo_migrations_<pid>_<8 hex>_test`, the same scheme as the session database), dropped afterwards,
+so concurrent runs don't collide on it.

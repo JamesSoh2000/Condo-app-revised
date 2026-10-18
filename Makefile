@@ -10,7 +10,8 @@ export BUILDX_NO_DEFAULT_ATTESTATIONS := 1
 # something else already listens on 5432, run every target with the same free port: `make up DB_PORT=55432`.
 export DB_PORT ?= 5432
 DEV_DATABASE_URL := postgresql+asyncpg://postgres:devpassword@127.0.0.1:$(DB_PORT)/condo_dev
-# Dropped and rebuilt by every test run (backend/tests/conftest.py refuses any name not ending in _test).
+# Each test run builds and drops its own copy, condo_run_<pid>_<hex>_test, so concurrent runs don't collide
+# (backend/tests/conftest.py::per_run_database_url; it refuses any name not ending in _test).
 TEST_DATABASE_URL := postgresql+asyncpg://postgres:devpassword@127.0.0.1:$(DB_PORT)/condo_test
 BACKEND := cd backend &&
 FRONTEND := cd frontend &&
@@ -55,7 +56,7 @@ cli: ## Run an operator command in the app container: make cli args="audit --sin
 	@test -n "$(args)" || { echo 'usage: make cli args="audit --since 1d" (python -m app.cli --help lists them)'; exit 2; }
 	$(COMPOSE) exec app python -m app.cli $(args)
 
-test: db-guard ## Backend tests, against condo_test on the compose db (needs `make up`)
+test: db-guard ## Backend tests, on a per-run copy of condo_test on the compose db (needs `make up`)
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) TEST_DATABASE_URL=$(TEST_DATABASE_URL) uv run pytest
 
 lint: ## ruff, the format check, eslint and the Base44 import fence self-test
@@ -69,7 +70,7 @@ fmt: ## Format and auto-fix the backend
 	$(BACKEND) uv run ruff check --fix .
 
 typecheck: ## mypy and tsc
-	$(BACKEND) uv run mypy app
+	$(BACKEND) uv run mypy app tests
 	$(FRONTEND) npm run typecheck
 
 check: lint typecheck test ## Everything CI checks: lint, types, tests, alembic check, API type drift (needs `make up`)

@@ -22,7 +22,7 @@ def _new_primary_key() -> uuid.UUID:
     default = _MixinProbe.__table__.c.id.default
     assert default is not None
     assert default.is_callable
-    value = default.arg(None)  # type: ignore[call-arg, operator]
+    value = default.arg(None)
     assert isinstance(value, uuid.UUID)
     return value
 

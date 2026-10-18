@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import pytest
 from fastapi import APIRouter, Depends
@@ -62,12 +63,24 @@ class _TrackingLimiter(RateLimiter):
         return await super().hit(key, limit, window)
 
 
+# Every key the `committing` tests write for real.
+COMMITTED_KEYS = (
+    _email_key("failed@example.com"),
+    "login:ip:127.0.0.1",
+    "test:rollback",
+    "test:concurrent",
+)
+
+
 @pytest.fixture
 async def committing(engine: AsyncEngine) -> AsyncIterator[_TrackingLimiter]:
     """A limiter on connections of its own that really commit, as in production.
 
-    Its rows outlive the test's transaction, so the fixture deletes every key it used afterwards.
+    Its rows outlive the test's transaction, so the fixture deletes every key it used afterwards,
+    and the tests' fixed keys before, in case a killed run left them (P2-05 review round 1, L4).
     """
+    async with engine.begin() as conn:
+        await conn.execute(delete(RateLimit).where(RateLimit.key.in_(COMMITTED_KEYS)))
     limiter = _TrackingLimiter(async_sessionmaker(engine, expire_on_commit=False))
     try:
         yield limiter
@@ -293,7 +306,8 @@ async def test_email_key_uses_postgres_lower_so_unicode_spellings_share_a_counte
 
 
 async def _login_through_proxy(peer: str, forwarded_for: str) -> int:
-    wrapped = ProxyHeadersMiddleware(app, trusted_hosts="10.213.208.10")
+    # Starlette's and uvicorn's ASGI type hints differ for the same callable; both accept it.
+    wrapped: Any = ProxyHeadersMiddleware(cast(Any, app), trusted_hosts="10.213.208.10")
     async with AsyncClient(
         transport=ASGITransport(app=wrapped, client=(peer, 40000)),
         base_url="http://test",
@@ -377,7 +391,7 @@ async def test_cleanup_deletes_windows_older_than_a_day_and_never_commits(db, fr
         commits.append("commit")
         await original_commit()
 
-    db.commit = no_commit  # type: ignore[method-assign]
+    db.commit = no_commit
 
     deleted = await delete_expired_rate_limits(db)
 

@@ -4,6 +4,7 @@ import logging
 
 import pytest
 
+from app.core.config import settings
 from app.routers import health
 
 
@@ -17,7 +18,7 @@ async def test_health_returns_ok(client):
 
 @pytest.mark.anyio
 async def test_ready_skips_database_when_disabled(client, monkeypatch):
-    monkeypatch.setattr(health.settings, "readiness_check_database", False)
+    monkeypatch.setattr(settings, "readiness_check_database", False)
 
     response = await client.get("/api/ready")
     assert response.status_code == 200
@@ -33,7 +34,7 @@ async def test_ready_checks_database_when_enabled(client, monkeypatch):
     async def check_database_connection():
         return None
 
-    monkeypatch.setattr(health.settings, "readiness_check_database", True)
+    monkeypatch.setattr(settings, "readiness_check_database", True)
     monkeypatch.setattr(health, "check_database_connection", check_database_connection)
 
     response = await client.get("/api/ready")
@@ -50,7 +51,7 @@ async def test_ready_returns_503_without_exception_text_when_database_check_fail
     async def check_database_connection():
         raise RuntimeError("database unavailable at secret-host:5432")
 
-    monkeypatch.setattr(health.settings, "readiness_check_database", True)
+    monkeypatch.setattr(settings, "readiness_check_database", True)
     monkeypatch.setattr(health, "check_database_connection", check_database_connection)
 
     with caplog.at_level(logging.ERROR, logger="app.health"):

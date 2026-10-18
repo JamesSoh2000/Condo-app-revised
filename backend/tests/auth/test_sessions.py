@@ -41,7 +41,7 @@ def assert_not_authenticated(response) -> None:
 
 
 async def _row(db, token: str) -> AuthSession:
-    row = (
+    row: AuthSession = (
         await db.scalars(select(AuthSession).where(AuthSession.token_hash == hash_token(token)))
     ).one()
     await db.refresh(row)

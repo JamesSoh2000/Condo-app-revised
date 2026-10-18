@@ -94,12 +94,17 @@ class Settings(BaseSettings):
 
     readiness_check_database: bool = False
 
+    # Serve /api/docs and /api/openapi.json (P2-07). Both are open without a session, so they
+    # default on in dev and test only (`_per_environment_defaults`); API_DOCS_ENABLED=true turns
+    # them on anywhere.
+    api_docs_enabled: bool = True
+
     # The password `seed` gives demo users in staging (P2-01a). Dev and test use the public
     # DevPassword!2026 (README); staging must not, because it is reachable.
     seed_password: SecretStr | None = None
 
     # Sessions (ADR-0003). The cookie's name and Secure flag default per environment in
-    # `_session_cookie_defaults`: `session` on local http, `__Host-session` + Secure when deployed.
+    # `_per_environment_defaults`: `session` on local http, `__Host-session` + Secure when deployed.
     session_cookie_name: str = Field("session", min_length=1)
     session_cookie_secure: bool = False
     session_absolute_days: int = Field(30, gt=0)
@@ -117,11 +122,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def _session_cookie_defaults(cls, data: Any) -> Any:
+    def _per_environment_defaults(cls, data: Any) -> Any:
         if isinstance(data, dict):
             deployed = data.get("app_env", "dev") in {"staging", "prod"}
             data.setdefault("session_cookie_name", "__Host-session" if deployed else "session")
             data.setdefault("session_cookie_secure", deployed)
+            data.setdefault("api_docs_enabled", not deployed)
         return data
 
     @model_validator(mode="after")
