@@ -71,8 +71,9 @@ def upgrade() -> None:
             "attached_id IS NULL OR status = 'ready'",
             name=op.f("ck_files_attached_only_when_ready"),
         ),
-        # Hand-edited: autogenerate rendered the two enum checks twice (once named just "file_purpose"
-        # / "file_status"). The columns' Enums have create_constraint=False so they don't add more.
+        # Hand-edited: autogenerate rendered the two enum checks twice (once named just
+        # "file_purpose" / "file_status"). The columns' Enums have create_constraint=False so they
+        # don't add more.
         sa.CheckConstraint(
             "purpose IN ('package_photo', 'maintenance_photo', 'notice_attachment')",
             name=op.f("ck_files_file_purpose"),

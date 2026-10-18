@@ -51,9 +51,9 @@ jobs:
       # Migrations and `alembic check` run against this database; tests use TEST_DATABASE_URL.
       DATABASE_URL: postgresql+asyncpg://postgres:devpassword@localhost:5432/condo_dev
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:devpassword@localhost:5432/condo_test
-      # The emulator above; it accepts any credentials, so these are not secrets.
-      S3_ENDPOINT_URL: http://localhost:4566
-      S3_PUBLIC_ENDPOINT_URL: http://localhost:4566
+      # The emulator above, read only by backend/tests/files/conftest.py. It accepts any credentials, so
+      # these are not secrets.
+      TEST_S3_ENDPOINT_URL: http://localhost:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
 

@@ -1,4 +1,5 @@
-"""The files tests run against the S3 emulator (compose's `s3`, CI's `s3` service).
+"""The files tests run against the S3 emulator (compose's `s3`, CI's `s3` service), at
+`TEST_S3_ENDPOINT_URL`.
 
 Each pytest session creates a versioned bucket of its own, `condo-test-<pid>-<8 hex>`, points
 `settings.s3_bucket_name` at it, and empties and deletes it at the end, so concurrent suites never
@@ -29,10 +30,24 @@ def pdf(size: int = 64) -> bytes:
     return (PDF + b"\x00" * size)[:size]
 
 
+def _clear_clients() -> None:
+    storage.client.cache_clear()
+    storage._presigning_client.cache_clear()
+
+
 @pytest.fixture(scope="session")
 def s3_bucket() -> Iterator[str]:
-    if settings.s3_endpoint_url is None:
-        pytest.fail("the files tests need the S3 emulator: set S3_ENDPOINT_URL (`make test` does)")
+    # Its own variable, not S3_ENDPOINT_URL: tests that build production Settings from the
+    # environment (tests/test_config.py) must not see an endpoint.
+    endpoint = os.environ.get("TEST_S3_ENDPOINT_URL")
+    if not endpoint:
+        pytest.fail(
+            "the files tests need the S3 emulator: set TEST_S3_ENDPOINT_URL (`make test` does)"
+        )
+    patch = pytest.MonkeyPatch()
+    patch.setattr(settings, "s3_endpoint_url", endpoint)
+    patch.setattr(settings, "s3_public_endpoint_url", endpoint)
+    _clear_clients()
     client = storage.client()
     name = f"condo-test-{os.getpid()}-{secrets.token_hex(4)}"
     client.create_bucket(
@@ -40,12 +55,12 @@ def s3_bucket() -> Iterator[str]:
         CreateBucketConfiguration={"LocationConstraint": settings.aws_region},  # type: ignore[typeddict-item]
     )
     client.put_bucket_versioning(Bucket=name, VersioningConfiguration={"Status": "Enabled"})
-    patch = pytest.MonkeyPatch()
     patch.setattr(settings, "s3_bucket_name", name)
     try:
         yield name
     finally:
         patch.undo()
+        _clear_clients()
         versions = client.list_object_versions(Bucket=name)
         for entry in versions.get("Versions", []) + versions.get("DeleteMarkers", []):
             client.delete_object(Bucket=name, Key=entry["Key"], VersionId=entry["VersionId"])

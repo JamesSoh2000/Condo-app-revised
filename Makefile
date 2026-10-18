@@ -13,10 +13,10 @@ DEV_DATABASE_URL := postgresql+asyncpg://postgres:devpassword@127.0.0.1:$(DB_POR
 # Each test run builds and drops its own copy, condo_run_<pid>_<hex>_test, so concurrent runs don't collide
 # (backend/tests/conftest.py::per_run_database_url; it refuses any name not ending in _test).
 TEST_DATABASE_URL := postgresql+asyncpg://postgres:devpassword@127.0.0.1:$(DB_PORT)/condo_test
-# The files tests (P3-04a) use compose's S3 emulator from the host, in a bucket of their own per run
-# (backend/tests/files/conftest.py). LocalStack accepts any credentials; these are not secrets.
-TEST_S3_ENV := S3_ENDPOINT_URL=http://127.0.0.1:4566 S3_PUBLIC_ENDPOINT_URL=http://127.0.0.1:4566 \
-	AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test
+# The files tests (P3-04a) use compose's S3 emulator from the host, in a bucket of their own per run;
+# only backend/tests/files/conftest.py reads TEST_S3_ENDPOINT_URL, so the settings tests never see an
+# endpoint. LocalStack accepts any credentials; these are not secrets.
+TEST_S3_ENV := TEST_S3_ENDPOINT_URL=http://127.0.0.1:4566 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test
 BACKEND := cd backend &&
 FRONTEND := cd frontend &&
 

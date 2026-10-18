@@ -63,6 +63,8 @@ EXPECTED_ROW_COUNTS = {
     "rate_limits": 0,
     # P3-01a: nor enqueues a job.
     "jobs": 0,
+    # P3-04a: nor uploads a file.
+    "files": 0,
 }
 
 
