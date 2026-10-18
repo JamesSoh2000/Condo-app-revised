@@ -20,10 +20,12 @@ class FileCreate(InputModel):
     content_type: str = Field(min_length=1, max_length=100)
     size_bytes: int = Field(ge=1)
 
-    @field_validator("filename")
+    # "before": on the raw value, since the inherited whitespace stripping would remove a control
+    # character at either end first (review round 1).
+    @field_validator("filename", mode="before")
     @classmethod
-    def _no_control_characters(cls, value: str) -> str:
-        if _CONTROL.search(value):
+    def _no_control_characters(cls, value: object) -> object:
+        if isinstance(value, str) and _CONTROL.search(value):
             raise ValueError("must not contain control characters")
         return value
 

@@ -222,6 +222,68 @@ async def test_losing_a_concurrent_completion_returns_the_winner(monkeypatch, db
     assert (await row(db, resident_file.file_id)).s3_version_id == "winner-version"
 
 
+async def test_a_failed_check_after_another_completion_won_returns_the_winner(
+    monkeypatch, db, resident_file
+):
+    # Review round 1: this request reads `pending`; another completion commits `ready`; then the
+    # uploader re-POSTs other bytes of the same size with the still-valid form. This request's
+    # checks see the new bytes and fail, but the file is ready: it answers with the winner.
+    assert (await post_form(resident_file.upload, png())).status_code == 204
+    real_head = storage.head
+
+    async def winner_then_reupload(key: str) -> storage.ObjectHead | None:
+        await db.execute(
+            update(File)
+            .where(File.id == resident_file.file_id)
+            .values(status=FileStatus.READY, s3_version_id="winner-version")
+        )
+        assert (await post_form(resident_file.upload, pdf(64))).status_code == 204
+        return await real_head(key)
+
+    monkeypatch.setattr(storage, "head", winner_then_reupload)
+
+    r = await resident_file.client.post(resident_file.url)
+
+    # The body comes from the reloaded row; without the fix this is a 422. (The row itself can't
+    # be checked afterwards: in this one-connection harness the simulated winner's update ran
+    # inside this request's savepoint, which a read-only answer rolls back. A real winner
+    # commits in its own transaction.)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "ready"
+
+
+@pytest.mark.parametrize("outcome", ["missing", "size", "type"])
+async def test_every_failed_check_after_a_winner_returns_the_winner(
+    monkeypatch, db, resident_file, outcome
+):
+    # The same race for each other check that can fail (neighbours of the round 1 fix).
+    real_head = storage.head
+    if outcome != "missing":
+        assert (await post_form(resident_file.upload, png())).status_code == 204
+
+    async def winner_then_other_object(key: str) -> storage.ObjectHead | None:
+        await db.execute(
+            update(File)
+            .where(File.id == resident_file.file_id)
+            .values(status=FileStatus.READY, s3_version_id="winner-version")
+        )
+        found = await real_head(key)
+        if outcome == "missing":
+            return found
+        assert found is not None
+        if outcome == "size":
+            return storage.ObjectHead(found.size + 1, found.content_type, found.version_id)
+        return storage.ObjectHead(found.size, "image/jpeg", found.version_id)
+
+    monkeypatch.setattr(storage, "head", winner_then_other_object)
+
+    r = await resident_file.client.post(resident_file.url)
+
+    # As above: the reloaded winner, not the 409/422.
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "ready"
+
+
 async def test_magic_check_reads_the_version_head_returned(
     monkeypatch, db, s3, s3_bucket, resident_file
 ):

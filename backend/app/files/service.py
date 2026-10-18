@@ -108,6 +108,33 @@ async def complete_file(db: AsyncSession, ctx: TenantContext, file_id: UUID) -> 
         # Never re-checked: its version is pinned, whatever was uploaded since.
         return FileOut.model_validate(file)
 
+    try:
+        version_id = await _verify(file)
+    except UploadIncomplete, FileSizeMismatch, FileTypeMismatch:
+        # A completion that committed while this one checked wins, whatever was uploaded since:
+        # answer with it instead of the failure (review round 1).
+        await db.refresh(file)
+        if file.status is FileStatus.READY:
+            return FileOut.model_validate(file)
+        raise
+
+    # Conditional: if a concurrent completion won, its pinned version stays and is returned.
+    await db.execute(
+        update(File)
+        .where(
+            File.id == file.id,
+            File.building_id == ctx.building_id,
+            File.status == FileStatus.PENDING,
+        )
+        .values(status=FileStatus.READY, s3_version_id=version_id)
+    )
+    await db.refresh(file)
+    await db.commit()
+    return FileOut.model_validate(file)
+
+
+async def _verify(file: File) -> str:
+    """Check the object stored for `file` against its declaration; return the version checked."""
     found = await storage.head(file.s3_key)
     if found is None:
         raise UploadIncomplete(detail="Nothing has been uploaded for this file yet.")
@@ -121,17 +148,4 @@ async def complete_file(db: AsyncSession, ctx: TenantContext, file_id: UUID) -> 
     first_bytes = await storage.get_range(file.s3_key, found.version_id, MAGIC_BYTES)
     if not matches_magic(file.content_type, first_bytes):
         raise FileTypeMismatch(detail="The uploaded file's content is not the declared type.")
-
-    # Conditional: if a concurrent completion won, its pinned version stays and is returned.
-    await db.execute(
-        update(File)
-        .where(
-            File.id == file.id,
-            File.building_id == ctx.building_id,
-            File.status == FileStatus.PENDING,
-        )
-        .values(status=FileStatus.READY, s3_version_id=found.version_id)
-    )
-    await db.refresh(file)
-    await db.commit()
-    return FileOut.model_validate(file)
+    return found.version_id

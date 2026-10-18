@@ -259,6 +259,11 @@ async def test_non_member_pending_and_suspended_get_404(as_user, db, world, pers
         {"filename": "nul\x00.png"},
         {"filename": "tab\t.png"},
         {"filename": "del\x7f.png"},
+        # At either end, where whitespace stripping would remove them first (review round 1).
+        {"filename": "box.png\n"},
+        {"filename": "\tbox.png"},
+        {"filename": "box.png\u2028"},
+        {"filename": "\x1fbox.png"},
         {"size_bytes": 0},
         {"size_bytes": -1},
         {"purpose": "avatar"},
