@@ -1,4 +1,4 @@
-# P3-04 — Private file uploads
+# P3-04 — Private file uploads (split)
 
 | Field | Value |
 |---|---|
@@ -6,21 +6,46 @@
 | Risk tier | 1 |
 | Depends on | P2-03, P0-04 |
 | Replaces old | M5-T05, M5-T11 (cleanup part) |
-| Status | todo |
+| Status | split into [P3-04a](./P3-04a-file-registry-and-uploads.md), [P3-04b](./P3-04b-file-downloads-and-claim.md), [P3-04c](./P3-04c-file-cleanup-job.md) |
 
-## Goal
+Split while framing (2026-10-18). "P3-04" in other tickets' text means all three parts; the
+[ticket index](./README.md) lists which part each dependent actually needs (P5-01 and P3-06 need P3-04b:
+`claim_file` and `download-url`).
+
+| Part | Scope | Acceptance criteria (original numbers) |
+|---|---|---|
+| [P3-04a](./P3-04a-file-registry-and-uploads.md) | `files` table, purpose registry (types, sizes, uploader roles), storage adapter (`presign_post`, `head`, `get_range`), `POST /files`, `POST /files/{id}/complete`, the `s3` service in CI | 1–4, 5 (the version is stored and pinned), plus new 9–16 |
+| [P3-04b](./P3-04b-file-downloads-and-claim.md) | `can_view` hook, `presign_get`, `GET /files/{id}/download-url`, `claim_file` | 5 (download returns the original bytes), 6, 7 |
+| [P3-04c](./P3-04c-file-cleanup-job.md) | `delete_versions`, recurring `files.cleanup` | 8 |
+
+## Why split
+
+- Size: the estimate for the whole ticket was ~600 non-test lines (model and migration ~100, registry and
+  magic numbers ~70, storage adapter ~100, create and complete ~130, download and `claim_file` ~110, schemas
+  and router ~60, CI ~20, cleanup ~60), over ~400.
+- Dependency: `files.cleanup` is a recurring job, and the scheduler that runs recurring jobs is P3-01b
+  (P3-01 was split the same day; P3-01b is `todo`). P3-04c waits for it; nothing else here does.
+- Order: uploads first (P3-06 can build its form against them), then downloads and `claim_file`, which the
+  first domain (P5-01 packages) needs, then cleanup.
+- No criterion was dropped or loosened: criteria 1–4 and the first half of 5 are in P3-04a (sharpened), the
+  rest of 5 and 6–7 in P3-04b, 8 in P3-04c. "Must explain" questions 1–3 are answered by P3-04a's
+  explanation, 4 by P3-04b's.
+
+## Original ticket (for reference)
+
+### Goal
 
 Users upload files directly to private S3 with server-controlled keys and size and type limits. The server
 verifies and pins each upload. Domain code attaches files by `file_id`, and downloads are authorized through
 the owning record.
 
-## Why
+### Why
 
 Package and maintenance photos are private data. This design keeps file bytes off the API host and makes it
 impossible to reference another user's or another building's file
 ([ADR-0007](../adr/0007-private-s3-presigned-uploads.md)).
 
-## Scope
+### Scope
 
 - In:
   - **`files` table:**
@@ -67,11 +92,11 @@ impossible to reference another user's or another building's file
   - image resizing (later)
   - the frontend (P3-06)
 
-## Interfaces
+### Interfaces
 
 Endpoints `files_create`, `files_complete`, `files_download_url`. Helper `claim_file`.
 
-## Acceptance criteria
+### Acceptance criteria
 
 1. **Given** a valid create, **then** the response has a presigned POST, and the DB row is `pending` with a
    server-generated key containing the building ID.
@@ -88,28 +113,26 @@ Endpoints `files_create`, `files_complete`, `files_download_url`. Helper `claim_
 8. **Given** `files.cleanup` with old pending and unattached files, **then** the rows and objects are deleted.
    Attached files are untouched.
 
-## Test plan
+### Test plan
 
 - Integration tests against the S3 emulator in compose and CI (add an `s3` service to CI): `tests/files/*`.
 - Commands: `make test`. Manual on the local stack: upload via curl using the presigned form against the S3
   emulator. Real S3 is checked in D-06.
 
-## Likely files
+### Likely files
 
 `backend/app/files/{models,purposes,storage,service,router,schemas}.py`,
 `backend/migrations/versions/<new>.py`, `backend/app/core/config.py`, `.github/workflows/<ci>.yml`,
 `backend/tests/files/*`.
 
-## Must explain (learning checkpoint)
+### Must explain (learning checkpoint)
 
 1. Why presigned **POST** instead of PUT?
 2. Without `s3_version_id`, how could someone change what an accepted `file_id` serves?
 3. Why check magic bytes when S3 already has a `Content-Type`?
 4. Why is download authorization delegated to the owning domain (`can_view`)?
 
-## Frame notes (filled by the agent in step 1)
+### Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+- See each part's own Frame notes.
+- Split: into P3-04a, P3-04b and P3-04c (2026-10-18; the table at the top of this file).
