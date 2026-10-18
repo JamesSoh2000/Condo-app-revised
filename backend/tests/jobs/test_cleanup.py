@@ -229,6 +229,8 @@ async def test_sessions_cleanup_deletes_sessions_ended_more_than_30_days_ago(
     deleted = {
         await add_session(db, user.id, revoked_at=past),
         await add_session(db, user.id, expires_at=past, idle_expires_at=past),
+        # The absolute deadline alone ended it (review round 1: no case isolated it).
+        await add_session(db, user.id, expires_at=past),
         # The idle deadline alone ended it; the absolute one is still ahead.
         await add_session(db, user.id, idle_expires_at=past),
     }
@@ -242,7 +244,7 @@ async def test_sessions_cleanup_deletes_sessions_ended_more_than_30_days_ago(
         await add_session(db, user.id, idle_expires_at=recent),
     }
 
-    assert await delete_ended_sessions(db) == 3
+    assert await delete_ended_sessions(db) == 4
 
     assert set(await db.scalars(select(AuthSession.id))) == kept
     assert not deleted & kept

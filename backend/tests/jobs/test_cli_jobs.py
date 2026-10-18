@@ -20,7 +20,13 @@ from app import cli
 from app.core import clock
 from app.jobs.models import Job, JobStatus
 from app.jobs.report import render_status
-from app.jobs.service import DEAD_RETENTION, JobNotRetryable, job_status, retry_dead_job
+from app.jobs.service import (
+    DEAD_RETENTION,
+    JobNotRetryable,
+    job_status,
+    retry_dead_job,
+    scrub_dead_jobs,
+)
 from app.jobs.worker import Worker
 from tests.conftest import FrozenClock
 from tests.jobs.conftest import Calls, Sessions
@@ -372,3 +378,143 @@ def test_jobs_retry_command_refuses_a_malformed_id_before_any_session(
     assert result.exit_code == 1
     assert "not a job id" in result.output
     assert "\x1b" not in result.output
+
+
+# Review round 1 (Codex, Medium): retry and the dead-job scrub at the retention boundary
+
+
+def paused_statement(
+    db: AsyncSession, ready: asyncio.Event, resume: asyncio.Event, *, before: int = 1
+) -> None:
+    """Pause `db` before its `before`-th statement: a delay (pool checkout, scheduling) inside the
+    call, whichever session method the code uses."""
+    seen = {"n": 0}
+    for name in ("execute", "scalar", "scalars"):
+        original = getattr(db, name)
+
+        async def paused(*args: Any, _original: Any = original, **kwargs: Any) -> Any:
+            seen["n"] += 1
+            if seen["n"] == before:
+                ready.set()
+                await resume.wait()
+            return await _original(*args, **kwargs)
+
+        setattr(db, name, paused)
+
+
+async def committed_dead_job(sessions: Sessions, finished_at: datetime) -> UUID:
+    async with sessions() as db:
+        job_id = await add(db, make_job(JobStatus.DEAD, finished_at=finished_at))
+        await db.commit()
+    return job_id
+
+
+async def test_a_retry_delayed_across_the_boundary_does_not_requeue_a_scrubbed_job(
+    committed_sessions, frozen_clock: FrozenClock
+):
+    job_id = await committed_dead_job(
+        committed_sessions, clock.now() - DEAD_RETENTION + timedelta(milliseconds=10)
+    )
+    ready, resume = asyncio.Event(), asyncio.Event()
+
+    async def retry() -> bool:
+        async with committed_sessions() as db:
+            paused_statement(db, ready, resume)
+            try:
+                await retry_dead_job(db, job_id)
+            except JobNotRetryable:
+                return False
+            await db.commit()
+            return True
+
+    task = asyncio.create_task(retry())
+    await asyncio.wait_for(ready.wait(), timeout=5)
+    frozen_clock.advance(milliseconds=20)
+    async with committed_sessions() as db:
+        assert await scrub_dead_jobs(db, {"test.fail": ("link",)}) == 1
+        await db.commit()
+    resume.set()
+
+    assert await asyncio.wait_for(task, timeout=5) is False
+    async with committed_sessions() as db:
+        job = await db.get_one(Job, job_id)
+    assert (job.status, job.payload) == (JobStatus.DEAD, {"to": "user@example.test"})
+
+
+async def test_a_retry_waits_for_an_open_scrub_and_then_refuses(
+    committed_sessions, frozen_clock: FrozenClock
+):
+    job_id = await committed_dead_job(
+        committed_sessions, clock.now() - DEAD_RETENTION - timedelta(seconds=1)
+    )
+    async with committed_sessions() as scrub:
+        assert await scrub_dead_jobs(scrub, {"test.fail": ("link",)}) == 1
+        retry = asyncio.create_task(_retry(committed_sessions, job_id))
+        await asyncio.sleep(0.2)
+        await scrub.commit()
+
+    with pytest.raises(JobNotRetryable, match="died more than 7 days ago"):
+        await asyncio.wait_for(retry, timeout=5)
+
+
+async def test_a_scrub_waits_for_an_open_retry_and_then_leaves_the_job_alone(
+    committed_sessions, frozen_clock: FrozenClock
+):
+    job_id = await committed_dead_job(
+        committed_sessions, clock.now() - DEAD_RETENTION + timedelta(milliseconds=10)
+    )
+    async with committed_sessions() as retry:
+        await retry_dead_job(retry, job_id)
+        frozen_clock.advance(seconds=1)
+        scrub = asyncio.create_task(_scrub(committed_sessions))
+        await asyncio.sleep(0.2)
+        assert not scrub.done(), "the scrub waits on the retry's row lock"
+        await retry.commit()
+
+    assert await asyncio.wait_for(scrub, timeout=5) == 0
+    async with committed_sessions() as db:
+        job = await db.get_one(Job, job_id)
+    assert (job.status, job.payload["link"]) == (JobStatus.QUEUED, SECRET)
+
+
+async def test_a_scrub_waits_for_a_retry_paused_between_its_check_and_its_update(
+    committed_sessions, frozen_clock: FrozenClock
+):
+    """The retry's check holds the row: a scrub crossing the boundary meanwhile can't empty it."""
+    job_id = await committed_dead_job(
+        committed_sessions, clock.now() - DEAD_RETENTION + timedelta(milliseconds=10)
+    )
+    ready, resume = asyncio.Event(), asyncio.Event()
+
+    async def retry() -> None:
+        async with committed_sessions() as db:
+            paused_statement(db, ready, resume, before=2)
+            await retry_dead_job(db, job_id)
+            await db.commit()
+
+    retrying = asyncio.create_task(retry())
+    await asyncio.wait_for(ready.wait(), timeout=5)
+    frozen_clock.advance(milliseconds=20)
+    scrub = asyncio.create_task(_scrub(committed_sessions))
+    await asyncio.sleep(0.2)
+    assert not scrub.done(), "the scrub waits for the retry's row lock"
+    resume.set()
+
+    await asyncio.wait_for(retrying, timeout=5)
+    assert await asyncio.wait_for(scrub, timeout=5) == 0
+    async with committed_sessions() as db:
+        job = await db.get_one(Job, job_id)
+    assert (job.status, job.payload["link"]) == (JobStatus.QUEUED, SECRET)
+
+
+async def _retry(sessions: Sessions, job_id: UUID) -> None:
+    async with sessions() as db:
+        await retry_dead_job(db, job_id)
+        await db.commit()
+
+
+async def _scrub(sessions: Sessions) -> int:
+    async with sessions() as db:
+        scrubbed = await scrub_dead_jobs(db, {"test.fail": ("link",)})
+        await db.commit()
+    return scrubbed

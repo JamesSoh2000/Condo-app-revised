@@ -152,16 +152,32 @@ async def retry_dead_job(db: AsyncSession, job_id: UUID) -> None:
 
     `attempts = 0`, so the worker's guard and the claim's `attempts + 1` work as for a new job;
     the payload, `max_attempts` and `last_error` stay. Anything else raises `JobNotRetryable` and
-    changes nothing. One conditional update: of two retries at once, one wins.
+    changes nothing.
+
+    The row is locked before the clock is read (review round 1): a retry delayed across the
+    retention boundary must not re-queue a job `scrub_dead_jobs` emptied meanwhile. A scrub
+    holding the row is waited for; one that comes after waits for this transaction and then finds
+    the job no longer dead. Of two retries at once, one wins.
     """
-    now = clock.now()
-    retried = await db.scalar(
-        update(Job)
-        .where(
-            Job.id == job_id,
-            Job.status == JobStatus.DEAD,
-            Job.finished_at >= now - DEAD_RETENTION,
+    row = (
+        await db.execute(
+            select(Job.status, Job.finished_at).where(Job.id == job_id).with_for_update()
         )
+    ).one_or_none()
+    if row is None:
+        raise JobNotRetryable(f"no job {job_id}")
+    status, finished_at = row
+    if status is not JobStatus.DEAD:
+        raise JobNotRetryable(f"job {job_id} is {status.value}, not dead")
+    now = clock.now()
+    if finished_at is None or finished_at < now - DEAD_RETENTION:
+        raise JobNotRetryable(
+            f"job {job_id} died more than {DEAD_RETENTION.days} days ago (or has no finish time):"
+            " its secrets may be gone; enqueue a new job instead"
+        )
+    await db.execute(
+        update(Job)
+        .where(Job.id == job_id)
         .values(
             status=JobStatus.QUEUED,
             attempts=0,
@@ -170,18 +186,5 @@ async def retry_dead_job(db: AsyncSession, job_id: UUID) -> None:
             locked_until=None,
             finished_at=None,
         )
-        .returning(Job.id)
         .execution_options(synchronize_session=False)
-    )
-    if retried is not None:
-        return
-    status = await db.scalar(select(Job.status).where(Job.id == job_id))
-    if status is None:
-        raise JobNotRetryable(f"no job {job_id}")
-    if status is not JobStatus.DEAD:
-        raise JobNotRetryable(f"job {job_id} is {status.value}, not dead")
-    days = DEAD_RETENTION.days
-    raise JobNotRetryable(
-        f"job {job_id} died more than {days} days ago (or has no finish time): its secrets may be"
-        " gone; enqueue a new job instead"
     )
