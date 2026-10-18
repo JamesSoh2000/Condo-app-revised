@@ -54,6 +54,14 @@ operations surface ADR-0006 names ([ADR-0006](../adr/0006-postgres-job-queue.md)
 ## Carried from P3-01a
 
 - Replace the `jobs-status` placeholder in `app/cli.py` (its placeholder test names P3-01b).
+- Register each new handler module in `app/jobs/worker.py::HANDLER_MODULES`; handlers get `ctx.db` (the
+  job's transaction), never commit, and must finish within `HANDLER_TIMEOUT` (50 s).
+- The scheduler loop goes into `Worker.run_forever` (`app/jobs/worker.py`), next to the heartbeat timer task.
+- Decide while framing: dead jobs keep their sensitive payload keys indefinitely (only success scrubs them,
+  and `jobs.cleanup` deletes only `succeeded` rows). Choose a retention for `dead` jobs, or scrub sensitive
+  keys when a job dies, keeping `jobs-retry` workable (PR #69 follow-ups, explanation §7).
+- `jobs-retry` sets `attempts = 0`: the worker's guard (`attempts > max_attempts` → dead unrun) and the
+  claim's `attempts + 1` then work as for a new job. Clear `locked_by`/`locked_until`, set `run_at` to now.
 
 ## Must explain (learning checkpoint)
 

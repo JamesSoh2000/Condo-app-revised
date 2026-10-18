@@ -193,8 +193,21 @@ read queries passively.
 | 2026-10-17 | P2-07 | Collected helper functions with `ast.walk`, so a same-named method shadowed a committing module-level `record_audit` | review round 2 (Codex), Medium | didn't try a second definition with the same name | module-level lookup; `test_meta_helper_is_the_module_level_function` |
 | 2026-10-17 | P2-07 | The scratch-name test hard-coded the stem `condo`; after fixing that, the session-name test next to it still expected the full stem and fails for a truncated (long) `TEST_DATABASE_URL` name | review round 2 (Codex), Low; then round 3 (Codex), Low, **open** (carried to P3-01) | "fix not tested on adjacent cases" again: the neighbour was the test 20 lines below. The P2-06c step-8 follow-up (write each fix's neighbour list into the PR before the next round) was not applied in this ticket | carried to P3-01; see the step 8 note below |
 
+| 2026-10-18 | P3-01a | Claimed a batch of jobs under one shared lease and ran them in turn, so waiting jobs outlived the lease and a second worker ran them too | review round 1 (Codex gpt-6.1-sol), **High** | took the ticket's "claim a batch" literally without asking what a lease means for the jobs that wait | one claim per job (D9) + `test_waiting_batch_job_is_not_run_by_two_live_workers` |
+| 2026-10-18 | P3-01a | Redacted secrets by full value, but SQLAlchemy's error messages hold *cut* parameters, so a reset token reached `last_error`; a shallow payload copy let a handler hide a nested secret | review round 1 (Codex), **High** ×2 | assumed the exception text quotes values verbatim; didn't try a mutating handler | database errors withheld; deep copy; tests |
+| 2026-10-18 | P3-01a | Heartbeat logged only between batches (delayed ~500 s by slow jobs) | review round 1 (Codex), Medium | tested the idle loop only | timer task + `test_heartbeat_is_logged_while_a_batch_runs` |
+| 2026-10-18 | P3-01a | Round 1's fixes covered only the reported case: the database-error check missed `PendingRollbackError`; the per-job lease renewal still let a waiting job be reclaimed and dead-lettered unrun | review round 2 (Codex), **High** ×2 | "fix not tested on adjacent cases" **again** (other exception types; other ways a waiting job's lease ends), despite the CLAUDE.md lesson | all SQLAlchemy/asyncpg errors withheld; one claim per job; neighbour tests |
+| 2026-10-18 | P3-01a | Wrote the claim as `id IN (SELECT … LIMIT 1 …)`; under stale statistics Postgres ran it as a re-scanning semi-join and leased several jobs per claim. It surfaced only as a 1-in-10 flaky test | flaky-test diagnosis (Codex gpt-6-astra medium), **High** | copied the architecture doc's `IN (subquery)` shape without knowing the planner may re-run a `LIMIT` subquery | `= (scalar subquery)` + `test_one_claim_leases_exactly_one_job_whatever_the_statistics` |
+| 2026-10-18 | P3-01a | Redacted sensitive values one by one in no fixed order, so replacing a URL prefix first broke the full link and left its token | flaky-test diagnosis (Codex), Medium | didn't try overlapping secret values | one regex pass, longest first + test |
+| 2026-10-18 | P2-07 carry | The open P2-07 round 3 Low (session-name test assumed the full stem) | — | — | fixed in P3-01a: `assert_named_per_run`, proven with a 50-character stem |
+
 P2-07 step 8 note: "fix not tested on adjacent cases" appeared again (round 3 on round 2's fix), and this ticket
 did not apply P2-06c's follow-up (a written neighbour list per fix before each review round). That follow-up
 stands for the next ticket, and should become a line in `.claude/commands/build-ticket.md` step 4 so it isn't
 left to memory: "for each fix, list its neighbours in the PR's review section with a test or `n/a: why`
 before spawning the next reviewer".
+
+P3-01a step 8 note: "fix not tested on adjacent cases" appeared again (round 2 reopened both round-1 security
+and lease fixes). The P2-06c/P2-07 follow-up (a written neighbour list per fix, in the PR, before the next
+reviewer) was still not in `.claude/commands/build-ticket.md`; that change is the first follow-up for the next
+ticket. New pattern, 1 of 2: "SQL shape copied from the docs without checking the plan" (`IN (… LIMIT …)`).

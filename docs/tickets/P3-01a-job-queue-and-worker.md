@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P1-04, P0-05 |
 | Replaces old | M5-T07, M5-T09 (part of [P3-01](./P3-01-job-queue-and-worker.md)) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
