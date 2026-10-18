@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
@@ -609,7 +609,7 @@ async def test_database_error_keeps_no_parameters_in_last_error(
     async def dbsecret(payload: dict[str, Any], ctx: JobContext) -> None:
         for _ in range(2):  # the second insert breaks the dedupe key's unique constraint
             await ctx.db.execute(
-                Job.__table__.insert().values(
+                insert(Job).values(
                     kind="k" * kind_length, payload={"link": payload["link"]}, dedupe_key=link[:200]
                 )
             )
