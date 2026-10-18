@@ -61,7 +61,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P2-07](./P2-07-test-infrastructure-hardening.md) | Test infrastructure hardening (P1-05 and P2-03 follow-ups) | B | 3 | P2-03 | done | — |
 | [P2-gate-01](./P2-gate-01-login-rate-limit-gate.md) | Reconcile the login rate-limit exit gate (James's decision) | B | 3 | P2-05, P2-07 | done | — |
 | [P3-01a](./P3-01a-job-queue-and-worker.md) | Job queue and worker (split from [P3-01](./P3-01-job-queue-and-worker.md)) | B | 1 | P1-04, P0-05 | done | — |
-| [P3-01b](./P3-01b-scheduler-cleanup-and-cli.md) | Scheduler, cleanup jobs and jobs CLI (split from P3-01) | B | 1 | P3-01a, P2-05, P2-01b | todo | — |
+| [P3-01b](./P3-01b-scheduler-cleanup-and-cli.md) | Scheduler, cleanup jobs and jobs CLI (split from P3-01) | B | 1 | P3-01a, P2-05, P2-01b | done | — |
 | [P3-02](./P3-02-transactional-email.md) | Transactional email | B | 2 | P3-01a | todo | — |
 | [P3-03](./P3-03-notifications-api.md) | In-app notifications API | A | 2 | P3-01a, P2-03 | todo | — |
 | [P3-04a](./P3-04a-file-registry-and-uploads.md) | File registry and direct uploads (split from [P3-04](./P3-04-private-file-uploads.md)) | A | 1 | P2-03, P0-04a | done | — |

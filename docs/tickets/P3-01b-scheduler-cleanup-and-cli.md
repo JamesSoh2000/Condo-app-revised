@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P3-01a, P2-05, P2-01b |
 | Replaces old | M14-T16 (demo subset) (part of [P3-01](./P3-01-job-queue-and-worker.md)) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 

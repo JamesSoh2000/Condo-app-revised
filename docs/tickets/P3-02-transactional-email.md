@@ -85,6 +85,13 @@ it simple ([ADR-0006](../adr/0006-postgres-job-queue.md)).
 3. Which SMTP errors are worth retrying, and which aren't?
 4. Why must HTML templates autoescape?
 
+## Carried from P3-01b
+
+- A dead `email.send` job keeps its `sensitive_keys` for 7 days (`DEAD_RETENTION`); `jobs.cleanup` then removes
+  them and `jobs-retry` refuses the job. Keep every link or token the email needs under a sensitive key, so
+  the scrub finds it.
+- Register the handler module in `backend/app/jobs/worker.py::HANDLER_MODULES`.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
