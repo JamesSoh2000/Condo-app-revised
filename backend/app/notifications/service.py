@@ -107,7 +107,10 @@ async def notify(
         by_id = {row.id: row for row in users}
         # Set last, so the email says what the in-app row says.
         context = (email_context or {}) | {"title": title, "body": body, "link": link}
-        for user_id in recipients:
+        # In id order: each dedupe key is a unique-index entry that a concurrent `notify` of the
+        # same entity also inserts, so callers taking them in different orders would deadlock
+        # (Codex review round 2).
+        for user_id in sorted(recipients):
             user = by_id[user_id]
             if not user.is_active or not is_email_address(user.email):
                 # By id only: never log the address (CLAUDE.md rule 10).
