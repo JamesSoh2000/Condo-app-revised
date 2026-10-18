@@ -60,9 +60,10 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P2-06c](./P2-06c-navigation-and-header-menu.md) | Navigation, header menu and council "view as" (split from P2-06b) | B | 1 | P2-06b | done | — |
 | [P2-07](./P2-07-test-infrastructure-hardening.md) | Test infrastructure hardening (P1-05 and P2-03 follow-ups) | B | 3 | P2-03 | done | — |
 | [P2-gate-01](./P2-gate-01-login-rate-limit-gate.md) | Reconcile the login rate-limit exit gate (James's decision) | B | 3 | P2-05, P2-07 | done | — |
-| [P3-01](./P3-01-job-queue-and-worker.md) | Job queue and worker | B | 1 | P1-04, P0-05 | todo | — |
-| [P3-02](./P3-02-transactional-email.md) | Transactional email | B | 2 | P3-01 | todo | — |
-| [P3-03](./P3-03-notifications-api.md) | In-app notifications API | A | 2 | P3-01, P2-03 | todo | — |
+| [P3-01a](./P3-01a-job-queue-and-worker.md) | Job queue and worker (split from [P3-01](./P3-01-job-queue-and-worker.md)) | B | 1 | P1-04, P0-05 | in progress | — |
+| [P3-01b](./P3-01b-scheduler-cleanup-and-cli.md) | Scheduler, cleanup jobs and jobs CLI (split from P3-01) | B | 1 | P3-01a, P2-05, P2-01b | todo | — |
+| [P3-02](./P3-02-transactional-email.md) | Transactional email | B | 2 | P3-01a | todo | — |
+| [P3-03](./P3-03-notifications-api.md) | In-app notifications API | A | 2 | P3-01a, P2-03 | todo | — |
 | [P3-04](./P3-04-private-file-uploads.md) | Private file uploads | A | 1 | P2-03, P0-04a | todo | — |
 | [P3-05](./P3-05-frontend-notification-center.md) | Frontend notification center with polling | B | 2 | P3-03, P2-06c | todo | — |
 | [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04, P2-06b | todo | — |
@@ -87,7 +88,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | ID | Title | Lane | Tier | Depends on | Status | Learned |
 |---|---|---|---|---|---|---|
 | [D-01](./D-01-terraform-base.md) | Terraform base infrastructure | B | 1 | P0-04a, P0-04b | todo | — |
-| [D-02](./D-02-host-bootstrap-caddy-compose.md) | Host bootstrap, Caddy and staging compose | B | 1 | D-01, P1-08, P3-01 | todo | — |
+| [D-02](./D-02-host-bootstrap-caddy-compose.md) | Host bootstrap, Caddy and staging compose | B | 1 | D-01, P1-08, P3-01a | todo | — |
 | [D-03](./D-03-cicd-deploy-staging.md) | CI/CD: build, push and deploy to staging | B | 1 | D-02, P1-08 | todo | — |
 | [D-04](./D-04-logs-errors-uptime.md) | Logs, error tracking and uptime | A | 2 | D-03 | todo | — |
 | [D-05](./D-05-nightly-backups-to-s3.md) | Nightly backups to S3 and the staging restore test | A | 1 | D-02, P7-01, D-04 | todo | — |
@@ -97,7 +98,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 
 ```text
 P0-02 → P0-05 → P1-01 → P1-02 → P1-03 → P1-05 → P2-03 → P2-04 → P4-01 → P4-05 → P4-06 → P4-08 → P4-09 → P5-05
-                         P1-02 → P2-01a → P2-01b → P2-02 ↗         P3-01 → P3-03 ↗
+                         P1-02 → P2-01a → P2-01b → P2-02 ↗         P3-01a → P3-03 ↗
                                   P2-02 → P2-06a → P2-06b → P2-06c ───────────────────────↗ (P4-08)
 ```
 
