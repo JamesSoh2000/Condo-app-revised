@@ -113,9 +113,11 @@ async def complete_file(db: AsyncSession, ctx: TenantContext, file_id: UUID) -> 
     except UploadIncomplete, FileSizeMismatch, FileTypeMismatch:
         # A completion that committed while this one checked wins, whatever was uploaded since:
         # answer with it instead of the failure (review round 1).
-        await db.refresh(file)
-        if file.status is FileStatus.READY:
-            return FileOut.model_validate(file)
+        current = await db.scalar(
+            select(File).where(File.id == file.id).execution_options(populate_existing=True)
+        )
+        if current is not None and current.status is FileStatus.READY:
+            return FileOut.model_validate(current)
         raise
 
     # Conditional: if a concurrent completion won, its pinned version stays and is returned.
