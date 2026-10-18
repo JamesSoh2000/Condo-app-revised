@@ -61,6 +61,8 @@ EXPECTED_ROW_COUNTS = {
     "audit_events": 0,
     # P2-05: nor counts a login attempt.
     "rate_limits": 0,
+    # P3-01a: nor enqueues a job.
+    "jobs": 0,
 }
 
 
