@@ -16,8 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.report import render
 from app.audit.service import AuditQuery, UnknownFilterValue, find_audit_events
 from app.core import clock
-from app.core.config import settings
+from app.core.config import is_email_address, settings
 from app.core.database import AsyncSessionLocal, dispose_database_engine
+from app.email.service import queue_email
 from app.jobs.report import render_status
 from app.jobs.service import JobNotRetryable, job_status, retry_dead_job
 from app.seed import SeedRefusedError, check_seed_allowed, seed, seed_password_for
@@ -166,6 +167,24 @@ def jobs_retry_command(job_id: str = typer.Argument(..., help="The dead job's id
     typer.echo(f"requeued {parsed}")
 
 
+@app.command("email-test")
+def email_test_command(
+    to: str = typer.Option(..., "--to", help="The one address to send the test email to."),
+) -> None:
+    """Queue the `test` email; the worker sends it (Mailpit locally: http://localhost:8025)."""
+    if not is_email_address(to):
+        # Checked before any session; not echoed, since it is untrusted terminal input.
+        typer.echo("error: --to must be one email address", err=True)
+        raise typer.Exit(1)
+    queued: list[UUID | None] = []
+
+    async def work(db: AsyncSession) -> None:
+        queued.append(await queue_email(db, to=to, template="test", context={}))
+
+    run_in_session(work)
+    typer.echo(f"queued email job {queued[0]}")
+
+
 def _placeholder(name: str, ticket: str) -> None:
     def command() -> None:
         typer.echo(f"error: {name} is not implemented yet; {ticket} adds it", err=True)
@@ -176,7 +195,6 @@ def _placeholder(name: str, ticket: str) -> None:
 
 # Fail loudly: a script that calls a placeholder must not mistake it for success.
 _placeholder("bootstrap-building", "P4-03")
-_placeholder("email-test", "P3-02")
 
 
 if __name__ == "__main__":

@@ -99,6 +99,10 @@ def test_prod_accepts_settings_without_s3_endpoints():
         secret_key="not-the-default-secret",  # noqa: S106 (test fixture, not a real secret)
         s3_bucket_name="condo-app-prod-files",
         ses_from_email="noreply@example.org",
+        # Required in production since P3-02.
+        email_from="Maple Tower <no-reply@example.org>",
+        app_base_url="https://condo.example.org",
+        smtp_starttls=True,
     )
 
     assert settings.s3_endpoint_url is None
@@ -110,6 +114,10 @@ PROD: dict[str, Any] = {
     "secret_key": "not-the-default-secret",  # (test fixture, not a real secret)
     "s3_bucket_name": "condo-app-prod-files",
     "ses_from_email": "noreply@example.org",
+    # Required in production since P3-02.
+    "email_from": "Maple Tower <no-reply@example.org>",
+    "app_base_url": "https://condo.example.org",
+    "smtp_starttls": True,
 }
 
 
@@ -275,7 +283,13 @@ def test_seed_password_is_a_secret_and_unset_by_default(monkeypatch):
 
 # P2-01b criterion 1: the session cookie's name and Secure flag follow the environment
 
-STAGING = {**PROD, "app_env": "staging", "trusted_origins": ["https://staging.example.org"]}
+STAGING = {
+    **PROD,
+    "app_env": "staging",
+    "trusted_origins": ["https://staging.example.org"],
+    # Required in staging since P3-02.
+    "email_recipient_allowlist": "@example.org",
+}
 
 
 @pytest.mark.parametrize(

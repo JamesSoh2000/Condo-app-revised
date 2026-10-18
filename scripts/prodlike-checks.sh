@@ -3,6 +3,8 @@
 # - api, worker and db publish no host port and mount no source directory; the API runs one gunicorn worker
 # - the API trusts forwarded headers from Caddy only
 # - TRUSTED_ORIGINS and the build metadata
+# - email (P3-02): `email-test` reaches Mailpit through the image's worker; with Mailpit stopped the job
+#   is retried, and delivered once Mailpit is back. Stops and starts the stack's Mailpit.
 # Run against a running stack (`make prodlike`), from the repo root. Exits 1 if any check failed.
 set -euo pipefail
 
@@ -75,6 +77,68 @@ setting() { "${compose[@]}" exec -T api python -c "from app.core.config import s
 check "TRUSTED_ORIGINS contains http://localhost:8080" grep -qF "'http://localhost:8080'" <<<"$(setting trusted_origins)"
 check "image_tag is not 'local'" test "$(setting image_tag)" != local
 check "build_time is not 'local'" test "$(setting build_time)" != local
+
+# P3-02 criteria 7, 1 and 2.
+mailpit=http://localhost:8025
+run_id="$$-$RANDOM"
+wait_for() { # <seconds> <command...>: retry the command every second until it succeeds or time runs out
+  local deadline=$((SECONDS + $1))
+  shift
+  until "$@"; do
+    [ "$SECONDS" -ge "$deadline" ] && return 1
+    sleep 1
+  done
+}
+queue_test_email() { # <recipient> → the job id `email-test` printed
+  "${compose[@]}" exec -T api python -m app.cli email-test --to "$1" | awk '/^queued email job /{print $4}'
+}
+job_is() { # <job id> <regex for "status attempts">
+  local state
+  state="$("${compose[@]}" exec -T api python -c '
+import asyncio, sys
+from uuid import UUID
+from app.core.database import AsyncSessionLocal
+from app.jobs.models import Job
+async def main():
+    async with AsyncSessionLocal() as db:
+        job = await db.get(Job, UUID(sys.argv[1]))
+        print(job.status.value, job.attempts)
+asyncio.run(main())' "$1" | tr -d '\r')"
+  echo "      job $1: $state"
+  [[ "$state" =~ ^$2$ ]]
+}
+delivered() { # <recipient>: Mailpit holds exactly one message to it, with both parts and the From header
+  python3 - "$mailpit" "$1" <<'PY'
+import json, sys, urllib.request
+base, to = sys.argv[1], sys.argv[2]
+listing = json.load(urllib.request.urlopen(f"{base}/api/v1/messages?limit=500", timeout=5))
+found = [m for m in listing["messages"] if any(r["Address"] == to for r in m["To"])]
+if len(found) != 1:
+    sys.exit(1)
+message = json.load(urllib.request.urlopen(f"{base}/api/v1/message/{found[0]['ID']}", timeout=5))
+sender = message["From"]
+sys.exit(0 if (sender["Name"], sender["Address"]) == ("Building Management", "no-reply@example.com")
+         and "test email" in message["Text"] and "test email" in message["HTML"] else 1)
+PY
+}
+mailpit_ready() { curl -fsS -o /dev/null "$mailpit/readyz"; }
+
+to_up="smoke-$run_id@example.test"
+job_up="$(queue_test_email "$to_up")"
+check "email-test queues a job" test -n "$job_up"
+check "the image's worker delivers it to Mailpit: one message, text + HTML, From header" \
+  wait_for 30 delivered "$to_up"
+check "the delivered job succeeded on attempt 1" job_is "$job_up" "succeeded 1"
+
+"${compose[@]}" stop mailpit
+to_down="smoke-down-$run_id@example.test"
+job_down="$(queue_test_email "$to_down")"
+check "with Mailpit stopped, the job is retried (queued again after attempt 1)" \
+  wait_for 30 job_is "$job_down" "queued 1"
+"${compose[@]}" start mailpit
+check "Mailpit is back" wait_for 60 mailpit_ready
+check "after Mailpit restarts, the retried job is delivered" wait_for 60 delivered "$to_down"
+check "the retried job succeeded on a later attempt" job_is "$job_down" "succeeded [2-8]"
 
 if [ "$failures" -gt 0 ]; then
   echo "prodlike-checks: $failures check(s) failed"

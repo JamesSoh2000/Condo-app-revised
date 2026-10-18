@@ -1,0 +1,6 @@
+{{ building_name | default(sender_name) }}
+
+{% block body %}{% endblock %}
+
+--
+Sent by {{ building_name | default(sender_name) }} · {{ app_base_url }}

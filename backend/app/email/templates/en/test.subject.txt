@@ -1,0 +1,1 @@
+Test email from {{ building_name | default(sender_name) }} for {{ name | default("you") }}

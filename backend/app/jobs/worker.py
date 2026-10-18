@@ -45,8 +45,13 @@ MAX_BACKOFF = timedelta(hours=1)
 # Touched every loop and before every job; the Docker healthcheck fails when it is older than
 # 120 s, above HANDLER_TIMEOUT (docker-compose.yml, compose.prodlike.yml).
 HEARTBEAT_FILE = Path(tempfile.gettempdir()) / "worker_heartbeat"
-# Modules whose `@job_handler`s the worker runs. P3-02 adds its own here.
-HANDLER_MODULES: tuple[str, ...] = ("app.jobs.handlers", "app.rate_limits.jobs", "app.auth.jobs")
+# Modules whose `@job_handler`s the worker runs.
+HANDLER_MODULES: tuple[str, ...] = (
+    "app.jobs.handlers",
+    "app.rate_limits.jobs",
+    "app.auth.jobs",
+    "app.email.handler",
+)
 # Enqueued once per UTC day by the scheduler (P3-01b), with the key `<kind>:<yyyy-mm-dd>`.
 RECURRING_KINDS: tuple[str, ...] = ("jobs.cleanup", "rate_limits.cleanup", "sessions.cleanup")
 SCHEDULE_INTERVAL = 60.0

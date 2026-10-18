@@ -1,0 +1,4 @@
+{% extends base %}
+{% block body %}Hello {{ name | default("there") }},
+
+This is a test email. If you can read it, email delivery works.{% endblock %}

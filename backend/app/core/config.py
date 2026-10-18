@@ -1,12 +1,13 @@
 import ipaddress
 import re
 from datetime import timedelta
+from email.utils import getaddresses
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 AppEnv = Literal["dev", "test", "staging", "prod"]
 
@@ -16,6 +17,12 @@ LOCAL_DEV_SECRET_KEY = "change-me-in-local-dev-only"  # noqa: S105
 # labels are letters, digits and inner dashes, with no trailing dot.
 _LABEL = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?"
 _ORIGIN = re.compile(rf"https?://{_LABEL}(\.{_LABEL})*(:[1-9][0-9]{{0,4}})?")
+# One email address, as `queue_email` and the allowlist accept it (P3-02): no whitespace, control
+# characters or the separators of an address list; one `@`; a domain of letter/digit/dash labels.
+_DOMAIN = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*"
+EMAIL_ADDRESS = re.compile(rf"[^@\s\x00-\x1f\x7f,;:<>()\[\]\\\"]+@{_DOMAIN}", re.IGNORECASE)
+MAX_EMAIL_ADDRESS_LENGTH = 254
+DEV_EMAIL_FROM = "Building Management <no-reply@example.com>"
 
 
 class RatePolicy(BaseModel):
@@ -83,9 +90,20 @@ class Settings(BaseSettings):
     s3_public_endpoint_url: str | None = None
     ses_from_email: str = "noreply@example.com"
 
-    # SMTP config only (Mailpit locally). Do not connect yet; P3-02 adds the sender.
+    # SMTP (P3-02): Mailpit locally, SES's SMTP endpoint once staging exists. Only the worker's
+    # `email.send` handler connects (CLAUDE.md rule 6). Credentials need STARTTLS.
     smtp_host: str = "localhost"
     smtp_port: int = 1025
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_starttls: bool = False
+    # The From header of every email, with an optional display name.
+    email_from: str = DEV_EMAIL_FROM
+    # Where the SPA is served; links in emails start with it. An origin, no trailing slash.
+    app_base_url: str = "http://localhost:5173"
+    # Comma-separated addresses or `@domain` entries; only matching recipients get mail. Empty
+    # allows everyone, which staging refuses (`validate_production_settings`).
+    email_recipient_allowlist: Annotated[tuple[str, ...], NoDecode] = ()
 
     # Build/deployment metadata
     git_sha: str = "local"
@@ -119,6 +137,22 @@ class Settings(BaseSettings):
     rate_limit_reset_email: RatePolicy = RatePolicy(limit=8, window_seconds=900)
     rate_limit_signup_ip: RatePolicy = RatePolicy(limit=10, window_seconds=3600)
     rate_limit_join_ip: RatePolicy = RatePolicy(limit=20, window_seconds=600)
+
+    @field_validator("email_recipient_allowlist", mode="before")
+    @classmethod
+    def _parse_allowlist(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            value = [] if not value.strip() else value.split(",")
+        if not isinstance(value, list | tuple):
+            return value
+        entries = tuple(str(entry).strip().lower() for entry in value)
+        malformed = [e for e in entries if not _is_allowlist_entry(e)]
+        if malformed:
+            raise ValueError(
+                "EMAIL_RECIPIENT_ALLOWLIST entries must each be an address or @domain, "
+                f"separated by commas: {malformed}"
+            )
+        return entries
 
     @model_validator(mode="before")
     @classmethod
@@ -191,9 +225,55 @@ class Settings(BaseSettings):
 
         return self
 
+    @model_validator(mode="after")
+    def validate_email_settings(self) -> Settings:
+        """The email settings (P3-02); after `validate_production_settings`, so its errors win."""
+        if not _is_origin(self.app_base_url):
+            raise ValueError(
+                "APP_BASE_URL must be lowercase scheme://host[:port], with no path or trailing "
+                "slash"
+            )
+        if not _is_single_address(self.email_from):
+            raise ValueError('EMAIL_FROM must be one address, e.g. "Maple Tower <no-reply@x.org>"')
+        if (self.smtp_username or self.smtp_password) and not self.smtp_starttls:
+            # The credentials would cross the network in clear text.
+            raise ValueError("SMTP_STARTTLS must be true when SMTP credentials are set")
+
+        if self.app_env in {"staging", "prod"} and _is_loopback(self.app_base_url):
+            raise ValueError(f"APP_BASE_URL must not be a localhost URL in {self.app_env}")
+        if self.app_env == "staging" and not self.email_recipient_allowlist:
+            # Staging must never email real people (its SES sandbox identities = the allowlist).
+            raise ValueError("EMAIL_RECIPIENT_ALLOWLIST must not be empty in staging")
+        if self.is_production:
+            if not self.app_base_url.startswith("https://"):
+                raise ValueError("APP_BASE_URL must be https:// in production")
+            if self.email_from == DEV_EMAIL_FROM:
+                raise ValueError("EMAIL_FROM must be set to a real verified sender in production")
+            if not self.smtp_starttls:
+                raise ValueError("SMTP_STARTTLS must be true in production")
+        return self
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "prod"
+
+
+def is_email_address(value: str) -> bool:
+    """One bare address (no display name), at most 254 characters."""
+    return len(value) <= MAX_EMAIL_ADDRESS_LENGTH and EMAIL_ADDRESS.fullmatch(value) is not None
+
+
+def _is_single_address(value: str) -> bool:
+    if "\r" in value or "\n" in value:
+        return False
+    addresses = getaddresses([value])
+    return len(addresses) == 1 and is_email_address(addresses[0][1])
+
+
+def _is_allowlist_entry(entry: str) -> bool:
+    if entry.startswith("@"):
+        return re.fullmatch(_DOMAIN, entry[1:]) is not None
+    return is_email_address(entry)
 
 
 def _is_origin(origin: str) -> bool:
