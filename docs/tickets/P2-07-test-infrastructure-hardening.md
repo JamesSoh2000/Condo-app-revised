@@ -6,7 +6,7 @@
 | Risk tier | 3 |
 | Depends on | P2-03 |
 | Replaces old | — |
-| Status | in progress |
+| Status | done |
 
 Follow-ups of [P1-05](./P1-05-test-world-and-isolation-helpers.md) (PR #50) and
 [P2-03](./P2-03-tenant-context-guards-fitness.md) (PR #59) that P2-03 did not take in scope. Re-frame before

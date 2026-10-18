@@ -188,3 +188,13 @@ each (or "n/a: why"), so a reviewer sees which ones were skipped. "Network call 
 component" reached 2 (round 1 F2, round 2 L1): promote it in the next ticket PR, e.g. a test helper that asserts
 the request list of the shell on a session-only route, or a `CLAUDE.md` line that shell and nav components only
 read queries passively.
+
+| 2026-10-17 | P2-07 | Gave the session database a pid + random name because pids repeat across PID namespaces, but left the migration scratch database on pid only (`condo_migrations_<pid>_test`); two sandboxed runs with pid 45 dropped each other's | review round 1 (Codex gpt-6.1-sol), **High** | applied the reasoning to the thing the ticket named, not to the other database built the same way | `kind` argument; `test_equal_pids_still_get_distinct_databases` |
+| 2026-10-17 | P2-07 | Collected helper functions with `ast.walk`, so a same-named method shadowed a committing module-level `record_audit` | review round 2 (Codex), Medium | didn't try a second definition with the same name | module-level lookup; `test_meta_helper_is_the_module_level_function` |
+| 2026-10-17 | P2-07 | The scratch-name test hard-coded the stem `condo`; after fixing that, the session-name test next to it still expected the full stem and fails for a truncated (long) `TEST_DATABASE_URL` name | review round 2 (Codex), Low; then round 3 (Codex), Low, **open** (carried to P3-01) | "fix not tested on adjacent cases" again: the neighbour was the test 20 lines below. The P2-06c step-8 follow-up (write each fix's neighbour list into the PR before the next round) was not applied in this ticket | carried to P3-01; see the step 8 note below |
+
+P2-07 step 8 note: "fix not tested on adjacent cases" appeared again (round 3 on round 2's fix), and this ticket
+did not apply P2-06c's follow-up (a written neighbour list per fix before each review round). That follow-up
+stands for the next ticket, and should become a line in `.claude/commands/build-ticket.md` step 4 so it isn't
+left to memory: "for each fix, list its neighbours in the PR's review section with a test or `n/a: why`
+before spawning the next reviewer".

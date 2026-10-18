@@ -110,6 +110,14 @@ This solves the dual-write problem for email and powers all background work with
   (PR #57 review round 2 L3). Add a periodic job that deletes rows past `expires_at`/`idle_expires_at` or
   revoked for some retention period, and decide on a cap.
 
+## Carried from P2-07 (do while framing)
+
+- Add `enqueue` (in its service module) to `NON_COMMITTING_HELPERS` in `backend/tests/test_architecture.py`, so
+  fitness test 4 fails if it ever commits (CLAUDE.md rule 5).
+- Review round 3 Low (PR #67): `backend/tests/test_db_isolation.py::test_the_session_database_is_this_runs_own`
+  expects the whole stem of `TEST_DATABASE_URL`'s name, so it fails when the stem is longer than about 39
+  bytes (the per-run name truncates it). Use `assert_named_per_run` there, as the scratch-name test does.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
