@@ -48,6 +48,9 @@ copies, so it must be exactly right and thoroughly tested.
     - multi-role: the union of the role grants
   - Register `can_view` for file purpose `package_photo`: the file is attached to a package that is visible to
     the caller.
+    Follow-up from P3-04b: call `app.files.purposes.register_can_view(FilePurpose.PACKAGE_PHOTO, …)` from a
+    module `app/main.py` imports (until then attached package photos are visible to nobody), and attach photos
+    with `app.files.service.claim_file` inside the write use case, before its single commit.
   - **Seed:** about 15 packages for Maple across units and states.
 - Out:
   - endpoints (P5-02a, P5-02b)

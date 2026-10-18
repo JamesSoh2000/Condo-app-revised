@@ -65,7 +65,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P3-02](./P3-02-transactional-email.md) | Transactional email | B | 2 | P3-01a | done | — |
 | [P3-03](./P3-03-notifications-api.md) | In-app notifications API | A | 2 | P3-01a, P2-03 | done | — |
 | [P3-04a](./P3-04a-file-registry-and-uploads.md) | File registry and direct uploads (split from [P3-04](./P3-04-private-file-uploads.md)) | A | 1 | P2-03, P0-04a | done | — |
-| [P3-04b](./P3-04b-file-downloads-and-claim.md) | File downloads and `claim_file` (split from P3-04) | A | 1 | P3-04a | in progress | — |
+| [P3-04b](./P3-04b-file-downloads-and-claim.md) | File downloads and `claim_file` (split from P3-04) | A | 1 | P3-04a | done | — |
 | [P3-04c](./P3-04c-file-cleanup-job.md) | File cleanup job (split from P3-04) | A | 1 | P3-04b, P3-01b | todo | — |
 | [P3-05](./P3-05-frontend-notification-center.md) | Frontend notification center with polling | B | 2 | P3-03, P2-06c | todo | — |
 | [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04b, P2-06b | todo | — |
