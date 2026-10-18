@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core import clock
+from app.email.service import queue_email
 from app.jobs.models import Job
 from app.notifications import service
 from app.notifications.models import Notification
@@ -44,7 +45,7 @@ def test_concurrent_notifies_of_one_entity_in_opposite_orders_both_finish(
     # other needed next, and Postgres aborted one caller with "deadlock detected".
     point_settings_at(monkeypatch, 1025)
     migrate(scratch_database_url)
-    original = service.queue_email
+    original = queue_email
 
     async def check() -> None:
         engine = create_async_engine(scratch_database_url)
@@ -87,7 +88,7 @@ def test_concurrent_notifies_of_one_entity_in_opposite_orders_both_finish(
                 ),
                 timeout=15,
             )
-            assert results == [None, None], [str(result) for result in results]
+            assert list(results) == [None, None], [str(result) for result in results]
             async with sessions() as db:
                 rows = await db.scalar(select(func.count()).select_from(Notification))
                 assert rows == (4 if first_commits else 2)
