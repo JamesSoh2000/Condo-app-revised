@@ -332,7 +332,33 @@ async def test_email_uses_the_recipients_locale(db: AsyncSession, world: World) 
     assert [job.payload["locale"] for job in await email_jobs(db)] == ["fr", "en"]
 
 
-# Criterion 6
+# Criterion 6: the timing line (Codex review round 1, Low: missing for an empty call, and counting
+# an email that the dedupe key dropped)
+
+
+async def test_an_empty_call_still_logs_its_timing(
+    db: AsyncSession, world: World, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger="app.notifications.service"):
+        await notify(db, **arrived(world, []))
+
+    assert any("recipients=0 emails=0 ms=" in message for message in caplog.messages)
+
+
+async def test_the_timing_counts_only_emails_actually_queued(
+    db: AsyncSession, world: World, caplog: pytest.LogCaptureFixture
+) -> None:
+    inactive = world.a_resident2.user
+    inactive.is_active = False
+    await db.flush()
+    await notify(db, **arrived(world, [world.a_resident1.user.id]))
+
+    with caplog.at_level(logging.INFO, logger="app.notifications.service"):
+        # resident1's email is deduped; the inactive user gets none.
+        await notify(db, **arrived(world, [world.a_resident1.user.id, inactive.id]))
+
+    assert len(await email_jobs(db)) == 1
+    assert any("recipients=2 emails=0 ms=" in message for message in caplog.messages)
 
 
 async def test_600_recipients_are_inserted_in_one_statement_under_300_ms(

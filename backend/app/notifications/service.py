@@ -76,6 +76,7 @@ async def notify(
     # In order, each once.
     recipients = list(dict.fromkeys(recipient_user_ids))
     if not recipients:
+        _log_timing(kind, 0, 0, started)
         return
 
     # Multi-row VALUES: one statement for any number of recipients (criterion 6).
@@ -114,7 +115,7 @@ async def notify(
                     "notify: no email for user %s (inactive or unsendable address)", user_id
                 )
                 continue
-            await queue_email(
+            job_id = await queue_email(
                 db,
                 to=user.email,
                 template=spec.email_template,
@@ -123,11 +124,18 @@ async def notify(
                 # Without an entity there is nothing to tell two events apart by.
                 dedupe_key=f"{kind}:{entity_id}:{user_id}" if entity_id is not None else None,
             )
-            emailed += 1
+            # None: an earlier call already queued this email (the dedupe key).
+            if job_id is not None:
+                emailed += 1
+    _log_timing(kind, len(recipients), emailed, started)
+
+
+def _log_timing(kind: str, recipients: int, emailed: int, started: float) -> None:
+    # Every call, empty ones too; `emails` counts the jobs this call added.
     logger.info(
         "notify kind=%s recipients=%d emails=%d ms=%.1f",
         kind,
-        len(recipients),
+        recipients,
         emailed,
         (time.perf_counter() - started) * 1000,
     )
