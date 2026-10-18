@@ -61,7 +61,15 @@ async def test_create_returns_presigned_post_and_pending_row(as_user, db, world,
     assert upload["url"].startswith(settings_public_endpoint())
     assert upload["fields"]["key"] == key
     assert upload["fields"]["Content-Type"] == "image/png"
-    conditions = policy_of(upload)["conditions"]
+    policy = policy_of(upload)
+    conditions = policy["conditions"]
+    # The signed policy itself expires within the 5 minutes too (review round 2 note).
+    signed_expiry = datetime.fromisoformat(policy["expiration"])
+    assert (
+        before + timedelta(minutes=4)
+        < signed_expiry
+        <= clock.now() + timedelta(minutes=5, seconds=1)
+    )
     assert ["content-length-range", 64, 64] in conditions
     assert {"Content-Type": "image/png"} in conditions
     assert {"bucket": s3_bucket} in conditions
