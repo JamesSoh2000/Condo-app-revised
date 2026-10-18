@@ -454,7 +454,7 @@ def test_cli_help_lists_every_command() -> None:
     ("command", "ticket"),
     [
         ("bootstrap-building", "P4-03"),
-        ("jobs-status", "P3-01"),
+        ("jobs-status", "P3-01b"),
         ("email-test", "P3-02"),
     ],
 )

@@ -276,8 +276,11 @@ async def test_the_session_database_is_this_runs_own(engine: AsyncEngine):
         connected_to = await conn.scalar(text("SELECT current_database()"))
 
     assert connected_to != configured
-    assert re.fullmatch(
-        rf"{configured.removesuffix('_test')}_run_{os.getpid()}_[0-9a-f]{{8}}_test", connected_to
+    # The per-run name may cut a long stem (P2-07 review round 3, Low).
+    assert_named_per_run(
+        str(make_url(settings.test_database_url).set(database=connected_to)),
+        "run",
+        settings.test_database_url,
     )
 
 

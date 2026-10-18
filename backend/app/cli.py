@@ -140,7 +140,7 @@ def _placeholder(name: str, ticket: str) -> None:
 
 # Fail loudly: a script that calls a placeholder must not mistake it for success.
 _placeholder("bootstrap-building", "P4-03")
-_placeholder("jobs-status", "P3-01")
+_placeholder("jobs-status", "P3-01b")
 _placeholder("email-test", "P3-02")
 
 
