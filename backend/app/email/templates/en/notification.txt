@@ -1,0 +1,7 @@
+{% extends base %}
+{% block body %}{{ title }}
+{% if body %}
+{{ body }}
+{% endif %}{% if link %}
+{{ app_base_url }}{{ link }}
+{% endif %}{% endblock %}

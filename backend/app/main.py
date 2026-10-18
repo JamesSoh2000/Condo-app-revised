@@ -64,6 +64,7 @@ def create_app() -> FastAPI:
     from app.auth import router as auth
     from app.buildings import router as buildings
     from app.files import router as files
+    from app.notifications import router as notifications
     from app.routers import health, version
 
     app.include_router(auth.router, prefix="/api")
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     # Building routers carry their full prefix (app/tenancy/router.py).
     app.include_router(buildings.router)
     app.include_router(files.router)
+    app.include_router(notifications.router)
     return app
 
 

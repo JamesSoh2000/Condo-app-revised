@@ -65,6 +65,8 @@ EXPECTED_ROW_COUNTS = {
     "jobs": 0,
     # P3-04a: nor uploads a file.
     "files": 0,
+    # P3-03: nor notifies anyone.
+    "notifications": 0,
 }
 
 

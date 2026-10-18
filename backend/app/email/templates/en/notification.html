@@ -1,0 +1,6 @@
+{% extends base %}
+{% block body %}
+  <p style="margin: 0 0 12px; font-weight: bold;">{{ title }}</p>
+  {% if body %}<p style="margin: 0 0 12px;">{{ body }}</p>{% endif %}
+  {% if link %}<p style="margin: 0;"><a href="{{ app_base_url }}{{ link }}">Open in the app</a></p>{% endif %}
+{% endblock %}
