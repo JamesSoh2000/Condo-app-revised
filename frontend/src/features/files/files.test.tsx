@@ -5,7 +5,7 @@
  * browser and S3 emulator are covered by the stack transcript in the PR.
  */
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,6 +14,8 @@ import { deniedKey } from '@/app/buildingDenial';
 import { createQueryClient } from '@/app/queryClient';
 import { FileUpload } from '@/features/files/FileUpload';
 import { PrivateImage } from '@/features/files/PrivateImage';
+import type { FilePurpose } from '@/features/files/purposes';
+import { useUpload } from '@/features/files/useUpload';
 import { BIRCH, MAPLE, calls, json, problem, stubApi, type Handler } from '@/test/renderApp';
 
 vi.mock('@/api/client', async (importOriginal) => {
@@ -568,6 +570,38 @@ describe('criterion 5: PrivateImage when the file cannot be shown', () => {
     await act(async () => {});
     expect(calls(fetchMock)).toHaveLength(1);
   });
+
+  it('an identical recovery answer still shows the image (review round 3, R3-F2)', async () => {
+    const answer = { url: 'https://s3.test/same', expires_at: new Date(Date.now() + 60_000).toISOString() };
+    const fetchMock = stubApi({ [`GET ${files()}/${FILE_A}/download-url`]: () => json(answer) });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    const first = await screen.findByRole('img', { name: 'Parcel' });
+    fireEvent.error(first);
+    await waitFor(() => expect(calls(fetchMock)).toHaveLength(2));
+    // Structural sharing would keep the old data object for an equal answer, and nothing would re-render.
+    const second = await screen.findByRole('img', { name: 'Parcel' });
+    expect(second).not.toBe(first);
+    expect(second.getAttribute('src')).toBe('https://s3.test/same');
+    expect(screen.queryByRole('status')).toBeNull();
+    fireEvent.error(second);
+    expect(await screen.findByText('Image unavailable')).toBeTruthy();
+    expect(document.querySelector('img')).toBeNull();
+  });
+
+  it('a background refresh with an identical answer keeps the same image and no skeleton', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const answer = { url: 'https://s3.test/same', expires_at: new Date(Date.now() + 60_000).toISOString() };
+    const fetchMock = stubApi({ [`GET ${files()}/${FILE_A}/download-url`]: () => json(answer) });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    const first = await screen.findByRole('img', { name: 'Parcel' });
+    // Just past the one refresh at 50 s; later the identical (now near-expired) answer is asked for every second.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50_100);
+    });
+    expect(calls(fetchMock)).toHaveLength(2);
+    expect(screen.getByRole('img', { name: 'Parcel' })).toBe(first);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
 });
 
 describe('criterion 6: keyboard and announcements', () => {
@@ -671,6 +705,103 @@ describe('criterion 7: cancel and unmount abort the upload', () => {
     await waitFor(() => expect(screen.queryByRole('progressbar')).toBeNull());
     expect(calls(fetchMock)).toEqual([`POST ${files()}`]);
     expect(onUploaded).not.toHaveBeenCalled();
+  });
+
+  it('a purpose change cancels a failed attempt; retry sends nothing (review round 3, R3-F1)', async () => {
+    const fetchMock = uploadServer();
+    const onUploaded = vi.fn();
+    const { rerender } = wrap(<FileUpload purpose="package_photo" onUploaded={onUploaded} />);
+    choose(jpeg());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    lastXhr().fail();
+    await screen.findByRole('alert');
+
+    rerender(<FileUpload purpose="maintenance_photo" onUploaded={onUploaded} />);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+    expect(screen.queryByRole('img', { name: /preview of/i })).toBeNull();
+
+    choose(jpeg(MiB, 'second.jpg'));
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(2));
+    lastXhr().respond(204);
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith(FILE_B));
+    expect(onUploaded).toHaveBeenCalledTimes(1);
+    expect(calls(fetchMock)).toEqual([`POST ${files()}`, `POST ${files()}`, `POST ${files()}/${FILE_B}/complete`]);
+    expect((await bodyOf(fetchMock, 1)).purpose).toBe('maintenance_photo');
+  });
+
+  it('useUpload: a purpose change returns to idle and retry() sends nothing (review round 3, R3-F1)', async () => {
+    const fetchMock = uploadServer();
+    const queryClient = createQueryClient({ retryDelay: 0 });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    const { result, rerender } = renderHook(({ purpose }: { purpose: FilePurpose }) => useUpload(purpose), {
+      initialProps: { purpose: 'package_photo' as FilePurpose },
+      wrapper,
+    });
+    act(() => result.current.upload(jpeg()));
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    lastXhr().fail();
+    await waitFor(() => expect(result.current.status).toBe('error'));
+
+    rerender({ purpose: 'maintenance_photo' });
+    await waitFor(() => expect(result.current.status).toBe('idle'));
+    const before = calls(fetchMock);
+    act(() => result.current.retry());
+    await act(async () => {});
+    expect(result.current.status).toBe('idle');
+    expect(calls(fetchMock)).toEqual(before);
+    expect(FakeXHR.instances).toHaveLength(1);
+  });
+
+  it('useUpload: a purpose change aborts an upload in flight; no complete, no onUploaded (review round 3, R3-F1)', async () => {
+    const fetchMock = uploadServer();
+    const onUploaded = vi.fn();
+    const queryClient = createQueryClient({ retryDelay: 0 });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    const { result, rerender } = renderHook(({ purpose }: { purpose: FilePurpose }) => useUpload(purpose, { onUploaded }), {
+      initialProps: { purpose: 'package_photo' as FilePurpose },
+      wrapper,
+    });
+    act(() => result.current.upload(jpeg()));
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    const xhr = lastXhr();
+    rerender({ purpose: 'maintenance_photo' });
+    expect(xhr.aborted).toBe(true);
+    xhr.respond(204);
+    await act(async () => {});
+    expect(result.current.status).toBe('idle');
+    expect(calls(fetchMock)).toEqual([`POST ${files()}`]);
+    expect(onUploaded).not.toHaveBeenCalled();
+  });
+
+  it('a purpose change aborts an upload in flight (review round 3, R3-F1)', async () => {
+    const fetchMock = uploadServer();
+    const onUploaded = vi.fn();
+    const { rerender } = wrap(<FileUpload purpose="package_photo" onUploaded={onUploaded} />);
+    choose(jpeg());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    const xhr = lastXhr();
+    rerender(<FileUpload purpose="maintenance_photo" onUploaded={onUploaded} />);
+    expect(xhr.aborted).toBe(true);
+    xhr.respond(204); // a late answer from the aborted request changes nothing
+    await act(async () => {});
+    expect(calls(fetchMock)).toEqual([`POST ${files()}`]);
+    expect(onUploaded).not.toHaveBeenCalled();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+  });
+
+  it('a re-render with the same purpose does not cancel the upload', async () => {
+    uploadServer();
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = wrap(<FileUpload purpose="package_photo" onUploaded={first} />);
+    choose(jpeg());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    rerender(<FileUpload purpose="package_photo" onUploaded={second} />);
+    expect(lastXhr().aborted).toBe(false);
+    lastXhr().respond(204);
+    await waitFor(() => expect(second).toHaveBeenCalledWith(FILE_A));
+    expect(first).not.toHaveBeenCalled();
   });
 });
 

@@ -56,6 +56,9 @@ function PrivateImageFor({ fileId, alt, className = '' }: PrivateImageProps) {
       }),
     // Nothing more to fetch once the image is given up on (review round 2, F2).
     enabled: !broken,
+    // A new data object for every answer, so an answer identical to the last one still re-renders: the recovery
+    // check reads `dataUpdateCount`, which the hook doesn't subscribe to (review round 3, R3-F2).
+    structuralSharing: false,
     // React Query measures staleTime from `dataUpdatedAt`, not from now (review round 1, F4).
     staleTime: (query) => {
       const at = refreshAt(query);

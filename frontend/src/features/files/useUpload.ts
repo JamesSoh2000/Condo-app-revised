@@ -94,8 +94,8 @@ export function uploadErrorMessage(error: unknown): string {
 /**
  * Uploads one file of `purpose` to private S3 (ADR-0007): `POST /files` signs a form, the browser POSTs the file
  * to S3, `POST /files/{id}/complete` verifies it. `retry()` reuses the form while it is valid, and starts again
- * from `POST /files` once it has expired or S3 refused it. `cancel()`, unmounting and a building switch abort the
- * request in flight; `onUploaded` is then never called.
+ * from `POST /files` once it has expired or S3 refused it. `cancel()`, unmounting, a building switch and a purpose
+ * change abort the request in flight; `onUploaded` is then never called.
  */
 export function useUpload(purpose: FilePurpose, { onUploaded }: { onUploaded?: (fileId: string) => void } = {}) {
   const buildingId = useBuildingId();
@@ -178,8 +178,9 @@ export function useUpload(purpose: FilePurpose, { onUploaded }: { onUploaded?: (
     reset();
   }, [reset]);
 
-  // On unmount and on a building switch: a file of the old building must not reach a form of the new one.
-  useEffect(() => cancel, [buildingId, cancel]);
+  // On unmount, a building switch and a purpose change: a file of the old building or purpose must not reach a
+  // form of the new one (review round 3, R3-F1).
+  useEffect(() => cancel, [buildingId, purpose, cancel]);
 
   let status: UploadStatus = 'idle';
   if (mutation.isPending) status = 'uploading';

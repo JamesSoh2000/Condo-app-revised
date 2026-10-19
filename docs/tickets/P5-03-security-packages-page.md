@@ -81,9 +81,8 @@ Consumes `units_list`, `units_occupants`, `packages_create`, `packages_list`, `p
 
 ## Carried from P3-06
 
-- Use `FileUpload` with a fixed `purpose="package_photo"`. If the form can ever switch purpose, render
-  `<FileUpload key={purpose} …/>`: `useUpload` keeps a failed attempt's form across a `purpose` change (PR #81
-  round 3, R3-F1, accepted). Send `onUploaded`'s `file_id` to the package endpoint, which claims it.
+- Use `FileUpload` with `purpose="package_photo"`. Send `onUploaded`'s `file_id` to the package endpoint, which
+  claims it.
 - Show the photo with `<PrivateImage fileId alt>`; it handles refresh, 404 and load errors.
 - No route has mounted these components yet: this is their first real page. Run the upload on `make prodlike`
   too (CSP), as P3-06 did with a harness.

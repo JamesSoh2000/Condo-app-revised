@@ -23,7 +23,12 @@ export interface FileUploadProps {
  * Chooses (button or drop) and uploads one file to private S3, with a preview, progress, cancel and retry. The
  * client check mirrors the server's rule so a wrong file fails before any request; the server still enforces it.
  */
-export function FileUpload({ purpose, onUploaded, accept, maxBytes, capture, label = 'Choose file' }: FileUploadProps) {
+export function FileUpload(props: FileUploadProps) {
+  // Keyed, so a new purpose starts with no preview, error or progress (review round 3, R3-F1).
+  return <FileUploadFor key={props.purpose} {...props} />;
+}
+
+function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label = 'Choose file' }: FileUploadProps) {
   const rule = useMemo(() => ruleFor(purpose, accept, maxBytes), [purpose, accept, maxBytes]);
   const { upload, retry, cancel, progress, status, error } = useUpload(purpose, { onUploaded });
   const [checkError, setCheckError] = useState<string | null>(null);
