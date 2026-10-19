@@ -1,4 +1,4 @@
-# P4-01 — Units API
+# P4-01 — Units API (split)
 
 | Field | Value |
 |---|---|
@@ -6,7 +6,12 @@
 | Risk tier | 2 |
 | Depends on | P2-03, P2-04 |
 | Replaces old | M3-T08 |
-| Status | in progress |
+| Status | split into [P4-01a](./P4-01a-units-api.md), [P4-01b](./P4-01b-units-csv-import.md) |
+
+Split after implementation, before review (2026-10-19): the work measured 613 non-test lines. P4-01a is
+the units API and `search_unit_options` (criteria 1-4, 6-8); P4-01b is the CSV import (criterion 5).
+"P4-01" in other tickets' text means both parts; the [ticket index](./README.md) lists which part each
+dependent needs. The text below is the ticket as framed before the split.
 
 ## Goal
 
