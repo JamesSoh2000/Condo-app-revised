@@ -24,6 +24,9 @@ from app.users.models import User
 _SECRET_KEY = re.compile(r"password|token|secret|cookie|authorization", re.IGNORECASE)
 MAX_VALUE_BYTES = 1024
 MAX_DEPTH = 32
+# Every container, key and value counts, once per path: a shared sub-object counts each time it is
+# reached, as JSON would write it out, so `x = [x, x]` stops here, not in an exponential walk.
+MAX_NODES = 10_000
 _ACTION = re.compile(r"[a-z][a-z_]*\.[a-z][a-z_]*")
 _ACTION_MAX = 64
 _ENTITY_TYPE_MAX = 40
@@ -42,15 +45,15 @@ async def record_audit(
     """Add an audit event to `db`'s transaction. Never commits.
 
     `metadata` holds IDs and field names only (CLAUDE.md rule 10): a key naming a secret, a value
-    over 1 KiB as JSON, a value that isn't JSON (UUIDs become strings), nesting deeper than 32 or a
-    NUL character raises `ValueError`, and nothing is added. `request_id` comes from the request's
-    logging context; null outside one.
+    over 1 KiB as JSON, a value that isn't JSON (UUIDs become strings), nesting deeper than 32,
+    more than 10,000 nodes, a NUL character or a lone surrogate raises `ValueError`, and nothing is
+    added. `request_id` comes from the request's logging context; null outside one.
     """
     if not _ACTION.fullmatch(action) or len(action) > _ACTION_MAX:
         raise ValueError(f"audit action must be '<domain>.<past_verb>', got {action!r}")
     if not entity_type or len(entity_type) > _ENTITY_TYPE_MAX:
         raise ValueError(f"audit entity_type must be 1-{_ENTITY_TYPE_MAX} characters")
-    clean = _sanitize(metadata or {})
+    clean = _sanitize({} if metadata is None else metadata)
     db.add(
         AuditEvent(
             building_id=building_id,
@@ -81,21 +84,35 @@ def _sanitize(metadata: object) -> dict[str, Any]:
 
 def _check_structure(metadata: dict[str, Any]) -> None:
     """Refuse a secret-looking key at any depth (`{"changes": {"password": …}}` too), nesting
-    deeper than `MAX_DEPTH`, and NUL in any key or string, which Postgres JSONB can't store."""
+    deeper than `MAX_DEPTH`, more than `MAX_NODES` nodes, and NUL or a lone surrogate in any key or
+    string, which Postgres JSONB can't store."""
     pending: list[tuple[object, int]] = [(metadata, 1)]
+    nodes = 0
     while pending:
         value, depth = pending.pop()
+        nodes += 1
+        if nodes > MAX_NODES:
+            raise ValueError(f"audit metadata has more than {MAX_NODES} nodes")
         if depth > MAX_DEPTH:
             raise ValueError(f"audit metadata is nested deeper than {MAX_DEPTH}")
         if isinstance(value, dict):
             for key, inner in value.items():
-                if not isinstance(key, str) or _SECRET_KEY.search(key) or "\x00" in key:
+                if not isinstance(key, str) or _SECRET_KEY.search(key) or not _storable(key):
                     raise ValueError(f"audit metadata key {key!r} is not allowed")
                 pending.append((inner, depth + 1))
         elif isinstance(value, list | tuple):
             pending.extend((inner, depth + 1) for inner in value)
-        elif isinstance(value, str) and "\x00" in value:
-            raise ValueError("audit metadata strings must not contain NUL")
+        elif isinstance(value, str) and not _storable(value):
+            raise ValueError("audit metadata strings must not contain NUL or lone surrogates")
+
+
+def _storable(text: str) -> bool:
+    """No NUL and valid UTF-8 (a lone surrogate isn't): what a JSONB string can hold."""
+    try:
+        text.encode()
+    except UnicodeEncodeError:
+        return False
+    return "\x00" not in text
 
 
 def _to_json(value: object) -> str:
