@@ -34,9 +34,27 @@ const BuildingContext = createContext<BuildingContextValue | null>(null);
  */
 export function BuildingProvider({ children }: { children: ReactNode }) {
   const { data: me } = useMe();
+  const userId = me?.user.id;
+  const queryClient = useQueryClient();
+
+  // AuthProvider drops the previous user's cached data as soon as `/me` answers, while their tree is still
+  // mounted: a query of theirs that mounts in that window (the bell's summary, P3-05) subscribes after the sweep
+  // and comes back. Once the remount below has committed, their components are gone and the new user's are
+  // subscribed, so a building query nobody observes can only be the previous user's: drop those.
+  const previousUser = useRef(userId);
+  useEffect(() => {
+    if (previousUser.current !== undefined && previousUser.current !== userId) {
+      queryClient.removeQueries({
+        queryKey: ['b'],
+        predicate: (query) => query.getObserversCount() === 0,
+      });
+    }
+    previousUser.current = userId;
+  }, [userId, queryClient]);
+
   // Remounted for another user (another tab logged in on the shared cookie): nothing of the previous
   // user's selection survives in this tab's state (AuthProvider drops their cached data).
-  return <UserBuildingProvider key={me?.user.id}>{children}</UserBuildingProvider>;
+  return <UserBuildingProvider key={userId}>{children}</UserBuildingProvider>;
 }
 
 function UserBuildingProvider({ children }: { children: ReactNode }) {
