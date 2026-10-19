@@ -53,6 +53,11 @@ const findInMain = async (text: string) => within(await screen.findByRole('main'
 const buildingCalls = (fetchMock: ReturnType<typeof stubApi>) =>
   calls(fetchMock).filter((call) => call.includes('/api/buildings'));
 const meWith = (...memberships: Me['memberships']): Me => ({ ...RESIDENT_ME, memberships });
+/** The building request the guards make, then the bell's summary request once it loaded (P3-05). */
+const loadCalls = (building: { id: string }) => [
+  `GET /api/buildings/${building.id}`,
+  `GET /api/buildings/${building.id}/notifications/summary`,
+];
 
 /** Resident in Maple (packages, notices, maintenance), security in Birch (packages only). */
 const MULTI_ME: Me = {
@@ -63,6 +68,7 @@ const MULTI_ROUTES: Record<string, Handler> = {
   'GET /api/auth/me': () => json(MULTI_ME),
   [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['resident'])),
   [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['security'], ['packages'])),
+  [`GET /api/buildings/${BIRCH.id}/notifications/summary`]: () => json({ unread_count: 0 }),
 };
 
 async function pick(name: string) {
@@ -136,7 +142,7 @@ describe('default selection (criterion 4)', () => {
     expect(await findInMain('Maple Tower')).toBeTruthy();
     expect(screen.queryByRole('heading', { name: /choose a building/i })).toBeNull();
     expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
-    expect(buildingCalls(fetchMock)).toEqual([`GET /api/buildings/${MAPLE.id}`]);
+    await waitFor(() => expect(buildingCalls(fetchMock)).toEqual(loadCalls(MAPLE)));
   });
 
   it('offers only the active memberships and requests nothing building-scoped until one is picked', async () => {
@@ -160,7 +166,7 @@ describe('default selection (criterion 4)', () => {
 
     expect(await findInMain('Maple Tower')).toBeTruthy();
     expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
-    expect(buildingCalls(fetchMock)).toEqual([`GET /api/buildings/${MAPLE.id}`]);
+    await waitFor(() => expect(buildingCalls(fetchMock)).toEqual(loadCalls(MAPLE)));
   });
 
   it('keeps the page the user opened when they pick their first building', async () => {
@@ -189,7 +195,7 @@ describe('a stored selection is checked against /me (criterion 5; tenant rows 3 
 
     expect(await findInMain('Maple Tower')).toBeTruthy();
     expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
-    expect(buildingCalls(fetchMock)).toEqual([`GET /api/buildings/${MAPLE.id}`]);
+    await waitFor(() => expect(buildingCalls(fetchMock)).toEqual(loadCalls(MAPLE)));
   });
 
   it('removes an unknown stored ID and shows the picker when several memberships are active', async () => {
@@ -231,7 +237,7 @@ describe('one building per tab (criterion 2)', () => {
       renderApp(['/']);
       expect(await findInMain(name)).toBeTruthy();
       expect(screen.queryByRole('heading', { name: /choose a building/i })).toBeNull();
-      expect(buildingCalls(fetchMock)).toEqual([`GET /api/buildings/${id}`]);
+      await waitFor(() => expect(buildingCalls(fetchMock)).toEqual(loadCalls({ id })));
       cleanup();
     }
   });

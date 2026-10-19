@@ -160,13 +160,14 @@ describe('no polling in a hidden tab (criterion 2)', () => {
 
 describe('mark all read (criterion 3)', () => {
   it('posts once, fetches the summary and the list again, and clears the badge and the unread marks', async () => {
-    const server = notificationServer(MAPLE, [notification(), notification(), notification({ read_at: '2026-10-17T00:00:00Z' })]);
+    const items = [notification(), notification(), notification({ read_at: '2026-10-17T00:00:00Z' })];
+    const server = notificationServer(MAPLE, items);
     const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME), ...server.routes });
 
     renderApp(['/']);
     await bell('Notifications, 2 unread');
     const region = await openPanel();
-    await within(region).findByText('Notification 1', { exact: false });
+    await within(region).findByText(items[0].title);
     expect(within(region).getAllByText('Unread')).toHaveLength(2);
     const before = notificationCalls(fetchMock).length;
 
@@ -287,6 +288,33 @@ describe('a building switch (criterion 5)', () => {
     const after = notificationCalls(fetchMock).slice(before);
     expect(after.length).toBeGreaterThan(0);
     expect(after.every((call) => call.includes(`/api/buildings/${BIRCH.id}/`) || call.endsWith(BIRCH.id + '/notifications'))).toBe(true);
+    expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id] })).toEqual([]);
+  });
+});
+
+describe('another user in this tab (criterion 5, a server-driven change)', () => {
+  it('drops the previous user’s notifications and shows the new user’s building', async () => {
+    // Another tab logged in as Kim, a member of Birch only: /me now answers Kim (P2-06b).
+    let me = RESIDENT_ME;
+    const maple = notificationServer(MAPLE, [notification({ title: 'Alex’s notice' })]);
+    const birch = notificationServer(BIRCH, [notification({ title: 'Kim’s notice' }), notification()]);
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => json(me),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['resident'])),
+      ...maple.routes,
+      ...birch.routes,
+    });
+    const app = renderApp(['/']);
+    await bell('Notifications, 1 unread');
+    const before = notificationCalls(fetchMock).length;
+
+    me = { user: { ...RESIDENT_ME.user, id: 'kim', full_name: 'Kim Laurent' }, memberships: [membership(BIRCH)] };
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+
+    expect(await bell('Notifications, 2 unread')).toBeTruthy();
+    expect(await within(await openPanel()).findByText('Kim’s notice')).toBeTruthy();
+    expect(screen.queryByText('Alex’s notice')).toBeNull();
+    expect(notificationCalls(fetchMock).slice(before).every((call) => call.includes(BIRCH.id))).toBe(true);
     expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id] })).toEqual([]);
   });
 });

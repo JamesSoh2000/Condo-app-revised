@@ -70,11 +70,13 @@ export const RESIDENT_ME: Schemas['MeOut'] = {
 };
 
 /**
- * Answered unless a test overrides it: `RESIDENT_ME`'s building, so a test about something else can render a
- * page (P2-06b: pages need an active membership and the building's roles).
+ * Answered unless a test overrides it: `RESIDENT_ME`'s building and its unread count, so a test about something
+ * else can render a page (P2-06b: pages need an active membership and the building's roles).
  */
 const DEFAULT_ROUTES: Record<string, Handler> = {
   [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['resident'])),
+  // The header's bell asks once the building is loaded (P3-05).
+  [`GET /api/buildings/${MAPLE.id}/notifications/summary`]: () => json({ unread_count: 0 }),
 };
 
 /** Stubs `fetch`; unknown routes fail the test loudly. Returns the mock to inspect calls. */

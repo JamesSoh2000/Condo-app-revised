@@ -199,7 +199,12 @@ describe('navigation from the page table (criterion 1)', () => {
     await findNavItems();
     await settle();
 
-    expect(calls(fetchMock)).toEqual(['GET /api/auth/me', `GET /api/buildings/${MAPLE.id}`]);
+    // The bell's summary is the only other request (P3-05); the nav adds none.
+    expect(calls(fetchMock)).toEqual([
+      'GET /api/auth/me',
+      `GET /api/buildings/${MAPLE.id}`,
+      `GET /api/buildings/${MAPLE.id}/notifications/summary`,
+    ]);
   });
 });
 
