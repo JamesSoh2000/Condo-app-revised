@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { api } from '@/api/client';
@@ -41,46 +41,59 @@ export function PrivateImage(props: PrivateImageProps) {
 
 function PrivateImageFor({ fileId, alt, className = '' }: PrivateImageProps) {
   const buildingId = useBuildingId();
+  // After an <img> load error (the URL stopped working early), one new URL is tried; a second error is final.
+  // `failedAnswer` is the answer whose image failed (its `dataUpdateCount`): only a newer one is shown again.
+  const [failedAnswer, setFailedAnswer] = useState<number | null>(null);
+  const [recoveries, setRecoveries] = useState(0);
+  const [broken, setBroken] = useState(false);
+  const queryClient = useQueryClient();
+  const queryKey = ['b', buildingId, 'files', fileId, 'download-url'];
   const query = useQuery({
-    queryKey: ['b', buildingId, 'files', fileId, 'download-url'],
+    queryKey,
     queryFn: ({ signal }) =>
       api.get('/api/buildings/{building_id}/files/{file_id}/download-url', {
         params: { path: { building_id: buildingId, file_id: fileId } },
         signal,
       }),
+    // Nothing more to fetch once the image is given up on (review round 2, F2).
+    enabled: !broken,
     // React Query measures staleTime from `dataUpdatedAt`, not from now (review round 1, F4).
     staleTime: (query) => {
       const at = refreshAt(query);
       return at === null ? 0 : Math.max(0, at - query.state.dataUpdatedAt);
     },
-    // At least a second apart, so a URL already inside the margin can't make it spin; never after a 404
-    // (review round 1, F2), not even on focus.
+    // A margin before expiry, at least a second apart. Never after a failed request (a 404, or a 5xx whose
+    // retries ran out): the loaded image works until its URL expires, and Retry, focus or an image error ask
+    // again (review round 1, F2; round 2, F2). After a 404 not even on focus.
     refetchInterval: (query) => {
       const at = refreshAt(query);
-      return at === null || isNotFound(query.state.error) ? false : Math.max(1_000, at - Date.now());
+      return at === null || query.state.status === 'error' ? false : Math.max(1_000, at - Date.now());
     },
     refetchOnWindowFocus: (query) => !isNotFound(query.state.error),
   });
-  // After an <img> load error (the URL stopped working early), one new URL is tried; a second error is final.
-  const [retried, setRetried] = useState(false);
-  const [broken, setBroken] = useState(false);
 
+  // How many successful answers the query has had; the hook's result doesn't expose it.
+  const answers = queryClient.getQueryState(queryKey)?.dataUpdateCount ?? 0;
   const box = `flex items-center justify-center rounded bg-slate-100 text-sm text-slate-600 ${className}`;
   if (isNotFound(query.error) || broken) return <div className={box}>Image unavailable</div>;
-  // After an image error, the old URL is known to be broken: a failed new one shows the error, not it (round 1, F1).
-  if (query.data && !(retried && query.isError)) {
+  // The failed URL is known to be broken: until a newer answer, show the loading or error state (round 1, F1).
+  const waiting = failedAnswer !== null && answers <= failedAnswer;
+  if (query.data && !waiting) {
     return (
       <img
+        // A new element per recovery, so an answer with the same URL still loads again (review round 2, F1).
+        key={recoveries}
         src={query.data.url}
         alt={alt}
         className={className}
-        onLoad={() => setRetried(false)}
+        onLoad={() => setFailedAnswer(null)}
         onError={() => {
-          if (retried) {
+          if (failedAnswer !== null) {
             setBroken(true);
             return;
           }
-          setRetried(true);
+          setFailedAnswer(answers);
+          setRecoveries((count) => count + 1);
           void query.refetch();
         }}
       />

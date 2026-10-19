@@ -461,6 +461,34 @@ describe('criterion 5: PrivateImage when the file cannot be shown', () => {
     const second = await screen.findByRole('img', { name: 'Parcel' });
     expect(second).not.toBe(first);
     expect(second.getAttribute('src')).toBe('https://s3.test/same');
+    // And a second failure of the same URL is final.
+    fireEvent.error(second);
+    expect(await screen.findByText('Image unavailable')).toBeTruthy();
+  });
+
+  it('after a failed background refresh, a later successful answer (focus) starts the refreshes again', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    const fetchMock = stubApi({
+      [`GET ${files()}/${FILE_A}/download-url`]: () =>
+        ++n >= 2 && n <= 4
+          ? problem(503, 'unavailable')
+          : json({ url: `https://s3.test/${n}`, expires_at: new Date(Date.now() + 60_000).toISOString() }),
+    });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    await screen.findByRole('img', { name: 'Parcel' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50_100);
+    });
+    expect(calls(fetchMock)).toHaveLength(4);
+    act(() => {
+      window.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Parcel' }).getAttribute('src')).toBe('https://s3.test/5'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(51_000);
+    });
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Parcel' }).getAttribute('src')).toBe('https://s3.test/6'));
   });
 
   it('a failed background refresh does not ask again every second (review round 2, F2)', async () => {

@@ -52,7 +52,8 @@ export function FileUpload({ purpose, onUploaded, accept, maxBytes, capture, lab
 
   const message = checkError ?? error;
   let announcement = '';
-  if (busy) announcement = `Uploading ${chosen?.name ?? 'file'}…`;
+  // In quarter steps: every percent would flood a screen reader (review round 2, F3).
+  if (busy) announcement = `Uploading ${chosen?.name ?? 'file'}… ${Math.floor(percent / 25) * 25}%`;
   else if (status === 'ready') announcement = `Uploaded ${chosen?.name ?? 'file'}.`;
 
   return (
