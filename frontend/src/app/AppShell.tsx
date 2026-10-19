@@ -1,5 +1,6 @@
 import { Link, Outlet } from 'react-router-dom';
 
+import { ApiError } from '@/api/errors';
 import { AccountMenu } from '@/app/AccountMenu';
 import { useLogout } from '@/app/AuthProvider';
 import { useBuilding, useBuildingContext } from '@/app/BuildingProvider';
@@ -44,6 +45,11 @@ export function AppShell() {
  * notification request (P2-06b, P2-06c).
  */
 function LoadedBuildingBell() {
-  const { data: building } = useBuilding({ passive: true });
-  return building ? <NotificationBell /> : null;
+  const building = useBuilding({ passive: true });
+  // Like BuildingNav: a 401 or 404 on a refetch means the cached building, and so its notifications, must not
+  // be shown any more (review round 1, Codex F1). Keyed by building, so nothing of one building's panel (an
+  // open state, a failed mark-read) shows in the next.
+  const status = building.error instanceof ApiError ? building.error.status : null;
+  if (!building.data || status === 401 || status === 404) return null;
+  return <NotificationBell key={building.data.id} />;
 }

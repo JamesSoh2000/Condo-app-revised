@@ -466,3 +466,146 @@ describe('errors (criterion 11)', () => {
     expect(screen.getByRole('button', { name: 'Notifications, 1 unread' })).toBeTruthy();
   });
 });
+
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  it('F2: asks again at once when the tab is visible after only 5 s hidden', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const server = notificationServer(MAPLE, [notification()]);
+    const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME), ...server.routes });
+
+    renderApp(['/']);
+    await bell('Notifications, 1 unread');
+    setVisibility('hidden');
+    server.state.items = [notification(), ...server.state.items];
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    expect(summaryCalls(fetchMock)).toHaveLength(1);
+
+    setVisibility('visible');
+    expect(await bell('Notifications, 2 unread')).toBeTruthy();
+    expect(summaryCalls(fetchMock)).toHaveLength(2);
+  });
+
+  it('F3: drops the count while a refresh of the summary fails, and shows it again when it recovers', async () => {
+    let broken = false;
+    const server = notificationServer(MAPLE, [notification()]);
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`GET ${base(MAPLE)}/summary`]: (request) =>
+        broken ? problem(500, 'internal_error') : server.routes[`GET ${base(MAPLE)}/summary`](request),
+    });
+    const app = renderApp(['/']);
+    await bell('Notifications, 1 unread');
+
+    broken = true;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'notifications', 'summary'] }));
+    expect(await bell('Notifications')).toBeTruthy();
+    expect(liveRegion()?.textContent).toBe('');
+
+    broken = false;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'notifications', 'summary'] }));
+    expect(await bell('Notifications, 1 unread')).toBeTruthy();
+  });
+
+  it('F4: keeps a failed mark-read of a linked notification, so the reopened panel shows the error', async () => {
+    const target = notification({ link: '/Maintenance' });
+    const server = notificationServer(MAPLE, [target]);
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`POST ${base(MAPLE)}/${target.id}/read`]: () => problem(500, 'internal_error'),
+    });
+    renderApp(['/']);
+    fireEvent.click(await within(await openPanel()).findByRole('button', { name: new RegExp(target.title) }));
+
+    await waitFor(() => expect(location()).toBe('/Maintenance'));
+    const region = await openPanel();
+    expect((await within(region).findByRole('alert')).textContent).toMatch(/could not mark/i);
+  });
+
+  it('F4 neighbour: a later successful mark-read clears the error', async () => {
+    const failing = notification({ link: null, title: 'Failing one' });
+    const fine = notification({ link: null, title: 'Fine one' });
+    const server = notificationServer(MAPLE, [failing, fine]);
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`POST ${base(MAPLE)}/${failing.id}/read`]: () => problem(500, 'internal_error'),
+    });
+    renderApp(['/']);
+    const region = await openPanel();
+    fireEvent.click(await within(region).findByRole('button', { name: /failing one/i }));
+    await within(region).findByRole('alert');
+
+    fireEvent.click(within(region).getByRole('button', { name: /fine one/i }));
+    await waitFor(() => expect(within(region).queryByRole('alert')).toBeNull());
+  });
+
+  it('F4 neighbour: a failed mark-all-read is not shown in another building', async () => {
+    const maple = notificationServer(MAPLE, [notification()]);
+    const birch = notificationServer(BIRCH, [notification({ title: 'Birch notice' })]);
+    stubApi({
+      'GET /api/auth/me': () => json({ ...RESIDENT_ME, memberships: [membership(MAPLE), membership(BIRCH)] }),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['resident'])),
+      ...maple.routes,
+      ...birch.routes,
+      [`POST ${base(MAPLE)}/read-all`]: () => problem(500, 'internal_error'),
+    });
+    sessionStorage.setItem(KEY, MAPLE.id);
+    renderApp(['/']);
+    const region = await openPanel();
+    await within(region).findByText(/notification \d+/i);
+    fireEvent.click(within(region).getByRole('button', { name: /mark all read/i }));
+    await within(region).findByRole('alert');
+    fireEvent.keyDown(region, { key: 'Escape' });
+
+    openAccountMenu();
+    fireEvent.change(screen.getByLabelText(/building/i), { target: { value: BIRCH.id } });
+    await bell('Notifications, 1 unread');
+    const birchPanel = await openPanel();
+    await within(birchPanel).findByText('Birch notice');
+    expect(within(birchPanel).queryByRole('alert')).toBeNull();
+  });
+
+  it.each([
+    [404, 'building_not_found'],
+    [401, 'unauthorized'],
+  ])('F1: hides the bell and its cached notifications when the building refetch answers %s', async (status, code) => {
+    let revoked = false;
+    const target = notification({ title: 'Private package notice' });
+    const server = notificationServer(MAPLE, [target]);
+    stubApi({
+      // A 401 means the session is gone, so /me says so too.
+      'GET /api/auth/me': () => (revoked && status === 401 ? problem(401, code) : json(RESIDENT_ME)),
+      ...server.routes,
+      [`GET /api/buildings/${MAPLE.id}`]: () =>
+        revoked ? problem(status, code) : json(buildingOut(MAPLE, ['resident'])),
+    });
+    const app = renderApp(['/']);
+    await within(await openPanel()).findByText(target.title);
+
+    revoked = true;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull());
+    expect(screen.queryByText(target.title)).toBeNull();
+  });
+
+  it('F1 neighbour: keeps the bell when the building refetch fails with a 5xx (cached building still shown)', async () => {
+    let broken = false;
+    const server = notificationServer(MAPLE, [notification()]);
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`GET /api/buildings/${MAPLE.id}`]: () =>
+        broken ? problem(500, 'internal_error') : json(buildingOut(MAPLE, ['resident'])),
+    });
+    const app = renderApp(['/']);
+    await bell('Notifications, 1 unread');
+
+    broken = true;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 25)));
+    expect(screen.getByRole('button', { name: 'Notifications, 1 unread' })).toBeTruthy();
+  });
+});

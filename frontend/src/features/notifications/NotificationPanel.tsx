@@ -1,24 +1,33 @@
 import { useNavigate } from 'react-router-dom';
 
 import type { components } from '@/api/schema';
-import { isAppPath, useMarkAllRead, useMarkRead, useNotifications } from '@/features/notifications/api';
+import { isAppPath, type useMarkAllRead, type useMarkRead, useNotifications } from '@/features/notifications/api';
 
 type Notification = components['schemas']['NotificationOut'];
+
+interface Props {
+  id: string;
+  unread: number;
+  /** Owned by the bell, which outlives the panel (see NotificationBell). */
+  markRead: ReturnType<typeof useMarkRead>;
+  markAllRead: ReturnType<typeof useMarkAllRead>;
+}
 
 /**
  * The bell's panel: the notifications, newest first, with "Load more" and "Mark all read". Clicking one marks it
  * read (when it is unread) and opens its link when that is an app path; the mark-read request carries on after
  * the navigation closes the panel.
  */
-export function NotificationPanel({ id, unread }: { id: string; unread: number }) {
+export function NotificationPanel({ id, unread, markRead, markAllRead }: Props) {
   const list = useNotifications({ enabled: true });
-  const markRead = useMarkRead();
-  const markAllRead = useMarkAllRead();
   const navigate = useNavigate();
   const items = list.data?.pages.flatMap((page) => page.items) ?? [];
 
   const onOpen = (notification: Notification) => {
-    if (notification.read_at === null) markRead.mutate(notification.id);
+    if (notification.read_at === null) {
+      markAllRead.reset();
+      markRead.mutate(notification.id);
+    }
     if (isAppPath(notification.link)) navigate(notification.link);
   };
 
@@ -34,7 +43,10 @@ export function NotificationPanel({ id, unread }: { id: string; unread: number }
           type="button"
           className="rounded border px-2 py-0.5 text-xs disabled:opacity-50"
           disabled={unread === 0 || markAllRead.isPending}
-          onClick={() => markAllRead.mutate()}
+          onClick={() => {
+            markRead.reset();
+            markAllRead.mutate();
+          }}
         >
           Mark all read
         </button>

@@ -8,7 +8,8 @@ const notificationsKey = (buildingId: string) => ['b', buildingId, 'notification
 
 /**
  * The unread count for the badge. Polled every 30 s while the tab is visible, never in a hidden tab, and asked
- * again when the tab is focused or visible again (the client's `refetchOnWindowFocus`; ADR-0012).
+ * again whenever the tab is focused or visible again, even if the last answer is under 30 s old (ADR-0012;
+ * review round 1, Codex F2: the client's default staleTime skipped it after a short hide).
  */
 export function useNotificationSummary() {
   const buildingId = useBuildingId();
@@ -21,6 +22,7 @@ export function useNotificationSummary() {
       }),
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: 'always',
   });
 }
 

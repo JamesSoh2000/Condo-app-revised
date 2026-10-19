@@ -1,18 +1,23 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import { useNotificationSummary } from '@/features/notifications/api';
+import { useMarkAllRead, useMarkRead, useNotificationSummary } from '@/features/notifications/api';
 import { NotificationPanel } from '@/features/notifications/NotificationPanel';
 
 /**
  * The header's bell (P3-05): a disclosure button, like the account menu, that shows the notification panel.
  * Its name carries the unread count, and a polite live region says it again when it changes. Escape and a
  * click outside close the panel; Escape returns focus to the bell. It is open only at the location it was
- * opened at, so following a notification's link closes it. Rendered only for a selected building.
+ * opened at, so following a notification's link closes it. Rendered only for a loaded building, keyed by it.
  */
 export function NotificationBell() {
-  const { data } = useNotificationSummary();
-  const unread = data?.unread_count;
+  const summary = useNotificationSummary();
+  // A failed refresh shows no count rather than the last one (review round 1, Codex F3).
+  const unread = summary.isError ? undefined : summary.data?.unread_count;
+  // Here, not in the panel: following a link closes the panel, and a failed mark-read must still show when it
+  // is opened again (review round 1, Codex F4). Each new mutation replaces the previous one's error.
+  const markRead = useMarkRead();
+  const markAllRead = useMarkAllRead();
   const { key } = useLocation();
   const [openAt, setOpenAt] = useState<string | null>(null);
   const open = openAt === key;
@@ -56,7 +61,7 @@ export function NotificationBell() {
       <span className="sr-only" aria-live="polite">
         {unread === undefined ? '' : `${unread} unread notification${unread === 1 ? '' : 's'}`}
       </span>
-      {open && <NotificationPanel id={panelId} unread={unread ?? 0} />}
+      {open && <NotificationPanel id={panelId} unread={unread ?? 0} markRead={markRead} markAllRead={markAllRead} />}
     </div>
   );
 }
