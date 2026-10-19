@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P2-03, P2-04 |
 | Replaces old | M3-T08 (part of [P4-01](./P4-01-units-api.md)) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 

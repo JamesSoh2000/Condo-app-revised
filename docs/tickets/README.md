@@ -69,7 +69,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P3-04c](./P3-04c-file-cleanup-job.md) | File cleanup job (split from P3-04) | A | 1 | P3-04b, P3-01b | done | — |
 | [P3-05](./P3-05-frontend-notification-center.md) | Frontend notification center with polling | B | 2 | P3-03, P2-06c | done | — |
 | [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04b, P2-06b | done | — |
-| [P4-01a](./P4-01a-units-api.md) | Units API and unit options (split from [P4-01](./P4-01-units-api.md)) | A | 2 | P2-03, P2-04 | in progress | — |
+| [P4-01a](./P4-01a-units-api.md) | Units API and unit options (split from [P4-01](./P4-01-units-api.md)) | A | 2 | P2-03, P2-04 | done | — |
 | [P4-01b](./P4-01b-units-csv-import.md) | Units CSV import (split from P4-01) | A | 2 | P4-01a | todo | — |
 | [P4-02](./P4-02-staff-invitations.md) | Staff invitations | A | 1 | P3-02, P2-04, P2-03, P2-05 | todo | — |
 | [P4-03](./P4-03-bootstrap-building-command.md) | Bootstrap-building operator command | A | 1 | P4-02, P4-01b, P1-06 | todo | — |
