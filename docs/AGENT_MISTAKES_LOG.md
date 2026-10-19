@@ -275,3 +275,18 @@ R3-F1/F2 → R4-F1/F2), each time another way to reach "a denied building's data
 unmounted, a callback order). The `CLAUDE.md` lesson already names these, so the next lane-B ticket's first
 follow-up is a fitness test rather than more wording: every component under `src/app` or `src/features` that
 reads `useBuilding({ passive: true })` must also call `useBuildingDenied()` (P3-06 is the next candidate).
+
+| 2026-10-19 | P3-04a (found in P3-06) | `compose.prodlike.yml` never got the S3 emulator's dummy keys, so every `POST /files` on `make prodlike` was a 500 (and the P3-04c purge had no keys there) | the P3-06 implementer's prod-like stack run | the prod-like stack inlines its env; nothing on it exercised presigning (the smoke script doesn't log in) | keys added (PR #81 D3); CI check is an inbox follow-up |
+| 2026-10-19 | P3-06 | `PrivateImage` kept the broken `<img>` when the replacement URL request failed (F1), and kept polling every second after a 404 refresh (F2) | review round 1, Codex gpt-6.1-sol, Medium ×2 | tested refresh and recovery on success paths only; didn't ask what `refetchInterval` does once cached data meets an error | tests + fix `c5761c6` |
+| 2026-10-19 | P3-06 | Progress showed the last file's 100% during the next `POST /files` (F3); `staleTime` was time-left-from-now, counted against age, so fresh URLs were refetched on remount (F4) | review round 1, Codex, Low ×2 | reset state at the wrong step; assumed React Query's `staleTime` semantics without testing a remount mid-life | tests + fix `c5761c6` |
+| 2026-10-19 | P3-06 | The round-1 recovery fix still left a broken image when the new answer repeated the same URL (R2-F1), and the round-1 polling fix covered 404 but not an exhausted 5xx, nor the "given up" state (R2-F2) | review round 2, Codex, Medium ×2 | fixed the reported response only, not its neighbours (pattern "fix not tested on adjacent cases" again) | tests + fix `bc635c2` |
+| 2026-10-19 | P3-06 | The live region announced "Uploading…" without the percentage (R2-F3) | review round 2, Codex, Low | asserted the progressbar's value, not what a screen reader hears | quarter-step announcement + test |
+| 2026-10-19 | P3-06 | `useUpload` reuses a failed attempt's form after the `purpose` prop changes (R3-F1); an identical recovery answer leaves `PrivateImage` loading (R3-F2) | review round 3, Codex, Medium + Low | prop changes and identical query data not considered | **not fixed** (last round): accepted, carry note in P5-03, inbox |
+
+P3-06 step 8 note: "fix not tested on adjacent cases" appeared again (round 1 → round 2: the 404 polling fix missed
+the 5xx case and the given-up state; the recovery fix missed a repeated URL), although the round-1 neighbour table
+listed "a recovery with a different URL" and not "the same URL". The pattern is in `CLAUDE.md` already; for UI
+data lifecycles the missing neighbour class was **"the same answer again"** (identical data, same URL), which
+React Query treats as no change. The P3-05 follow-up (fitness test: `useBuilding({ passive: true })` readers also
+call `useBuildingDenied()`) was **not** done in P3-06 and stays the first follow-up for the next lane-B ticket
+(noted in P5-03).

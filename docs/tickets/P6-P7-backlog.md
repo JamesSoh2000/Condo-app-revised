@@ -35,6 +35,9 @@ interfaces and the decisions to make while framing.
   `ArchivedUpdatesModal`, and lower the ratchet.
 - **Decide while framing:** sanitizing Markdown rendering (no raw HTML); the banner copy for "this is not an
   emergency alert system".
+- **Carried from P3-06:** replace `NoticeAttachmentUpload.jsx` (Base44 `UploadFile`, public `attachment_url`)
+  with `FileUpload purpose="notice_attachment"` and the notice's `file_id` claimed by P6-01's API; show
+  attachments through the files download URL, not a public link.
 
 ### P6-03 — Maintenance backend · Lane A · Tier 2
 - **Goal:** residents submit requests (category, description, location: unit or common area, photos). Managers
