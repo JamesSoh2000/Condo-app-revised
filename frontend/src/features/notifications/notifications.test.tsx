@@ -663,6 +663,28 @@ describe('review round 2 (Codex gpt-6.1-sol)', () => {
     expect(await bell('Notifications, 1 unread')).toBeTruthy();
   });
 
+  it('R2-F1 neighbour: "Choose again" after a 404 brings the bell back once the building loads again', async () => {
+    let status = 200;
+    const server = notificationServer(MAPLE, [notification()]);
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`GET /api/buildings/${MAPLE.id}`]: () =>
+        status === 200 ? json(buildingOut(MAPLE, ['resident'])) : problem(404, 'building_not_found'),
+    });
+    const app = renderApp(['/']);
+    await bell('Notifications, 1 unread');
+
+    status = 404;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    const chooseAgain = await screen.findByRole('button', { name: /choose again/i });
+    expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull();
+
+    status = 200;
+    fireEvent.click(chooseAgain);
+    expect(await bell('Notifications, 1 unread')).toBeTruthy();
+  });
+
   it.each(['mark-read', 'mark-all-read'] as const)(
     'R2-F2: while a %s is pending, the read actions are disabled, and its failure shows',
     async (firstAction) => {
