@@ -145,9 +145,14 @@ async def complete_file(db: AsyncSession, ctx: TenantContext, file_id: UUID) -> 
         )
         .values(status=FileStatus.READY, s3_version_id=version_id)
     )
-    await db.refresh(file)
+    current = await db.scalar(
+        select(File).where(File.id == file.id).execution_options(populate_existing=True)
+    )
+    if current is None:
+        # `files.cleanup` deleted it meanwhile (P3-04c): it is not there any more.
+        raise FileNotFound(detail="File not found.")
     await db.commit()
-    return FileOut.model_validate(file)
+    return FileOut.model_validate(current)
 
 
 async def _verify(file: File) -> str:
