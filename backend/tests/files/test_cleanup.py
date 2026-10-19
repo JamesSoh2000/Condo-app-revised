@@ -1,6 +1,7 @@
 """`files.cleanup` (P3-04c criteria 8, 25 to 32): old pending and unattached files go, S3 first."""
 
 import asyncio
+import json
 import uuid
 from collections.abc import AsyncIterator
 from datetime import timedelta
@@ -22,6 +23,7 @@ from app.jobs.models import Job, JobStatus
 from app.jobs.registry import JobContext
 from app.jobs.service import enqueue
 from app.jobs.worker import HANDLER_MODULES, RECURRING_KINDS, Worker
+from app.logging_config import JsonFormatter
 from app.memberships.enums import Role
 from app.users.models import User
 from tests.conftest import FrozenClock
@@ -200,10 +202,17 @@ async def test_a_failed_s3_delete_keeps_that_row_and_the_run_goes_on(
     remaining = await file_ids(db)
     assert failing.id in remaining and other.id not in remaining
     assert len(versions_of(failing.s3_key)) == 1
-    [record] = [r for r in caplog.records if r.getMessage() == "file_cleanup_failed"]
-    assert record.file_id == str(failing.id)
-    assert record.error_type == "DeleteVersionsError"
-    assert failing.s3_key not in caplog.text
+    # As production writes them (the formatter keeps only allowlisted extras), without the key.
+    logged = {
+        r.getMessage(): json.loads(JsonFormatter().format(r))
+        for r in caplog.records
+        if r.name == "app.files.jobs"
+    }
+    failure = logged["file_cleanup_failed"]
+    assert (failure["file_id"], failure["error_type"]) == (str(failing.id), "DeleteVersionsError")
+    summary = logged["files_cleaned"]
+    assert (summary["deleted"], summary["failed"], summary["left"]) == (1, 1, 0)
+    assert failing.s3_key not in caplog.text and failing.s3_key not in json.dumps(logged)
 
     # The next run, with S3 back, deletes it.
     monkeypatch.setattr(storage, "delete_versions", real)
