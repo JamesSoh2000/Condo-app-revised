@@ -63,7 +63,7 @@ CLI `import-units`; `app.units.service.parse_units_csv`, `import_units(db, build
 
 - Split after implementation (P4-01 measured 613 non-test lines). A complete implementation of this ticket,
   with its tests, passing `make check` and run on the stack, is commit `4c015f0` in P4-01a's PR history
-  (`git fetch origin pull/<P4-01a PR>/head`): `app/units/service.py` from "The CSV import", the
+  (PR #84; `git fetch origin pull/84/head`): `app/units/service.py` from "The CSV import", the
   `import-units` command and `run_in_session(commit=)` in `app/cli.py`, and `tests/units/test_import.py`.
   It has had no independent review. Start from it, but frame and review it as new work.
 - Decision recorded in P4-01 (D3 in its PR): the import is partial. Invalid rows are skipped and reported,
