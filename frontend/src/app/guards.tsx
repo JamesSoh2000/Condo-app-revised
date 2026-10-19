@@ -5,7 +5,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { ApiError } from '@/api/errors';
 import type { components } from '@/api/schema';
 import { useMe } from '@/app/AuthProvider';
-import { useBuilding, useBuildingContext } from '@/app/BuildingProvider';
+import { useBuilding, useBuildingContext, useBuildingDenied } from '@/app/BuildingProvider';
 import { hasFeature, hasRole, type PageAccess } from '@/app/pages';
 import { loginPath } from '@/app/safeNext';
 import { FullPageMessage, LoadingScreen } from '@/app/screens';
@@ -53,6 +53,7 @@ export function RequireActiveMembership({ children }: { children: ReactNode }) {
 
 function BuildingLoaded({ children }: { children: ReactNode }) {
   const building = useBuilding();
+  const denied = useBuildingDenied();
   const { reset } = useBuildingContext();
   const queryClient = useQueryClient();
 
@@ -61,7 +62,8 @@ function BuildingLoaded({ children }: { children: ReactNode }) {
   const status = building.error instanceof ApiError ? building.error.status : null;
   // A 401 is AuthProvider's (it goes to the login page); until then, nothing to show.
   if (status === 401) return <LoadingScreen />;
-  if (status === 404) {
+  // A 404, or a denial seen on another of the building's requests that a later 5xx must not undo (inbox B-5).
+  if (denied) {
     const chooseAgain = () => {
       reset();
       void queryClient.invalidateQueries({ queryKey: ['me'] });

@@ -1,7 +1,6 @@
 import { NavLink } from 'react-router-dom';
 
-import { ApiError } from '@/api/errors';
-import { useBuilding, useBuildingContext } from '@/app/BuildingProvider';
+import { useBuilding, useBuildingContext, useBuildingDenied } from '@/app/BuildingProvider';
 import { navPages, PAGE_ACCESS } from '@/app/pages';
 import type { components } from '@/api/schema';
 import type { ViewAs } from '@/app/buildingStorage';
@@ -40,9 +39,9 @@ function BuildingNav() {
   const building = useBuilding({ passive: true });
   const { viewAs } = useBuildingContext();
   const canViewAs = useCanViewAs(building.data);
-  // Like BuildingLoaded: a 401 or 404 on a refetch means the cached building must not be shown any more.
-  const status = building.error instanceof ApiError ? building.error.status : null;
-  if (!building.data || status === 401 || status === 404) return null;
+  // Like BuildingLoaded: nothing of a denied building is shown (inbox B-5).
+  const denied = useBuildingDenied();
+  if (!building.data || denied) return null;
 
   return (
     <nav aria-label="Main" className="border-b bg-white px-4">

@@ -1,10 +1,22 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { api } from '@/api/client';
+import { ApiError } from '@/api/errors';
 import type { components } from '@/api/schema';
 import { useMe } from '@/app/AuthProvider';
+import { deniedKey } from '@/app/buildingDenial';
 import { readSelectedBuilding, readViewAs, writeSelectedBuilding, writeViewAs, type ViewAs } from '@/app/buildingStorage';
 
 type Membership = components['schemas']['MeMembershipOut'];
@@ -34,9 +46,27 @@ const BuildingContext = createContext<BuildingContextValue | null>(null);
  */
 export function BuildingProvider({ children }: { children: ReactNode }) {
   const { data: me } = useMe();
+  const userId = me?.user.id;
+  const queryClient = useQueryClient();
+
+  // AuthProvider drops the previous user's cached data as soon as `/me` answers, while their tree is still
+  // mounted: a query of theirs that mounts in that window (the bell's summary, P3-05) subscribes after the sweep
+  // and comes back. Once the remount below has committed, their components are gone and the new user's are
+  // subscribed, so a building query nobody observes can only be the previous user's: drop those.
+  const previousUser = useRef(userId);
+  useEffect(() => {
+    if (previousUser.current !== undefined && previousUser.current !== userId) {
+      queryClient.removeQueries({
+        queryKey: ['b'],
+        predicate: (query) => query.getObserversCount() === 0,
+      });
+    }
+    previousUser.current = userId;
+  }, [userId, queryClient]);
+
   // Remounted for another user (another tab logged in on the shared cookie): nothing of the previous
   // user's selection survives in this tab's state (AuthProvider drops their cached data).
-  return <UserBuildingProvider key={me?.user.id}>{children}</UserBuildingProvider>;
+  return <UserBuildingProvider key={userId}>{children}</UserBuildingProvider>;
 }
 
 function UserBuildingProvider({ children }: { children: ReactNode }) {
@@ -144,4 +174,21 @@ export function useBuilding({ passive = false }: { passive?: boolean } = {}) {
     queryFn: ({ signal }) =>
       api.get('/api/buildings/{building_id}', { params: { path: { building_id: buildingId } }, signal }),
   });
+}
+
+/**
+ * Whether the selected building is denied: a 401 or 404 on its own request, or a denial seen on any of its
+ * requests that no building answer has come after. A later 5xx or network error leaves it denied; only a
+ * successful building answer newer than the denial (or `reset()`, a switch) ends it. The guard, the nav and the
+ * bell all read this one state (inbox B-5).
+ */
+export function useBuildingDenied(): boolean {
+  const buildingId = useBuildingId();
+  const queryClient = useQueryClient();
+  const building = useBuilding({ passive: true });
+  // Read without observing, so reading creates no cache entry.
+  const subscribe = useCallback((onChange: () => void) => queryClient.getQueryCache().subscribe(onChange), [queryClient]);
+  const deniedAt = useSyncExternalStore(subscribe, () => queryClient.getQueryData<number>(deniedKey(buildingId)) ?? 0);
+  const status = building.error instanceof ApiError ? building.error.status : null;
+  return status === 401 || status === 404 || deniedAt > building.dataUpdatedAt;
 }
