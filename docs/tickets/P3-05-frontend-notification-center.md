@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P3-03, P2-06 |
 | Replaces old | M5-T04 |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 

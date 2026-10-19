@@ -260,6 +260,7 @@ P3-03, and P3-02's note asked for it to be promoted in this ticket's PR, which d
 | 2026-10-18 | P3-05 | Bell kept showing cached private notifications after a building 404 (F1, **High**); summary stayed stale after a short hide (F2); a failing summary kept the old count (F3); a linked mark-read's failure was lost with the panel (F4) | review round 1 (Codex gpt-6.1-sol), High + 3 Medium | copied the shell's happy path; error and lifetime paths of the bell weren't listed before review | tests "review round 1" |
 | 2026-10-18 | P3-05 | The round-1 denial fix used the query's *current* error, so a 5xx after the 404 brought the bell and its cached rows back (R2-F1, **High**); overlapping mutations hid a failure (R2-F2) | review round 2 (Codex), High + Medium | fixed the reported response, not the sequence after it: pattern "fix not tested on adjacent cases" again | tests "review round 2" |
 | 2026-10-18 | P3-05 | The denial fixes covered only the building endpoint: a `404 building_not_found` from the notification endpoints left private rows on screen (R3-F1, **High**), and a shell remount forgot the denial (R3-F2) | review round 3 (Codex), High + Medium, **ticket blocked** (inbox B-5) | denial modelled per component instead of one shared state; "other ways to reach the same state" (another endpoint, a remount) not listed for the F1 fix, though the `CLAUDE.md` lesson names both | pending (B-5). Pattern "fix not tested on adjacent cases", again after its lesson: consider a review-prep checklist step that lists, per fix, every endpoint and remount path that reaches the state |
+| 2026-10-19 | P3-05 | The shared denial (B-5 fix) was recorded by a subscription inside `BuildingProvider`: answers arriving while the shell was unmounted were lost (R4-F1), and a mutation's error event fires only after its `onSettled` awaited the refetches (R4-F2), both **High** | review round 4 (Codex gpt-6-astra, medium); merged without a fifth round by James's decision | hooked to a component's lifetime what must live as long as the client; didn't check the library's callback order | recorded in the client's `QueryCache`/`MutationCache` `onError`; tests "review round 4". Pattern "fix not tested on adjacent cases" (lifetime: an unmounted shell): see the P3-05 step 8 note |
 
 P3-04c step 8 note: P3-03's request to promote "validated input with Python's rules, not the database's" (three
 occurrences) was done in this ticket's bookkeeping as a `CLAUDE.md` lesson; a fitness test across `enqueue`,
@@ -267,3 +268,10 @@ occurrences) was done in this ticket's bookkeeping as a `CLAUDE.md` lesson; a fi
 pattern, 1 of 2: "an irreversible external side effect (S3, SMTP, any API) inside a transaction that can roll
 back, protected only by a lock or by the rollback itself".
 
+
+P3-05 step 8 note: "fix not tested on adjacent cases" came back in every review round of PR #79 (F1 → R2-F1 →
+R3-F1/F2 → R4-F1/F2), each time another way to reach "a denied building's data is shown": another response
+(5xx after 404), another endpoint (notification requests), another lifetime (shell remount, an answer while
+unmounted, a callback order). The `CLAUDE.md` lesson already names these, so the next lane-B ticket's first
+follow-up is a fitness test rather than more wording: every component under `src/app` or `src/features` that
+reads `useBuilding({ passive: true })` must also call `useBuildingDenied()` (P3-06 is the next candidate).
