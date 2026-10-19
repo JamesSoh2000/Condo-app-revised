@@ -11,9 +11,10 @@ MIN_FLOOR, MAX_FLOOR = -20, 300
 
 
 def printable(value: str) -> str:
-    """Refuse control characters and lone surrogates. Postgres refuses NUL and surrogates at flush,
-    not here (CLAUDE.md lesson), and a tab or newline makes two labels that look alike."""
-    if any(unicodedata.category(char) in {"Cc", "Cs"} for char in value):
+    """Refuse control characters. Postgres refuses NUL at flush, not here (CLAUDE.md lesson), and a
+    tab or newline makes two labels that look alike. Pydantic itself refuses lone surrogates
+    (`string_unicode`, or `json_invalid` in a body) before this runs."""
+    if any(unicodedata.category(char) == "Cc" for char in value):
         raise PydanticCustomError("control_characters", "must not contain control characters")
     return value
 

@@ -222,7 +222,7 @@ async def test_same_label_in_another_tower_or_building_is_not_a_duplicate(as_use
         {"label": "   "},
         {"label": "x" * 21},
         {"label": "1\x0001"},
-        # Raw JSON: httpx can't encode a lone surrogate, but a client can send the escape.
+        # Raw JSON: httpx can't encode a lone surrogate. Pydantic refuses it (json_invalid).
         '{"label": "1\\ud80001"}',
         {"label": "10\n1"},
         {"tower": "t" * 21, "label": "1"},
