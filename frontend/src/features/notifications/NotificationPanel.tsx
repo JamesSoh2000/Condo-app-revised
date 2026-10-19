@@ -22,6 +22,9 @@ export function NotificationPanel({ id, unread, markRead, markAllRead }: Props) 
   const list = useNotifications({ enabled: true });
   const navigate = useNavigate();
   const items = list.data?.pages.flatMap((page) => page.items) ?? [];
+  // One read action at a time: a second one would replace the pending one's state, and its failure would go
+  // unseen (review round 2, Codex R2-F2).
+  const busy = markRead.isPending || markAllRead.isPending;
 
   const onOpen = (notification: Notification) => {
     if (notification.read_at === null) {
@@ -42,7 +45,7 @@ export function NotificationPanel({ id, unread, markRead, markAllRead }: Props) 
         <button
           type="button"
           className="rounded border px-2 py-0.5 text-xs disabled:opacity-50"
-          disabled={unread === 0 || markAllRead.isPending}
+          disabled={unread === 0 || busy}
           onClick={() => {
             markRead.reset();
             markAllRead.mutate();
@@ -68,6 +71,7 @@ export function NotificationPanel({ id, unread, markRead, markAllRead }: Props) 
             <li key={notification.id}>
               <button
                 type="button"
+                disabled={busy}
                 onClick={() => onOpen(notification)}
                 className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100 ${notification.read_at === null ? 'font-medium' : 'text-slate-600'}`}
               >

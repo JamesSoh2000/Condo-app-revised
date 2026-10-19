@@ -629,3 +629,103 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     expect(screen.getByRole('button', { name: 'Notifications, 1 unread' })).toBeTruthy();
   });
 });
+
+describe('review round 2 (Codex gpt-6.1-sol)', () => {
+  it('R2-F1: a 5xx after a building 404 neither brings the bell back nor its cached notifications', async () => {
+    let status = 200;
+    const target = notification({ title: 'Revoked building private notice' });
+    const server = notificationServer(MAPLE, [target]);
+    const down = (request: Request, ok: Handler) => (status === 200 ? ok(request) : problem(status, 'building_not_found'));
+    stubApi({
+      'GET /api/auth/me': () => (status === 500 ? problem(500, 'internal_error') : json(RESIDENT_ME)),
+      [`GET /api/buildings/${MAPLE.id}`]: (request) => down(request, () => json(buildingOut(MAPLE, ['resident']))),
+      [`GET ${base(MAPLE)}/summary`]: (request) => down(request, server.routes[`GET ${base(MAPLE)}/summary`]),
+      [`GET ${base(MAPLE)}`]: (request) => down(request, server.routes[`GET ${base(MAPLE)}`]),
+    });
+    const app = renderApp(['/']);
+    await within(await openPanel()).findByText(target.title);
+
+    status = 404;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull());
+    expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id, 'notifications'] })).toEqual([]);
+
+    status = 500;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(app.queryClient.getQueryState(['b', MAPLE.id, 'building'])?.error).toHaveProperty('status', 500);
+    expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull();
+    expect(screen.queryByText(target.title)).toBeNull();
+
+    // Access restored: a successful building answer newer than the 404 brings the bell back.
+    status = 200;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    expect(await bell('Notifications, 1 unread')).toBeTruthy();
+  });
+
+  it.each(['mark-read', 'mark-all-read'] as const)(
+    'R2-F2: while a %s is pending, the read actions are disabled, and its failure shows',
+    async (firstAction) => {
+      const first = notification({ link: null, title: 'First unread notice' });
+      const second = notification({ link: null, title: 'Second unread notice' });
+      const server = notificationServer(MAPLE, [first, second]);
+      let finishFirst!: (response: Response) => void;
+      const firstReply = new Promise<Response>((resolve) => (finishFirst = resolve));
+      const fetchMock = stubApi({
+        'GET /api/auth/me': () => json(RESIDENT_ME),
+        ...server.routes,
+        [`POST ${base(MAPLE)}/${first.id}/read`]: () => firstReply,
+        [`POST ${base(MAPLE)}/read-all`]: () => firstReply,
+      });
+      renderApp(['/']);
+      await bell('Notifications, 2 unread');
+      const region = await openPanel();
+      await within(region).findByText('First unread notice');
+      fireEvent.click(
+        within(region).getByRole('button', { name: firstAction === 'mark-read' ? /first unread notice/i : /mark all read/i }),
+      );
+
+      const secondButton = within(region).getByRole('button', { name: /second unread notice/i });
+      await waitFor(() => expect(secondButton).toHaveProperty('disabled', true));
+      expect(within(region).getByRole('button', { name: /mark all read/i })).toHaveProperty('disabled', true);
+      fireEvent.click(secondButton);
+
+      await act(async () => {
+        finishFirst(problem(500, 'internal_error'));
+        await firstReply;
+      });
+      expect((await within(region).findByRole('alert')).textContent).toMatch(/could not mark/i);
+      expect(notificationCalls(fetchMock)).not.toContain(`POST ${base(MAPLE)}/${second.id}/read`);
+      await waitFor(() => expect(secondButton).toHaveProperty('disabled', false));
+    },
+  );
+
+  it('coverage: the open list does not poll with the summary', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const server = notificationServer(MAPLE, [notification()]);
+    const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME), ...server.routes });
+    renderApp(['/']);
+    await within(await openPanel()).findByText(/notification \d+/i);
+
+    await act(() => vi.advanceTimersByTimeAsync(90_000));
+
+    expect(notificationCalls(fetchMock).filter((call) => call === `GET ${base(MAPLE)}`)).toHaveLength(1);
+    expect(summaryCalls(fetchMock)).toHaveLength(4);
+  });
+
+  it('coverage: /me ending the membership hides the open panel and drops its notifications', async () => {
+    let me = RESIDENT_ME;
+    const target = notification({ title: 'Removed membership private notice' });
+    const server = notificationServer(MAPLE, [target]);
+    stubApi({ 'GET /api/auth/me': () => json(me), ...server.routes });
+    const app = renderApp(['/']);
+    await within(await openPanel()).findByText(target.title);
+
+    me = { ...RESIDENT_ME, memberships: [] };
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull());
+    expect(screen.queryByText(target.title)).toBeNull();
+    expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id] })).toEqual([]);
+  });
+});

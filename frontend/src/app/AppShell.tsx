@@ -1,3 +1,5 @@
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 
 import { ApiError } from '@/api/errors';
@@ -46,10 +48,23 @@ export function AppShell() {
  */
 function LoadedBuildingBell() {
   const building = useBuilding({ passive: true });
+  const queryClient = useQueryClient();
   // Like BuildingNav: a 401 or 404 on a refetch means the cached building, and so its notifications, must not
-  // be shown any more (review round 1, Codex F1). Keyed by building, so nothing of one building's panel (an
-  // open state, a failed mark-read) shows in the next.
+  // be shown any more (review round 1, Codex F1). The denial lasts until a building answer newer than it
+  // succeeds, so a later 5xx (which replaces the 404 as the query's error) doesn't bring the bell back, and the
+  // building's notifications are dropped from the cache (review round 2, Codex R2-F1).
   const status = building.error instanceof ApiError ? building.error.status : null;
-  if (!building.data || status === 401 || status === 404) return null;
+  const deniedNow = status === 401 || status === 404;
+  const [deniedAt, setDeniedAt] = useState(0);
+  const { errorUpdatedAt, dataUpdatedAt } = building;
+  const buildingId = building.data?.id;
+  useEffect(() => {
+    if (!deniedNow || buildingId === undefined) return;
+    setDeniedAt(errorUpdatedAt);
+    queryClient.removeQueries({ queryKey: ['b', buildingId, 'notifications'] });
+  }, [deniedNow, errorUpdatedAt, buildingId, queryClient]);
+
+  if (!building.data || deniedNow || deniedAt > dataUpdatedAt) return null;
+  // Keyed by building, so nothing of one building's panel (an open state, a failed mark-read) shows in the next.
   return <NotificationBell key={building.data.id} />;
 }
