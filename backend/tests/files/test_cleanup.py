@@ -204,22 +204,29 @@ async def test_cleanup_enqueues_a_purge_for_files_left_deleting(
 # --- 34: a `deleting` file is gone for every caller ---------------------------------------------
 
 
-async def test_a_deleting_file_cannot_be_claimed_downloaded_or_completed(db, world):
+async def test_a_deleting_file_cannot_be_claimed_downloaded_or_completed(db, world, monkeypatch):
     resident = world.a_resident1
     ctx = ctx_of(resident.user.id, world.a.id, Role.RESIDENT)
     ready = await a_file(db, world.a.id, resident.user.id, age=8 * DAY)
     pending = await a_file(db, world.a.id, resident.user.id, age=2 * DAY, status=FileStatus.PENDING)
+    ready_id, pending_id = ready.id, pending.id
     await mark(db)
     await db.commit()
+    db.expire_all()  # as a request's own session would read them
+
+    async def no_s3(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("S3 was asked about a deleting file")
+
+    monkeypatch.setattr(storage, "head", no_s3)
 
     with pytest.raises(FileNotFound):
-        await claim_file(db, ctx, ready.id, MAINTENANCE, "maintenance_request", uuid.uuid4())
+        await claim_file(db, ctx, ready_id, MAINTENANCE, "maintenance_request", uuid.uuid4())
     with pytest.raises(FileNotFound):
-        await download_url(db, ctx, ready.id)
+        await download_url(db, ctx, ready_id)
     with pytest.raises(FileNotFound):
-        await complete_file(db, ctx, pending.id)
-    assert await status_of(db, ready.id) is FileStatus.DELETING
-    assert await status_of(db, pending.id) is FileStatus.DELETING
+        await complete_file(db, ctx, pending_id)
+    assert await status_of(db, ready_id) is FileStatus.DELETING
+    assert await status_of(db, pending_id) is FileStatus.DELETING
 
 
 # --- 25: age boundaries ------------------------------------------------------------------------
@@ -643,7 +650,9 @@ async def test_a_claim_waiting_on_the_cleanup_gets_file_not_found(engine, commit
     assert len(versions_of(ids["key"])) == 1  # until the purge
 
 
-@pytest.mark.parametrize("when", ["before_head", "after_head", "after_verify"])
+@pytest.mark.parametrize(
+    "when", ["before_head", "after_head", "purge_failed_after_s3", "after_verify"]
+)
 async def test_completion_racing_the_cleanup_is_file_not_found(db, world, monkeypatch, when):
     """Review round 1 (before and after HEAD); after the checks: the conditional update misses."""
     uploader = world.a_resident1.user.id
@@ -654,6 +663,10 @@ async def test_completion_racing_the_cleanup_is_file_not_found(db, world, monkey
     async def racing_head(key: str) -> storage.ObjectHead | None:
         if when == "before_head":
             await run_cleanup(db)
+        if when == "purge_failed_after_s3":
+            # Marked, and a purge deleted the objects but not the row (it failed afterwards).
+            await mark(db)
+            await storage.delete_versions(key)
         found = await real_head(key)
         if when == "after_head":
             await run_cleanup(db)
