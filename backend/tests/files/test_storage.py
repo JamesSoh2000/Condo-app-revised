@@ -93,3 +93,11 @@ async def test_delete_versions_raises_when_s3_refuses_an_object(s3, s3_bucket, m
     with pytest.raises(storage.DeleteVersionsError):
         await storage.delete_versions("t/f")
     assert len(_left_under(s3, s3_bucket, "t/f")) == 1
+
+
+async def test_get_range_of_a_deleted_version_is_none(s3, s3_bucket):
+    """A purge (P3-04c) can delete the version `complete` is reading."""
+    put = s3.put_object(Bucket=s3_bucket, Key="t/g", Body=b"gone")
+    s3.delete_object(Bucket=s3_bucket, Key="t/g", VersionId=put["VersionId"])
+
+    assert await storage.get_range("t/g", put["VersionId"], 4) is None

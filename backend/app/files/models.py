@@ -28,6 +28,9 @@ class FilePurpose(StrEnum):
 class FileStatus(StrEnum):
     PENDING = "pending"  # the presigned POST was issued; nothing verified yet
     READY = "ready"  # the stored object was checked and its version pinned
+    # Chosen by `files.cleanup` and committed before any object is deleted (P3-04c): never served,
+    # claimed or completed again; `files.purge` deletes its objects, then the row.
+    DELETING = "deleting"
 
 
 class File(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -38,9 +41,11 @@ class File(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         # Target for composite FKs (building_id, file_id) from domain tables (ADR-0005).
         UniqueConstraint("building_id", "id"),
-        # `ready` means "this version was checked": exactly the rows with a pinned version.
+        # `ready` means "this version was checked": exactly the rows with a pinned version. A
+        # `deleting` row keeps whatever it had.
         CheckConstraint(
-            "(status = 'ready') = (s3_version_id IS NOT NULL)", name="version_iff_ready"
+            "status = 'deleting' OR (status = 'ready') = (s3_version_id IS NOT NULL)",
+            name="version_iff_ready",
         ),
         CheckConstraint(
             "(attached_type IS NULL) = (attached_id IS NULL)", name="attachment_complete"

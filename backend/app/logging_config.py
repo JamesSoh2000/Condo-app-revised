@@ -55,7 +55,8 @@ class JsonFormatter(logging.Formatter):
             # The cleanup jobs (P3-01b).
             "deleted",
             "scrubbed",
-            # files.cleanup (P3-04c): IDs and counts, never the S3 key.
+            # files.cleanup and files.purge (P3-04c): IDs and counts, never the S3 key.
+            "marked",
             "file_id",
             "failed",
             "left",

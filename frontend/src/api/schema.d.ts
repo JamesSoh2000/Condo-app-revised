@@ -411,7 +411,11 @@ export interface components {
              */
             id: string;
             purpose: components["schemas"]["FilePurpose"];
-            status: components["schemas"]["FileStatus"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "ready";
             /** Content Type */
             content_type: string;
             /** Size Bytes */
@@ -430,11 +434,6 @@ export interface components {
          * @enum {string}
          */
         FilePurpose: "package_photo" | "maintenance_photo" | "notice_attachment";
-        /**
-         * FileStatus
-         * @enum {string}
-         */
-        FileStatus: "pending" | "ready";
         /** FileUploadOut */
         FileUploadOut: {
             /**

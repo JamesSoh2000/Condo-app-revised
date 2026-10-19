@@ -1,14 +1,17 @@
-"""`files.cleanup` (P3-04c criteria 8, 25 to 32): old pending and unattached files go, S3 first."""
+"""`files.cleanup` and `files.purge` (P3-04c criteria 8, 25 to 35): old pending and unattached
+files are marked `deleting`, then their S3 versions and rows are deleted."""
 
 import asyncio
 import json
+import threading
 import uuid
 from collections.abc import AsyncIterator
 from datetime import timedelta
 from typing import Any
 
+import anyio.to_thread
 import pytest
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
 from app.buildings.models import Building
@@ -17,7 +20,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.files import jobs, service, storage
 from app.files.models import File, FilePurpose, FileStatus
-from app.files.service import FileNotFound, claim_file, complete_file
+from app.files.service import FileNotFound, claim_file, complete_file, download_url
 from app.jobs import registry
 from app.jobs.models import Job, JobStatus
 from app.jobs.registry import JobContext
@@ -52,7 +55,7 @@ async def a_file(
     version = None
     if uploaded:
         put = storage.client().put_object(
-            Bucket=_bucket(), Key=key, Body=png(), ContentType="image/png"
+            Bucket=settings.s3_bucket_name, Key=key, Body=png(), ContentType="image/png"
         )
         version = put["VersionId"]
     file = File(
@@ -75,12 +78,8 @@ async def a_file(
     return file
 
 
-def _bucket() -> str:
-    return settings.s3_bucket_name
-
-
 def versions_of(key: str) -> list[str]:
-    listed = storage.client().list_object_versions(Bucket=_bucket(), Prefix=key)
+    listed = storage.client().list_object_versions(Bucket=settings.s3_bucket_name, Prefix=key)
     entries = listed.get("Versions", []) + listed.get("DeleteMarkers", [])
     return [entry["VersionId"] for entry in entries if entry["Key"] == key]
 
@@ -89,18 +88,40 @@ async def file_ids(db: AsyncSession) -> set[uuid.UUID]:
     return set(await db.scalars(select(File.id)))
 
 
+async def status_of(db: AsyncSession, file_id: uuid.UUID) -> FileStatus | None:
+    return await db.scalar(select(File.status).where(File.id == file_id))
+
+
+def job_ctx(db: AsyncSession, kind: str) -> JobContext:
+    return JobContext(db=db, job_id=uuid.uuid4(), kind=kind, attempt=1)
+
+
+async def mark(db: AsyncSession) -> JobContext:
+    ctx = job_ctx(db, "files.cleanup")
+    await jobs.cleanup_files({}, ctx)
+    return ctx
+
+
+async def purge(db: AsyncSession) -> None:
+    await jobs.purge_files({}, job_ctx(db, "files.purge"))
+
+
 async def run_cleanup(db: AsyncSession) -> None:
-    await jobs.cleanup_files(
-        {}, JobContext(db=db, job_id=uuid.uuid4(), kind="files.cleanup", attempt=1)
-    )
+    """The daily job, then the purge it enqueues."""
+    await mark(db)
+    await purge(db)
+
+
+async def purge_jobs(db: AsyncSession) -> list[str | None]:
+    return list(await db.scalars(select(Job.dedupe_key).where(Job.kind == "files.purge")))
 
 
 @pytest.fixture
 def no_commit(monkeypatch, db: AsyncSession) -> None:
-    """The handler writes in the job's transaction and never commits (CLAUDE.md rule 5)."""
+    """The handlers write in the job's transaction and never commit (CLAUDE.md rule 5)."""
 
     async def refuse() -> None:
-        raise AssertionError("files.cleanup committed")
+        raise AssertionError("a files job committed")
 
     monkeypatch.setattr(db, "commit", refuse)
 
@@ -108,7 +129,7 @@ def no_commit(monkeypatch, db: AsyncSession) -> None:
 # --- 8: old pending and unattached files go; attached ones stay ---------------------------------
 
 
-async def test_cleanup_deletes_old_pending_and_unattached_files_and_keeps_attached_ones(
+async def test_cleanup_then_purge_deletes_old_pending_and_unattached_files_and_keeps_attached_ones(
     db, world, frozen_clock: FrozenClock, no_commit
 ):
     uploader = world.a_resident1.user.id
@@ -116,7 +137,7 @@ async def test_cleanup_deletes_old_pending_and_unattached_files_and_keeps_attach
     old_unattached = await a_file(db, world.a.id, uploader, age=8 * DAY)
     attached = await a_file(db, world.a.id, uploader, age=400 * DAY, attached=True)
     # A second version on the attached key: every version stays, not only the pinned one.
-    storage.client().put_object(Bucket=_bucket(), Key=attached.s3_key, Body=png(32))
+    storage.client().put_object(Bucket=settings.s3_bucket_name, Key=attached.s3_key, Body=png(32))
     young_pending = await a_file(db, world.a.id, uploader, age=HOUR, status=FileStatus.PENDING)
     young_unattached = await a_file(db, world.a.id, uploader, age=DAY)
     before = await file_ids(db)
@@ -129,6 +150,76 @@ async def test_cleanup_deletes_old_pending_and_unattached_files_and_keeps_attach
     assert len(versions_of(attached.s3_key)) == 2
     assert len(versions_of(young_pending.s3_key)) == 1
     assert len(versions_of(young_unattached.s3_key)) == 1
+    assert await status_of(db, attached.id) is FileStatus.READY
+    assert await status_of(db, young_pending.id) is FileStatus.PENDING
+
+
+# --- 33: the cleanup only marks; the purge deletes ----------------------------------------------
+
+
+async def test_cleanup_only_marks_files_deleting_and_enqueues_the_purge(
+    db, world, frozen_clock: FrozenClock, no_commit
+):
+    uploader = world.a_resident1.user.id
+    old_pending = await a_file(db, world.a.id, uploader, age=2 * DAY, status=FileStatus.PENDING)
+    old_ready = await a_file(db, world.a.id, uploader, age=8 * DAY)
+    young = await a_file(db, world.a.id, uploader, age=DAY)
+
+    ctx = await mark(db)
+
+    assert await status_of(db, old_pending.id) is FileStatus.DELETING
+    assert await status_of(db, old_ready.id) is FileStatus.DELETING
+    assert await status_of(db, young.id) is FileStatus.READY
+    # No object is touched before the mark commits.
+    assert len(versions_of(old_pending.s3_key)) == 1
+    assert len(versions_of(old_ready.s3_key)) == 1
+    assert await purge_jobs(db) == [f"files.purge:{ctx.job_id}"]
+
+
+async def test_cleanup_enqueues_no_purge_when_nothing_is_deleting(
+    db, world, frozen_clock: FrozenClock, no_commit
+):
+    await a_file(db, world.a.id, world.a_resident1.user.id, age=DAY)
+
+    await mark(db)
+
+    assert await purge_jobs(db) == []
+
+
+async def test_cleanup_enqueues_a_purge_for_files_left_deleting(
+    db, world, frozen_clock: FrozenClock, no_commit
+):
+    # Left by an earlier purge that failed; nothing new is eligible.
+    left = await a_file(
+        db, world.a.id, world.a_resident1.user.id, age=DAY, status=FileStatus.DELETING
+    )
+
+    ctx = await mark(db)
+
+    assert await purge_jobs(db) == [f"files.purge:{ctx.job_id}"]
+    await purge(db)
+    assert left.id not in await file_ids(db)
+
+
+# --- 34: a `deleting` file is gone for every caller ---------------------------------------------
+
+
+async def test_a_deleting_file_cannot_be_claimed_downloaded_or_completed(db, world):
+    resident = world.a_resident1
+    ctx = ctx_of(resident.user.id, world.a.id, Role.RESIDENT)
+    ready = await a_file(db, world.a.id, resident.user.id, age=8 * DAY)
+    pending = await a_file(db, world.a.id, resident.user.id, age=2 * DAY, status=FileStatus.PENDING)
+    await mark(db)
+    await db.commit()
+
+    with pytest.raises(FileNotFound):
+        await claim_file(db, ctx, ready.id, MAINTENANCE, "maintenance_request", uuid.uuid4())
+    with pytest.raises(FileNotFound):
+        await download_url(db, ctx, ready.id)
+    with pytest.raises(FileNotFound):
+        await complete_file(db, ctx, pending.id)
+    assert await status_of(db, ready.id) is FileStatus.DELETING
+    assert await status_of(db, pending.id) is FileStatus.DELETING
 
 
 # --- 25: age boundaries ------------------------------------------------------------------------
@@ -179,10 +270,10 @@ async def test_cleanup_deletes_a_pending_row_with_nothing_uploaded(
     assert file.id not in await file_ids(db)
 
 
-# --- 27: a failed S3 delete keeps its row; the run goes on -------------------------------------
+# --- 27: a failed S3 delete keeps its row `deleting`; the run goes on ---------------------------
 
 
-async def test_a_failed_s3_delete_keeps_that_row_and_the_run_goes_on(
+async def test_a_failed_s3_delete_keeps_that_row_deleting_and_the_run_goes_on(
     db, world, frozen_clock: FrozenClock, monkeypatch, caplog
 ):
     uploader = world.a_resident1.user.id
@@ -201,6 +292,7 @@ async def test_a_failed_s3_delete_keeps_that_row_and_the_run_goes_on(
 
     remaining = await file_ids(db)
     assert failing.id in remaining and other.id not in remaining
+    assert await status_of(db, failing.id) is FileStatus.DELETING
     assert len(versions_of(failing.s3_key)) == 1
     # As production writes them (the formatter keeps only allowlisted extras), without the key.
     logged = {
@@ -208,13 +300,14 @@ async def test_a_failed_s3_delete_keeps_that_row_and_the_run_goes_on(
         for r in caplog.records
         if r.name == "app.files.jobs"
     }
-    failure = logged["file_cleanup_failed"]
+    assert logged["files_marked"]["marked"] == 2
+    failure = logged["file_purge_failed"]
     assert (failure["file_id"], failure["error_type"]) == (str(failing.id), "DeleteVersionsError")
-    summary = logged["files_cleaned"]
+    summary = logged["files_purged"]
     assert (summary["deleted"], summary["failed"], summary["left"]) == (1, 1, 0)
     assert failing.s3_key not in caplog.text and failing.s3_key not in json.dumps(logged)
 
-    # The next run, with S3 back, deletes it.
+    # The next day, with S3 back: the cleanup enqueues a purge for it, and the purge deletes it.
     monkeypatch.setattr(storage, "delete_versions", real)
     await run_cleanup(db)
 
@@ -222,10 +315,45 @@ async def test_a_failed_s3_delete_keeps_that_row_and_the_run_goes_on(
     assert versions_of(failing.s3_key) == []
 
 
-# --- 29: bounded run ---------------------------------------------------------------------------
+async def test_a_partly_deleted_file_stays_deleting_and_unclaimable(db, world, monkeypatch):
+    """Review round 1: S3 deleted the pinned version but refused another one."""
+    resident = world.a_resident1
+    file = await a_file(db, world.a.id, resident.user.id, age=8 * DAY)
+    assert file.s3_version_id is not None
+    pinned: str = file.s3_version_id
+    real = storage.client()
+    bucket = settings.s3_bucket_name
+    other = real.put_object(Bucket=bucket, Key=file.s3_key, Body=b"newer")["VersionId"]
+
+    class PartlyRefusing:
+        def __getattr__(self, name: str) -> Any:
+            return getattr(real, name)
+
+        def delete_objects(self, **kwargs: Any) -> dict[str, Any]:
+            real.delete_object(Bucket=bucket, Key=file.s3_key, VersionId=pinned)
+            return {"Errors": [{"Key": file.s3_key, "VersionId": other, "Code": "AccessDenied"}]}
+
+    monkeypatch.setattr(storage, "client", lambda: PartlyRefusing())
+    await run_cleanup(db)
+    await db.commit()
+
+    assert await status_of(db, file.id) is FileStatus.DELETING
+    ctx = ctx_of(resident.user.id, world.a.id, Role.RESIDENT)
+    with pytest.raises(FileNotFound):
+        await claim_file(db, ctx, file.id, MAINTENANCE, "maintenance_request", uuid.uuid4())
+    with pytest.raises(FileNotFound):
+        await download_url(db, ctx, file.id)
+
+    monkeypatch.setattr(storage, "client", lambda: real)
+    await run_cleanup(db)
+    assert file.id not in await file_ids(db)
+    assert versions_of(file.s3_key) == []
 
 
-async def test_one_run_handles_at_most_the_batch_oldest_first(
+# --- 29: bounded runs ----------------------------------------------------------------------------
+
+
+async def test_one_cleanup_marks_at_most_the_batch_oldest_first(
     db, world, frozen_clock: FrozenClock, monkeypatch, no_commit
 ):
     uploader = world.a_resident1.user.id
@@ -234,11 +362,27 @@ async def test_one_run_handles_at_most_the_batch_oldest_first(
     newest = await a_file(db, world.a.id, uploader, age=10 * DAY)
     monkeypatch.setattr(jobs, "CLEANUP_BATCH", 2)
 
-    await run_cleanup(db)
+    await mark(db)
+
+    assert await status_of(db, newest.id) is FileStatus.READY
+    assert await status_of(db, oldest.id) is FileStatus.DELETING
+    assert await status_of(db, older.id) is FileStatus.DELETING
+
+
+async def test_one_purge_deletes_at_most_the_batch_oldest_first(
+    db, world, frozen_clock: FrozenClock, monkeypatch, no_commit
+):
+    uploader = world.a_resident1.user.id
+    oldest = await a_file(db, world.a.id, uploader, age=30 * DAY)
+    older = await a_file(db, world.a.id, uploader, age=20 * DAY)
+    newest = await a_file(db, world.a.id, uploader, age=10 * DAY)
+    await mark(db)
+    monkeypatch.setattr(jobs, "CLEANUP_BATCH", 2)
+
+    await purge(db)
 
     remaining = await file_ids(db)
-    assert newest.id in remaining
-    assert not {oldest.id, older.id} & remaining
+    assert newest.id in remaining and not {oldest.id, older.id} & remaining
 
 
 async def test_no_s3_delete_starts_after_the_budget(
@@ -264,6 +408,7 @@ async def test_no_s3_delete_starts_after_the_budget(
     assert started == [first.s3_key]
     remaining = await file_ids(db)
     assert first.id not in remaining and second.id in remaining
+    assert await status_of(db, second.id) is FileStatus.DELETING
     assert len(versions_of(second.s3_key)) == 1
 
 
@@ -292,10 +437,12 @@ async def test_cleanup_deletes_eligible_files_of_every_building(
 # --- 31: in the worker, in the job's transaction ------------------------------------------------
 
 
-def test_the_worker_runs_files_cleanup_daily_with_no_sensitive_keys():
+def test_the_worker_runs_files_cleanup_daily_and_files_purge_on_demand():
     assert "app.files.jobs" in HANDLER_MODULES
     assert "files.cleanup" in RECURRING_KINDS
+    assert "files.purge" not in RECURRING_KINDS  # enqueued by the cleanup
     assert registry.HANDLERS["files.cleanup"].sensitive_keys == ()
+    assert registry.HANDLERS["files.purge"].sensitive_keys == ()
 
 
 @pytest.fixture
@@ -303,7 +450,7 @@ def sessions(db_connection: AsyncConnection):
     return lambda: AsyncSessionLocal(bind=db_connection, join_transaction_mode="create_savepoint")
 
 
-async def test_files_cleanup_runs_in_the_worker_and_commits_with_the_job(
+async def test_files_cleanup_and_its_purge_run_in_the_worker(
     db, world, sessions, frozen_clock: FrozenClock
 ):
     file = await a_file(db, world.a.id, world.a_resident1.user.id, age=8 * DAY)
@@ -311,15 +458,21 @@ async def test_files_cleanup_runs_in_the_worker_and_commits_with_the_job(
     job_id = await enqueue(db, "files.cleanup", {})
     await db.commit()
 
-    assert await Worker(sessions, recurring=()).run_once() == 1
+    # The cleanup, then the purge it enqueued (due at once).
+    assert await Worker(sessions, recurring=()).run_once() == 2
 
     db.expire_all()
+    statuses = (await db.execute(select(Job.kind, Job.status).order_by(Job.created_at))).all()
+    assert [tuple(row) for row in statuses] == [
+        ("files.cleanup", JobStatus.SUCCEEDED),
+        ("files.purge", JobStatus.SUCCEEDED),
+    ]
     assert (await db.get_one(Job, job_id)).status is JobStatus.SUCCEEDED
     assert file_id not in await file_ids(db)
     assert versions_of(key) == []
 
 
-async def test_a_failing_files_cleanup_rolls_its_row_deletions_back(
+async def test_a_failing_cleanup_rolls_its_marks_and_its_purge_back(
     db, world, sessions, frozen_clock: FrozenClock, monkeypatch
 ):
     file = await a_file(db, world.a.id, world.a_resident1.user.id, age=8 * DAY)
@@ -329,7 +482,7 @@ async def test_a_failing_files_cleanup_rolls_its_row_deletions_back(
 
     class Broken:
         def info(self, *args: Any, **kwargs: Any) -> None:
-            raise RuntimeError("failed after deleting")
+            raise RuntimeError("failed after marking")
 
         def warning(self, *args: Any, **kwargs: Any) -> None:
             pass
@@ -340,8 +493,58 @@ async def test_a_failing_files_cleanup_rolls_its_row_deletions_back(
 
     db.expire_all()
     assert (await db.get_one(Job, job_id)).status is JobStatus.QUEUED  # retried later
-    # The row is back (its S3 versions are gone): the next run deletes it (D2).
-    assert file_id in await file_ids(db)
+    assert await status_of(db, file_id) is FileStatus.READY
+    assert await purge_jobs(db) == []
+
+
+async def test_a_purge_timing_out_mid_delete_leaves_nothing_claimable(
+    db, db_connection, world, sessions, monkeypatch
+):
+    """Review round 1: the worker's timeout rolls the purge back while its S3 call still runs in its
+    thread. The row stays `deleting`, so a claim can't attach the object being deleted."""
+    resident = world.a_resident1
+    file = await a_file(db, world.a.id, resident.user.id, age=8 * DAY)
+    file_id, key = file.id, file.s3_key
+    ctx = ctx_of(resident.user.id, world.a.id, Role.RESIDENT)
+    await mark(db)
+    [purge_key] = await purge_jobs(db)
+    await db.commit()
+    real = storage.client()
+    started, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+    class Slow:
+        def __getattr__(self, name: str) -> Any:
+            return getattr(real, name)
+
+        def delete_objects(self, **kwargs: Any) -> Any:
+            started.set()
+            try:
+                if not release.wait(5):
+                    raise RuntimeError("never released")
+                return real.delete_objects(**kwargs)
+            finally:
+                finished.set()
+
+    monkeypatch.setattr(storage, "client", lambda: Slow())
+    try:
+        assert await Worker(sessions, recurring=(), handler_timeout=0.4).run_once() == 1
+        assert started.is_set() and not finished.is_set()
+        db.expire_all()
+        purge_job = await db.scalar(select(Job).where(Job.dedupe_key == purge_key))
+        assert purge_job is not None and purge_job.status is JobStatus.QUEUED
+        assert await status_of(db, file_id) is FileStatus.DELETING
+        with pytest.raises(FileNotFound):
+            await claim_file(db, ctx, file_id, MAINTENANCE, "maintenance_request", uuid.uuid4())
+    finally:
+        release.set()
+        assert await anyio.to_thread.run_sync(finished.wait, 5)
+
+    # The thread finished deleting; the row is still there, and the next purge removes it.
+    assert versions_of(key) == []
+    assert await status_of(db, file_id) is FileStatus.DELETING
+    monkeypatch.setattr(storage, "client", lambda: real)
+    await purge(db)
+    assert file_id not in await file_ids(db)
 
 
 # --- 32: the index -----------------------------------------------------------------------------
@@ -355,7 +558,7 @@ async def test_the_cleanup_query_has_its_partial_index(db):
     assert "(created_at)" in indexdef and "WHERE (attached_id IS NULL)" in indexdef
 
 
-# --- 28: a claim or completion racing the job --------------------------------------------------
+# --- 28: a claim or completion racing the cleanup -----------------------------------------------
 
 
 @pytest.fixture
@@ -378,6 +581,7 @@ async def committed_old_file(engine: AsyncEngine) -> AsyncIterator[dict[str, Any
         yield ids
     finally:
         async with AsyncSessionLocal(bind=engine) as s:
+            await s.execute(delete(Job).where(Job.kind == "files.purge"))
             await s.execute(delete(File).where(File.building_id == ids["building"]))
             await s.execute(delete(User).where(User.id == ids["user"]))
             await s.execute(delete(Building).where(Building.id == ids["building"]))
@@ -393,18 +597,22 @@ async def test_a_file_being_claimed_is_skipped_and_stays_attached(engine, commit
         claimer, job = AsyncSessionLocal(bind=c1), AsyncSessionLocal(bind=c2)
         await claim_file(claimer, ctx, ids["file"], MAINTENANCE, "maintenance_request", record_id)
 
-        # Holding the claim's lock: the job skips the row instead of waiting for it.
+        # Holding the claim's lock: the cleanup skips the row instead of waiting for it.
         await asyncio.wait_for(run_cleanup(job), timeout=10)
         await job.commit()
         await claimer.commit()
 
     async with AsyncSessionLocal(bind=engine) as s:
         file = await s.get_one(File, ids["file"])
-        assert (file.attached_type, file.attached_id) == ("maintenance_request", record_id)
+        assert (file.status, file.attached_type, file.attached_id) == (
+            FileStatus.READY,
+            "maintenance_request",
+            record_id,
+        )
     assert len(versions_of(ids["key"])) == 1
 
 
-async def test_a_claim_waiting_on_the_job_gets_file_not_found(engine, committed_old_file):
+async def test_a_claim_waiting_on_the_cleanup_gets_file_not_found(engine, committed_old_file):
     ids = committed_old_file
     ctx = ctx_of(ids["user"], ids["building"], Role.RESIDENT)
 
@@ -413,7 +621,7 @@ async def test_a_claim_waiting_on_the_job_gets_file_not_found(engine, committed_
         pid = (await c2.execute(select(func.pg_backend_pid()))).scalar_one()
         await c2.commit()
 
-        await run_cleanup(job)  # holds the row (deleted, uncommitted); the object is gone
+        await mark(job)  # holds the row, marked `deleting`, uncommitted
 
         async def claim() -> None:
             try:
@@ -430,23 +638,68 @@ async def test_a_claim_waiting_on_the_job_gets_file_not_found(engine, committed_
             await task
 
     async with AsyncSessionLocal(bind=engine) as s:
-        assert await s.get(File, ids["file"]) is None
-    assert versions_of(ids["key"]) == []
+        file = await s.get_one(File, ids["file"])
+        assert (file.status, file.attached_id) == (FileStatus.DELETING, None)
+    assert len(versions_of(ids["key"])) == 1  # until the purge
 
 
-async def test_complete_of_a_file_deleted_meanwhile_is_file_not_found(db, world, monkeypatch):
-    uploader = world.a_resident1
-    file = await a_file(db, world.a.id, uploader.user.id, age=2 * DAY, status=FileStatus.PENDING)
+@pytest.mark.parametrize("when", ["before_head", "after_head", "after_verify"])
+async def test_completion_racing_the_cleanup_is_file_not_found(db, world, monkeypatch, when):
+    """Review round 1 (before and after HEAD); after the checks: the conditional update misses."""
+    uploader = world.a_resident1.user.id
+    file = await a_file(db, world.a.id, uploader, age=2 * DAY, status=FileStatus.PENDING)
+    await db.commit()
+    real_head, real_verify = storage.head, service._verify
+
+    async def racing_head(key: str) -> storage.ObjectHead | None:
+        if when == "before_head":
+            await run_cleanup(db)
+        found = await real_head(key)
+        if when == "after_head":
+            await run_cleanup(db)
+        return found
+
+    async def racing_verify(target: File) -> str:
+        version = await real_verify(target)
+        if when == "after_verify":
+            await mark(db)  # marked, not yet purged: the row is still there
+        return version
+
+    monkeypatch.setattr(storage, "head", racing_head)
+    monkeypatch.setattr(service, "_verify", racing_verify)
+
+    with pytest.raises(FileNotFound):
+        await complete_file(db, ctx_of(uploader, world.a.id, Role.RESIDENT), file.id)
+    assert await status_of(db, file.id) in (None, FileStatus.DELETING)
+
+
+async def test_completion_of_a_row_purged_meanwhile_is_file_not_found(db, world, monkeypatch):
+    uploader = world.a_resident1.user.id
+    file = await a_file(db, world.a.id, uploader, age=2 * DAY, status=FileStatus.PENDING)
     await db.commit()
     real_verify = service._verify
 
-    async def verify_then_job_deletes(target: File) -> str:
+    async def verify_then_row_goes(target: File) -> str:
         version = await real_verify(target)
-        # The job deletes the row between the check and the conditional update.
         await db.execute(delete(File).where(File.id == target.id))
         return version
 
-    monkeypatch.setattr(service, "_verify", verify_then_job_deletes)
+    monkeypatch.setattr(service, "_verify", verify_then_row_goes)
 
     with pytest.raises(FileNotFound):
-        await complete_file(db, ctx_of(uploader.user.id, world.a.id, Role.RESIDENT), file.id)
+        await complete_file(db, ctx_of(uploader, world.a.id, Role.RESIDENT), file.id)
+
+
+async def test_a_ready_file_is_not_marked_while_its_claim_commits_first(db, world, no_commit):
+    """A claim committed before the cleanup's statement leaves the file attached: not eligible."""
+    file = await a_file(db, world.a.id, world.a_resident1.user.id, age=8 * DAY)
+    await db.execute(
+        update(File)
+        .where(File.id == file.id)
+        .values(attached_type="maintenance_request", attached_id=uuid.uuid4())
+    )
+
+    await run_cleanup(db)
+
+    assert await status_of(db, file.id) is FileStatus.READY
+    assert len(versions_of(file.s3_key)) == 1

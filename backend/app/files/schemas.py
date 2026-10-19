@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field, field_validator
@@ -47,7 +48,8 @@ class FileUploadOut(APIModel):
 class FileOut(APIModel):
     id: UUID
     purpose: FilePurpose
-    status: FileStatus
+    # Never `deleting`: such a file is not found.
+    status: Literal[FileStatus.PENDING, FileStatus.READY]
     content_type: str
     size_bytes: int
     original_name: str

@@ -117,7 +117,7 @@ async def complete_file(db: AsyncSession, ctx: TenantContext, file_id: UUID) -> 
             File.uploaded_by_user_id == ctx.user_id,
         )
     )
-    if file is None:
+    if file is None or file.status is FileStatus.DELETING:
         raise FileNotFound(detail="File not found.")
     if file.status is FileStatus.READY:
         # Never re-checked: its version is pinned, whatever was uploaded since.
@@ -128,11 +128,12 @@ async def complete_file(db: AsyncSession, ctx: TenantContext, file_id: UUID) -> 
     except UploadIncomplete, FileSizeMismatch, FileTypeMismatch:
         # A completion that committed while this one checked wins, whatever was uploaded since:
         # answer with it instead of the failure (review round 1).
-        current = await db.scalar(
-            select(File).where(File.id == file.id).execution_options(populate_existing=True)
-        )
+        current = await _reread(db, file.id)
         if current is not None and current.status is FileStatus.READY:
             return FileOut.model_validate(current)
+        if current is None or current.status is FileStatus.DELETING:
+            # `files.cleanup` took it, and the purge may have deleted the object (P3-04c).
+            raise FileNotFound(detail="File not found.") from None
         raise
 
     # Conditional: if a concurrent completion won, its pinned version stays and is returned.
@@ -145,14 +146,18 @@ async def complete_file(db: AsyncSession, ctx: TenantContext, file_id: UUID) -> 
         )
         .values(status=FileStatus.READY, s3_version_id=version_id)
     )
-    current = await db.scalar(
-        select(File).where(File.id == file.id).execution_options(populate_existing=True)
-    )
-    if current is None:
-        # `files.cleanup` deleted it meanwhile (P3-04c): it is not there any more.
+    current = await _reread(db, file.id)
+    if current is None or current.status is FileStatus.DELETING:
+        # `files.cleanup` took it meanwhile (P3-04c): the update matched no row.
         raise FileNotFound(detail="File not found.")
     await db.commit()
     return FileOut.model_validate(current)
+
+
+async def _reread(db: AsyncSession, file_id: UUID) -> File | None:
+    return await db.scalar(
+        select(File).where(File.id == file_id).execution_options(populate_existing=True)
+    )
 
 
 async def _verify(file: File) -> str:
@@ -168,6 +173,9 @@ async def _verify(file: File) -> str:
         raise UnversionedObjectError(f"no version for file {file.id}; is bucket versioning on?")
     # The version HEAD saw, not the latest: another POST with the same form may have landed since.
     first_bytes = await storage.get_range(file.s3_key, found.version_id, MAGIC_BYTES)
+    if first_bytes is None:
+        # Deleted since HEAD saw it (a purge, P3-04c).
+        raise UploadIncomplete(detail="Nothing has been uploaded for this file yet.")
     if not matches_magic(file.content_type, first_bytes):
         raise FileTypeMismatch(detail="The uploaded file's content is not the declared type.")
     return found.version_id
@@ -207,7 +215,12 @@ async def claim_file(
     if claimed is not None:
         return claimed
     exists = await db.scalar(
-        select(File.id).where(File.id == file_id, File.building_id == ctx.building_id)
+        select(File.id).where(
+            File.id == file_id,
+            File.building_id == ctx.building_id,
+            # Being deleted (P3-04c): not there any more.
+            File.status != FileStatus.DELETING,
+        )
     )
     if exists is None:
         raise FileNotFound(detail="File not found.")

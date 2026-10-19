@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 # HEAD reports a missing key as a bare 404 (it has no body to name NoSuchKey).
 _MISSING = frozenset({"404", "NoSuchKey", "NotFound"})
+_MISSING_VERSION = _MISSING | {"NoSuchVersion"}
 
 
 class DeleteVersionsError(RuntimeError):
@@ -110,16 +111,22 @@ async def head(key: str) -> ObjectHead | None:
     return await anyio.to_thread.run_sync(call)
 
 
-async def get_range(key: str, version_id: str, length: int) -> bytes:
-    """The first `length` bytes of one version of `key` (fewer if the object is shorter)."""
+async def get_range(key: str, version_id: str, length: int) -> bytes | None:
+    """The first `length` bytes of one version of `key` (fewer if the object is shorter), or None
+    if that version is gone."""
 
-    def call() -> bytes:
-        found = client().get_object(
-            Bucket=settings.s3_bucket_name,
-            Key=key,
-            VersionId=version_id,
-            Range=f"bytes=0-{length - 1}",
-        )
+    def call() -> bytes | None:
+        try:
+            found = client().get_object(
+                Bucket=settings.s3_bucket_name,
+                Key=key,
+                VersionId=version_id,
+                Range=f"bytes=0-{length - 1}",
+            )
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in _MISSING_VERSION:
+                return None
+            raise
         body = found["Body"]
         try:
             return body.read(length)
