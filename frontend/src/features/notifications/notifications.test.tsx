@@ -751,3 +751,183 @@ describe('review round 2 (Codex gpt-6.1-sol)', () => {
     expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id] })).toEqual([]);
   });
 });
+
+describe('review round 3 (Codex gpt-6.1-sol) and inbox B-5: one shared building denial', () => {
+  /** Maple answers 200 until `state.status` changes; the building and the notification routes all follow it. */
+  function revocableMaple(items: Notification[]) {
+    const state = { status: 200 };
+    const server = notificationServer(MAPLE, items);
+    const follow = (ok: Handler): Handler => (request) =>
+      state.status === 200 ? ok(request) : problem(state.status, state.status === 404 ? 'building_not_found' : 'internal_error');
+    const routes: Record<string, Handler> = {
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`GET /api/buildings/${MAPLE.id}`]: follow(() => json(buildingOut(MAPLE, ['resident']))),
+      [`GET ${base(MAPLE)}/summary`]: follow(server.routes[`GET ${base(MAPLE)}/summary`]),
+      [`GET ${base(MAPLE)}`]: follow(server.routes[`GET ${base(MAPLE)}`]),
+    };
+    return { state, routes };
+  }
+  const denialShown = async () => {
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull());
+    expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
+  };
+
+  it('R3-F1: a summary poll answering building_not_found hides the open panel, drops the rows and shows lost access', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const target = notification({ title: 'Private package notice' });
+    const maple = revocableMaple([target]);
+    const fetchMock = stubApi(maple.routes);
+    const app = renderApp(['/']);
+    await within(await openPanel()).findByText(target.title);
+    const buildingRequests = () => calls(fetchMock).filter((call) => call === `GET /api/buildings/${MAPLE.id}`).length;
+    const before = buildingRequests();
+
+    maple.state.status = 404;
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+
+    await denialShown();
+    expect(screen.queryByText(target.title)).toBeNull();
+    expect(app.queryClient.getQueryCache().findAll({ queryKey: ['b', MAPLE.id, 'notifications'] })).toEqual([]);
+    // Only the summary told us: the building itself was not asked again.
+    expect(buildingRequests()).toBe(before);
+  });
+
+  it('R3-F1: a list refetch answering building_not_found hides its previous rows', async () => {
+    const target = notification({ title: 'Private package notice' });
+    const maple = revocableMaple([target]);
+    stubApi(maple.routes);
+    renderApp(['/']);
+    await within(await openPanel()).findByText(target.title);
+    fireEvent.keyDown(panel(), { key: 'Escape' });
+
+    maple.state.status = 404;
+    fireEvent.click(await bell());
+
+    await denialShown();
+    expect(screen.queryByText(target.title)).toBeNull();
+  });
+
+  it('R3-F1 neighbour: a mark-read answering building_not_found is a denial too', async () => {
+    const target = notification({ link: null, title: 'Private package notice' });
+    const server = notificationServer(MAPLE, [target]);
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`POST ${base(MAPLE)}/${target.id}/read`]: () => problem(404, 'building_not_found'),
+    });
+    renderApp(['/']);
+    fireEvent.click(await within(await openPanel()).findByRole('button', { name: /private package notice/i }));
+
+    await denialShown();
+    expect(screen.queryByText(target.title)).toBeNull();
+  });
+
+  it('R3-F1 neighbour: notification_not_found on a mark-read is only that notification, not a denial', async () => {
+    const target = notification({ link: null, title: 'Gone notice' });
+    const server = notificationServer(MAPLE, [target]);
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`POST ${base(MAPLE)}/${target.id}/read`]: () => problem(404, 'notification_not_found'),
+    });
+    renderApp(['/']);
+    const region = await openPanel();
+    fireEvent.click(await within(region).findByRole('button', { name: /gone notice/i }));
+
+    expect((await within(region).findByRole('alert')).textContent).toMatch(/could not mark/i);
+    expect(screen.getByRole('button', { name: /^notifications/i })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: /no longer have access/i })).toBeNull();
+  });
+
+  it('R3-F2: leaving the shell and coming back (Back) keeps a denial that a 5xx followed', async () => {
+    const maple = revocableMaple([notification()]);
+    const fetchMock = stubApi(maple.routes);
+    const app = renderApp(['/']);
+    await bell('Notifications, 1 unread');
+
+    maple.state.status = 404;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await denialShown();
+    maple.state.status = 500;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+
+    // The catch-all route is outside the shell: Back remounts it with the same query cache.
+    act(() => app.navigate()('/not-an-app-page'));
+    await screen.findByRole('heading', { name: /not found/i });
+    const before = notificationCalls(fetchMock).length;
+    act(() => app.navigate()(-1));
+
+    await denialShown();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull();
+    expect(notificationCalls(fetchMock).slice(before)).toEqual([]);
+  });
+
+  it('B-5: the page and the nav stay closed when a 5xx follows a building 404, until the building answers again', async () => {
+    const maple = revocableMaple([notification()]);
+    stubApi(maple.routes);
+    const app = renderApp(['/Maintenance']);
+    await screen.findByText(/being migrated/i);
+    expect(screen.getByRole('navigation')).toBeTruthy();
+
+    maple.state.status = 404;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await denialShown();
+    maple.state.status = 500;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(app.queryClient.getQueryState(['b', MAPLE.id, 'building'])?.error).toHaveProperty('status', 500);
+    expect(screen.getByRole('heading', { name: /no longer have access/i })).toBeTruthy();
+    expect(screen.queryByText(/being migrated/i)).toBeNull();
+    expect(screen.queryByRole('navigation')).toBeNull();
+
+    maple.state.status = 200;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    expect(await screen.findByText(/being migrated/i)).toBeTruthy();
+    expect(await bell('Notifications, 1 unread')).toBeTruthy();
+  });
+
+  it('B-5: a denial does not wear off with time (no garbage collection of the marker)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const maple = revocableMaple([notification()]);
+    stubApi(maple.routes);
+    const app = renderApp(['/Maintenance']);
+    await bell('Notifications, 1 unread');
+    maple.state.status = 404;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await denialShown();
+    maple.state.status = 500;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+
+    await act(() => vi.advanceTimersByTimeAsync(6 * 60_000));
+
+    expect(screen.getByRole('heading', { name: /no longer have access/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull();
+    expect(screen.queryByText(/being migrated/i)).toBeNull();
+  });
+
+  it('B-5: a denial of one building does not close another', async () => {
+    const maple = revocableMaple([notification({ title: 'Maple notice' })]);
+    const birch = notificationServer(BIRCH, [notification({ title: 'Birch notice' })]);
+    stubApi({
+      ...maple.routes,
+      'GET /api/auth/me': () => json({ ...RESIDENT_ME, memberships: [membership(MAPLE), membership(BIRCH)] }),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['resident'])),
+      ...birch.routes,
+    });
+    sessionStorage.setItem(KEY, MAPLE.id);
+    const app = renderApp(['/']);
+    await bell('Notifications, 1 unread');
+    maple.state.status = 404;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await denialShown();
+
+    openAccountMenu();
+    fireEvent.change(screen.getByLabelText(/building/i), { target: { value: BIRCH.id } });
+
+    expect(await bell('Notifications, 1 unread')).toBeTruthy();
+    expect(await within(await openPanel()).findByText('Birch notice')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: /no longer have access/i })).toBeNull();
+  });
+});

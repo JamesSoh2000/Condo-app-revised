@@ -1,11 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 
-import { ApiError } from '@/api/errors';
 import { AccountMenu } from '@/app/AccountMenu';
 import { useLogout } from '@/app/AuthProvider';
-import { useBuilding, useBuildingContext } from '@/app/BuildingProvider';
+import { useBuilding, useBuildingContext, useBuildingDenied } from '@/app/BuildingProvider';
 import { MainNav } from '@/app/MainNav';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 
@@ -48,23 +47,16 @@ export function AppShell() {
  */
 function LoadedBuildingBell() {
   const building = useBuilding({ passive: true });
+  const denied = useBuildingDenied();
   const queryClient = useQueryClient();
-  // Like BuildingNav: a 401 or 404 on a refetch means the cached building, and so its notifications, must not
-  // be shown any more (review round 1, Codex F1). The denial lasts until a building answer newer than it
-  // succeeds, so a later 5xx (which replaces the 404 as the query's error) doesn't bring the bell back, and the
-  // building's notifications are dropped from the cache (review round 2, Codex R2-F1).
-  const status = building.error instanceof ApiError ? building.error.status : null;
-  const deniedNow = status === 401 || status === 404;
-  const [deniedAt, setDeniedAt] = useState(0);
-  const { errorUpdatedAt, dataUpdatedAt } = building;
   const buildingId = building.data?.id;
+  // A denied building's notifications are private data the tab may no longer hold: drop them once the bell is
+  // gone (review rounds 1–3, Codex F1, R2-F1, R3-F1; the denial itself is shared, inbox B-5).
   useEffect(() => {
-    if (!deniedNow || buildingId === undefined) return;
-    setDeniedAt(errorUpdatedAt);
-    queryClient.removeQueries({ queryKey: ['b', buildingId, 'notifications'] });
-  }, [deniedNow, errorUpdatedAt, buildingId, queryClient]);
+    if (denied && buildingId !== undefined) queryClient.removeQueries({ queryKey: ['b', buildingId, 'notifications'] });
+  }, [denied, buildingId, queryClient]);
 
-  if (!building.data || deniedNow || deniedAt > dataUpdatedAt) return null;
+  if (!building.data || denied) return null;
   // Keyed by building, so nothing of one building's panel (an open state, a failed mark-read) shows in the next.
   return <NotificationBell key={building.data.id} />;
 }

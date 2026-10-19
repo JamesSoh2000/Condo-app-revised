@@ -61,6 +61,8 @@ export function useMarkRead() {
   const buildingId = useBuildingId();
   const onSettled = useInvalidateNotifications();
   return useMutation({
+    // Keyed by building, so a `building_not_found` here marks the building denied (BuildingProvider).
+    mutationKey: [...notificationsKey(buildingId), 'read'],
     mutationFn: (notificationId: string) =>
       api.post('/api/buildings/{building_id}/notifications/{notification_id}/read', {
         params: { path: { building_id: buildingId, notification_id: notificationId } },
@@ -73,6 +75,7 @@ export function useMarkAllRead() {
   const buildingId = useBuildingId();
   const onSettled = useInvalidateNotifications();
   return useMutation({
+    mutationKey: [...notificationsKey(buildingId), 'read-all'],
     mutationFn: () =>
       api.post('/api/buildings/{building_id}/notifications/read-all', {
         params: { path: { building_id: buildingId } },
