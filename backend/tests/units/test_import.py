@@ -132,9 +132,7 @@ async def test_dry_run_counts_match_the_real_run(db, world):
 async def test_label_match_is_case_sensitive(db, world):
     await make_unit(db, world.a, tower="a", label="ph", floor=9)
 
-    report = await import_units(
-        db, world.a.id, parse_units_csv(HEADER + "A,PH,9\n"), dry_run=False
-    )
+    report = await import_units(db, world.a.id, parse_units_csv(HEADER + "A,PH,9\n"), dry_run=False)
 
     assert (report.created, report.updated, report.unchanged) == (1, 0, 0)
     assert {("a", "ph"), ("A", "PH")} <= set(await _units(db, world.a.id))

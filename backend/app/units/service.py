@@ -317,9 +317,8 @@ def parse_units_csv(text: str) -> ParsedUnits:
                 continue
             floor = int(cell) if cell else None
             try:
-                unit = UnitCreate.model_validate(
-                    {"tower": record[index["tower"]], "label": record[index["label"]], "floor": floor}
-                )
+                tower, label = record[index["tower"]], record[index["label"]]
+                unit = UnitCreate.model_validate({"tower": tower, "label": label, "floor": floor})
             except ValidationError as exc:
                 error = exc.errors()[0]
                 where = ".".join(str(part) for part in error["loc"])
@@ -352,15 +351,17 @@ async def _write_row(db: AsyncSession, building_id: UUID, row: ImportRow) -> str
     """Create the unit, or set the floor of the existing one; "created", "updated" or "unchanged".
 
     ON CONFLICT, then a conditional UPDATE: a unit created concurrently (by the API, or another
-    import) makes the insert wait for it, then fall through to the update, never an IntegrityError."""
+    import) makes the insert wait for it and fall through to the update, never an
+    IntegrityError."""
     unit_id = await db.scalar(
         insert(Unit)
         .values(building_id=building_id, tower=row.tower, label=row.label, floor=row.floor)
         .on_conflict_do_nothing(constraint="uq_units_building_id_tower_label")
         .returning(Unit.id)
     )
+    metadata: dict[str, object] = {"source": "import"}
     if unit_id is not None:
-        action, metadata, outcome = actions.UNIT_CREATED, {"source": "import"}, "created"
+        action, outcome = actions.UNIT_CREATED, "created"
     else:
         unit_id = await db.scalar(
             update(Unit)
@@ -371,7 +372,7 @@ async def _write_row(db: AsyncSession, building_id: UUID, row: ImportRow) -> str
         if unit_id is None:
             return "unchanged"
         action, outcome = actions.UNIT_UPDATED, "updated"
-        metadata = {"fields": ["floor"], "source": "import"}
+        metadata = {"fields": ["floor"]} | metadata
     await record_audit(
         db,
         action=action,
