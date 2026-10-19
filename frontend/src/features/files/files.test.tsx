@@ -348,6 +348,25 @@ describe('criterion 4: PrivateImage renders and refreshes its URL before expiry'
     rerender(<PrivateImage fileId={FILE_A} alt="Parcel" />);
     await waitFor(() => expect(calls(fetchMock)).toHaveLength(2));
   });
+  it('a cached URL with time left stays fresh on remount (review round 1, F4)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = stubApi({
+      [`GET ${files()}/${FILE_A}/download-url`]: () =>
+        json({ url: 'https://s3.test/one', expires_at: new Date(Date.now() + 60_000).toISOString() }),
+    });
+    const { rerender } = wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    await screen.findByRole('img', { name: 'Parcel' });
+    rerender(<span />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    rerender(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    // ~30 s left, the margin is 10 s: still fresh.
+    expect(calls(fetchMock)).toHaveLength(1);
+  });
 });
 
 describe('criterion 5: PrivateImage when the file cannot be shown', () => {
@@ -392,6 +411,41 @@ describe('criterion 5: PrivateImage when the file cannot be shown', () => {
     const { queryClient } = wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
     await screen.findByText(/image unavailable/i);
     expect(queryClient.getQueryData(deniedKey(MAPLE.id))).toEqual(expect.any(Number));
+  });
+  it('a cached image whose refresh answers 404 shows unavailable and stops polling (review round 1, F2)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    const fetchMock = stubApi({
+      [`GET ${files()}/${FILE_A}/download-url`]: () =>
+        ++n === 1 ? json({ url: 'https://s3.test/one', expires_at: new Date(Date.now() + 60_000).toISOString() }) : problem(404, 'file_not_found'),
+    });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    await screen.findByRole('img', { name: 'Parcel' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50_100);
+    });
+    expect(screen.getByText('Image unavailable')).toBeTruthy();
+    expect(document.querySelector('img')).toBeNull();
+    const afterDenial = calls(fetchMock).length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(calls(fetchMock)).toHaveLength(afterDenial);
+  });
+
+  it('an image error whose new URL request fails shows the error state, not the broken image (review round 1, F1)', async () => {
+    let n = 0;
+    const fetchMock = stubApi({
+      [`GET ${files()}/${FILE_A}/download-url`]: () =>
+        ++n === 1 ? json({ url: 'https://s3.test/one', expires_at: new Date(Date.now() + 60_000).toISOString() }) : problem(503, 'unavailable'),
+    });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    fireEvent.error(await screen.findByRole('img', { name: 'Parcel' }));
+    // The original request, then the new URL's request and its two retries.
+    await waitFor(() => expect(calls(fetchMock)).toHaveLength(4));
+    expect(await screen.findByText(/couldn.t load the image/i)).toBeTruthy();
+    expect(document.querySelector('img')).toBeNull();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
   });
 });
 
@@ -527,6 +581,19 @@ describe('criterion 8: storage or completion failures', () => {
     await screen.findByRole('alert');
     expect(queryClient.getQueryData(deniedKey(MAPLE.id))).toEqual(expect.any(Number));
   });
+  it('a 422 from complete is an error with the server detail and no onUploaded', async () => {
+    const onUploaded = vi.fn();
+    uploadServer({
+      [`POST ${files()}/${FILE_A}/complete`]: () =>
+        json({ type: 'about:blank', title: 'Unprocessable', status: 422, code: 'file_type_mismatch', detail: "The uploaded file's content is not the declared type." }, 422),
+    });
+    wrap(<FileUpload purpose="package_photo" onUploaded={onUploaded} />);
+    choose(jpeg());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    lastXhr().respond(204);
+    expect((await screen.findByRole('alert')).textContent).toMatch("The uploaded file's content is not the declared type.");
+    expect(onUploaded).not.toHaveBeenCalled();
+  });
 });
 
 describe('criterion 9: a second file', () => {
@@ -558,5 +625,22 @@ describe('criterion 9: a second file', () => {
     await act(async () => {});
     expect(calls(fetchMock)).toEqual([`POST ${files()}`]);
     expect(FakeXHR.instances).toHaveLength(1);
+  });
+
+  it('a second file starts its progress at 0, while its POST /files is still in flight (review round 1, F3)', async () => {
+    let creates = 0;
+    uploadServer({
+      [`POST ${files()}`]: () => (++creates === 1 ? json(uploadOut(FILE_A), 201) : new Promise<Response>(() => {})),
+    });
+    const onUploaded = vi.fn();
+    wrap(<FileUpload purpose="package_photo" onUploaded={onUploaded} />);
+    choose(jpeg());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    lastXhr().progress(1, 1);
+    lastXhr().respond(204);
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith(FILE_A));
+    choose(jpeg(MiB, 'second.jpg'));
+    await waitFor(() => expect(creates).toBe(2));
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
   });
 });
