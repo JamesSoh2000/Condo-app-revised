@@ -753,6 +753,27 @@ describe('criterion 7: cancel and unmount abort the upload', () => {
     expect(FakeXHR.instances).toHaveLength(1);
   });
 
+  it('useUpload: a purpose change aborts an upload in flight; no complete, no onUploaded (review round 3, R3-F1)', async () => {
+    const fetchMock = uploadServer();
+    const onUploaded = vi.fn();
+    const queryClient = createQueryClient({ retryDelay: 0 });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    const { result, rerender } = renderHook(({ purpose }: { purpose: FilePurpose }) => useUpload(purpose, { onUploaded }), {
+      initialProps: { purpose: 'package_photo' as FilePurpose },
+      wrapper,
+    });
+    act(() => result.current.upload(jpeg()));
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    const xhr = lastXhr();
+    rerender({ purpose: 'maintenance_photo' });
+    expect(xhr.aborted).toBe(true);
+    xhr.respond(204);
+    await act(async () => {});
+    expect(result.current.status).toBe('idle');
+    expect(calls(fetchMock)).toEqual([`POST ${files()}`]);
+    expect(onUploaded).not.toHaveBeenCalled();
+  });
+
   it('a purpose change aborts an upload in flight (review round 3, R3-F1)', async () => {
     const fetchMock = uploadServer();
     const onUploaded = vi.fn();
