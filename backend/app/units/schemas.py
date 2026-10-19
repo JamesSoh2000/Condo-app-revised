@@ -20,7 +20,7 @@ def printable(value: str) -> str:
 
 
 def _blank_to_none(value: Any) -> Any:
-    # A blank tower is no tower: the CSV's empty cell, and the same in the API.
+    # A blank tower is no tower (and a CSV's empty cell, P4-01b, will mean the same).
     return None if isinstance(value, str) and not value.strip() else value
 
 

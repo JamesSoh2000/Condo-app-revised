@@ -1,16 +1,12 @@
-"""Units (P4-01): the staff list and its writes, the join flow's unit options, the CSV import.
+"""Units (P4-01a): the staff list and its writes, and the join flow's unit options.
 
-The write use-cases commit once (CLAUDE.md rule 5). `search_unit_options` only reads and
-`import_units` only flushes, so P4-05 and P4-03 call them inside their own transactions.
+The write use-cases commit once (CLAUDE.md rule 5). `search_unit_options` only reads, so P4-05 calls
+it inside its own transaction.
 """
 
-import csv
-import io
 from collections.abc import Sequence
-from dataclasses import dataclass
-from uuid import UUID, uuid7
+from uuid import UUID
 
-from pydantic import ValidationError
 from sqlalchemy import ColumnElement, exists, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
@@ -18,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
 from app.audit.service import record_audit
-from app.buildings.models import Building
 from app.core.errors import Conflict, NotFound
 from app.core.pagination import CursorParams, Page, paginate
 from app.memberships.models import UnitOccupancy
@@ -27,9 +22,7 @@ from app.units.models import Unit
 from app.units.schemas import UnitCreate, UnitOption, UnitOut, UnitUpdate
 
 MAX_OPTIONS = 50
-MAX_IMPORT_ROWS = 5000
-_COLUMNS = ("tower", "label", "floor")
-_FIELDS = list(_COLUMNS)
+_FIELDS = ["tower", "label", "floor"]
 
 
 class UnitNotFound(NotFound):
@@ -238,144 +231,3 @@ async def search_unit_options(
         .limit(max(1, min(limit, MAX_OPTIONS)))
     )
     return [UnitOption(id=row.id, tower=row.tower, label=row.label) for row in rows]
-
-
-# The CSV import (`python -m app.cli import-units`)
-
-
-class CsvError(ValueError):
-    """The file as a whole can't be imported (header, size, CSV syntax)."""
-
-
-class UnknownBuilding(ValueError):
-    """No building has the slug."""
-
-
-@dataclass(frozen=True)
-class ImportRow:
-    line: int
-    tower: str | None
-    label: str
-    floor: int | None
-
-
-@dataclass(frozen=True)
-class InvalidRow:
-    line: int
-    # Never the row's values: they're untrusted terminal input.
-    reason: str
-
-
-@dataclass(frozen=True)
-class ParsedUnits:
-    rows: list[ImportRow]
-    invalid: list[InvalidRow]
-
-
-@dataclass(frozen=True)
-class ImportReport:
-    created: int
-    updated: int
-    unchanged: int
-    invalid: list[InvalidRow]
-
-
-def parse_units_csv(text: str) -> ParsedUnits:
-    """Rows validated as the API validates a new unit; a `(tower, label)` repeated in the file is
-    invalid from its second occurrence. `CsvError` for a header that isn't exactly
-    `tower,label,floor` (any order), more than `MAX_IMPORT_ROWS` rows, or broken CSV."""
-    reader = csv.reader(io.StringIO(text.removeprefix("﻿")))
-    rows: list[ImportRow] = []
-    invalid: list[InvalidRow] = []
-    first_line: dict[tuple[str | None, str], int] = {}
-    try:
-        header = next(reader, None)
-        if header is None or sorted(header) != sorted(_COLUMNS):
-            raise CsvError("the header must be the columns tower,label,floor")
-        index = {name: header.index(name) for name in _COLUMNS}
-        for record in reader:
-            if not record:
-                continue
-            if len(rows) + len(invalid) == MAX_IMPORT_ROWS:
-                raise CsvError(f"more than {MAX_IMPORT_ROWS} rows")
-            line = reader.line_num
-            if len(record) != len(_COLUMNS):
-                invalid.append(InvalidRow(line, f"expected {len(_COLUMNS)} columns"))
-                continue
-            values: dict[str, str | None] = {name: record[i] for name, i in index.items()}
-            values["floor"] = (values["floor"] or "").strip() or None
-            try:
-                unit = UnitCreate.model_validate(values)
-            except ValidationError as exc:
-                error = exc.errors()[0]
-                where = ".".join(str(part) for part in error["loc"])
-                invalid.append(InvalidRow(line, f"{where}: {error['msg']}"))
-                continue
-            key = (unit.tower, unit.label)
-            if key in first_line:
-                invalid.append(InvalidRow(line, f"duplicate of line {first_line[key]}"))
-                continue
-            first_line[key] = line
-            rows.append(ImportRow(line, unit.tower, unit.label, unit.floor))
-    except csv.Error:
-        raise CsvError(f"line {reader.line_num}: not valid CSV") from None
-    return ParsedUnits(rows, invalid)
-
-
-async def building_id_for_slug(db: AsyncSession, slug: str) -> UUID:
-    building_id = await db.scalar(select(Building.id).where(Building.slug == slug))
-    if building_id is None:
-        raise UnknownBuilding(f"no building with slug {slug!r}")
-    return building_id
-
-
-async def import_units(
-    db: AsyncSession, building_id: UUID, parsed: ParsedUnits, *, dry_run: bool
-) -> ImportReport:
-    """Create the building's missing units and set the floor of existing ones, matched by
-    `(tower, label)`; `is_active` is left alone. A dry run only reads. Flushes, never commits."""
-    existing = {
-        (unit.tower, unit.label): unit
-        for unit in await db.scalars(select(Unit).where(Unit.building_id == building_id))
-    }
-    created = updated = unchanged = 0
-    metadata: dict[str, object]
-    for row in parsed.rows:
-        unit = existing.get((row.tower, row.label))
-        if unit is not None and unit.floor == row.floor:
-            unchanged += 1
-            continue
-        if unit is None:
-            created += 1
-            action, metadata = actions.UNIT_CREATED, {"source": "import"}
-            unit = Unit(id=uuid7(), building_id=building_id, tower=row.tower, label=row.label)
-            if not dry_run:
-                db.add(unit)
-        else:
-            updated += 1
-            action, metadata = actions.UNIT_UPDATED, {"fields": ["floor"], "source": "import"}
-        if dry_run:
-            continue
-        unit.floor = row.floor
-        await record_audit(
-            db,
-            action=action,
-            entity_type="unit",
-            entity_id=unit.id,
-            building_id=building_id,
-            metadata=metadata,
-        )
-    await db.flush()
-    return ImportReport(created, updated, unchanged, list(parsed.invalid))
-
-
-def render_import_report(report: ImportReport, *, dry_run: bool) -> str:
-    lines = ["dry run: nothing was written"] if dry_run else []
-    lines += [
-        f"created: {report.created}",
-        f"updated: {report.updated}",
-        f"unchanged: {report.unchanged}",
-        f"invalid: {len(report.invalid)}",
-    ]
-    lines += [f"  line {row.line}: {row.reason}" for row in report.invalid]
-    return "\n".join(lines)
