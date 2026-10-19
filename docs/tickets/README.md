@@ -68,7 +68,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P3-04b](./P3-04b-file-downloads-and-claim.md) | File downloads and `claim_file` (split from P3-04) | A | 1 | P3-04a | done | — |
 | [P3-04c](./P3-04c-file-cleanup-job.md) | File cleanup job (split from P3-04) | A | 1 | P3-04b, P3-01b | done | — |
 | [P3-05](./P3-05-frontend-notification-center.md) | Frontend notification center with polling | B | 2 | P3-03, P2-06c | done | — |
-| [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04b, P2-06b | todo | — |
+| [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04b, P2-06b | done | — |
 | [P4-01](./P4-01-units-api.md) | Units API | A | 2 | P2-03, P2-04 | todo | — |
 | [P4-02](./P4-02-staff-invitations.md) | Staff invitations | A | 1 | P3-02, P2-04, P2-03, P2-05 | todo | — |
 | [P4-03](./P4-03-bootstrap-building-command.md) | Bootstrap-building operator command | A | 1 | P4-02, P4-01, P1-06 | todo | — |

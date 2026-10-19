@@ -79,6 +79,18 @@ Consumes `units_list`, `units_occupants`, `packages_create`, `packages_list`, `p
 2. Why invalidate queries instead of manually inserting the new package into the cache?
 3. Why show times in the building's timezone rather than the device's?
 
+## Carried from P3-06
+
+- Use `FileUpload` with a fixed `purpose="package_photo"`. If the form can ever switch purpose, render
+  `<FileUpload key={purpose} …/>`: `useUpload` keeps a failed attempt's form across a `purpose` change (PR #81
+  round 3, R3-F1, accepted). Send `onUploaded`'s `file_id` to the package endpoint, which claims it.
+- Show the photo with `<PrivateImage fileId alt>`; it handles refresh, 404 and load errors.
+- No route has mounted these components yet: this is their first real page. Run the upload on `make prodlike`
+  too (CSP), as P3-06 did with a harness.
+- First follow-up still open from P3-05 (`docs/AGENT_MISTAKES_LOG.md`, P3-05 step 8 note): the fitness test that
+  every component reading `useBuilding({ passive: true })` also calls `useBuildingDenied()`. P3-06 did not pick
+  it up.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
