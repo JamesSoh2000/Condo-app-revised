@@ -1,6 +1,7 @@
-import { QueryClient, type DefaultOptions } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, type DefaultOptions, type QueryKey } from '@tanstack/react-query';
 
 import { ApiError } from '@/api/errors';
+import { recordBuildingDenial } from '@/app/buildingDenial';
 
 const MAX_RETRIES = 2;
 
@@ -16,7 +17,18 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
 
 /** A client with the app's query defaults; `overrides` exist for tests (`retryDelay: 0`). */
 export function createQueryClient(overrides: DefaultOptions['queries'] = {}): QueryClient {
-  return new QueryClient({
+  // The caches' own onError runs for every failed query and mutation, for the client's lifetime, and before a
+  // mutation's own callbacks (inbox B-5; review round 4).
+  const client: QueryClient = new QueryClient({
+    queryCache: new QueryCache({
+      onError: (error, query) => recordBuildingDenial(client, query.queryKey, error),
+    }),
+    mutationCache: new MutationCache({
+      onError: (error, _variables, _context, mutation) => {
+        const key: QueryKey | undefined = mutation.options.mutationKey;
+        recordBuildingDenial(client, key, error);
+      },
+    }),
     defaultOptions: {
       queries: {
         staleTime: 30_000,
@@ -26,6 +38,7 @@ export function createQueryClient(overrides: DefaultOptions['queries'] = {}): Qu
       },
     },
   });
+  return client;
 }
 
 export const queryClient = createQueryClient();

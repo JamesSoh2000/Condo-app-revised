@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
   useCallback,
@@ -16,6 +16,7 @@ import { api } from '@/api/client';
 import { ApiError } from '@/api/errors';
 import type { components } from '@/api/schema';
 import { useMe } from '@/app/AuthProvider';
+import { deniedKey } from '@/app/buildingDenial';
 import { readSelectedBuilding, readViewAs, writeSelectedBuilding, writeViewAs, type ViewAs } from '@/app/buildingStorage';
 
 type Membership = components['schemas']['MeMembershipOut'];
@@ -63,52 +64,9 @@ export function BuildingProvider({ children }: { children: ReactNode }) {
     previousUser.current = userId;
   }, [userId, queryClient]);
 
-  useEffect(() => watchBuildingDenials(queryClient), [queryClient]);
-
   // Remounted for another user (another tab logged in on the shared cookie): nothing of the previous
   // user's selection survives in this tab's state (AuthProvider drops their cached data).
   return <UserBuildingProvider key={userId}>{children}</UserBuildingProvider>;
-}
-
-/**
- * When the tab lost access to a building, as a timestamp (inbox B-5). A query entry, not component state, so it
- * outlives the shell (the catch-all route unmounts it) and goes with the building's other queries on a switch,
- * `reset()`, another user or a 401.
- */
-const deniedKey = (buildingId: string) => ['b', buildingId, 'denied'] as const;
-
-/**
- * Marks a building denied when any of its requests says so: `building_not_found` (the tenancy 404, ADR-0004) from
- * a query or a mutation keyed `['b', id, …]`, or any 404 from the building itself. Another 404 code
- * (`notification_not_found`) is about one record, not the building. Returns the unsubscribe.
- */
-function watchBuildingDenials(queryClient: QueryClient): () => void {
-  const check = (key: QueryKey | undefined, error: unknown) => {
-    if (key?.[0] !== 'b' || typeof key[1] !== 'string') return;
-    if (!(error instanceof ApiError) || error.status !== 404) return;
-    if (error.code === 'building_not_found' || key[2] === 'building') {
-      // Built with no garbage collection: nothing observes this entry, and a default 5-minute gcTime would end
-      // the denial on its own.
-      queryClient.getQueryCache().build(queryClient, { queryKey: deniedKey(key[1]), gcTime: Infinity }).setData(Date.now());
-    }
-  };
-  const queries = queryClient.getQueryCache().subscribe((event) => {
-    if (event.type === 'updated' && event.action.type === 'error') {
-      // Typed `any` by the cache (`Query<any, …>`); every key in this app is an array.
-      const key = event.query.queryKey as QueryKey;
-      check(key, event.action.error);
-    }
-  });
-  const mutations = queryClient.getMutationCache().subscribe((event) => {
-    if (event.type === 'updated' && event.action.type === 'error') {
-      const key: QueryKey | undefined = event.mutation.options.mutationKey;
-      check(key, event.action.error);
-    }
-  });
-  return () => {
-    queries();
-    mutations();
-  };
 }
 
 function UserBuildingProvider({ children }: { children: ReactNode }) {

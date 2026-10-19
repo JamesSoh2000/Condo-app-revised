@@ -6,6 +6,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { toApiError } from '@/api/errors';
 import type { components } from '@/api/schema';
 import {
   BIRCH,
@@ -929,5 +930,96 @@ describe('review round 3 (Codex gpt-6.1-sol) and inbox B-5: one shared building 
     expect(await bell('Notifications, 1 unread')).toBeTruthy();
     expect(await within(await openPanel()).findByText('Birch notice')).toBeTruthy();
     expect(screen.queryByRole('heading', { name: /no longer have access/i })).toBeNull();
+  });
+});
+
+describe('review round 4 (Codex gpt-6-astra): denials from mutations, whenever they answer', () => {
+  it('R4-F1: a mark-read denied while the shell is unmounted still closes the building after Back', async () => {
+    const target = notification({ link: null, title: 'Private notice' });
+    const server = notificationServer(MAPLE, [target]);
+    let finish!: (response: Response) => void;
+    const reply = new Promise<Response>((resolve) => (finish = resolve));
+    stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME), ...server.routes, [`POST ${base(MAPLE)}/${target.id}/read`]: () => reply });
+    const app = renderApp(['/Maintenance']);
+    fireEvent.click(await within(await openPanel()).findByRole('button', { name: /private notice/i }));
+    await waitFor(() => expect(app.queryClient.isMutating()).toBe(1));
+
+    // The catch-all route is outside the shell and BuildingProvider.
+    act(() => app.navigate()('/not-an-app-page'));
+    await screen.findByRole('heading', { name: /not found/i });
+    await act(async () => {
+      finish(problem(404, 'building_not_found'));
+      await reply;
+    });
+    await waitFor(() => expect(app.queryClient.isMutating()).toBe(0));
+    act(() => app.navigate()(-1));
+
+    expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull();
+    expect(screen.queryByText(/being migrated/i)).toBeNull();
+  });
+
+  it('R4-F2: a denied mark-read closes the building at once, even while its follow-up refetches hang', async () => {
+    const target = notification({ link: null, title: 'Private notice' });
+    const server = notificationServer(MAPLE, [target]);
+    let revoked = false;
+    let hanging = 0;
+    const hang = (ok: Handler): Handler => (request) => {
+      if (!revoked) return ok(request);
+      hanging += 1;
+      return new Promise<Response>(() => {});
+    };
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`GET ${base(MAPLE)}/summary`]: hang(server.routes[`GET ${base(MAPLE)}/summary`]),
+      [`GET ${base(MAPLE)}`]: hang(server.routes[`GET ${base(MAPLE)}`]),
+      [`POST ${base(MAPLE)}/${target.id}/read`]: () => {
+        revoked = true;
+        return problem(404, 'building_not_found');
+      },
+    });
+    renderApp(['/Maintenance']);
+    fireEvent.click(await within(await openPanel()).findByRole('button', { name: /private notice/i }));
+
+    expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
+    expect(screen.queryByText('Private notice')).toBeNull();
+    expect(screen.queryByRole('navigation')).toBeNull();
+    expect(hanging).toBeLessThanOrEqual(2);
+  });
+
+  it('R4 neighbour: a query denied while the shell is unmounted still closes the building after Back', async () => {
+    let status = 200;
+    const server = notificationServer(MAPLE, [notification()]);
+    let finish!: (response: Response) => void;
+    const reply = new Promise<Response>((resolve) => (finish = resolve));
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`GET ${base(MAPLE)}/summary`]: (request) =>
+        status === 200 ? server.routes[`GET ${base(MAPLE)}/summary`](request) : reply,
+    });
+    const app = renderApp(['/Maintenance']);
+    await bell('Notifications, 1 unread');
+    status = 404;
+    // A summary fetch outlives the shell (fetchQuery, as a prefetch would): only the cache sees its answer.
+    const pending = app.queryClient.fetchQuery({
+      queryKey: ['b', MAPLE.id, 'notifications', 'summary'],
+      queryFn: async () => {
+        const response = await reply;
+        throw toApiError(response, await response.json());
+      },
+      staleTime: 0,
+    });
+    act(() => app.navigate()('/not-an-app-page'));
+    await screen.findByRole('heading', { name: /not found/i });
+    await act(async () => {
+      finish(problem(404, 'building_not_found'));
+      await pending.catch(() => undefined);
+    });
+    act(() => app.navigate()(-1));
+
+    expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull();
   });
 });
