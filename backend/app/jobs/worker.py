@@ -51,9 +51,15 @@ HANDLER_MODULES: tuple[str, ...] = (
     "app.rate_limits.jobs",
     "app.auth.jobs",
     "app.email.handler",
+    "app.files.jobs",
 )
 # Enqueued once per UTC day by the scheduler (P3-01b), with the key `<kind>:<yyyy-mm-dd>`.
-RECURRING_KINDS: tuple[str, ...] = ("jobs.cleanup", "rate_limits.cleanup", "sessions.cleanup")
+RECURRING_KINDS: tuple[str, ...] = (
+    "jobs.cleanup",
+    "rate_limits.cleanup",
+    "sessions.cleanup",
+    "files.cleanup",
+)
 SCHEDULE_INTERVAL = 60.0
 
 

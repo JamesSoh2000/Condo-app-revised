@@ -1,7 +1,15 @@
 from enum import StrEnum
 from uuid import UUID
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, String, UniqueConstraint, Uuid
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -20,6 +28,9 @@ class FilePurpose(StrEnum):
 class FileStatus(StrEnum):
     PENDING = "pending"  # the presigned POST was issued; nothing verified yet
     READY = "ready"  # the stored object was checked and its version pinned
+    # Chosen by `files.cleanup` and committed before any object is deleted (P3-04c): never served,
+    # claimed or completed again; `files.purge` deletes its objects, then the row.
+    DELETING = "deleting"
 
 
 class File(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -30,15 +41,23 @@ class File(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         # Target for composite FKs (building_id, file_id) from domain tables (ADR-0005).
         UniqueConstraint("building_id", "id"),
-        # `ready` means "this version was checked": exactly the rows with a pinned version.
+        # `ready` means "this version was checked": exactly the rows with a pinned version. A
+        # `deleting` row keeps whatever it had.
         CheckConstraint(
-            "(status = 'ready') = (s3_version_id IS NOT NULL)", name="version_iff_ready"
+            "status = 'deleting' OR (status = 'ready') = (s3_version_id IS NOT NULL)",
+            name="version_iff_ready",
         ),
         CheckConstraint(
             "(attached_type IS NULL) = (attached_id IS NULL)", name="attachment_complete"
         ),
         CheckConstraint("attached_id IS NULL OR status = 'ready'", name="attached_only_when_ready"),
         CheckConstraint("size_bytes > 0", name="size_positive"),
+        # `files.cleanup` (P3-04c): every file it may delete is unattached.
+        Index(
+            "ix_files_unattached_created_at",
+            "created_at",
+            postgresql_where="attached_id IS NULL",
+        ),
     )
 
     building_id: Mapped[UUID] = mapped_column(ForeignKey("buildings.id", ondelete="RESTRICT"))

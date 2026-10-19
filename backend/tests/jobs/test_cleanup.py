@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # Imported first, so the handlers are registered before the `handlers` fixture copies the registry.
 import app.auth.jobs
+import app.files.jobs
 import app.jobs.handlers
 import app.rate_limits.jobs
 from app.auth.models import AuthSession
@@ -275,11 +276,11 @@ async def test_each_cleanup_job_runs_in_the_worker_and_commits_with_the_job(
     ids = [await enqueue(db, kind, {}) for kind in RECURRING_KINDS]
     await db.commit()
 
-    assert await Worker(sessions, recurring=()).run_once() == 3
+    assert await Worker(sessions, recurring=()).run_once() == len(RECURRING_KINDS)
 
     db.expire_all()
     statuses = [(await db.get_one(Job, job_id)).status for job_id in ids]
-    assert statuses == [JobStatus.SUCCEEDED] * 3
+    assert statuses == [JobStatus.SUCCEEDED] * len(RECURRING_KINDS)
     assert set(await db.scalars(select(AuthSession.id))) == {live}
     assert ended not in set(await db.scalars(select(AuthSession.id)))
     assert old_job not in await job_ids(db)

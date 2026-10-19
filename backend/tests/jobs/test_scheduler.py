@@ -18,7 +18,7 @@ from tests.jobs.conftest import Calls, Sessions
 
 pytestmark = pytest.mark.anyio
 
-KINDS = ("jobs.cleanup", "rate_limits.cleanup", "sessions.cleanup")
+KINDS = ("jobs.cleanup", "rate_limits.cleanup", "sessions.cleanup", "files.cleanup")
 
 
 async def scheduled(sessions: Sessions) -> list[tuple[str, str | None, JobStatus]]:
@@ -34,7 +34,7 @@ def queued(*days: str) -> list[tuple[str, str, JobStatus]]:
     return sorted(rows, key=lambda row: row[1])
 
 
-def test_the_recurring_kinds_are_the_three_cleanups_every_60_seconds():
+def test_the_recurring_kinds_are_the_four_cleanups_every_60_seconds():
     assert RECURRING_KINDS == KINDS
     assert SCHEDULE_INTERVAL == 60.0
 
@@ -80,7 +80,7 @@ async def test_a_scheduled_job_is_due_at_once(sessions, frozen_clock: FrozenCloc
         jobs = (await db.scalars(select(Job))).all()
     assert [(job.run_at, job.attempts, job.payload) for job in jobs] == [
         (frozen_clock.at, 0, {})
-    ] * 3
+    ] * len(KINDS)
 
 
 async def test_two_schedulers_at_the_same_moment_leave_one_job_per_kind(

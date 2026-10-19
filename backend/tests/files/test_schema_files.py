@@ -120,3 +120,28 @@ async def test_purpose_and_status_are_checked(db, world):
         db.execute(text("UPDATE files SET status = 'deleted'")),
         constraint="ck_files_file_status",
     )
+
+
+# --- P3-04c: `deleting` --------------------------------------------------------------------------
+
+
+async def test_a_deleting_file_may_keep_its_version_or_have_none(db, world):
+    await insert(db, a_file(world, status=FileStatus.DELETING, s3_version_id="v1"))
+    await insert(db, a_file(world, status=FileStatus.DELETING))
+
+
+async def test_a_deleting_file_cannot_be_attached(db, world):
+    await assert_integrity_error(
+        db,
+        insert(
+            db,
+            a_file(
+                world,
+                status=FileStatus.DELETING,
+                s3_version_id="v1",
+                attached_type="package",
+                attached_id=uuid.uuid4(),
+            ),
+        ),
+        constraint="ck_files_attached_only_when_ready",
+    )

@@ -3,7 +3,7 @@
 Locally `S3_ENDPOINT_URL` points the API at the emulator and presigned URLs use
 `S3_PUBLIC_ENDPOINT_URL`, the address the browser can reach; in production both are unset (the
 settings validator enforces it) and boto3 talks to AWS. The bucket is read from settings on every
-call. P3-04c adds `delete_versions`.
+call.
 """
 
 from dataclasses import dataclass
@@ -22,6 +22,11 @@ if TYPE_CHECKING:
 
 # HEAD reports a missing key as a bare 404 (it has no body to name NoSuchKey).
 _MISSING = frozenset({"404", "NoSuchKey", "NotFound"})
+_MISSING_VERSION = _MISSING | {"NoSuchVersion"}
+
+
+class DeleteVersionsError(RuntimeError):
+    """S3 refused to delete some versions of a key; the message names error codes only."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,16 +111,22 @@ async def head(key: str) -> ObjectHead | None:
     return await anyio.to_thread.run_sync(call)
 
 
-async def get_range(key: str, version_id: str, length: int) -> bytes:
-    """The first `length` bytes of one version of `key` (fewer if the object is shorter)."""
+async def get_range(key: str, version_id: str, length: int) -> bytes | None:
+    """The first `length` bytes of one version of `key` (fewer if the object is shorter), or None
+    if that version is gone."""
 
-    def call() -> bytes:
-        found = client().get_object(
-            Bucket=settings.s3_bucket_name,
-            Key=key,
-            VersionId=version_id,
-            Range=f"bytes=0-{length - 1}",
-        )
+    def call() -> bytes | None:
+        try:
+            found = client().get_object(
+                Bucket=settings.s3_bucket_name,
+                Key=key,
+                VersionId=version_id,
+                Range=f"bytes=0-{length - 1}",
+            )
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in _MISSING_VERSION:
+                return None
+            raise
         body = found["Body"]
         try:
             return body.read(length)
@@ -142,3 +153,34 @@ async def presign_get(key: str, version_id: str, disposition: str, *, expires_in
         )
 
     return await anyio.to_thread.run_sync(sign)
+
+
+async def delete_versions(key: str) -> None:
+    """Delete every version and delete marker of `key`, so nothing is left under it.
+
+    Nothing stored is not an error. Raises `DeleteVersionsError` if S3 refuses any object.
+    """
+
+    def call() -> None:
+        s3 = client()
+        pages = s3.get_paginator("list_object_versions").paginate(
+            Bucket=settings.s3_bucket_name, Prefix=key
+        )
+        found = [
+            {"Key": key, "VersionId": entry["VersionId"]}
+            for page in pages
+            for entry in page.get("Versions", []) + page.get("DeleteMarkers", [])
+            # A prefix also matches longer keys.
+            if entry["Key"] == key
+        ]
+        for start in range(0, len(found), 1000):  # the most one request may delete
+            result = s3.delete_objects(
+                Bucket=settings.s3_bucket_name,
+                Delete={"Objects": found[start : start + 1000], "Quiet": True},  # type: ignore[typeddict-item]
+            )
+            if errors := result.get("Errors"):
+                raise DeleteVersionsError(
+                    f"S3 refused {len(errors)} object(s), first {errors[0].get('Code')}"
+                )
+
+    await anyio.to_thread.run_sync(call)

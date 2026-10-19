@@ -146,3 +146,5 @@ Everything a command prints is re-read on every later turn, so don't print the s
   added to the inbox / <ticket> in step 6", not "listed in" (P1-04, P1-05, P1-07; 2026-10-16).
 - Commit before mutation probes; restore only tracked files with `git checkout`, and re-run the clean
   baseline after each mutation (P1-03, P1-05; 2026-10-16).
+- Validate caller input by what Postgres accepts, not Python: lone surrogates, NUL, NaN and byte lengths
+  fail at flush as `DBAPIError`, not the documented `ValueError` (P3-02 ×2, P3-03; 2026-10-18).

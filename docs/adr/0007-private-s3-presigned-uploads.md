@@ -30,7 +30,8 @@ users' files, upload unlimited sizes, or replace bytes after acceptance.
      `ready`, the right purpose, uploaded by the caller (or staff), and not already attached.
   5. Downloads: `GET /files/{id}/download-url` authorizes through the **owning record's** visibility and
      returns a 60 s presigned GET pinned to the stored `VersionId`.
-- **Cleanup:** a nightly job deletes files still `pending` after 24 h, and `ready` but unattached after 7 days.
+- **Cleanup:** a nightly job deletes files still `pending` after 24 h, and `ready` but unattached after 7 days
+  (how: through a committed `deleting` status, [ADR-0018](./0018-file-deletion-state.md)).
 - **Local development** uses an S3-compatible emulator chosen in P0-04 (see "Local emulator" below).
   The adapter only changes `endpoint_url`.
 - **Limits** (default; revisit at pilot): images (JPEG/PNG/WebP/HEIC) ≤ 10 MiB; PDF ≤ 20 MiB.
