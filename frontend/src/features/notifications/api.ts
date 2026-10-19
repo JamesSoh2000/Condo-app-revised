@@ -8,8 +8,9 @@ const notificationsKey = (buildingId: string) => ['b', buildingId, 'notification
 
 /**
  * The unread count for the badge. Polled every 30 s while the tab is visible, never in a hidden tab, and asked
- * again whenever the tab is focused or visible again, even if the last answer is under 30 s old (ADR-0012;
- * review round 1, Codex F2: the client's default staleTime skipped it after a short hide).
+ * again whenever the tab becomes visible again, even if the last answer is under 30 s old (ADR-0012; review
+ * round 1, Codex F2: the client's default staleTime skipped it after a short hide). React Query v5 calls a
+ * visible tab "focused": it listens to `visibilitychange`, not the window's `focus` event.
  */
 export function useNotificationSummary() {
   const buildingId = useBuildingId();
@@ -61,7 +62,7 @@ export function useMarkRead() {
   const buildingId = useBuildingId();
   const onSettled = useInvalidateNotifications();
   return useMutation({
-    // Keyed by building, so a `building_not_found` here marks the building denied (BuildingProvider).
+    // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
     mutationKey: [...notificationsKey(buildingId), 'read'],
     mutationFn: (notificationId: string) =>
       api.post('/api/buildings/{building_id}/notifications/{notification_id}/read', {
