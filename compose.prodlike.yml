@@ -26,6 +26,10 @@ services:
       S3_BUCKET_NAME: condo-app-dev-files
       S3_ENDPOINT_URL: http://s3:4566
       S3_PUBLIC_ENDPOINT_URL: http://localhost:4566
+      # The emulator's dummy keys (as in backend/.env.dev). Without them boto3 finds no credentials and every
+      # presigned upload is a 500 (found in P3-06).
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       # Email links point at Caddy, where this stack serves the SPA.
