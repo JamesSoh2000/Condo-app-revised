@@ -163,6 +163,8 @@ export function useUpload(purpose: FilePurpose, { onUploaded }: { onUploaded?: (
   const upload = useCallback(
     (file: File) => {
       attempt.current = { file, created: null, sent: false };
+      // Now, not when the S3 POST starts: the last file's 100% would show during `POST /files` (round 1, F3).
+      setProgress(0);
       start();
     },
     [start],

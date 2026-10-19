@@ -447,6 +447,44 @@ describe('criterion 5: PrivateImage when the file cannot be shown', () => {
     expect(document.querySelector('img')).toBeNull();
     expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
   });
+
+  it('after F1, Retry fetches a new URL and shows the image again', async () => {
+    let n = 0;
+    stubApi({
+      [`GET ${files()}/${FILE_A}/download-url`]: () =>
+        ++n === 1 || n === 5
+          ? json({ url: `https://s3.test/${n}`, expires_at: new Date(Date.now() + 60_000).toISOString() })
+          : problem(503, 'unavailable'),
+    });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    fireEvent.error(await screen.findByRole('img', { name: 'Parcel' }));
+    fireEvent.click(await screen.findByRole('button', { name: /retry/i }));
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Parcel' }).getAttribute('src')).toBe('https://s3.test/5'));
+  });
+
+  it('an image error whose new URL request is a 404 shows unavailable', async () => {
+    let n = 0;
+    stubApi({
+      [`GET ${files()}/${FILE_A}/download-url`]: () =>
+        ++n === 1 ? json({ url: 'https://s3.test/one', expires_at: new Date(Date.now() + 60_000).toISOString() }) : problem(404, 'file_not_found'),
+    });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    fireEvent.error(await screen.findByRole('img', { name: 'Parcel' }));
+    expect(await screen.findByText('Image unavailable')).toBeTruthy();
+    expect(document.querySelector('img')).toBeNull();
+  });
+
+  it('after a 404, returning to the tab does not ask again', async () => {
+    const fetchMock = stubApi({ [`GET ${files()}/${FILE_A}/download-url`]: () => problem(404, 'file_not_found') });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    await screen.findByText('Image unavailable');
+    act(() => {
+      window.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await act(async () => {});
+    expect(calls(fetchMock)).toHaveLength(1);
+  });
 });
 
 describe('criterion 6: keyboard and announcements', () => {

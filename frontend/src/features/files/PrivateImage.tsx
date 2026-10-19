@@ -1,4 +1,4 @@
-import { useQuery, type Query } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { api } from '@/api/client';
@@ -11,10 +11,15 @@ type DownloadUrl = components['schemas']['FileDownloadOut'];
 // A URL is replaced this long before it stops working, so a loading image never gets a dead one.
 const REFRESH_MARGIN_MS = 10_000;
 
-/** How long the cached URL stays usable, less the margin; never negative. */
-function usableFor(query: Query<DownloadUrl, Error>): number {
+/** When the cached URL should be replaced (its expiry less the margin), as a timestamp; null without one. */
+function refreshAt(query: { state: { data?: DownloadUrl } }): number | null {
   const { data } = query.state;
-  return data ? Math.max(0, Date.parse(data.expires_at) - Date.now() - REFRESH_MARGIN_MS) : 0;
+  return data ? Date.parse(data.expires_at) - REFRESH_MARGIN_MS : null;
+}
+
+/** A 404: the user may not see this file (or it is gone). The same answer next time, so never asked again. */
+function isNotFound(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
 }
 
 export interface PrivateImageProps {
@@ -43,18 +48,27 @@ function PrivateImageFor({ fileId, alt, className = '' }: PrivateImageProps) {
         params: { path: { building_id: buildingId, file_id: fileId } },
         signal,
       }),
-    staleTime: usableFor,
-    // At least a second apart, so a URL already inside the margin can't make it spin.
-    refetchInterval: (query) => (query.state.data ? Math.max(1_000, usableFor(query)) : false),
+    // React Query measures staleTime from `dataUpdatedAt`, not from now (review round 1, F4).
+    staleTime: (query) => {
+      const at = refreshAt(query);
+      return at === null ? 0 : Math.max(0, at - query.state.dataUpdatedAt);
+    },
+    // At least a second apart, so a URL already inside the margin can't make it spin; never after a 404
+    // (review round 1, F2), not even on focus.
+    refetchInterval: (query) => {
+      const at = refreshAt(query);
+      return at === null || isNotFound(query.state.error) ? false : Math.max(1_000, at - Date.now());
+    },
+    refetchOnWindowFocus: (query) => !isNotFound(query.state.error),
   });
   // After an <img> load error (the URL stopped working early), one new URL is tried; a second error is final.
   const [retried, setRetried] = useState(false);
   const [broken, setBroken] = useState(false);
 
   const box = `flex items-center justify-center rounded bg-slate-100 text-sm text-slate-600 ${className}`;
-  const notFound = query.error instanceof ApiError && query.error.status === 404;
-  if (notFound || broken) return <div className={box}>Image unavailable</div>;
-  if (query.data) {
+  if (isNotFound(query.error) || broken) return <div className={box}>Image unavailable</div>;
+  // After an image error, the old URL is known to be broken: a failed new one shows the error, not it (round 1, F1).
+  if (query.data && !(retried && query.isError)) {
     return (
       <img
         src={query.data.url}
