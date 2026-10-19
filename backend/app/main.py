@@ -66,6 +66,7 @@ def create_app() -> FastAPI:
     from app.files import router as files
     from app.notifications import router as notifications
     from app.routers import health, version
+    from app.units import router as units
 
     app.include_router(auth.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(buildings.router)
     app.include_router(files.router)
     app.include_router(notifications.router)
+    app.include_router(units.router)
     return app
 
 

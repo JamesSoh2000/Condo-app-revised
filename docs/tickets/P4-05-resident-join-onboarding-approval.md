@@ -144,6 +144,18 @@ From PR #76. The first ticket that calls `notify` (P4-05 or P5-02a, whichever la
   can't encode (lone surrogates), with a test. Today asyncpg raises `DBAPIError` instead of the documented
   `ValueError` (found after P3-03's last review round; unfixed).
 
+## Carried from P4-01a (do while framing)
+
+- Deactivating a unit takes `FOR UPDATE` on it before checking for current occupants
+  (`backend/app/units/service.py::deactivate_unit`), which covers an occupancy insert that started first. The
+  other order is this ticket's: the join request (and approval, if it starts the occupancy) must read the unit
+  with `select(Unit.id).where(Unit.id == unit_id, Unit.building_id == b, Unit.is_active)
+  .with_for_update(key_share=True)` in the same transaction, before `start_occupancy`. A deactivation that is
+  committing makes it wait, and the re-checked `is_active` then refuses the unit. Test it on real connections, as
+  `backend/tests/units/test_concurrency.py` does.
+- `search_unit_options(db, building_id, search, limit=20)` returns `UnitOption` (`id`, `tower`, `label`) for active
+  units only; an empty `search` returns the first `limit` units.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

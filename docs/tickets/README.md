@@ -69,17 +69,18 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P3-04c](./P3-04c-file-cleanup-job.md) | File cleanup job (split from P3-04) | A | 1 | P3-04b, P3-01b | done | — |
 | [P3-05](./P3-05-frontend-notification-center.md) | Frontend notification center with polling | B | 2 | P3-03, P2-06c | done | — |
 | [P3-06](./P3-06-frontend-upload-component.md) | Frontend upload component | B | 2 | P3-04b, P2-06b | done | — |
-| [P4-01](./P4-01-units-api.md) | Units API | A | 2 | P2-03, P2-04 | todo | — |
+| [P4-01a](./P4-01a-units-api.md) | Units API and unit options (split from [P4-01](./P4-01-units-api.md)) | A | 2 | P2-03, P2-04 | done | — |
+| [P4-01b](./P4-01b-units-csv-import.md) | Units CSV import (split from P4-01) | A | 2 | P4-01a | todo | — |
 | [P4-02](./P4-02-staff-invitations.md) | Staff invitations | A | 1 | P3-02, P2-04, P2-03, P2-05 | todo | — |
-| [P4-03](./P4-03-bootstrap-building-command.md) | Bootstrap-building operator command | A | 1 | P4-02, P4-01, P1-06 | todo | — |
+| [P4-03](./P4-03-bootstrap-building-command.md) | Bootstrap-building operator command | A | 1 | P4-02, P4-01b, P1-06 | todo | — |
 | [P4-04](./P4-04-password-reset.md) | Password reset | B | 1 | P3-02, P2-05, P2-04 | todo | — |
-| [P4-05](./P4-05-resident-join-onboarding-approval.md) | Resident join, onboarding and approval | A | 1 | P4-01, P3-03, P2-04, P2-05 | todo | — |
+| [P4-05](./P4-05-resident-join-onboarding-approval.md) | Resident join, onboarding and approval | A | 1 | P4-01a, P3-03, P2-04, P2-05 | todo | — |
 | [P4-06](./P4-06-membership-administration.md) | Membership administration | A | 1 | P2-04, P4-05 | todo | — |
 | [P4-07](./P4-07-frontend-account-screens.md) | Frontend account screens | B | 2 | P4-02, P4-04, P2-06c | todo | — |
 | [P4-08](./P4-08-frontend-onboarding-approval-screens.md) | Frontend onboarding and approval screens | B | 2 | P4-05, P4-06, P2-06c | todo | — |
 | [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07, P4-08, P4-03, P1-08 | todo | — |
 | [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04b | todo | — |
-| [P5-02a](./P5-02a-package-create-and-read.md) | Package create and read | A | 1 | P5-01, P3-03, P2-04, P4-01 | todo | — |
+| [P5-02a](./P5-02a-package-create-and-read.md) | Package create and read | A | 1 | P5-01, P3-03, P2-04, P4-01a | todo | — |
 | [P5-02b](./P5-02b-package-pickup-and-return.md) | Package pickup and return | A | 1 | P5-02a | todo | — |
 | [P5-03](./P5-03-security-packages-page.md) | Security packages page | B | 2 | P5-02a, P5-02b, P3-06 | todo | — |
 | [P5-04](./P5-04-resident-packages-page.md) | Resident packages page | B | 2 | P5-02a, P3-05 | todo | — |
@@ -99,7 +100,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 ## Critical path
 
 ```text
-P0-02 → P0-05 → P1-01 → P1-02 → P1-03 → P1-05 → P2-03 → P2-04 → P4-01 → P4-05 → P4-06 → P4-08 → P4-09 → P5-05
+P0-02 → P0-05 → P1-01 → P1-02 → P1-03 → P1-05 → P2-03 → P2-04 → P4-01a → P4-05 → P4-06 → P4-08 → P4-09 → P5-05
                          P1-02 → P2-01a → P2-01b → P2-02 ↗         P3-01a → P3-03 ↗
                                   P2-02 → P2-06a → P2-06b → P2-06c ───────────────────────↗ (P4-08)
 ```
