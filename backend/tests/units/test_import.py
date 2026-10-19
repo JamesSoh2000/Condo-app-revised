@@ -367,8 +367,8 @@ def test_cli_unknown_building_exits_1_without_committing(tmp_path, fake_session,
         b"tower,label,floor\n\xff\xfe,1,\n",
         b"",
         b'tower,label,floor\nA,"1,\n',
-        # Over 1 MiB: refused before parsing, whatever the row count.
-        b"tower,label,floor\n" + b"A," + b"1" * (1024 * 1024) + b",\n",
+        # Over 1 MiB in fewer than 5,000 rows of short-enough cells: only the size cap refuses it.
+        b"tower,label,floor\n" + (b"A," + b"x" * 250 + b",\n") * 4500,
     ],
     ids=["header", "not-utf8", "empty", "broken-csv", "over-1mib"],
 )
