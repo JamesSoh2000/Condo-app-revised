@@ -448,6 +448,61 @@ describe('criterion 5: PrivateImage when the file cannot be shown', () => {
     expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
   });
 
+  it('a recovery answer with the same URL loads the image again in a new element (review round 2, F1)', async () => {
+    const fetchMock = stubApi({
+      [`GET ${files()}/${FILE_A}/download-url`]: () =>
+        json({ url: 'https://s3.test/same', expires_at: new Date(Date.now() + 60_000).toISOString() }),
+    });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    const first = await screen.findByRole('img', { name: 'Parcel' });
+    fireEvent.error(first);
+    await waitFor(() => expect(calls(fetchMock)).toHaveLength(2));
+    // A new <img> (a new load) even though `src` is unchanged; React would otherwise keep the broken one.
+    const second = await screen.findByRole('img', { name: 'Parcel' });
+    expect(second).not.toBe(first);
+    expect(second.getAttribute('src')).toBe('https://s3.test/same');
+  });
+
+  it('a failed background refresh does not ask again every second (review round 2, F2)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    const fetchMock = stubApi({
+      [`GET ${files()}/${FILE_A}/download-url`]: () =>
+        ++n === 1 ? json({ url: 'https://s3.test/one', expires_at: new Date(Date.now() + 60_000).toISOString() }) : problem(503, 'unavailable'),
+    });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    await screen.findByRole('img', { name: 'Parcel' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50_100);
+    });
+    // The first request, then the refresh and its two retries.
+    expect(calls(fetchMock)).toHaveLength(4);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(calls(fetchMock)).toHaveLength(4);
+    // The loaded image still shows: its URL still works for a while.
+    expect(screen.getByRole('img', { name: 'Parcel' }).getAttribute('src')).toBe('https://s3.test/one');
+  });
+
+  it('after giving up on a broken image it fetches nothing more (review round 2, F2)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    const fetchMock = stubApi({
+      [`GET ${files()}/${FILE_A}/download-url`]: () =>
+        json({ url: `https://s3.test/${++n}`, expires_at: new Date(Date.now() + 60_000).toISOString() }),
+    });
+    wrap(<PrivateImage fileId={FILE_A} alt="Parcel" />);
+    fireEvent.error(await screen.findByRole('img', { name: 'Parcel' }));
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Parcel' }).getAttribute('src')).toBe('https://s3.test/2'));
+    fireEvent.error(screen.getByRole('img', { name: 'Parcel' }));
+    await screen.findByText('Image unavailable');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(calls(fetchMock)).toHaveLength(2);
+  });
+
   it('after F1, Retry fetches a new URL and shows the image again', async () => {
     let n = 0;
     stubApi({
@@ -501,6 +556,18 @@ describe('criterion 6: keyboard and announcements', () => {
     expect(click).toHaveBeenCalledTimes(1);
     expect(input.getAttribute('tabindex')).toBe('-1');
     expect(screen.getByRole('status').getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('announces upload progress in quarter steps (review round 2, F3)', async () => {
+    uploadServer();
+    wrap(<FileUpload purpose="package_photo" onUploaded={() => {}} />);
+    choose(jpeg());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    expect(screen.getByRole('status').textContent).toBe('Uploading parcel.jpg… 0%');
+    lastXhr().progress(MiB / 5, 2 * MiB); // 10%: not announced
+    expect(screen.getByRole('status').textContent).toBe('Uploading parcel.jpg… 0%');
+    lastXhr().progress(MiB, 2 * MiB);
+    expect(screen.getByRole('status').textContent).toBe('Uploading parcel.jpg… 50%');
   });
 
   it('passes accept and capture to the input', () => {
