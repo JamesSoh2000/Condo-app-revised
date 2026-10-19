@@ -743,7 +743,7 @@ export interface components {
             /** Tower */
             tower?: string | null;
             /** Label */
-            label?: string | null;
+            label?: string;
             /** Floor */
             floor?: number | null;
         };

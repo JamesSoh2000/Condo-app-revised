@@ -1,5 +1,6 @@
 """The units routes (P4-01 criteria 1-4 and 7) and the tenant table (ENGINEERING_PRACTICES §7)."""
 
+import json
 import uuid
 from typing import Any
 
@@ -9,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditEvent
+from app.main import create_app
 from app.memberships.occupancy import end_occupancy
 from app.units.models import Unit
 from tests.factories import make_unit
@@ -505,3 +507,14 @@ async def test_unknown_building_is_building_not_found_on_every_route(as_user, wo
         *_write_requests(base, world.a_102.id),
     ]:
         await assert_cross_building_404(client, method, url, json=payload)
+
+
+def test_patch_schema_documents_label_as_optional_but_not_nullable():
+    # Review round 2 (Codex, Low): OpenAPI offered `label: null` (TypeScript `string | null`),
+    # which the API refuses with 422. tower and floor do take null (they clear the value).
+    schema = create_app().openapi()["components"]["schemas"]["UnitUpdate"]
+
+    assert "label" not in schema.get("required", [])
+    assert "null" not in json.dumps(schema["properties"]["label"])
+    assert {"type": "null"} in schema["properties"]["floor"]["anyOf"]
+    assert {"type": "null"} in schema["properties"]["tower"]["anyOf"]

@@ -3,6 +3,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from pydantic import AfterValidator, BeforeValidator, Field, StringConstraints, field_validator
+from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
 from app.core.schemas import APIModel, InputModel
@@ -47,7 +48,9 @@ class UnitUpdate(InputModel):
     """Only the fields sent change; `tower: null` and `floor: null` clear them."""
 
     tower: Tower = None
-    label: Label | None = None
+    # Optional, never null: SkipJsonSchema keeps the None default out of the OpenAPI schema (review
+    # round 2, Codex), and the validator below refuses an explicit null.
+    label: Label | SkipJsonSchema[None] = None
     floor: Floor | None = None
 
     @field_validator("label", mode="before")
