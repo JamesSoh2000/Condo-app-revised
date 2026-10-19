@@ -2,6 +2,7 @@
 
 import json
 import sys
+import time
 from typing import Annotated
 from uuid import UUID, uuid7
 
@@ -221,6 +222,51 @@ async def test_record_audit_refuses_metadata_that_is_not_a_dict(db, metadata):
     with pytest.raises(ValueError):
         await record_audit(db, action="test.recorded", entity_type="test", metadata=metadata)
     assert not db.new
+
+
+@pytest.mark.parametrize("metadata", [False, 0, "", [], ()])
+async def test_record_audit_refuses_falsy_metadata_that_is_not_a_dict(db, metadata):
+    # P2-04 review round 3 (Low): `metadata or {}` turned these into `{}` and stored them.
+    with pytest.raises(ValueError):
+        await record_audit(db, action="test.recorded", entity_type="test", metadata=metadata)
+    assert not db.new
+
+
+@pytest.mark.parametrize("metadata", [{"\ud800": "x"}, {"changes": {"\udfff": 1}}])
+async def test_record_audit_refuses_a_lone_surrogate_key(db, metadata):
+    # P2-04 review round 3 (Low): a surrogate key passed the checks and failed at flush.
+    with pytest.raises(ValueError):
+        await record_audit(db, action="test.recorded", entity_type="test", metadata=metadata)
+    assert not db.new
+
+
+def _shared(levels: int) -> object:
+    value: object = ["x"]
+    for _ in range(levels):
+        value = [value, value]
+    return value
+
+
+async def test_record_audit_refuses_shared_sub_objects_without_walking_every_path(db):
+    # P2-04 review round 3 (Low): 25 levels of `x = [x, x]` is 2**25 paths, within the depth
+    # limit; walking (or serializing) each one took exponential time.
+    started = time.perf_counter()
+    with pytest.raises(ValueError):
+        await record_audit(
+            db, action="test.recorded", entity_type="test", metadata={"changes": _shared(25)}
+        )
+    assert time.perf_counter() - started < 1
+    assert not db.new
+
+
+async def test_small_shared_sub_objects_are_accepted(db):
+    shared = ["field"]
+    await record_audit(
+        db, action="test.recorded", entity_type="test", metadata={"a": shared, "b": shared}
+    )
+    await db.flush()
+    [event] = await _events(db)
+    assert event.metadata_ == {"a": ["field"], "b": ["field"]}
 
 
 async def test_moderately_nested_metadata_is_accepted(db):
