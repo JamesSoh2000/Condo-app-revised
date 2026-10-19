@@ -1,9 +1,9 @@
 """The CSV unit import (P4-01 criterion 5).
 
 `parse_units_csv` and `import_units` run in the test's transaction. A CLI command runs its own event
-loop, which can't share the test's connection (tests/test_cli_seed.py), so the CLI tests check the
-parsing, the refusals and the commit/rollback wiring with a fake session; the command itself is run on
-the stack in the PR.
+loop, which can't share the test's connection (tests/test_cli_seed.py), so the CLI tests check
+the parsing, the refusals and the commit/rollback wiring with a fake session; the command itself is
+run on the stack in the PR.
 """
 
 import asyncio
@@ -111,7 +111,10 @@ async def test_floor_change_is_updated_and_activity_is_left_alone(db, world):
     assert (unit.floor, unit.is_active) == (8, False)
     event = await db.scalar(select(AuditEvent).where(AuditEvent.action == "unit.updated"))
     assert event is not None
-    assert (event.entity_id, event.metadata_) == (unit.id, {"fields": ["floor"], "source": "import"})
+    assert (event.entity_id, event.metadata_) == (
+        unit.id,
+        {"fields": ["floor"], "source": "import"},
+    )
 
 
 def test_blank_tower_and_floor_are_null_and_values_are_stripped():

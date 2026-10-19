@@ -8,6 +8,7 @@ import asyncio
 import re
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
+from pathlib import Path
 from uuid import UUID
 
 import typer
@@ -22,18 +23,30 @@ from app.email.service import queue_email
 from app.jobs.report import render_status
 from app.jobs.service import JobNotRetryable, job_status, retry_dead_job
 from app.seed import SeedRefusedError, check_seed_allowed, seed, seed_password_for
+from app.units.service import (
+    CsvError,
+    UnknownBuilding,
+    building_id_for_slug,
+    import_units,
+    parse_units_csv,
+    render_import_report,
+)
 
 app = typer.Typer(help="Condo management operator commands.", no_args_is_help=True)
 
 
-def run_in_session(work: Callable[[AsyncSession], Awaitable[None]]) -> None:
-    """Run `work` in a new session and commit once after it returns; on an error, commit nothing."""
+def run_in_session(work: Callable[[AsyncSession], Awaitable[None]], *, commit: bool = True) -> None:
+    """Run `work` in a new session and commit once after it returns (roll back if not `commit`); on
+    an error, commit nothing."""
 
     async def main() -> None:
         try:
             async with AsyncSessionLocal() as db:
                 await work(db)
-                await db.commit()
+                if commit:
+                    await db.commit()
+                else:
+                    await db.rollback()
         finally:
             # The engine's pool belongs to this event loop, which asyncio.run closes next.
             await dispose_database_engine()
@@ -183,6 +196,43 @@ def email_test_command(
 
     run_in_session(work)
     typer.echo(f"queued email job {queued[0]}")
+
+
+@app.command("import-units")
+def import_units_command(
+    building: str = typer.Option(..., "--building", help="Building slug."),
+    csv_path: str = typer.Option(..., "--csv", help="UTF-8 CSV: tower,label,floor columns."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report the changes; write nothing."),
+) -> None:
+    """Create or update a building's units from a CSV, matched by (tower, label).
+
+    Invalid rows are skipped and listed by line; the valid ones are written.
+    """
+    try:
+        # Read and checked before any session: a bad file must not touch the database.
+        parsed = parse_units_csv(Path(csv_path).read_text(encoding="utf-8"))
+    except OSError as exc:
+        typer.echo(f"error: can't read {csv_path}: {exc.strerror}", err=True)
+        raise typer.Exit(1) from None
+    except UnicodeDecodeError:
+        typer.echo("error: the file is not UTF-8 text", err=True)
+        raise typer.Exit(1) from None
+    except CsvError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
+    output: list[str] = []
+
+    async def work(db: AsyncSession) -> None:
+        building_id = await building_id_for_slug(db, building)
+        report = await import_units(db, building_id, parsed, dry_run=dry_run)
+        output.append(render_import_report(report, dry_run=dry_run))
+
+    try:
+        run_in_session(work, commit=not dry_run)
+    except UnknownBuilding as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(output[0])
 
 
 def _placeholder(name: str, ticket: str) -> None:

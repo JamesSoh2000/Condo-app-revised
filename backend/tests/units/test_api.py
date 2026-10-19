@@ -222,7 +222,8 @@ async def test_same_label_in_another_tower_or_building_is_not_a_duplicate(as_use
         {"label": "   "},
         {"label": "x" * 21},
         {"label": "1\x0001"},
-        {"label": "1\ud80001"},
+        # Raw JSON: httpx can't encode a lone surrogate, but a client can send the escape.
+        '{"label": "1\\ud80001"}',
         {"label": "10\n1"},
         {"tower": "t" * 21, "label": "1"},
         {"tower": "a\x00", "label": "1"},
@@ -238,7 +239,11 @@ async def test_create_rejects_invalid_input_and_writes_nothing(as_user, db, worl
     client = await as_user(world.a_manager.user)
     before = await _unit_count(db, world.a.id)
 
-    r = await client.post(_units(world), json=payload)
+    if isinstance(payload, str):
+        headers = {"Content-Type": "application/json"}
+        r = await client.post(_units(world), content=payload, headers=headers)
+    else:
+        r = await client.post(_units(world), json=payload)
 
     assert_problem(r, 422, "validation_error")
     assert await _unit_count(db, world.a.id) == before
@@ -462,3 +467,15 @@ async def test_multi_lists_building_b_with_its_security_role(as_user, world):
 
     assert r.status_code == 200
     assert [i["id"] for i in r.json()["items"]] == [str(world.b_101.id)]
+
+
+@pytest.mark.parametrize(
+    "params", [{"search": "1\x00"}, {"tower": "\x00"}, {"search": "x" * 21}, {"tower": "\t"}]
+)
+async def test_list_rejects_query_values_postgres_cannot_take(as_user, world, params):
+    # NUL would fail in Postgres as a DBAPIError (a 500), not a 422 (CLAUDE.md lesson).
+    client = await as_user(world.a_security.user)
+
+    r = await client.get(_units(world), params=params)
+
+    assert_problem(r, 422, "validation_error")
