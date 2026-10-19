@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P3-04b, P3-01b |
 | Replaces old | M5-T11 (cleanup part) (part of [P3-04](./P3-04-private-file-uploads.md)) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 

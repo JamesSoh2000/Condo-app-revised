@@ -250,3 +250,15 @@ P3-03, and P3-02's note asked for it to be promoted in this ticket's PR, which d
 `queue_email` and `notify` a lone surrogate, NUL, NaN and an over-length value and expects `ValueError`, or a
 `CLAUDE.md` lesson if a test can't express it. "Deadlock from unsorted unique-key inserts" is new, 1 of 2.
 
+| 2026-10-19 | P3-04c | `files.cleanup` deleted S3 objects while only a row lock protected the file: the worker's timeout cancelled the handler, the rollback freed the lock, a claim attached the file, then boto3's still-running thread deleted the object | review round 1 (Codex `gpt-6.1-sol`), **High** | treated an irreversible external call as covered by the transaction that surrounds it; the PR even listed "job fails after S3 deletes" as an accepted risk without asking what a claim could do in that state | committed `deleting` status + `files.purge` (ADR-0018); `test_a_purge_timing_out_mid_delete_leaves_nothing_claimable` |
+| 2026-10-19 | P3-04c | A partial S3 delete (pinned version gone, another refused) kept the row `ready` and claimable | review round 1 (Codex `gpt-6.1-sol`), **High** | same root cause: "S3 failed → keep the row" assumed a failure deletes nothing | same fix; `test_a_partly_deleted_file_stays_deleting_and_unclaimable` |
+| 2026-10-19 | P3-04c | `complete_file` racing the cleanup answered 409 (object gone before HEAD) or 500 `NoSuchVersion` (gone between HEAD and the ranged GET); only the after-checks window had been handled | review round 1 (Codex `gpt-6.1-sol`), Medium | covered one window of a race, not every step that reads the object. Recurrence of the `CLAUDE.md` lesson "every other way to reach the same state" | `get_range` → None, re-read → 404; four race points in `test_completion_racing_the_cleanup_is_file_not_found` |
+| 2026-10-19 | P3-04c | The new status value can't be read by the previous release's API (500 in a mixed-version deploy) | review round 2 (Codex `gpt-6.1-sol`), Medium, accepted | checked migration compatibility for the schema, not for the old code reading new data | deploy-ordering rule carried to D-03 |
+| 2026-10-19 | P3-04c | Logged `file_id`, `failed`, `left` as extras the JSON formatter drops (not in its allowlist) | implementer's stack run, before review | tests read `LogRecord` attributes, not the formatted line | allowlist entries; the test now formats records with `JsonFormatter` |
+
+P3-04c step 8 note: P3-03's request to promote "validated input with Python's rules, not the database's" (three
+occurrences) was done in this ticket's bookkeeping as a `CLAUDE.md` lesson; a fitness test across `enqueue`,
+`queue_email` and `notify` stays a candidate for P4-05 / P5-02a, which already carry the surrogate fix. New
+pattern, 1 of 2: "an irreversible external side effect (S3, SMTP, any API) inside a transaction that can roll
+back, protected only by a lock or by the rollback itself".
+

@@ -95,6 +95,14 @@ Run every criterion once on staging and paste the evidence (workflow run links, 
 3. How does keeping old hashed assets protect users with open tabs?
 4. What does `flock` protect against, and why also use a GitHub concurrency group?
 
+## Carried from P3-04c
+
+- A release whose worker writes a value the previous release's API can't read (P3-04c's `files.status =
+  'deleting'`: the old enum raises `LookupError`, a 500) must not run beside that API. The deploy recreates
+  the API before the worker (or both at once with the old worker stopped first), or such a value ships its
+  readers one release earlier. Make the order explicit in the deploy script and say which it is. Source:
+  PR #78 review round 2 (Medium, accepted), `docs/explanations/P3-04c-file-cleanup-job.md` §7.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
