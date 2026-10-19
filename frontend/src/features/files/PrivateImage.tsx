@@ -44,7 +44,6 @@ function PrivateImageFor({ fileId, alt, className = '' }: PrivateImageProps) {
   // After an <img> load error (the URL stopped working early), one new URL is tried; a second error is final.
   // `failedAnswer` is the answer whose image failed (its `dataUpdateCount`): only a newer one is shown again.
   const [failedAnswer, setFailedAnswer] = useState<number | null>(null);
-  const [recoveries, setRecoveries] = useState(0);
   const [broken, setBroken] = useState(false);
   const queryClient = useQueryClient();
   const queryKey = ['b', buildingId, 'files', fileId, 'download-url'];
@@ -77,12 +76,12 @@ function PrivateImageFor({ fileId, alt, className = '' }: PrivateImageProps) {
   const box = `flex items-center justify-center rounded bg-slate-100 text-sm text-slate-600 ${className}`;
   if (isNotFound(query.error) || broken) return <div className={box}>Image unavailable</div>;
   // The failed URL is known to be broken: until a newer answer, show the loading or error state (round 1, F1).
+  // The <img> leaves the page meanwhile, so the next one is a new element that loads even the same URL again
+  // (review round 2, F1).
   const waiting = failedAnswer !== null && answers <= failedAnswer;
   if (query.data && !waiting) {
     return (
       <img
-        // A new element per recovery, so an answer with the same URL still loads again (review round 2, F1).
-        key={recoveries}
         src={query.data.url}
         alt={alt}
         className={className}
@@ -93,7 +92,6 @@ function PrivateImageFor({ fileId, alt, className = '' }: PrivateImageProps) {
             return;
           }
           setFailedAnswer(answers);
-          setRecoveries((count) => count + 1);
           void query.refetch();
         }}
       />
