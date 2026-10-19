@@ -541,6 +541,26 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     await waitFor(() => expect(within(region).queryByRole('alert')).toBeNull());
   });
 
+  it('F4 neighbour: a successful mark-read after a failed mark-all-read clears the error', async () => {
+    const target = notification({ link: null, title: 'Single one' });
+    const server = notificationServer(MAPLE, [target, notification()]);
+    stubApi({
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`POST ${base(MAPLE)}/read-all`]: () => problem(500, 'internal_error'),
+    });
+    renderApp(['/']);
+    await bell('Notifications, 2 unread');
+    const region = await openPanel();
+    await within(region).findByText('Single one');
+    fireEvent.click(within(region).getByRole('button', { name: /mark all read/i }));
+    await within(region).findByRole('alert');
+
+    fireEvent.click(within(region).getByRole('button', { name: /single one/i }));
+    await waitFor(() => expect(within(region).queryByRole('alert')).toBeNull());
+    expect(await bell('Notifications, 1 unread')).toBeTruthy();
+  });
+
   it('F4 neighbour: a failed mark-all-read is not shown in another building', async () => {
     const maple = notificationServer(MAPLE, [notification()]);
     const birch = notificationServer(BIRCH, [notification({ title: 'Birch notice' })]);
