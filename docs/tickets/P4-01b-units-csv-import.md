@@ -44,7 +44,9 @@ CLI `import-units`; `app.units.service.parse_units_csv`, `import_units(db, build
      the file is invalid from its second occurrence. A missing or extra header column, an unknown building
      slug, or more than 5,000 rows is an error: exit 1, nothing written. Each created or updated unit gets a
      `unit.created`/`unit.updated` audit row with no actor and `{"source": "import"}`.
-   - Rows are validated with P4-01a's `UnitCreate` (same limits as the API).
+   - Rows are validated with P4-01a's `UnitCreate` (same limits as the API). Its `floor` is strict since
+     P4-01a review round 1 (`true` and `"3"` are refused), so the parser converts the cell to `int` first
+     and reports a non-integer cell itself; the `4c015f0` code passed the string and needs that change.
 
 ## Test plan
 

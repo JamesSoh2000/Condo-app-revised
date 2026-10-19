@@ -31,7 +31,8 @@ Label = Annotated[
     AfterValidator(printable),
 ]
 Tower = Annotated[Label | None, BeforeValidator(_blank_to_none)]
-Floor = Annotated[int, Field(ge=MIN_FLOOR, le=MAX_FLOOR)]
+# Strict: lax mode would store `true` as floor 1 and accept "3" (review round 1, Codex).
+Floor = Annotated[int, Field(strict=True, ge=MIN_FLOOR, le=MAX_FLOOR)]
 # A query parameter that reaches a LIKE or an equality: the same characters a label may hold.
 SearchText = Annotated[str, StringConstraints(max_length=20), AfterValidator(printable)]
 

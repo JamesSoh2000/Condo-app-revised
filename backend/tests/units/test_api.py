@@ -231,6 +231,11 @@ async def test_same_label_in_another_tower_or_building_is_not_a_duplicate(as_use
         {"label": "1", "floor": -21},
         {"label": "1", "floor": 2**31},
         {"label": "1", "floor": 1.5},
+        # Review round 1 (Codex, Low): booleans were stored as floors 1 and 0.
+        {"label": "1", "floor": True},
+        {"label": "1", "floor": False},
+        {"label": "1", "floor": "3"},
+        {"label": 101},
         {"label": "1", "is_active": False},
         {"tower": "A"},
     ],
@@ -383,7 +388,16 @@ async def test_noop_patch_writes_no_audit_row(as_user, db, world):
 
 
 @pytest.mark.parametrize(
-    "payload", [{"label": None}, {"label": ""}, {"floor": 999}, {"is_active": False}]
+    "payload",
+    [
+        {"label": None},
+        {"label": ""},
+        {"floor": 999},
+        {"is_active": False},
+        {"floor": True},
+        {"floor": False},
+        {"floor": "3"},
+    ],
 )
 async def test_patch_rejects_invalid_input(as_user, db, world, payload):
     client = await as_user(world.a_manager.user)
@@ -479,3 +493,15 @@ async def test_list_rejects_query_values_postgres_cannot_take(as_user, world, pa
     r = await client.get(_units(world), params=params)
 
     assert_problem(r, 422, "validation_error")
+
+
+async def test_unknown_building_is_building_not_found_on_every_route(as_user, world):
+    client = await as_user(world.a_manager.user)
+    base = f"/api/buildings/{uuid.uuid4()}/units"
+
+    for method, url, payload in [
+        ("GET", base, None),
+        ("POST", base, {"label": "9"}),
+        *_write_requests(base, world.a_102.id),
+    ]:
+        await assert_cross_building_404(client, method, url, json=payload)
