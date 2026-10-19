@@ -44,7 +44,9 @@ list explicit, instead of discovering it during the pilot.
     - [ ] P3-02: `email-test` to a verified address arrives via SES, and a non-allowlisted address is
           skipped.
     - [ ] P3-04/P3-06: a photo upload works from a desktop browser and from a real phone. The bucket CORS
-          rejects another origin, and a download URL stops working after 60 s.
+          rejects another origin, and a download URL stops working after 60 s. An unsigned `GET` of an
+          uploaded object's key is refused (403): LocalStack doesn't check auth, so the local stacks can't
+          show the bucket is private ([P3 recap](../recaps/P3.md) §0).
     - [ ] P3-01/P5-05: the `package_arrived` email arrives via SES at a verified inbox, and restarting the
           worker mid-queue recovers.
     - [ ] P4-03: `bootstrap-building` runs through SSM Session Manager by following the runbook.
