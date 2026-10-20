@@ -17,10 +17,12 @@ from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
 from app.memberships.models import BuildingMembership, MembershipRole
 from app.notifications.models import Notification
 from app.onboarding.models import OnboardingRequest, OnboardingStatus
+from app.rate_limits.service import RateLimiter, get_rate_limiter
 from app.units.models import Unit
 from tests.conftest import CSRF_HEADERS, UserClientFactory
 from tests.factories import make_membership, make_unit, make_user
 from tests.helpers.tenancy import assert_problem, without_request_id
+from tests.test_rate_limit import committing  # noqa: F401 (a fixture)
 from tests.world import World
 
 pytestmark = pytest.mark.anyio
@@ -574,3 +576,37 @@ async def test_submit_without_csrf_headers_is_refused(
 
     assert response.status_code == 403
     assert await _counts(db) == before
+
+
+# P4-05b criterion 15: the per-user limit on join requests
+
+
+async def test_the_11th_join_request_from_one_user_in_an_hour_is_429(
+    db: AsyncSession,
+    world: World,
+    codes: None,
+    as_user: UserClientFactory,
+    committing: RateLimiter,
+) -> None:
+    # A limiter that commits on connections of its own, as in production: the harness's limiter
+    # counts in a savepoint inside the request's, so a request that doesn't commit (a retry's 200)
+    # would take its count back with it.
+    app.dependency_overrides[get_rate_limiter] = lambda: committing
+    limit = settings.rate_limit_join_request_user.limit
+    client = await as_user(await make_user(db))
+    body = {"unit_id": str(world.a_101.id), "relationship": "tenant"}
+
+    statuses = [(await client.post(_requests_url(), json=body)).status_code for _ in range(limit)]
+    limited = await client.post(_requests_url(), json=body)
+
+    # The first creates the request; the retries return it.
+    assert statuses == [201] + [200] * (limit - 1)
+    assert_problem(limited, 429, "rate_limited")
+    assert int(limited.headers["Retry-After"]) >= 1
+    other = await as_user(await make_user(db))
+    assert (await other.post(_requests_url(), json=body)).status_code == 201
+
+
+def test_join_request_rate_policy_is_10_per_hour() -> None:
+    default = Settings.model_fields["rate_limit_join_request_user"].default
+    assert (default.limit, default.window_seconds) == (10, 3600)
