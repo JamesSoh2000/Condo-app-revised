@@ -16,8 +16,12 @@ AUTH_ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
         # Always the same 202, and the emailed token is the credential (P4-04).
         ("POST", "/api/auth/password-reset/request"),
         ("POST", "/api/auth/password-reset/confirm"),
+        # A new resident has no account yet (P4-05a); rate-limited per IP.
+        ("POST", "/api/auth/signup"),
         # The invitee has no session yet (P4-02b); the token in the path is the credential.
         ("GET", "/api/invitations/{token}"),
         ("POST", "/api/invitations/{token}/accept"),
+        # The join link opens before signup (P4-05a): the building's name only; rate-limited per IP.
+        ("GET", "/api/join/{join_code}"),
     }
 )
