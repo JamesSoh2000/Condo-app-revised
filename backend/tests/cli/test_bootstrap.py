@@ -5,7 +5,12 @@ The use-case only flushes; the CLI's `run_in_session` commits once. So the datab
 import tests do (`tests/units/test_import.py`).
 """
 
+import asyncio
 import logging
+import os
+import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -13,8 +18,9 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 from pydantic import ValidationError
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from typer.testing import CliRunner
 
 from app import cli
@@ -245,6 +251,27 @@ def test_bad_input_is_refused(field: str, value: Any) -> None:
         _input(**{field: value})
 
     assert caught.value.errors()[0]["loc"][0] == field
+
+
+def test_reason_over_the_audit_value_limit_is_refused() -> None:
+    # Review round 1, F2: 400 three-byte characters are under 500 characters but over the audit
+    # event's 1 KiB per value, so the real run failed after its writes while the dry run passed.
+    with pytest.raises(ValidationError) as caught:
+        _input(reason="界" * 400)
+
+    assert caught.value.errors()[0]["loc"][0] == "reason"
+
+
+async def test_a_reason_the_input_accepts_is_recorded(db: AsyncSession, world: World) -> None:
+    # The largest reasons the input accepts, by characters and by bytes, reach the audit event.
+    for slug, reason in (("cedar", "r" * 500), ("elm", "界" * 340)):
+        data = _input(slug=slug, manager_email=f"{slug}@example.test", reason=reason)
+        await bootstrap_building(db, data, None, dry_run=True)
+        result = await bootstrap_building(db, data, None, dry_run=False)
+        event = await db.scalar(
+            select(AuditEvent).where(AuditEvent.building_id == result.building_id)
+        )
+        assert event is not None and event.metadata_["reason"] == reason
 
 
 def test_manager_email_is_lowered() -> None:
@@ -578,7 +605,8 @@ def test_cli_bad_csv_exits_1_before_any_session(tmp_path, monkeypatch, content):
     result = _run(*ARGS, "--units-csv", str(path))
 
     assert result.exit_code == 1
-    assert "error:" in result.stderr
+    # Review round 1, F3: every CSV error names the option (AC4).
+    assert result.stderr.startswith("error: --units-csv:")
 
 
 def test_cli_invalid_rows_are_listed_by_line_without_values(tmp_path, monkeypatch):
@@ -600,6 +628,19 @@ def test_cli_missing_csv_exits_1(tmp_path, monkeypatch):
     result = _run(*ARGS, "--units-csv", str(tmp_path / "missing.csv"))
 
     assert result.exit_code == 1
+    assert result.stderr.startswith("error: --units-csv:")
+
+
+def test_cli_oversized_csv_names_the_option(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "AsyncSessionLocal", lambda: pytest.fail("opened a session"))
+    monkeypatch.setenv("OPERATOR", "james")
+    path = tmp_path / "units.csv"
+    path.write_bytes(b"tower,label,floor\n" + (b"A," + b"x" * 250 + b",\n") * 4500)
+
+    result = _run(*ARGS, "--units-csv", str(path))
+
+    assert result.exit_code == 1
+    assert result.stderr.startswith("error: --units-csv: the file is larger than")
 
 
 # AC7
@@ -615,6 +656,83 @@ def test_cli_runs_with_app_env_prod(fake_session, calls, monkeypatch):
 
 
 # AC6: an unexpected error's traceback must not print the token held in a local variable.
+
+
+def test_cli_database_error_prints_no_sql_parameters(fake_session, monkeypatch):
+    # Review round 1, F1: a database error's message carries the statement's parameters, which
+    # for the email job hold the accept link.
+    async def failing_bootstrap(*args: Any, **kwargs: Any) -> None:
+        raise DBAPIError(
+            "INSERT INTO jobs …",
+            {"payload": {"context": {"link": f"/invite/{TOKEN}"}}},
+            Exception(),
+        )
+
+    monkeypatch.setattr(cli, "bootstrap_building", failing_bootstrap)
+
+    result = _run(*ARGS)
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit), "the error was not handled"
+    assert result.stderr.startswith("error: the database refused the bootstrap")
+    assert "nothing was written" in result.stderr
+    assert TOKEN not in result.output and "/invite/" not in result.output
+    assert not fake_session.committed
+
+
+def test_cli_commit_failure_prints_no_sql_parameters(fake_session, calls, monkeypatch):
+    # F1's neighbour: the commit itself fails (the email job is flushed but refused at commit).
+    async def failing_commit() -> None:
+        raise DBAPIError("COMMIT", {"link": f"/invite/{TOKEN}"}, Exception())
+
+    monkeypatch.setattr(fake_session, "commit", failing_commit)
+
+    result = _run(*ARGS)
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit), "the error was not handled"
+    assert "nothing was written" in result.stderr
+    assert TOKEN not in result.output
+
+
+def test_real_database_failure_prints_no_token(migrated_test_database):
+    # Review round 1, F1 (Codex's proof): the real command, in a subprocess, against this run's
+    # database with a trigger that fails the email job's INSERT, after the token exists.
+    async def run_sql(*statements: str) -> None:
+        engine = create_async_engine(migrated_test_database)
+        try:
+            async with engine.begin() as conn:
+                for statement in statements:
+                    await conn.execute(text(statement))
+        finally:
+            await engine.dispose()
+
+    asyncio.run(
+        run_sql(
+            "CREATE FUNCTION p4_03_fail_job() RETURNS trigger LANGUAGE plpgsql AS $$"
+            " BEGIN RAISE EXCEPTION 'simulated job insert failure'; END $$",
+            "CREATE TRIGGER p4_03_fail_job BEFORE INSERT ON jobs"
+            " FOR EACH ROW EXECUTE FUNCTION p4_03_fail_job()",
+        )
+    )
+    try:
+        result = subprocess.run(  # noqa: S603 (this interpreter, fixed arguments)
+            [sys.executable, "-m", "app.cli", "bootstrap-building", *ARGS],
+            env=os.environ
+            | {"DATABASE_URL": migrated_test_database, "OPERATOR": "james", "NO_COLOR": "1"},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    finally:
+        asyncio.run(
+            run_sql("DROP TRIGGER p4_03_fail_job ON jobs", "DROP FUNCTION p4_03_fail_job()")
+        )
+
+    assert result.returncode == 1, result.stderr
+    assert "error: the database refused the bootstrap (SQLSTATE P0001)" in result.stderr
+    assert not re.search(r"/invite/[A-Za-z0-9_-]{43}", result.stdout + result.stderr)
+    assert "Traceback" not in result.stderr
 
 
 def test_cli_tracebacks_never_show_locals():
