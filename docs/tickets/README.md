@@ -75,10 +75,11 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-02b](./P4-02b-invitation-accept.md) | Invitation lookup and accept (split from P4-02) | A | 1 | P4-02a | done | — |
 | [P4-03](./P4-03-bootstrap-building-command.md) | Bootstrap-building operator command | A | 1 | P4-02b, P4-01b, P1-06 | done | — |
 | [P4-04](./P4-04-password-reset.md) | Password reset | B | 1 | P3-02, P2-05, P2-04 | done | — |
-| [P4-05](./P4-05-resident-join-onboarding-approval.md) | Resident join, onboarding and approval | A | 1 | P4-01a, P3-03, P2-04, P2-05 | todo | — |
-| [P4-06](./P4-06-membership-administration.md) | Membership administration | A | 1 | P2-04, P4-05 | todo | — |
+| [P4-05a](./P4-05a-resident-signup-and-join.md) | Resident signup and join request (split from [P4-05](./P4-05-resident-join-onboarding-approval.md)) | A | 1 | P4-01a, P3-03, P2-04, P2-05 | in progress | — |
+| [P4-05b](./P4-05b-onboarding-decisions.md) | Onboarding decisions: list, approve, deny (split from P4-05) | A | 1 | P4-05a | todo | — |
+| [P4-06](./P4-06-membership-administration.md) | Membership administration | A | 1 | P2-04, P4-05b | todo | — |
 | [P4-07](./P4-07-frontend-account-screens.md) | Frontend account screens | B | 2 | P4-02b, P4-04, P2-06c | todo | — |
-| [P4-08](./P4-08-frontend-onboarding-approval-screens.md) | Frontend onboarding and approval screens | B | 2 | P4-05, P4-06, P2-06c | todo | — |
+| [P4-08](./P4-08-frontend-onboarding-approval-screens.md) | Frontend onboarding and approval screens | B | 2 | P4-05b, P4-06, P2-06c | todo | — |
 | [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07, P4-08, P4-03, P1-08 | todo | — |
 | [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04b | todo | — |
 | [P5-02a](./P5-02a-package-create-and-read.md) | Package create and read | A | 1 | P5-01, P3-03, P2-04, P4-01a | todo | — |
@@ -101,7 +102,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 ## Critical path
 
 ```text
-P0-02 → P0-05 → P1-01 → P1-02 → P1-03 → P1-05 → P2-03 → P2-04 → P4-01a → P4-05 → P4-06 → P4-08 → P4-09 → P5-05
+P0-02 → P0-05 → P1-01 → P1-02 → P1-03 → P1-05 → P2-03 → P2-04 → P4-01a → P4-05a → P4-05b → P4-06 → P4-08 → P4-09 → P5-05
                          P1-02 → P2-01a → P2-01b → P2-02 ↗         P3-01a → P3-03 ↗
                                   P2-02 → P2-06a → P2-06b → P2-06c ───────────────────────↗ (P4-08)
 ```

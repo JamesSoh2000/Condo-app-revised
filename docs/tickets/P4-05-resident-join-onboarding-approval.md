@@ -1,4 +1,4 @@
-# P4-05 — Resident join, onboarding and approval
+# P4-05 — Resident join, onboarding and approval (split)
 
 | Field | Value |
 |---|---|
@@ -6,7 +6,13 @@
 | Risk tier | 1 |
 | Depends on | P4-01, P3-03, P2-04, P2-05 |
 | Replaces old | M3-T07, M0-T09 (onboarding policy, adopted as default) |
-| Status | todo |
+| Status | split into [P4-05a](./P4-05a-resident-signup-and-join.md), [P4-05b](./P4-05b-onboarding-decisions.md) |
+
+Split while framing (2026-10-20): the estimate was ~700 non-test lines. P4-05a is the table, signup, the join
+endpoints and `/onboarding/me` (criteria 1, 2, 6, 8, sharpened, and the resubmission half of 5, plus new ones);
+P4-05b is the managers' list, approve and deny (criteria 3, 4, 5, 7, 9). "P4-05" in other tickets' text
+means both parts; the [ticket index](./README.md) lists which part each dependent needs. The text below is
+the ticket as written before the split.
 
 ## Goal
 
@@ -161,4 +167,4 @@ From PR #76. The first ticket that calls `notify` (P4-05 or P5-02a, whichever la
 - Criteria added or sharpened:
 - Criteria loosened (with reason; also listed in the inbox):
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+- Split: into P4-05a and P4-05b (see the note at the top); each part's Frame notes hold its framing.
