@@ -355,7 +355,7 @@ async def building_id_for_slug(db: AsyncSession, slug: str) -> UUID:
     return building_id
 
 
-async def _write_row(db: AsyncSession, building_id: UUID, row: ImportRow) -> str:
+async def _write_row(db: AsyncSession, building_id: UUID, row: ImportRow, *, audit: bool) -> str:
     """Create the unit, or set the floor of the existing one; "created", "updated" or "unchanged".
 
     One statement, so no other transaction can change the unit in between: a separate INSERT and
@@ -380,6 +380,8 @@ async def _write_row(db: AsyncSession, building_id: UUID, row: ImportRow) -> str
     if written is None:
         return "unchanged"
     unit_id, created = written
+    if not audit:
+        return "created" if created else "updated"
     await record_audit(
         db,
         action=actions.UNIT_CREATED if created else actions.UNIT_UPDATED,
@@ -398,11 +400,14 @@ def _write_order(row: ImportRow) -> tuple[bool, str, str]:
 
 
 async def import_units(
-    db: AsyncSession, building_id: UUID, parsed: ParsedUnits, *, dry_run: bool
+    db: AsyncSession, building_id: UUID, parsed: ParsedUnits, *, dry_run: bool, audit: bool = True
 ) -> ImportReport:
     """Create the building's missing units and set the floor of existing ones, matched exactly by
     `(tower, label)`; `is_active` is left alone. A dry run only reads, and counts what the real run
-    would. Flushes, never commits."""
+    would. Flushes, never commits.
+
+    `audit=False` records no event per unit: `bootstrap-building` records one for the whole run
+    (P4-03 D2)."""
     counts = {"created": 0, "updated": 0, "unchanged": 0}
     if dry_run:
         floors = {
@@ -421,7 +426,7 @@ async def import_units(
                 counts["unchanged"] += 1
     else:
         for row in sorted(parsed.rows, key=_write_order):
-            counts[await _write_row(db, building_id, row)] += 1
+            counts[await _write_row(db, building_id, row, audit=audit)] += 1
         await db.flush()
     return ImportReport(
         counts["created"], counts["updated"], counts["unchanged"], list(parsed.invalid)

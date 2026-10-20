@@ -65,4 +65,7 @@ class Invitation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="RESTRICT")
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    # Null when an operator command created it (`bootstrap-building`, P4-03): no user invited.
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
