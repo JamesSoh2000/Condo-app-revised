@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P4-02a |
 | Replaces old | part of [P4-02](./P4-02-staff-invitations.md) |
-| Status | in progress |
+| Status | done (PR #87) |
 
 ## Goal
 
