@@ -435,10 +435,8 @@ def test_a_revocation_that_rolls_back_leaves_the_waiting_manager_in_charge(
                 pass
 
             held.commit = hold  # type: ignore[method-assign]
-            assert (
-                await _outcome(demotion(_ctx(world, world.a_manager), second.membership.id), held)
-                == "ok"
-            )
+            demote = demotion(_ctx(world, world.a_manager), second.membership.id)
+            assert await _outcome(demote, held) == "ok"
             held.commit = commit  # type: ignore[method-assign]
 
             async def run_second() -> str:
@@ -456,5 +454,39 @@ def test_a_revocation_that_rolls_back_leaves_the_waiting_manager_in_charge(
             sessions, select(BuildingMembership.status).where(BuildingMembership.id == target)
         )
         assert status == MembershipStatus.SUSPENDED
+
+    _run(scratch_database_url, body)
+
+
+@pytest.mark.parametrize("first", ["refresh", "reactivate"])
+def test_session_refresh_and_a_staff_reactivation_take_turns(
+    scratch_database_url: str, frozen_clock: FrozenClock, first: str
+) -> None:
+    # Criterion 14's reactivation path (review round 2, Codex proof): a suspended guard's session is
+    # refreshed while a manager reactivates them; either way the session ends after 13 idle hours.
+    async def body(sessions: Sessions, world: World) -> None:
+        async with sessions() as db:
+            guard = await make_user(db)
+            membership = await make_membership(
+                guard, world.a, roles=(Role.SECURITY,), status=MembershipStatus.SUSPENDED
+            )
+            token = await auth.start_session(db, guard.id, user_agent=None, ip=None)
+            await db.commit()
+        frozen_clock.advance(minutes=6)
+
+        async def refresh(db: AsyncSession) -> None:
+            current = await auth.resolve_session(db, token)
+            assert current is not None
+            await auth.touch_session(db, current.session)
+            await db.commit()
+
+        async def reactivate(db: AsyncSession) -> None:
+            await service.reactivate_member(db, _ctx(world, world.a_manager), membership.id)
+
+        writes = (refresh, reactivate) if first == "refresh" else (reactivate, refresh)
+        assert await _held_then(sessions, *writes) == ("ok", "ok")
+        frozen_clock.advance(hours=13)
+        async with sessions() as db:
+            assert await auth.resolve_session(db, token) is None
 
     _run(scratch_database_url, body)

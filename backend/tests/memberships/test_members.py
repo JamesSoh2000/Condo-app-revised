@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditEvent
+from app.auth.models import AuthSession
 from app.buildings.models import Building
 from app.core.config import settings
 from app.memberships.enums import MembershipStatus, Role
@@ -550,6 +551,49 @@ async def test_single_manager_cannot_remove_own_manager_role(
     # Criterion 16: the council role added in the same request was rolled back too.
     assert await _roles(db, target) == ["property_management"]
     assert await _events(db, "membership.roles_changed") == []
+
+
+@pytest.mark.parametrize(
+    ("roles", "remove"),
+    [
+        ((Role.PROPERTY_MANAGEMENT,), ["property_management"]),
+        ((Role.PROPERTY_MANAGEMENT, Role.COUNCIL), ["property_management", "council"]),
+    ],
+    ids=["only-role", "every-role"],
+)
+async def test_last_manager_comes_before_no_roles_left(
+    as_user: UserClientFactory,
+    world: World,
+    db: AsyncSession,
+    roles: tuple[Role, ...],
+    remove: list[str],
+) -> None:
+    # Review round 2 (Codex M1): criterion 4 names `last_manager` for a sole manager removing their
+    # manager role, even when it is their only role (no_roles_left would also apply).
+    user = await make_user(db)
+    membership = await make_membership(user, world.a, roles=roles)
+    world.a_manager.membership.status = MembershipStatus.DEACTIVATED
+    await db.flush()
+    client = await as_user(user)
+    r = await client.post(_member(world.a, membership.id, "roles"), json={"remove": remove})
+    assert_problem(r, 409, "last_manager")
+    assert await _roles(db, membership.id) == sorted(roles)
+
+
+async def test_last_manager_refusal_leaves_sessions_unchanged(
+    manager: AsyncClient, world: World, db: AsyncSession
+) -> None:
+    # Criterion 16's sessions (review round 2, Codex): the refused request caps no session.
+    def sessions() -> Any:
+        return select(AuthSession.__table__).where(AuthSession.user_id == world.a_manager.user.id)
+
+    before = (await db.execute(sessions())).all()
+    r = await manager.post(
+        _member(world.a, world.a_manager.membership.id, "roles"),
+        json={"add": ["security"], "remove": ["property_management"]},
+    )
+    assert_problem(r, 409, "last_manager")
+    assert (await db.execute(sessions())).all() == before
 
 
 async def test_manager_can_drop_own_role_when_another_remains(

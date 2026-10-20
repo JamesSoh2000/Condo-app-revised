@@ -247,7 +247,16 @@ async def _check_managers(db: AsyncSession, ctx: TenantContext, caller: Caller) 
     `last_manager`; an inactive user has no session, review round 1), checked first, so of two
     managers demoting each other the second gets that. Then the caller, as `_lock_building` read
     them (`refuse_stale`)."""
-    managers = await db.scalar(
+    await _require_a_manager(db, ctx)
+    refuse_stale(caller)
+
+
+async def _require_a_manager(
+    db: AsyncSession, ctx: TenantContext, *, besides: UUID | None = None
+) -> None:
+    """409 `last_manager` unless the building has an active manager who can log in, other than the
+    membership `besides`."""
+    stmt = (
         select(func.count())
         .select_from(BuildingMembership)
         .join(User, User.id == BuildingMembership.user_id)
@@ -258,9 +267,10 @@ async def _check_managers(db: AsyncSession, ctx: TenantContext, caller: Caller) 
             _holds(Role.PROPERTY_MANAGEMENT),
         )
     )
-    if not managers:
+    if besides is not None:
+        stmt = stmt.where(BuildingMembership.id != besides)
+    if not await db.scalar(stmt):
         raise LastManager(detail="The building must keep at least one active property manager.")
-    refuse_stale(caller)
 
 
 async def _finish(
@@ -318,6 +328,9 @@ async def change_roles(
             await db.commit()
             return out
         if not (held - set(removed)) | set(added):
+            if Role.PROPERTY_MANAGEMENT in removed:
+                # Criterion 4 names `last_manager` when both apply (review round 2, Codex M1).
+                await _require_a_manager(db, ctx, besides=target.id)
             raise NoRolesLeft(detail="A member must keep at least one role.")
         if Role.RESIDENT in removed and await db.scalar(
             select(
