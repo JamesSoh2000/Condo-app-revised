@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-01a |
 | Replaces old | M3-T08 (part of [P4-01](./P4-01-units-api.md)) |
-| Status | todo |
+| Status | done |
 
 ## Goal
 
@@ -74,7 +74,53 @@ CLI `import-units`; `app.units.service.parse_units_csv`, `import_units(db, build
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+- Criteria added or sharpened (criterion 1 stands; these make it testable and close the cases it left open):
+  - **F1 Rerun and concurrency.** The real run upserts row by row with `INSERT … ON CONFLICT DO NOTHING` on
+    `uq_units_building_id_tower_label`, then a conditional `UPDATE … WHERE floor IS DISTINCT FROM … RETURNING`.
+    A unit that already exists, also one created by the API while the import runs, is `updated` or
+    `unchanged`, never an `IntegrityError`. Matching is exact (case-sensitive, after stripping), as the
+    constraint is. Rows with the same `(tower, label)` in **another** building are never read or written.
+  - **F2 Dry run.** Reads only: no unit row, no audit row, nothing flushed; it reports the counts the real
+    run would report on the same data. The CLI rolls the session back after a dry run and commits only after
+    a real one; any error commits nothing.
+  - **F3 Floor cell.** Blank → no floor. Otherwise, after stripping, it must be ASCII `-?[0-9]+` (so `1_0`,
+    `٣`, `+3`, `3.0`, `ten` are invalid with reason `floor: must be a whole number`), then `UnitCreate`
+    checks the range −20…300. Tower and label go through `UnitCreate` unchanged (strip, 1–20, no control
+    characters, blank tower = none).
+  - **F4 Invalid row report.** Each invalid row is `line N: <field>: <reason>` or `line N: expected 3
+    columns` or `line N: duplicate of line M`, where N is the file line on which the record **starts**
+    (a quoted cell may span lines). No cell value appears in the report. Blank lines are skipped and are
+    not rows. A row repeating an earlier valid row's `(tower, label)` after normalisation (`" A "` = `"A"`,
+    blank tower = none) is the duplicate; a repeat of an *invalid* row is judged on its own.
+  - **F5 Whole-file errors (exit 1, no session opened, nothing written):** header not exactly the three
+    names `tower,label,floor` in any order (case-sensitive, no repeats, no extras); empty file; more than
+    5,000 rows; a file over 1 MiB (**added**: `read_text` would otherwise load any size; 5,000 rows of
+    three ≤ 20-character cells are well under it); not UTF-8 (a leading BOM is allowed); unreadable or
+    missing path; broken CSV syntax. An unknown building slug is exit 1, nothing written.
+  - **F6 Exit code.** A run with invalid rows but no whole-file error exits 0 (D3 of P4-01); the report
+    still lists them. A header-only file reports all zeros and exits 0.
+  - **F7 Audit.** One row per unit written, in the import's transaction, `actor_user_id` null, the unit's
+    building: `unit.created` with `{"source": "import"}`; `unit.updated` with
+    `{"fields": ["floor"], "source": "import"}` (the API's `fields` convention). Unchanged rows and dry runs
+    write none. `is_active` is never changed (an inactive unit whose floor changes is `updated`, stays
+    inactive).
+- Tenant table (`ENGINEERING_PRACTICES.md` §7): the import is an operator CLI, not an endpoint, so rows 1–8
+  (HTTP roles, 401/403/404) don't apply. Row 9 (retry) is F1's rerun = all `unchanged`, no duplicate row.
+  Row 10 (concurrency) is F1's `ON CONFLICT`. Building isolation (the spirit of rows 3 and 7) is the F1
+  other-building test.
+- Criteria loosened: none.
+- Decisions taken (with basis):
+  - Partial import, exit 0 with invalid rows listed (ticket, D3 recorded in P4-01).
+  - Upsert by `ON CONFLICT` rather than read-then-insert (autonomous; the existing `create_unit` pattern,
+    which turns a concurrent duplicate into a conflict, never an `IntegrityError`).
+  - 1 MiB file cap and ASCII-only floor digits (autonomous; simplest reversible guard, constants in
+    `app/units/service.py`).
+  - The unknown-slug message echoes the slug, as the `audit` command's `UnknownFilterValue` does (convention).
+- Split: none. Estimate ~220 non-test lines (`4c015f0` measured ~210 for the same scope).
+
+## Follow-ups (bookkeeping, PR #85)
+
+- R3-1 (Low, accepted): ORM `Unit` objects loaded in the caller's session before `import_units` keep stale
+  floors (Core upsert). Carry note in P4-03.
+- No real-database test of a failure midway through an import rolling back earlier units and audit rows.
+- Needs Postgres 18 (`RETURNING old`); carry note in D-01.

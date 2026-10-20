@@ -124,6 +124,11 @@ Manual steps for criteria 2–5, with the commands recorded in the PR.
 - Staging needs `SMTP_USERNAME`, `SMTP_PASSWORD` (secret), `SMTP_STARTTLS=true`, `APP_BASE_URL` (https, not
   localhost) and a non-empty `EMAIL_RECIPIENT_ALLOWLIST`; the settings validator refuses to start without them.
 
+## Carried from P4-01b (do while framing)
+
+- The units CSV import (`app/units/service.py::_write_row`) uses `RETURNING old.…`, new in **Postgres 18**.
+  RDS must run engine 18 or later (dev, CI and `compose.prodlike.yml` already run 18).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

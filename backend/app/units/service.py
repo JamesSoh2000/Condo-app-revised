@@ -1,28 +1,40 @@
-"""Units (P4-01a): the staff list and its writes, and the join flow's unit options.
+"""Units (P4-01): the staff list and its writes, the join flow's unit options, the CSV import.
 
-The write use-cases commit once (CLAUDE.md rule 5). `search_unit_options` only reads, so P4-05 calls
-it inside its own transaction.
+The write use-cases commit once (CLAUDE.md rule 5). `search_unit_options` only reads and
+`import_units` only flushes, so P4-05 and P4-03 call them inside their own transactions.
 """
 
+import csv
+import io
+import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, exists, func, select, update
+from pydantic import ValidationError
+from sqlalchemy import Boolean, ColumnElement, exists, func, literal_column, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
 from app.audit.service import record_audit
+from app.buildings.models import Building
 from app.core.errors import Conflict, NotFound
 from app.core.pagination import CursorParams, Page, paginate
 from app.memberships.models import UnitOccupancy
 from app.tenancy.context import TenantContext
 from app.units.models import Unit
-from app.units.schemas import UnitCreate, UnitOption, UnitOut, UnitUpdate
+from app.units.schemas import MAX_FLOOR, MIN_FLOOR, UnitCreate, UnitOption, UnitOut, UnitUpdate
 
 MAX_OPTIONS = 50
-_FIELDS = ["tower", "label", "floor"]
+MAX_IMPORT_ROWS = 5000
+# 5,000 rows of three cells of at most 20 characters fit many times over (P4-01b F5).
+MAX_IMPORT_BYTES = 1024 * 1024
+_WHOLE_NUMBER = re.compile(r"-?[0-9]+")
+_MAX_FLOOR_DIGITS = 3
+_COLUMNS = ("tower", "label", "floor")
+_FIELDS = list(_COLUMNS)
 
 
 class UnitNotFound(NotFound):
@@ -231,3 +243,198 @@ async def search_unit_options(
         .limit(max(1, min(limit, MAX_OPTIONS)))
     )
     return [UnitOption(id=row.id, tower=row.tower, label=row.label) for row in rows]
+
+
+# The CSV import (`python -m app.cli import-units`)
+
+
+class CsvError(ValueError):
+    """The file as a whole can't be imported (header, size, CSV syntax)."""
+
+
+class UnknownBuilding(ValueError):
+    """No building has the slug."""
+
+
+@dataclass(frozen=True)
+class ImportRow:
+    line: int
+    tower: str | None
+    label: str
+    floor: int | None
+
+
+@dataclass(frozen=True)
+class InvalidRow:
+    line: int
+    # Never the row's values: they're untrusted terminal input.
+    reason: str
+
+
+@dataclass(frozen=True)
+class ParsedUnits:
+    rows: list[ImportRow]
+    invalid: list[InvalidRow]
+
+
+@dataclass(frozen=True)
+class ImportReport:
+    created: int
+    updated: int
+    unchanged: int
+    invalid: list[InvalidRow]
+
+
+def parse_units_csv(text: str) -> ParsedUnits:
+    """Rows validated as the API validates a new unit; a `(tower, label)` repeated in the file is
+    invalid from its second occurrence. `CsvError` for a header that isn't exactly
+    `tower,label,floor` (any order), more than `MAX_IMPORT_ROWS` rows, or broken CSV.
+
+    A row's line is the file line its record starts on (a quoted cell may span lines)."""
+    if len(text.encode()) > MAX_IMPORT_BYTES:
+        raise CsvError(f"the file is larger than {MAX_IMPORT_BYTES // 1024} KiB")
+    # A cell may be as long as the file: an overlong one is an invalid row, not broken CSV (review
+    # round 1). The limit is process-wide; it is only ever raised.
+    csv.field_size_limit(max(csv.field_size_limit(), MAX_IMPORT_BYTES))
+    # newline="": the csv module reads LF, CRLF and CR itself (CR-only was refused, review round 2).
+    reader = csv.reader(io.StringIO(text.removeprefix("\ufeff"), newline=""), strict=True)
+    rows: list[ImportRow] = []
+    invalid: list[InvalidRow] = []
+    first_line: dict[tuple[str | None, str], int] = {}
+    try:
+        header = next(reader, None)
+        if header is None or sorted(header) != sorted(_COLUMNS):
+            raise CsvError("the header must be the columns tower,label,floor")
+        index = {name: header.index(name) for name in _COLUMNS}
+        line = reader.line_num + 1
+        for record in reader:
+            start, line = line, reader.line_num + 1
+            if not record:
+                continue
+            if len(rows) + len(invalid) == MAX_IMPORT_ROWS:
+                raise CsvError(f"more than {MAX_IMPORT_ROWS} rows")
+            if len(record) != len(_COLUMNS):
+                invalid.append(InvalidRow(start, f"expected {len(_COLUMNS)} columns"))
+                continue
+            # Not `int()` alone: it also takes `1_0`, `+3` and non-ASCII digits (P4-01b F3).
+            # UnitCreate checks the range.
+            cell = record[index["floor"]].strip()
+            if cell and _WHOLE_NUMBER.fullmatch(cell) is None:
+                invalid.append(InvalidRow(start, "floor: must be a whole number"))
+                continue
+            digits = cell.lstrip("-").lstrip("0")
+            if len(digits) > _MAX_FLOOR_DIGITS:
+                # Before `int()`, which raises ValueError past 4,300 digits (review round 1).
+                reason = f"floor: must be between {MIN_FLOOR} and {MAX_FLOOR}"
+                invalid.append(InvalidRow(start, reason))
+                continue
+            floor = (-1 if cell.startswith("-") else 1) * int(digits or "0") if cell else None
+            try:
+                tower, label = record[index["tower"]], record[index["label"]]
+                unit = UnitCreate.model_validate({"tower": tower, "label": label, "floor": floor})
+            except ValidationError as exc:
+                error = exc.errors()[0]
+                where = ".".join(str(part) for part in error["loc"])
+                invalid.append(InvalidRow(start, f"{where}: {error['msg']}"))
+                continue
+            key = (unit.tower, unit.label)
+            if key in first_line:
+                invalid.append(InvalidRow(start, f"duplicate of line {first_line[key]}"))
+                continue
+            first_line[key] = start
+            rows.append(ImportRow(start, unit.tower, unit.label, unit.floor))
+    except csv.Error:
+        raise CsvError(f"line {reader.line_num}: not valid CSV") from None
+    return ParsedUnits(rows, invalid)
+
+
+async def building_id_for_slug(db: AsyncSession, slug: str) -> UUID:
+    building_id = await db.scalar(select(Building.id).where(Building.slug == slug))
+    if building_id is None:
+        raise UnknownBuilding(f"no building with slug {slug!r}")
+    return building_id
+
+
+async def _write_row(db: AsyncSession, building_id: UUID, row: ImportRow) -> str:
+    """Create the unit, or set the floor of the existing one; "created", "updated" or "unchanged".
+
+    One statement, so no other transaction can change the unit in between: a separate INSERT and
+    UPDATE lost the floor when the API renamed the unit between them (review round 1). A
+    conflicting insert in flight (API or another import) makes it wait, never an IntegrityError.
+    `old` in RETURNING (Postgres 18) is null for an inserted row; no row comes back when the floor
+    is the same.
+    """
+    stmt = insert(Unit).values(
+        building_id=building_id, tower=row.tower, label=row.label, floor=row.floor
+    )
+    written = (
+        await db.execute(
+            stmt.on_conflict_do_update(
+                constraint="uq_units_building_id_tower_label",
+                # updated_at by hand: the mixin's `onupdate` is ORM-only (review round 2).
+                set_={"floor": stmt.excluded.floor, "updated_at": func.now()},
+                where=Unit.floor.is_distinct_from(stmt.excluded.floor),
+            ).returning(Unit.id, literal_column("old.id IS NULL", Boolean))
+        )
+    ).one_or_none()
+    if written is None:
+        return "unchanged"
+    unit_id, created = written
+    await record_audit(
+        db,
+        action=actions.UNIT_CREATED if created else actions.UNIT_UPDATED,
+        entity_type="unit",
+        entity_id=unit_id,
+        building_id=building_id,
+        metadata={"source": "import"} if created else {"fields": ["floor"], "source": "import"},
+    )
+    return "created" if created else "updated"
+
+
+def _write_order(row: ImportRow) -> tuple[bool, str, str]:
+    # One order for every import, so two imports lock the same units in the same order and can't
+    # deadlock (review round 1). No tower first.
+    return (row.tower is not None, row.tower or "", row.label)
+
+
+async def import_units(
+    db: AsyncSession, building_id: UUID, parsed: ParsedUnits, *, dry_run: bool
+) -> ImportReport:
+    """Create the building's missing units and set the floor of existing ones, matched exactly by
+    `(tower, label)`; `is_active` is left alone. A dry run only reads, and counts what the real run
+    would. Flushes, never commits."""
+    counts = {"created": 0, "updated": 0, "unchanged": 0}
+    if dry_run:
+        floors = {
+            (unit.tower, unit.label): unit.floor
+            for unit in await db.execute(
+                select(Unit.tower, Unit.label, Unit.floor).where(Unit.building_id == building_id)
+            )
+        }
+        for row in parsed.rows:
+            key = (row.tower, row.label)
+            if key not in floors:
+                counts["created"] += 1
+            elif floors[key] != row.floor:
+                counts["updated"] += 1
+            else:
+                counts["unchanged"] += 1
+    else:
+        for row in sorted(parsed.rows, key=_write_order):
+            counts[await _write_row(db, building_id, row)] += 1
+        await db.flush()
+    return ImportReport(
+        counts["created"], counts["updated"], counts["unchanged"], list(parsed.invalid)
+    )
+
+
+def render_import_report(report: ImportReport, *, dry_run: bool) -> str:
+    lines = ["dry run: nothing was written"] if dry_run else []
+    lines += [
+        f"created: {report.created}",
+        f"updated: {report.updated}",
+        f"unchanged: {report.unchanged}",
+        f"invalid: {len(report.invalid)}",
+    ]
+    lines += [f"  line {row.line}: {row.reason}" for row in report.invalid]
+    return "\n".join(lines)
