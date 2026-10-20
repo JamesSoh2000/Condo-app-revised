@@ -10,8 +10,10 @@ from sqlalchemy import select, text
 from app.auth import service
 from app.auth.deps import get_current_session, get_current_user
 from app.auth.models import AuthSession
+from app.core.errors import NotFound
+from app.core.pagination import CursorParams
 from app.core.security import hash_password, hash_token
-from app.memberships.enums import Role
+from app.memberships.enums import MembershipStatus, Role
 from app.users.models import User
 from tests.factories import make_building, make_membership, make_user
 from tests.helpers.auth import login_as
@@ -271,3 +273,65 @@ async def test_refresh_updates_the_loaded_session_too(db, frozen_clock):
 
     assert current.session.last_seen_at == frozen_clock()
     assert current.session.idle_expires_at == frozen_clock() + timedelta(days=7)
+
+
+# P4-02b review round 2 (Codex): the staff idle window holds when the session is read, whatever
+# deadline was stored. A refresh or a login that read the resident window just before a staff role
+# was granted writes 7 days; the role, not the stored value, decides.
+
+
+async def _resident_window_session(db, user) -> str:
+    token = await service.start_session(db, user.id, user_agent=None, ip=None)
+    row = await _row(db, token)
+    assert row.idle_expires_at - row.last_seen_at == timedelta(days=7)
+    return token
+
+
+async def test_session_stored_with_resident_window_dies_after_12_idle_hours_once_staff(
+    app_client, db, frozen_clock
+):
+    user = await make_user(db)
+    token = await _resident_window_session(db, user)
+    await make_membership(user, await make_building(db), roles=(Role.SECURITY,))
+    # Read without a request: a request would refresh the stored window from the current roles.
+    frozen_clock.advance(hours=11, minutes=59)
+    assert await service.resolve_session(db, token) is not None
+    frozen_clock.advance(minutes=2)
+    assert await service.resolve_session(db, token) is None
+    async with app_client(router) as c:
+        c.cookies.set("session", token)
+        assert_not_authenticated(await c.get("/api/session-probe/whoami"))
+
+
+@pytest.mark.parametrize(
+    ("roles", "status"),
+    [((Role.RESIDENT,), "active"), ((Role.SECURITY,), "suspended")],
+    ids=["resident", "suspended-staff"],
+)
+async def test_resident_window_stays_without_an_active_staff_role(db, frozen_clock, roles, status):
+
+    user = await make_user(db)
+    token = await _resident_window_session(db, user)
+    await make_membership(
+        user, await make_building(db), roles=roles, status=MembershipStatus(status)
+    )
+    frozen_clock.advance(hours=13)
+
+    assert await service.resolve_session(db, token) is not None
+
+
+async def test_listing_and_revoking_follow_the_staff_window(db, frozen_clock):
+
+    user = await make_user(db)
+    stale = await _resident_window_session(db, user)
+    await make_membership(user, await make_building(db), roles=(Role.COUNCIL,))
+    frozen_clock.advance(hours=13)
+    fresh = await service.start_session(db, user.id, user_agent=None, ip=None)
+    current = await service.resolve_session(db, fresh)
+    assert current is not None
+
+    page = await service.list_sessions(db, current.session, CursorParams())
+    stale_id = (await _row(db, stale)).id
+    assert [s.id for s in page.items] == [current.session.id]
+    with pytest.raises(NotFound):
+        await service.revoke_session(db, user.id, stale_id)

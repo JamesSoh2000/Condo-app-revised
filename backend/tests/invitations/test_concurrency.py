@@ -13,9 +13,10 @@ from datetime import timedelta
 from uuid import UUID
 
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.auth import service as auth
 from app.core import clock
 from app.core.security import generate_token, hash_token
 from app.invitations import service
@@ -26,6 +27,7 @@ from app.memberships.models import BuildingMembership
 from app.rate_limits.service import RateLimiter
 from app.tenancy.context import TenantContext
 from app.users.models import User
+from tests.conftest import FrozenClock
 from tests.notifications.test_concurrency import migrate
 from tests.world import build_world
 
@@ -131,15 +133,22 @@ NEW_PERSON = InvitationAccept(
 )
 
 
-async def _pending(db: AsyncSession, building_id: UUID, created_by: UUID) -> str:
+async def _pending(
+    db: AsyncSession,
+    building_id: UUID,
+    created_by: UUID,
+    *,
+    email: str = EMAIL,
+    ttl: timedelta = timedelta(days=7),
+) -> str:
     token = generate_token()
     db.add(
         Invitation(
             building_id=building_id,
-            email=EMAIL,
+            email=email,
             roles=[Role.SECURITY.value],
             token_hash=hash_token(token),
-            expires_at=clock.now() + timedelta(days=7),
+            expires_at=clock.now() + ttl,
             created_by_user_id=created_by,
         )
     )
@@ -214,6 +223,161 @@ def test_racing_accepts_have_one_winner(scratch_database_url: str, same_token: b
                 )
             expected = "invitation_invalid" if same_token else "login_required"
             assert (outcome, users, accepted, memberships) == (expected, 1, 1, 1)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(check())
+
+
+# Review round 2 (Codex): races with the accept's own reads. Real transactions; events only order
+# them.
+
+
+@pytest.mark.parametrize("writer", ["refresh", "new-session"])
+def test_session_writer_racing_a_staff_accept_cannot_keep_the_resident_window(
+    scratch_database_url: str,
+    frozen_clock: FrozenClock,
+    monkeypatch: pytest.MonkeyPatch,
+    writer: str,
+) -> None:
+    # A refresh (or a new login) of the invitee reads the resident idle window, then the invitee's
+    # accept grants `security` and commits, then the writer stores 7 days. After 13 idle hours the
+    # session must still be over: the staff window is enforced when a session is read (R2-F1).
+    migrate(scratch_database_url)
+
+    async def check() -> None:
+        engine = create_async_engine(scratch_database_url)
+        sessions = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+        limiter = RateLimiter(sessions)
+        read_old_window, resume = asyncio.Event(), asyncio.Event()
+        original_idle_window = auth.idle_window
+
+        async def paused_idle_window(db: AsyncSession, user_id: UUID) -> timedelta:
+            window = await original_idle_window(db, user_id)
+            task = asyncio.current_task()
+            if task is not None and task.get_name() == "old-session-writer":
+                assert window == timedelta(days=7)
+                read_old_window.set()
+                await resume.wait()
+            return window
+
+        monkeypatch.setattr(auth, "idle_window", paused_idle_window)
+        try:
+            async with sessions() as db:
+                world = await build_world(db)
+                cookie = await auth.start_session(
+                    db, world.no_membership.id, user_agent=None, ip=None
+                )
+                await db.commit()
+                token = await _pending(
+                    db, world.a.id, world.a_manager.user.id, email=world.no_membership.email
+                )
+            frozen_clock.advance(minutes=6)
+
+            async def old_writer() -> str:
+                async with sessions() as db:
+                    if writer == "refresh":
+                        current = await auth.resolve_session(db, cookie)
+                        assert current is not None
+                        await auth.touch_session(db, current.session)
+                        return cookie
+                    created = await auth.start_logged_in_session(
+                        db, world.no_membership.id, user_agent=None, ip=None
+                    )
+                    await db.commit()
+                    return created
+
+            task = asyncio.create_task(old_writer(), name="old-session-writer")
+            await asyncio.wait_for(read_old_window.wait(), timeout=5)
+            try:
+                async with sessions() as db:
+                    result = await service.accept_invitation(
+                        db,
+                        limiter,
+                        token,
+                        InvitationAccept(),
+                        session_token=cookie,
+                        user_agent=None,
+                        ip=None,
+                    )
+                    assert result.out.roles == [Role.SECURITY]
+            finally:
+                resume.set()
+            written = await asyncio.wait_for(task, timeout=5)
+            frozen_clock.advance(hours=13)
+            async with sessions() as db:
+                assert await auth.resolve_session(db, written) is None
+        finally:
+            resume.set()
+            await engine.dispose()
+
+    asyncio.run(check())
+
+
+def test_expiry_is_checked_after_waiting_for_the_invitation_row(
+    scratch_database_url: str, frozen_clock: FrozenClock
+) -> None:
+    # A first accept holds the claimed row, then rolls back (an abandoned caller). A second accept
+    # waited on the row meanwhile, and the token expired while it waited: it must get 404, not
+    # accept with the time it read before waiting (R2-F2).
+    migrate(scratch_database_url)
+
+    async def check() -> None:
+        engine = create_async_engine(scratch_database_url)
+        sessions = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+        limiter = RateLimiter(sessions)
+        try:
+            async with sessions() as db:
+                world = await build_world(db)
+                await db.commit()
+                token = await _pending(
+                    db, world.a.id, world.a_manager.user.id, ttl=timedelta(seconds=1)
+                )
+
+            async def accept(db: AsyncSession) -> object:
+                return await service.accept_invitation(
+                    db, limiter, token, NEW_PERSON, session_token=None, user_agent=None, ip=None
+                )
+
+            async def run_second() -> str:
+                async with sessions() as db:
+                    try:
+                        await accept(db)
+                    except service.InvitationInvalid:
+                        return "invitation_invalid"
+                    return "accepted"
+
+            async with sessions() as held:
+                commit = held.commit
+
+                async def hold() -> None:
+                    pass
+
+                held.commit = hold  # type: ignore[method-assign]
+                await accept(held)
+                held.commit = commit  # type: ignore[method-assign]
+                task = asyncio.create_task(run_second())
+                try:
+                    async with sessions() as observer:
+                        for _ in range(200):
+                            waiting = await observer.scalar(
+                                text(
+                                    "SELECT count(*) FROM pg_stat_activity WHERE"
+                                    " wait_event_type = 'Lock' AND datname = current_database()"
+                                )
+                            )
+                            if waiting:
+                                break
+                            # pg_stat_activity is a snapshot per transaction.
+                            await observer.rollback()
+                            await asyncio.sleep(0.01)
+                        else:
+                            pytest.fail("the second accept never waited on a lock")
+                    frozen_clock.advance(seconds=2)
+                finally:
+                    await held.rollback()
+                outcome = await asyncio.wait_for(task, timeout=10)
+            assert outcome == "invitation_invalid"
         finally:
             await engine.dispose()
 
