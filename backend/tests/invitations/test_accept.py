@@ -10,6 +10,7 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
+from anyio import to_thread
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +21,6 @@ from app.buildings.models import Building
 from app.core import clock
 from app.core.config import settings
 from app.core.security import generate_token, hash_password, hash_token, verify_password
-from app.invitations import service
 from app.invitations.models import Invitation
 from app.main import app
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
@@ -906,14 +906,14 @@ def while_hashing(monkeypatch: pytest.MonkeyPatch) -> Any:
     after its read and before its write transaction."""
 
     def install(action: Any) -> None:
-        original = service.to_thread.run_sync
+        original = to_thread.run_sync
 
         async def run_sync(func: Any, *args: Any, **kwargs: Any) -> Any:
-            if func is service.hash_password:
+            if func is hash_password:
                 await action()
             return await original(func, *args, **kwargs)
 
-        monkeypatch.setattr(service.to_thread, "run_sync", run_sync)
+        monkeypatch.setattr(to_thread, "run_sync", run_sync)
 
     return install
 

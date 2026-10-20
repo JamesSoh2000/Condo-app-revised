@@ -190,6 +190,23 @@ async def idle_window(db: AsyncSession, user_id: UUID) -> timedelta:
     return timedelta(days=settings.session_idle_resident_days)
 
 
+async def cap_idle_windows(db: AsyncSession, user_id: UUID) -> None:
+    """Shorten the user's live sessions to the idle window their roles allow now, counted from each
+    session's last activity; never lengthen one. For a write that may grant a staff role (an
+    invitation's accept, P4-02b): a session started with the resident window must not stay
+    usable for 7 idle days once its user is staff (ADR-0003). Flushes, never commits."""
+    window = await idle_window(db, user_id)
+    await db.execute(
+        update(AuthSession)
+        .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+        .values(
+            idle_expires_at=func.least(
+                AuthSession.idle_expires_at, AuthSession.last_seen_at + window
+            )
+        )
+    )
+
+
 async def resolve_session(db: AsyncSession, token: str) -> CurrentSession | None:
     """The live session the token names, with its active user; None otherwise. One query."""
     row = (

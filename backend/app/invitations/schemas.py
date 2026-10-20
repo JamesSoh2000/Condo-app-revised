@@ -82,6 +82,14 @@ class InvitationPublicOut(APIModel):
     roles: list[Role]
 
 
+def _not_too_long(password: str) -> str:
+    # The policy's own error type, not pydantic's `string_too_long`, so a client sees one set of
+    # password errors (review round 1, F4); checked here so no over-long value reaches argon2.
+    if len(password) > PASSWORD_MAX_LENGTH:
+        raise PydanticCustomError("password_too_long", "must be at most 128 characters")
+    return password
+
+
 class InvitationAccept(InputModel):
     """Both fields are for a new account only; an existing account's are ignored. No roles: they
     come from the invitation (extra fields are a 422)."""
@@ -95,9 +103,10 @@ class InvitationAccept(InputModel):
         ]
         | None
     ) = None
-    # Not stripped, as `app.auth.schemas.LoginIn::password`; the policy runs in the service.
+    # Not stripped, as `app.auth.schemas.LoginIn::password`; the rest of the policy runs in the
+    # service.
     password: (
-        Annotated[str, StringConstraints(strip_whitespace=False, max_length=PASSWORD_MAX_LENGTH)]
+        Annotated[str, StringConstraints(strip_whitespace=False), AfterValidator(_not_too_long)]
         | None
     ) = None
 

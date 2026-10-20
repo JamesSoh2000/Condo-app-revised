@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
 from app.audit.service import record_audit
-from app.auth.service import resolve_session, start_logged_in_session
+from app.auth.service import cap_idle_windows, resolve_session, start_logged_in_session
 from app.buildings.models import Building
 from app.core import clock
 from app.core.config import settings
@@ -471,6 +471,19 @@ async def accept_invitation(
     await db.rollback()
     password_hash = await to_thread.run_sync(hash_password, new_account[1]) if new_account else None
 
+    # The building first, as create and resend lock it (building, then invitation): FOR SHARE, so
+    # a deactivation waits for this accept, or this waits for it and reads it as committed
+    # (review round 1, F3).
+    building_active = await db.scalar(
+        select(Building.is_active)
+        .where(Building.id == invitation.building_id)
+        .with_for_update(read=True)
+    )
+    if not building_active:
+        raise _invalid()
+    # The time of the claim, not of the read: the token may have expired while the password
+    # hashed (review round 1, F2).
+    now = clock.now()
     claimed = await db.scalar(
         update(Invitation)
         .where(
@@ -515,6 +528,10 @@ async def accept_invitation(
         update(Invitation).where(Invitation.id == invitation.id).values(accepted_user_id=account_id)
     )
     membership_id = await _activate_membership(db, invitation, account_id, now)
+    if new_account is None:
+        # The caller's sessions now follow the roles just granted (review round 1, F1). A new
+        # account's session starts below, with them.
+        await cap_idle_windows(db, account_id)
     await record_audit(
         db,
         action=actions.INVITATION_ACCEPTED,
