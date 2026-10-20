@@ -47,7 +47,7 @@ class Invitation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "(unit_id IS NULL) = (relationship IS NULL)", name="unit_with_relationship"
         ),
         CheckConstraint("email = lower(email)", name="email_lowercase"),
-        # The one-pending-per-email check in `create_invitation`.
+        # The one-pending-per-email check of `create_invitation` and `resend_invitation`.
         Index("ix_invitations_building_id_email", "building_id", "email"),
     )
 

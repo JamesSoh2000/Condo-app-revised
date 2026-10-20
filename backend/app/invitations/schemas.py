@@ -8,7 +8,9 @@ from pydantic_core import PydanticCustomError
 
 from app.core.config import MAX_EMAIL_ADDRESS_LENGTH, is_email_address
 from app.core.schemas import APIModel, InputModel
+from app.core.security import PASSWORD_MAX_LENGTH
 from app.memberships.enums import OccupancyRelationship, Role
+from app.units.schemas import printable
 
 
 class InvitationStatus(StrEnum):
@@ -70,3 +72,37 @@ class InvitationOut(APIModel):
     status: InvitationStatus
     expires_at: datetime
     created_at: datetime
+
+
+class InvitationPublicOut(APIModel):
+    """What the invitee sees before accepting: never the token, its hash, ids or the full email."""
+
+    building_name: str
+    email_masked: str
+    roles: list[Role]
+
+
+class InvitationAccept(InputModel):
+    """Both fields are for a new account only; an existing account's are ignored. No roles: they
+    come from the invitation (extra fields are a 422)."""
+
+    # `users.full_name` is varchar(200). Stripped, and no control characters (NUL fails at flush).
+    full_name: (
+        Annotated[
+            str,
+            StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+            AfterValidator(printable),
+        ]
+        | None
+    ) = None
+    # Not stripped, as `app.auth.schemas.LoginIn::password`; the policy runs in the service.
+    password: (
+        Annotated[str, StringConstraints(strip_whitespace=False, max_length=PASSWORD_MAX_LENGTH)]
+        | None
+    ) = None
+
+
+class InvitationAcceptedOut(APIModel):
+    building_id: UUID
+    membership_id: UUID
+    roles: list[Role]

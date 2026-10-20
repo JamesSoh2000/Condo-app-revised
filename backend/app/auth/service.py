@@ -124,15 +124,24 @@ async def login(
             .where(User.id == found.id, User.password_hash == usable)
             .values(password_hash=upgraded)
         )
-    session = await _new_session(db, found.id, user_agent=user_agent, ip=ip)
+    token = await start_logged_in_session(db, found.id, user_agent=user_agent, ip=ip)
+    await db.commit()
+    return token
+
+
+async def start_logged_in_session(
+    db: AsyncSession, user_id: UUID, *, user_agent: str | None, ip: str | None
+) -> str:
+    """Start a session for `user_id` and audit it `auth.logged_in`, as every login is (login, an
+    invitation's new account). Return the raw token. Flushes, never commits."""
+    session = await _new_session(db, user_id, user_agent=user_agent, ip=ip)
     await record_audit(
         db,
         action=actions.AUTH_LOGGED_IN,
         entity_type="session",
         entity_id=session.id,
-        actor_user_id=found.id,
+        actor_user_id=user_id,
     )
-    await db.commit()
     return session.token
 
 

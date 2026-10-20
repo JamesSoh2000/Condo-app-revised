@@ -72,6 +72,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api")
     app.include_router(health.router, prefix="/api")
     app.include_router(version.router, prefix="/api")
+    app.include_router(invitations.public_router, prefix="/api")
     # Building routers carry their full prefix (app/tenancy/router.py).
     app.include_router(buildings.router)
     app.include_router(files.router)

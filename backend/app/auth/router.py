@@ -41,9 +41,9 @@ async def login(
         email=body.email,
         password=body.password,
         user_agent=request.headers.get("user-agent"),
-        ip=_client_ip(request),
+        ip=client_ip(request),
     )
-    _set_session_cookie(response, token, max_age=settings.session_absolute_days * 24 * 3600)
+    set_session_cookie(response, token, max_age=settings.session_absolute_days * 24 * 3600)
 
 
 @router.post("/logout", status_code=204)
@@ -51,7 +51,7 @@ async def logout(request: Request, response: Response, db: DbSession) -> None:
     """Revoke the current session, if any, and delete the cookie. Always 204."""
     await service.logout(db, request.cookies.get(settings.session_cookie_name))
     # Deleting: same name, Path and flags, or the browser treats it as another cookie.
-    _set_session_cookie(response, "", max_age=0)
+    set_session_cookie(response, "", max_age=0)
 
 
 @router.get("/me", responses=problem_responses(401))
@@ -64,7 +64,7 @@ async def me(current: Current, db: DbSession) -> MeOut:
 async def logout_all(current: Current, response: Response, db: DbSession) -> None:
     """Revoke every session of the current user, this one included, and delete the cookie."""
     await service.logout_all(db, current.user.id)
-    _set_session_cookie(response, "", max_age=0)
+    set_session_cookie(response, "", max_age=0)
 
 
 @router.get("/sessions", responses=problem_responses(400, 401))
@@ -83,10 +83,10 @@ async def sessions_revoke(
     also deletes the cookie, as logout does."""
     await service.revoke_session(db, current.user.id, session_id)
     if session_id == current.session.id:
-        _set_session_cookie(response, "", max_age=0)
+        set_session_cookie(response, "", max_age=0)
 
 
-def _set_session_cookie(response: Response, value: str, *, max_age: int) -> None:
+def set_session_cookie(response: Response, value: str, *, max_age: int) -> None:
     # No Domain: the cookie stays on the exact host (and the __Host- prefix requires that).
     response.set_cookie(
         settings.session_cookie_name,
@@ -99,7 +99,7 @@ def _set_session_cookie(response: Response, value: str, *, max_age: int) -> None
     )
 
 
-def _client_ip(request: Request) -> str | None:
+def client_ip(request: Request) -> str | None:
     # request.client is the proxy-resolved peer (see RequestLoggingMiddleware); keep it only if it
     # is an IP address, since the column is INET.
     host = request.client.host if request.client else None

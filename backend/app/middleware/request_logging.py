@@ -13,6 +13,9 @@ logger = logging.getLogger("app.request")
 
 # A client's X-Request-ID is echoed into headers, logs and error bodies, so only plain ids are kept.
 _REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
+# The public invitation routes carry their token in the path (P4-02b); a token is never logged
+# (CLAUDE.md rule 10). Anchored: building routes' `/invitations/{id}` hold no secret.
+_INVITATION_TOKEN = re.compile(r"^/api/invitations/[^/]*")
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -28,7 +31,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         start = time.perf_counter()
 
         method = request.method
-        path = request.url.path
+        path = _INVITATION_TOKEN.sub("/api/invitations/{token}", request.url.path, count=1)
         client_ip = _get_client_ip(request)
         user_agent = request.headers.get("user-agent")
 
