@@ -22,9 +22,8 @@ through `docs/HUMAN_INBOX.md` and the explanations in `docs/explanations/`.
 
 ## Commands
 
-`make help` lists the targets (`e2e` is a stub until P4-09;
-the worker is added in P3-01). If port 5432 is taken, pass `DB_PORT=<free port>` to
-every target.
+`make help` lists the targets (`e2e` is a stub until P4-09). If port 5432 is taken, pass
+`DB_PORT=<free port>` to every target.
 
 ```bash
 make up            # compose: api, worker, db, mailpit, s3 emulator (dev: --reload, Vite proxy)
@@ -99,8 +98,7 @@ if it didn't.
    Never guess past one.
 4. Tests first for each acceptance criterion. Keep the PR ≤ ~400 non-test lines (tests don't count; never
    cut tests to fit). Stay in scope; put extras under "follow-ups".
-5. Branch `<ticket-id lowercase>-<slug>` (`p2-03-tenant-context`) in its own worktree. Rebase onto the
-   latest `main` before review and before merge.
+5. Branch `<ticket-id lowercase>-<slug>` in its own worktree. Rebase onto `main` before review and merge.
 6. **Never review your own work.** The review runs in fresh sessions (subagents). Fix confirmed findings
    test-first; at most 3 review rounds. You write the explanation yourself, last (after the final `MERGE`,
    the rebase and green CI), following a reality pass: re-read the diff, the cited files and the tests from
@@ -144,11 +142,9 @@ Everything a command prints is re-read on every later turn, so don't print the s
   (P0-03a fence, P0-03b route check, P0-04a LocalStack health, P0-05 ORM test; 2026-10-15).
 - Write in the PR only what is already on the branch. Until the bookkeeping commit exists, say "will be
   added to the inbox / <ticket> in step 6", not "listed in" (P1-04, P1-05, P1-07; 2026-10-16).
-- Commit before mutation probes; restore only tracked files with `git checkout`, and re-run the clean
-  baseline after each mutation (P1-03, P1-05; 2026-10-16).
-- Don't act on a value read before an `await` that can take time (argon2, a lock wait, a second
-  transaction): re-check it in the statement that writes, after the lock, with a fresh clock. And a
-  rule that decides access must not stop applying when unrelated state changes later (an expired
-  session came back when a role was removed). P4-02b rounds 1-3 (×3, plus one revival; 2026-10-20).
+- Commit before mutation probes: `scripts/mutation-probe.sh` refuses a dirty tree, restores and re-runs
+  the baseline (P1-03, P1-05; 2026-10-16).
+- Don't write from a value read before a slow `await` (argon2, a lock wait): re-check it after the lock,
+  with a fresh clock, in the writing statement. Expiry must be final (P4-02b ×4; 2026-10-20).
 - Validate caller input by what Postgres accepts, not Python: lone surrogates, NUL, NaN and byte lengths
   fail at flush as `DBAPIError`, not the documented `ValueError` (P3-02 ×2, P3-03; 2026-10-18).
