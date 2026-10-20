@@ -1,0 +1,7 @@
+{% extends base %}
+{% block body %}
+  <p style="margin: 0 0 12px;">You're invited to join {{ building_name }} as {{ roles | join(", ") }}.</p>
+  <p style="margin: 0 0 12px;"><a href="{{ app_base_url }}{{ link }}">Accept the invitation</a></p>
+  <p style="margin: 0 0 12px; font-size: 12px;">Or paste this link into your browser: {{ app_base_url }}{{ link }}</p>
+  <p style="margin: 0; font-size: 12px; color: #616e7c;">The link works once and expires on {{ expires_at[:10] }} (UTC). If you weren't expecting this email, you can ignore it.</p>
+{% endblock %}

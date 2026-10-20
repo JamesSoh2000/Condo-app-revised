@@ -1,0 +1,7 @@
+{% extends base %}
+{% block body %}You're invited to join {{ building_name }} as {{ roles | join(", ") }}.
+
+Accept the invitation here:
+{{ app_base_url }}{{ link }}
+
+The link works once and expires on {{ expires_at[:10] }} (UTC). If you weren't expecting this email, you can ignore it.{% endblock %}

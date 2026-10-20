@@ -10,3 +10,7 @@ UNIT_CREATED = "unit.created"
 UNIT_UPDATED = "unit.updated"
 UNIT_DEACTIVATED = "unit.deactivated"
 UNIT_ACTIVATED = "unit.activated"
+
+INVITATION_CREATED = "invitation.created"
+INVITATION_REVOKED = "invitation.revoked"
+INVITATION_RESENT = "invitation.resent"

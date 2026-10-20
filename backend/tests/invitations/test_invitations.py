@@ -195,13 +195,27 @@ async def test_email_is_stored_lowercased(as_user, db, world):
         "guard@example.test\r\nBcc: x@example.test",
         "gu\x00ard@example.test",
         "a" * 64 + "@" + "b" * 63 + "." + "c" * 63 + "." + "d" * 63 + ".test",
-        "\ud800@example.test",
     ],
 )
 async def test_invalid_emails_are_422_and_write_nothing(as_user, db, world, email):
     client = await as_user(world.a_manager.user)
 
     r = await client.post(_url(world), json=_guard(email=email))
+
+    assert_problem(r, 422, "validation_error")
+    assert await _count(db) == 0
+    assert await _email_jobs(db) == []
+
+
+async def test_lone_surrogate_in_the_email_is_422(as_user, db, world):
+    client = await as_user(world.a_manager.user)
+
+    # Raw JSON: httpx can't encode a lone surrogate, but a client can send its escape.
+    r = await client.post(
+        _url(world),
+        content=b'{"email": "\\ud800@example.test", "roles": ["security"]}',
+        headers={"content-type": "application/json"},
+    )
 
     assert_problem(r, 422, "validation_error")
     assert await _count(db) == 0
@@ -322,7 +336,7 @@ async def test_closed_invitations_do_not_block_a_new_one(
     elif closed_by == "accepted":
         await _mark_accepted(db, first["id"], world)
     else:
-        frozen_clock.advance(days=7)
+        await _expire(db, first["id"])
 
     second = await _invite(client, world)
 
@@ -338,6 +352,17 @@ async def test_same_email_in_another_building_is_independent(as_user, db, world)
 
     assert r.status_code == 201, r.text
     assert await _count(db) == 2
+
+
+async def _expire(db: AsyncSession, invitation_id: str) -> None:
+    # Moved into the past directly: advancing the clock 7 days would also end the manager's
+    # 12-hour session.
+    await db.execute(
+        update(Invitation)
+        .where(Invitation.id == uuid.UUID(invitation_id))
+        .values(expires_at=clock.now() - timedelta(seconds=1))
+    )
+    await db.flush()
 
 
 async def _mark_accepted(db: AsyncSession, invitation_id: str, world: World) -> None:
@@ -422,7 +447,7 @@ async def test_list_filters_by_status_within_the_building(
 ):
     client = await as_user(world.a_manager.user)
     expired = await _invite(client, world, email="expired@example.test")
-    frozen_clock.advance(days=8)
+    await _expire(db, expired["id"])
     pending = await _invite(client, world, email="pending@example.test")
     accepted = await _invite(client, world, email="accepted@example.test")
     await _mark_accepted(db, accepted["id"], world)
@@ -488,7 +513,7 @@ async def test_revoke_of_an_expired_invitation_closes_it(
 ):
     client = await as_user(world.a_manager.user)
     invitation = await _invite(client, world)
-    frozen_clock.advance(days=8)
+    await _expire(db, invitation["id"])
 
     r = await client.post(f"{_url(world)}/{invitation['id']}/revoke")
 
@@ -520,7 +545,8 @@ async def test_resend_rotates_token_and_expiry_and_requeues(
     invitation = await _invite(client, world)
     (first_job,) = await _email_jobs(db)
     old_token = _token_of(first_job)
-    frozen_clock.advance(days=8)  # expired: resend revives it
+    await _expire(db, invitation["id"])  # resend revives an expired invitation
+    frozen_clock.advance(hours=1)
 
     r = await client.post(f"{_url(world)}/{invitation['id']}/resend")
 
