@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import AfterValidator, BeforeValidator, Field, StringConstraints, field_validator

@@ -36,8 +36,8 @@ def _blank_to_none(value: Any) -> Any:
 
 
 # The column lengths (`units.tower`, `units.label` are varchar(20)). Stripped, as InputModel strips.
-# A BeforeValidator runs before everything to its left, so last: the constraints stay the string's own
-# (with their usual messages) and the check still sees the value before the strip.
+# A BeforeValidator runs before everything to its left, so it comes last: the constraints keep the
+# string's own messages, and the check still sees the value before the strip.
 Label = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=20),

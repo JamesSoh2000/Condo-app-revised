@@ -75,9 +75,7 @@ async def units(
 async def join_request_limit(user: CurrentUser, limiter: Limiter) -> None:
     """Count the request against the user, after the session check (an anonymous one is a 401
     first). After a denial each new request notifies every manager (P4-05b D3)."""
-    await limiter.enforce(
-        f"join_request:user:{user.id}", settings.rate_limit_join_request_user
-    )
+    await limiter.enforce(f"join_request:user:{user.id}", settings.rate_limit_join_request_user)
 
 
 @public_router.post(

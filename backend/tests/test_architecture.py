@@ -625,7 +625,7 @@ def _validators(annotation: Any, metadata: Iterable[Any] = ()) -> Iterator[Any]:
             yield from _validators(arg)
 
 
-def _subclasses(cls: type) -> Iterator[type]:
+def _subclasses[T](cls: type[T]) -> Iterator[type[T]]:
     for sub in cls.__subclasses__():
         yield sub
         yield from _subclasses(sub)

@@ -10,6 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditEvent
+from app.audit.service import record_audit
 from app.buildings.models import Building
 from app.jobs.models import Job
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
@@ -67,7 +68,9 @@ async def _make_request(
 async def pending(
     db: AsyncSession, world: World
 ) -> tuple[User, BuildingMembership, OnboardingRequest]:
-    return await _make_request(db, world.a, unit=await make_unit(db, world.a, label="1003", tower="T1"))
+    return await _make_request(
+        db, world.a, unit=await make_unit(db, world.a, label="1003", tower="T1")
+    )
 
 
 @pytest.fixture
@@ -75,9 +78,10 @@ async def manager(as_user: UserClientFactory, world: World) -> AsyncClient:
     return await as_user(world.a_manager.user)
 
 
-async def _fresh[T](db: AsyncSession, model: type[T], id_: Any) -> T:
+async def _fresh(db: AsyncSession, model: Any, id_: Any) -> Any:
+    """The row as the database has it now, not as the test's session cached it."""
     row = await db.scalar(
-        select(model).where(model.id == id_).execution_options(populate_existing=True)  # type: ignore[attr-defined]
+        select(model).where(model.id == id_).execution_options(populate_existing=True)
     )
     assert row is not None
     return row
@@ -243,9 +247,9 @@ async def test_an_inactive_resident_gets_no_email(
     assert (await manager.post(f"{_base(world.a)}/{request.id}/approve")).status_code == 200
 
     assert await db.scalar(select(func.count()).select_from(Job)) == 0
-    assert await db.scalar(
-        select(func.count()).where(Notification.recipient_user_id == user.id)
-    ) == 1
+    assert (
+        await db.scalar(select(func.count()).where(Notification.recipient_user_id == user.id)) == 1
+    )
 
 
 # Criterion 4: a decided request
@@ -264,7 +268,9 @@ async def test_a_decided_request_is_409_already_decided(
     _, membership, request = pending
     reason = {"reason": "Not on the lease."}
     url = f"{_base(world.a)}/{request.id}"
-    assert (await manager.post(f"{url}/{first}", json=reason if first == "deny" else None)).status_code == 200
+    assert (
+        await manager.post(f"{url}/{first}", json=reason if first == "deny" else None)
+    ).status_code == 200
     state, counts = await _state(db, membership, request), await _counts(db)
 
     again = await manager.post(f"{url}/{second}", json=reason if second == "deny" else None)
@@ -290,7 +296,17 @@ async def test_a_decided_request_is_409_already_decided(
         {"reason": "Not on\x00 the lease"},
         {"reason": "Not on the lease", "status": "approved"},
     ],
-    ids=["missing", "null", "short", "short-after-trim", "long", "trailing-lf", "leading-tab", "nul", "extra"],
+    ids=[
+        "missing",
+        "null",
+        "short",
+        "short-after-trim",
+        "long",
+        "trailing-lf",
+        "leading-tab",
+        "nul",
+        "extra",
+    ],
 )
 async def test_deny_refuses_a_bad_reason(
     db: AsyncSession,
@@ -477,7 +493,7 @@ async def test_a_failed_approval_leaves_nothing(
 ) -> None:
     _, membership, request = pending
     counts = await _counts(db)
-    real_audit = service.record_audit
+    real_audit = record_audit
 
     async def fail_on_activation(db: AsyncSession, **kwargs: Any) -> None:
         # The last write of the approval, after the membership, occupancy and notification.
@@ -546,7 +562,10 @@ async def test_list_filters_by_status_and_paginates(
     await manager.post(f"{base}/{requests[1].id}/deny", json={"reason": "Not on the lease."})
 
     by_status = {
-        status: [item["id"] for item in (await manager.get(base, params={"status": status})).json()["items"]]
+        status: [
+            item["id"]
+            for item in (await manager.get(base, params={"status": status})).json()["items"]
+        ]
         for status in ("pending", "approved", "denied")
     }
 
@@ -579,7 +598,9 @@ async def test_another_buildings_request_is_404_like_a_random_id(
     for request_id in (request.id, uuid4()):
         for action, body in (("approve", None), ("deny", {"reason": "Not on the lease."})):
             response = await manager.post(f"{base}/{request_id}/{action}", json=body)
-            bodies.append(without_request_id(assert_problem(response, 404, "onboarding_request_not_found")))
+            bodies.append(
+                without_request_id(assert_problem(response, 404, "onboarding_request_not_found"))
+            )
 
     assert all(body == bodies[0] for body in bodies)
     assert await _state(db, membership, request) == (

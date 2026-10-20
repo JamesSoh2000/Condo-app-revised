@@ -424,9 +424,7 @@ async def list_requests(
 
 
 async def pending_summary(db: AsyncSession, ctx: TenantContext) -> OnboardingSummary:
-    count = await db.scalar(
-        select(func.count()).where(*_listed(ctx, OnboardingStatus.PENDING))
-    )
+    count = await db.scalar(select(func.count()).where(*_listed(ctx, OnboardingStatus.PENDING)))
     return OnboardingSummary(pending_onboarding_count=count or 0)
 
 

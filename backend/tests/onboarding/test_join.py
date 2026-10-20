@@ -22,7 +22,6 @@ from app.units.models import Unit
 from tests.conftest import CSRF_HEADERS, UserClientFactory
 from tests.factories import make_membership, make_unit, make_user
 from tests.helpers.tenancy import assert_problem, without_request_id
-from tests.test_rate_limit import committing  # noqa: F401 (a fixture)
 from tests.world import World
 
 pytestmark = pytest.mark.anyio

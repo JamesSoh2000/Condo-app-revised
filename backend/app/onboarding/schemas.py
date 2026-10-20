@@ -60,7 +60,7 @@ class OnboardingDecisionIn(InputModel):
 
 
 class OnboardingRequestManagerOut(APIModel):
-    """A join request as property management sees it: who asked, for which unit, and the decision."""
+    """A join request as property management sees it: who asked, for which unit, the decision."""
 
     id: UUID
     full_name: str
