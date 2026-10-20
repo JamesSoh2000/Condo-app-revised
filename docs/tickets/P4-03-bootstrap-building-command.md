@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P4-02, P4-01, P1-06 |
 | Replaces old | M3-T12 (bootstrap part), M4-T09 (pilot data preparation part) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
@@ -158,3 +158,9 @@ Sharpened while framing (see Frame notes); the original six are kept, numbered a
     the loser gets `slug already exists`, not an IntegrityError. Basis: autonomous.
 - Split: no. Estimate ~330 non-test lines (CLI ~100, service ~130, schema ~50, invitations and units
   changes ~20, migration ~25), plus the runbook.
+
+## Follow-ups (from PR #89)
+
+- No operator command recovers a lost or expired first-manager invitation (revoke and resend need a manager
+  in the building). Listed in the inbox.
+- `--manager-name` is not stored, so the accept form can't prefill it; P4-07 may add it (needs a column).

@@ -37,6 +37,13 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | Date | Ticket | Decision | Where recorded | Reversible? |
 |---|---|---|---|---|
+| 2026-10-20 | P4-03 | **`invitations.created_by_user_id` is nullable** (migration `85cc5c7f420d`): NULL means an operator command created the invitation (bootstrap); the accept then records no approver (`status_changed_by_user_id` NULL). Rejected: a "system" user row | PR #89 D1; explanation §2 D1 | Yes (contract migration once no NULLs exist) |
+| 2026-10-20 | P4-03 | Bootstrap writes **one** audit event (`building.bootstrapped`, metadata `{operator, reason, invitation_id, units}`); its units get no `unit.created` events (`import_units(audit=False)`) | PR #89 D2 | Yes |
+| 2026-10-20 | P4-03 | A units CSV with **any** invalid row refuses the whole bootstrap (the import skips them) | PR #89 D3 | Yes |
+| 2026-10-20 | P4-03 | A database error in `bootstrap-building` prints only its SQLSTATE (no message, no traceback), since SQLAlchemy's message carries the job's accept link | PR #89 D4 (review round 1) | Yes |
+| 2026-10-20 | P4-03 | Join codes are `XXXXX-XXXXX` from 31 unambiguous characters (no `0 O 1 I L`); the operator is `$OPERATOR`, else `$USER`, else refused; `--features` defaults to packages, notices, maintenance; `--manager-name` is display-only | PR #89 decisions table | Yes |
+| 2026-10-20 | P4-03 | **Accepted, open follow-up:** no operator command recovers a lost or expired first-manager link (revoke/resend need a manager in the building). Fine for the demo; needed before a real pilot | PR #89 follow-ups; explanation §7 | n/a |
+| 2026-10-20 | P4-03 | Review as James instructed for this run: one fresh Codex `gpt-6-astra` at **medium** effort per round, no Claude reviewer. Round 1 BLOCK (2 Medium, 1 Low, fixed), round 2 MERGE | PR #89 "Independent review" | n/a (merged) |
 | 2026-10-20 | P4-02b | **Sessions follow role changes (option A, chosen by James in B-6):** `lock_idle_deadlines` (user row `FOR NO KEY UPDATE`) before every write of idle deadlines (login/new session, refresh, role change); `apply_role_change` refreshes the caller's session and caps the others to the window the roles allow; stored deadlines are the only rule. **Every later role-changing write (P4-06) must call `apply_role_change`** (carried to P4-06) | PR #87 D6; explanation §2 | Yes (code only) |
 | 2026-10-20 | P4-02b | An invitation never changes an `active` or `suspended` membership: 409 `membership_exists`; `pending`/`denied`/`deactivated` are activated with exactly the invited roles | PR #87 D1 | Yes |
 | 2026-10-20 | P4-02b | A logged-in session of another user is 403 `invitation_email_mismatch` even when no account has the email (no silent cookie swap) | PR #87 D3 | Yes |
