@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
 from app.audit.service import record_audit
-from app.auth.service import cap_idle_windows, resolve_session, start_logged_in_session
+from app.auth.service import resolve_session, start_logged_in_session
 from app.buildings.models import Building
 from app.core import clock
 from app.core.config import settings
@@ -481,8 +481,10 @@ async def accept_invitation(
     )
     if not building_active:
         raise _invalid()
-    # The time of the claim, not of the read: the token may have expired while the password
-    # hashed (review round 1, F2).
+    # Lock the row, then read the clock: the token may have expired while the password hashed
+    # (review round 1, F2) or while this waited for another accept of it that then rolled back
+    # (review round 2). The claim below is still the conditional UPDATE that decides.
+    await db.execute(select(Invitation.id).where(Invitation.id == invitation.id).with_for_update())
     now = clock.now()
     claimed = await db.scalar(
         update(Invitation)
@@ -528,10 +530,6 @@ async def accept_invitation(
         update(Invitation).where(Invitation.id == invitation.id).values(accepted_user_id=account_id)
     )
     membership_id = await _activate_membership(db, invitation, account_id, now)
-    if new_account is None:
-        # The caller's sessions now follow the roles just granted (review round 1, F1). A new
-        # account's session starts below, with them.
-        await cap_idle_windows(db, account_id)
     await record_audit(
         db,
         action=actions.INVITATION_ACCEPTED,

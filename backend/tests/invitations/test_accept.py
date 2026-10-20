@@ -839,7 +839,8 @@ async def test_existing_session_gets_the_staff_idle_window_on_accept(
     as_user: UserClientFactory, db: AsyncSession, world: World, frozen_clock: FrozenClock
 ) -> None:
     # F1: the session was started with the resident window (7 days); after accepting a staff role
-    # it must end after 12 idle hours, as a staff login's would (ADR-0003).
+    # it must end after 12 idle hours, as a staff login's would (ADR-0003). Since review round 2
+    # the window is enforced when the session is read (`app.auth.service::_is_live`).
     invitee = await as_user(world.no_membership)
     before = await _session_of(db, invitee)
     assert before.idle_expires_at - before.last_seen_at == timedelta(
@@ -848,16 +849,12 @@ async def test_existing_session_gets_the_staff_idle_window_on_accept(
     token, _ = await _invite(db, world, email=world.no_membership.email)
     assert (await invitee.post(_accept_url(token), json={})).status_code == 200
 
-    after = await _session_of(db, invitee)
-    assert after.idle_expires_at - after.last_seen_at == timedelta(
-        hours=settings.session_idle_staff_hours
-    )
-    frozen_clock.advance(hours=settings.session_idle_staff_hours + 1)
+    frozen_clock.advance(hours=settings.session_idle_staff_hours, minutes=1)
     assert_problem(await invitee.get("/api/auth/me"), 401, "not_authenticated")
 
 
 async def test_accept_shortens_the_accounts_other_sessions_too(
-    as_user: UserClientFactory, db: AsyncSession, world: World
+    as_user: UserClientFactory, db: AsyncSession, world: World, frozen_clock: FrozenClock
 ) -> None:
     # F1 neighbour: another device's session of the same account becomes staff as well.
     other_device = await as_user(world.no_membership)
@@ -865,24 +862,20 @@ async def test_accept_shortens_the_accounts_other_sessions_too(
     token, _ = await _invite(db, world, email=world.no_membership.email)
     assert (await invitee.post(_accept_url(token), json={})).status_code == 200
 
-    other = await _session_of(db, other_device)
-    assert other.idle_expires_at - other.last_seen_at == timedelta(
-        hours=settings.session_idle_staff_hours
-    )
+    frozen_clock.advance(hours=settings.session_idle_staff_hours, minutes=1)
+    assert_problem(await other_device.get("/api/auth/me"), 401, "not_authenticated")
 
 
 async def test_resident_invitation_keeps_the_resident_idle_window(
-    as_user: UserClientFactory, db: AsyncSession, world: World
+    as_user: UserClientFactory, db: AsyncSession, world: World, frozen_clock: FrozenClock
 ) -> None:
-    # F1 neighbour: the change only ever shortens, and only for a staff role.
+    # F1 neighbour: only a staff role shortens the window.
     invitee = await as_user(world.no_membership)
     token, _ = await _invite(db, world, email=world.no_membership.email, roles=(Role.RESIDENT,))
     assert (await invitee.post(_accept_url(token), json={})).status_code == 200
 
-    session = await _session_of(db, invitee)
-    assert session.idle_expires_at - session.last_seen_at == timedelta(
-        days=settings.session_idle_resident_days
-    )
+    frozen_clock.advance(hours=settings.session_idle_staff_hours, minutes=1)
+    assert (await invitee.get("/api/auth/me")).status_code == 200
 
 
 async def test_idle_expired_session_counts_as_no_session(

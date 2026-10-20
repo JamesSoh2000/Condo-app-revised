@@ -12,7 +12,17 @@ from typing import NamedTuple
 from uuid import UUID
 
 from anyio import to_thread
-from sqlalchemy import ColumnElement, and_, delete, exists, func, or_, select, update
+from sqlalchemy import (
+    ColumnElement,
+    SQLColumnExpression,
+    and_,
+    delete,
+    exists,
+    func,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
@@ -173,38 +183,21 @@ async def _new_session(
     return NewSession(token, session.id)
 
 
+def _holds_staff_role(user_id: UUID | SQLColumnExpression[UUID]) -> ColumnElement[bool]:
+    """The user holds a staff role on an active membership."""
+    return exists().where(
+        BuildingMembership.user_id == user_id,
+        BuildingMembership.status == MembershipStatus.ACTIVE,
+        MembershipRole.membership_id == BuildingMembership.id,
+        MembershipRole.role.in_(STAFF_ROLES),
+    )
+
+
 async def idle_window(db: AsyncSession, user_id: UUID) -> timedelta:
     """12 hours if the user holds a staff role on an active membership, else 7 days (ADR-0003)."""
-    is_staff = await db.scalar(
-        select(
-            exists().where(
-                BuildingMembership.user_id == user_id,
-                BuildingMembership.status == MembershipStatus.ACTIVE,
-                MembershipRole.membership_id == BuildingMembership.id,
-                MembershipRole.role.in_(STAFF_ROLES),
-            )
-        )
-    )
-    if is_staff:
+    if await db.scalar(select(_holds_staff_role(user_id))):
         return timedelta(hours=settings.session_idle_staff_hours)
     return timedelta(days=settings.session_idle_resident_days)
-
-
-async def cap_idle_windows(db: AsyncSession, user_id: UUID) -> None:
-    """Shorten the user's live sessions to the idle window their roles allow now, counted from each
-    session's last activity; never lengthen one. For a write that may grant a staff role (an
-    invitation's accept, P4-02b): a session started with the resident window must not stay
-    usable for 7 idle days once its user is staff (ADR-0003). Flushes, never commits."""
-    window = await idle_window(db, user_id)
-    await db.execute(
-        update(AuthSession)
-        .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
-        .values(
-            idle_expires_at=func.least(
-                AuthSession.idle_expires_at, AuthSession.last_seen_at + window
-            )
-        )
-    )
 
 
 async def resolve_session(db: AsyncSession, token: str) -> CurrentSession | None:
@@ -222,11 +215,23 @@ async def resolve_session(db: AsyncSession, token: str) -> CurrentSession | None
 
 
 def _is_live(now: datetime) -> ColumnElement[bool]:
-    """Not revoked, and before both deadlines."""
+    """Not revoked, before both deadlines, and within the staff idle window if the user is staff.
+
+    The stored `idle_expires_at` follows the roles read when it was written. A staff role granted
+    since (an invitation accepted, P4-02b) would leave a session written with the resident window
+    usable for 7 idle days, and capping the stored value can't win against a refresh or login that
+    read the old roles and writes after it (review round 2). So the role is checked here, on every
+    read, as the stored deadline is.
+    """
+    staff_idle = timedelta(hours=settings.session_idle_staff_hours)
     return and_(
         AuthSession.revoked_at.is_(None),
         AuthSession.expires_at > now,
         AuthSession.idle_expires_at > now,
+        or_(
+            AuthSession.last_seen_at > now - staff_idle,
+            ~_holds_staff_role(AuthSession.user_id),
+        ),
     )
 
 
