@@ -97,6 +97,17 @@ round (PR #65 round 3). Fix them test-first if this ticket touches the menu, or 
   409 `unit_inactive`, 422 `validation_error` with `errors[].type` `missing` or `password_<reason>`, 429 with
   `Retry-After`. The accept answers `{building_id, membership_id, roles}`.
 
+## Carried from P4-04 (do while framing)
+
+- The reset email links to `${APP_BASE_URL}/reset-password/<token>` (43 URL-safe characters): this ticket
+  adds that page. As for `/invite/:token`, keep the token out of `Referer` (`no-referrer` or `same-origin`).
+- The API (PR #90): `POST /api/auth/password-reset/request {email}` always answers 202 `{detail}` (show it as
+  is; it never says whether the account exists), 422 for a malformed body, 429 with `Retry-After`.
+  `POST /api/auth/password-reset/confirm {token, new_password}` answers 204 and logs out every session (send
+  the user to login), 400 `reset_token_invalid` (one body for every bad token: offer to request a new link),
+  422 `validation_error` with `errors[].type` `password_<reason>` on `new_password` (the token stays usable),
+  429.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

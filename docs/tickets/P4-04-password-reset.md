@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P3-02, P2-05, P2-04 |
 | Replaces old | M3-T06 (reset part), M3-T13 (reset delivery) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
@@ -174,3 +174,11 @@ This completes demo journey 7, and it is one of the most commonly attacked flows
   - D5 The email's locale is the user's when supported, else `en` (as invitations use the building's).
 - Split: none. Estimate ~350 non-test lines (model and migration ~80, service ~160, router and schemas
   ~60, templates ~20, engine and login ~20).
+
+## Follow-ups (from PR #90)
+
+- No cleanup job for `password_reset_tokens`: used, revoked and expired rows stay. Add one like
+  `sessions.cleanup` (daily, delete rows ended more than 30 days ago) when the next auth or jobs ticket runs.
+- Response timing is not constant: a known active account's request does three more statements. Accepted
+  (the ticket asks only for the rate-limit check and the token work on both paths).
+- The `/reset-password/:token` page is P4-07's (carried there).
