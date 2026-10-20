@@ -7,21 +7,24 @@ at the bottom can prove it fails on a bad route, not just that it passes on toda
 import ast
 import re
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, get_args, get_origin
 
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
 from starlette.routing import BaseRoute, Host, Mount, Route, WebSocketRoute
 
 from app.auth.allowlist import AUTH_ALLOWLIST
 from app.auth.deps import get_current_session, get_current_user
+from app.core.schemas import InputModel
 from app.main import app, create_app
 from app.tenancy.context import TenantContext
 from app.tenancy.deps import get_own_membership, get_tenant_context
+from app.units.schemas import printable, printable_before_strip
 from tests.helpers.auth import login_as
 from tests.helpers.tenancy import assert_cross_building_404, assert_problem
 
@@ -605,3 +608,72 @@ def test_meta_audit_event_update_or_delete_is_reported(tmp_path):
         "core/table.py",
         "core/table2.py",
     ]
+
+
+# Fitness test 6 (P4-05b, the pattern promoted from P3-04a and P4-05a): a control-character check
+# on a stripped input string must run before the strip, or `"Rosa\n"` is stored as `"Rosa"`.
+
+
+def _validators(annotation: Any, metadata: Iterable[Any] = ()) -> Iterator[Any]:
+    """Every validator object in a field's metadata and, recursively, inside its annotation's
+    `Annotated` and union members (`Tower` is `Annotated[Label | None, …]`)."""
+    yield from metadata
+    if get_origin(annotation) is Annotated:
+        yield from _validators(get_args(annotation)[0], annotation.__metadata__)
+    else:
+        for arg in get_args(annotation):
+            yield from _validators(arg)
+
+
+def _subclasses[T](cls: type[T]) -> Iterator[type[T]]:
+    for sub in cls.__subclasses__():
+        yield sub
+        yield from _subclasses(sub)
+
+
+def printable_after_strip(models: Iterable[type[BaseModel]]) -> list[str]:
+    """Fields of the given models whose `printable` check is an `AfterValidator`."""
+    return sorted(
+        f"{model.__name__}.{name}"
+        for model in models
+        for name, field in model.model_fields.items()
+        if any(
+            isinstance(v, AfterValidator) and v.func is printable
+            for v in _validators(field.annotation, field.metadata)
+        )
+    )
+
+
+def test_no_input_field_checks_control_characters_after_the_strip():
+    assert printable_after_strip(_subclasses(InputModel)) == []
+
+
+def test_the_check_sees_the_fields_checked_before_the_strip():
+    """Not vacuous: the walk finds the before-strip check on today's fields, nested ones too."""
+    found = {
+        f"{model.__name__}.{name}"
+        for model in _subclasses(InputModel)
+        for name, field in model.model_fields.items()
+        if any(
+            isinstance(v, BeforeValidator) and v.func is printable_before_strip
+            for v in _validators(field.annotation, field.metadata)
+        )
+    }
+    assert {
+        "UnitCreate.label",
+        "UnitCreate.tower",
+        "SignupIn.full_name",
+        "BootstrapInput.name",
+        "OnboardingDecisionIn.reason",
+    } <= found
+
+
+def test_meta_printable_after_the_strip_is_reported():
+    # A plain BaseModel, not an InputModel subclass: the real check above must not see it.
+    class Bad(BaseModel):
+        model_config = ConfigDict(str_strip_whitespace=True)
+
+        name: Annotated[str, AfterValidator(printable)]
+        tower: Annotated[Annotated[str, AfterValidator(printable)] | None, Field()] = None
+
+    assert printable_after_strip([Bad]) == ["Bad.name", "Bad.tower"]

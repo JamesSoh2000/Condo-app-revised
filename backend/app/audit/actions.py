@@ -25,3 +25,5 @@ INVITATION_ACCEPTED = "invitation.accepted"
 MEMBERSHIP_ACTIVATED = "membership.activated"
 
 ONBOARDING_SUBMITTED = "onboarding.submitted"
+ONBOARDING_APPROVED = "onboarding.approved"
+ONBOARDING_DENIED = "onboarding.denied"

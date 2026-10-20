@@ -20,16 +20,28 @@ def printable(value: str) -> str:
     return value
 
 
+def printable_before_strip(value: Any) -> Any:
+    """`printable` for a stripped string, as a `BeforeValidator`: on the raw value, since the strip
+    would remove a control character at either end (`"101\n"`) instead of refusing it (P3-04a,
+    P4-05a; tests/test_architecture.py checks no input field runs `printable` after the strip). A
+    non-string is left to the type check."""
+    return printable(value) if isinstance(value, str) else value
+
+
 def _blank_to_none(value: Any) -> Any:
-    # A blank tower is no tower (and a CSV's empty cell, P4-01b, will mean the same).
+    # A blank tower is no tower (and a CSV's empty cell, P4-01b, means the same). Checked first, so
+    # a tab or newline isn't taken for blank.
+    value = printable_before_strip(value)
     return None if isinstance(value, str) and not value.strip() else value
 
 
 # The column lengths (`units.tower`, `units.label` are varchar(20)). Stripped, as InputModel strips.
+# A BeforeValidator runs before everything to its left, so it comes last: the constraints keep the
+# string's own messages, and the check still sees the value before the strip.
 Label = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=20),
-    AfterValidator(printable),
+    BeforeValidator(printable_before_strip),
 ]
 Tower = Annotated[Label | None, BeforeValidator(_blank_to_none)]
 # Strict: lax mode would store `true` as floor 1 and accept "3" (review round 1, Codex).

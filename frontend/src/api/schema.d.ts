@@ -608,6 +608,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/buildings/{building_id}/onboarding-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List
+         * @description The building's join requests in `status`, newest first. Pending ones whose membership is no
+         *     longer pending (an invitation was accepted) are left out: they can't be decided.
+         */
+        get: operations["onboarding_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/onboarding-requests/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description How many join requests the pending list shows (for the managers' badge).
+         */
+        get: operations["onboarding_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/onboarding-requests/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve
+         * @description Approve a pending join request: the member becomes an active resident of the request's unit
+         *     and is notified. 409 `already_decided`, `membership_not_pending` or `unit_inactive`.
+         */
+        post: operations["onboarding_approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/onboarding-requests/{request_id}/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deny
+         * @description Deny a pending join request with a reason the requester sees; they may ask again. 409
+         *     `already_decided` or `membership_not_pending`.
+         */
+        post: operations["onboarding_deny"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/buildings/{building_id}/units": {
         parameters: {
             query?: never;
@@ -1018,6 +1101,14 @@ export interface components {
          */
         OccupancyRelationship: "owner" | "tenant" | "household";
         /**
+         * OnboardingDecisionIn
+         * @description A denial's reason, which the resident sees (`/onboarding/me`, the notification and email).
+         */
+        OnboardingDecisionIn: {
+            /** Reason */
+            reason: string;
+        };
+        /**
          * OnboardingMeOut
          * @description The caller's membership status, and the unit, relationship and decision reason of their
          *     latest join request; the request fields are null when there is none (an invited member).
@@ -1029,6 +1120,41 @@ export interface components {
             /** Tower */
             tower: string | null;
             relationship: components["schemas"]["OccupancyRelationship"] | null;
+            /** Decision Reason */
+            decision_reason: string | null;
+        };
+        /**
+         * OnboardingRequestManagerOut
+         * @description A join request as property management sees it: who asked, for which unit, the decision.
+         */
+        OnboardingRequestManagerOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Full Name */
+            full_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Unit Id
+             * Format: uuid
+             */
+            unit_id: string;
+            /** Unit Label */
+            unit_label: string;
+            /** Tower */
+            tower: string | null;
+            relationship: components["schemas"]["OccupancyRelationship"];
+            status: components["schemas"]["OnboardingStatus"];
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /** Decided At */
+            decided_at: string | null;
             /** Decision Reason */
             decision_reason: string | null;
         };
@@ -1067,6 +1193,14 @@ export interface components {
          * @enum {string}
          */
         OnboardingStatus: "pending" | "approved" | "denied";
+        /**
+         * OnboardingSummary
+         * @description What the pending list shows, counted (the managers' badge).
+         */
+        OnboardingSummary: {
+            /** Pending Onboarding Count */
+            pending_onboarding_count: number;
+        };
         /** Page[InvitationOut] */
         Page_InvitationOut_: {
             /** Items */
@@ -1078,6 +1212,13 @@ export interface components {
         Page_NotificationOut_: {
             /** Items */
             items: components["schemas"]["NotificationOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[OnboardingRequestManagerOut] */
+        Page_OnboardingRequestManagerOut_: {
+            /** Items */
+            items: components["schemas"]["OnboardingRequestManagerOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -1999,6 +2140,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     buildings_get: {
@@ -2734,6 +2884,275 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    onboarding_list: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["OnboardingStatus"];
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_OnboardingRequestManagerOut_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    onboarding_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    onboarding_approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingRequestManagerOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    onboarding_deny: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingRequestManagerOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

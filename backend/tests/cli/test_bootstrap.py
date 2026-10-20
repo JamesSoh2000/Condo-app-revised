@@ -244,6 +244,11 @@ async def test_existing_world_slug_is_refused(db: AsyncSession, world: World) ->
         ("name", "n" * 201),
         ("address", ""),
         ("manager_name", "tab\there"),
+        # Control characters at either end, refused before the strip (P4-05b criterion 16).
+        ("name", "Cedar Court\n"),
+        ("address", "\t1 Main Street"),
+        ("operator", "ops\r"),
+        ("reason", "first building\n"),
     ],
 )
 def test_bad_input_is_refused(field: str, value: Any) -> None:

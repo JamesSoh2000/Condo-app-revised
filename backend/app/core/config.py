@@ -145,6 +145,8 @@ class Settings(BaseSettings):
     # The join form's unit search, as the user types (P4-05a D3).
     rate_limit_join_units_ip: RatePolicy = RatePolicy(limit=120, window_seconds=600)
     rate_limit_invitation_ip: RatePolicy = RatePolicy(limit=20, window_seconds=600)
+    # Join requests per user: after a denial, each new request notifies every manager (P4-05b D3).
+    rate_limit_join_request_user: RatePolicy = RatePolicy(limit=10, window_seconds=3600)
 
     @field_validator("email_recipient_allowlist", mode="before")
     @classmethod
