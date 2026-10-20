@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-01a |
 | Replaces old | M3-T08 (part of [P4-01](./P4-01-units-api.md)) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
@@ -117,3 +117,10 @@ CLI `import-units`; `app.units.service.parse_units_csv`, `import_units(db, build
     `app/units/service.py`).
   - The unknown-slug message echoes the slug, as the `audit` command's `UnknownFilterValue` does (convention).
 - Split: none. Estimate ~220 non-test lines (`4c015f0` measured ~210 for the same scope).
+
+## Follow-ups (bookkeeping, PR #85)
+
+- R3-1 (Low, accepted): ORM `Unit` objects loaded in the caller's session before `import_units` keep stale
+  floors (Core upsert). Carry note in P4-03.
+- No real-database test of a failure midway through an import rolling back earlier units and audit rows.
+- Needs Postgres 18 (`RETURNING old`); carry note in D-01.

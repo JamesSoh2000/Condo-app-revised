@@ -89,6 +89,17 @@ CLI `bootstrap-building`. Audit action `building.bootstrapped`.
 - The compose service is `app`, not `api`: use `docker compose exec app python -m app.cli …` (as `make seed`
   does).
 
+## Carried from P4-01b (do while framing)
+
+- Call `app.units.service.parse_units_csv` (it refuses text over 1 MiB itself) and
+  `import_units(db, building_id, parsed, dry_run=False)` inside the command's one transaction; it flushes,
+  never commits (`test_import_flushes_but_never_commits`).
+- `import_units` writes with Core upserts, so a `Unit` loaded in the same session before the call keeps its
+  old floor (review round 3, Low, accepted in PR #85). Don't reuse units loaded before the import, or call
+  `db.expire_all()` after it.
+- Invalid rows are skipped and reported, not fatal (P4-01 D3): decide while framing whether bootstrap should
+  refuse a file with any invalid row (e.g. dry-run first, then fail if `report.invalid`).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
