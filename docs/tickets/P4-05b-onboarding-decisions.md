@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P4-05a |
 | Replaces old | part of [P4-05](./P4-05-resident-join-onboarding-approval.md) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
@@ -172,3 +172,12 @@ From PR #91 and its review rounds; see [the explanation](../explanations/P4-05a-
   - The optional join-code log redaction stays a follow-up (not in scope).
 - Split: part b of [P4-05](./P4-05-resident-join-onboarding-approval.md). Estimate ~330 non-test lines
   (service ~170, router ~70, schemas ~45, config/kinds/actions ~10, control-character fixes ~25): no split.
+
+## Follow-ups (from PR #92)
+
+- Join requests whose membership an invitation activated stay `pending` in the table and are hidden from the
+  managers' list (D1): carried to [P4-06](./P4-06-membership-administration.md).
+- Unicode `Cf`/`Zl`/`Zp` are refused only in the deny reason (review round 1 L1); unit labels, building names and
+  full names refuse control characters (`Cc`) only: carried to P4-06.
+- `FullName` keeps its `BeforeValidator` before the constraints, so an empty name gets pydantic's generic message
+  (cosmetic). The join code still appears verbatim in request logs (optional, from P4-05a).

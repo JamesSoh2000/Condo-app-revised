@@ -109,6 +109,19 @@ From the P1-03 reviews (PR #45, ADR-0016). The occupancy helpers in `app/members
   Copy `backend/tests/invitations/test_concurrency.py::test_session_writes_and_a_staff_accept_take_turns` for the
   races.
 
+## Carried from P4-05b (do while framing)
+
+From PR #92; see [the explanation](../explanations/P4-05b-onboarding-decisions.md) §7.
+- **Requests left pending by an invitation.** When an invitation accept (P4-02b) activates a membership whose join
+  request is still `pending`, P4-05b refuses to decide it (409 `membership_not_pending`) and hides it from the
+  managers' list and count, but the row stays `pending`. If P4-06 changes membership status (reactivation, suspension),
+  decide whether to close such requests (a new request state, or deny with a system reason), and make sure P4-06's own
+  status changes don't leave a `pending` request on a non-pending membership.
+- **A status change P4-06 makes to a `pending` membership** must keep `onboarding_requests` consistent: approving
+  through P4-05b updates the membership only from `pending`.
+- Optional: refuse Unicode `Cf`/`Zl`/`Zp` in other text people see (unit labels, names), as the deny reason does
+  (`app/onboarding/schemas.py::_visible`); review round 1 L1 on P4-05b.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
