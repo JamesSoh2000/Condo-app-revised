@@ -34,8 +34,8 @@ class MemberOut(APIModel):
 class MemberRolesIn(InputModel):
     """Roles to give and to take away. A role already held (add) or not held (remove) is ignored."""
 
-    add: Annotated[list[Role], Field(max_length=len(Role))] = []
-    remove: Annotated[list[Role], Field(max_length=len(Role))] = []
+    add: Annotated[list[Role], Field(default_factory=list, max_length=len(Role))]
+    remove: Annotated[list[Role], Field(default_factory=list, max_length=len(Role))]
 
     @model_validator(mode="after")
     def _a_change(self) -> Self:

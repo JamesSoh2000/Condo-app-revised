@@ -1175,16 +1175,10 @@ export interface components {
          * @description Roles to give and to take away. A role already held (add) or not held (remove) is ignored.
          */
         MemberRolesIn: {
-            /**
-             * Add
-             * @default []
-             */
-            add: components["schemas"]["Role"][];
-            /**
-             * Remove
-             * @default []
-             */
-            remove: components["schemas"]["Role"][];
+            /** Add */
+            add?: components["schemas"]["Role"][];
+            /** Remove */
+            remove?: components["schemas"]["Role"][];
         };
         /**
          * MemberSuspendIn

@@ -62,7 +62,9 @@ async def _status(db: AsyncSession, membership_id: UUID) -> tuple[MembershipStat
 
 async def _events(db: AsyncSession, action: str) -> list[AuditEvent]:
     return list(
-        await db.scalars(select(AuditEvent).where(AuditEvent.action == action).order_by(AuditEvent.id))
+        await db.scalars(
+            select(AuditEvent).where(AuditEvent.action == action).order_by(AuditEvent.id)
+        )
     )
 
 
@@ -148,9 +150,7 @@ async def test_list_filters_by_role_status_and_search(
     assert [item["membership_id"] for item in staff] == [str(world.a_security.membership.id)]
 
     suspended = await _all_pages(manager, url, status="suspended")
-    assert [item["membership_id"] for item in suspended] == [
-        str(world.a_suspended.membership.id)
-    ]
+    assert [item["membership_id"] for item in suspended] == [str(world.a_suspended.membership.id)]
 
     # Name or email, any case, anywhere in it.
     found = await _all_pages(manager, url, search="RESIDENT")
@@ -362,7 +362,7 @@ async def test_reactivate_clears_the_suspension_reason(
 
 @pytest.mark.parametrize(
     "reason",
-    [None, "  ab  ", "x" * 501, "Late\nfees", "\tLate fees", "Late​fees", "Late fees", 5],
+    [None, "  ab  ", "x" * 501, "Late\nfees", "\tLate fees", "Late\u200bfees", "Late\u2028fees", 5],
     ids=["missing", "short", "long", "newline", "leading-tab", "zero-width", "line-sep", "number"],
 )
 async def test_suspend_reason_validation(
@@ -382,11 +382,11 @@ async def test_suspend_refuses_extra_fields(manager: AsyncClient, world: World) 
     assert r.status_code == 422, r.text
 
 
-async def test_manager_cannot_suspend_self(manager: AsyncClient, world: World, db: AsyncSession) -> None:
+async def test_manager_cannot_suspend_self(
+    manager: AsyncClient, world: World, db: AsyncSession
+) -> None:
     await _second_manager(db, world)
-    r = await manager.post(
-        _member(world.a, world.a_manager.membership.id, "suspend"), json=REASON
-    )
+    r = await manager.post(_member(world.a, world.a_manager.membership.id, "suspend"), json=REASON)
     assert_problem(r, 409, "cannot_target_self")
     assert (await _status(db, world.a_manager.membership.id))[0] == MembershipStatus.ACTIVE
 
@@ -470,7 +470,9 @@ async def test_roles_change_audits_exact_lists(
     assert event.metadata_ == {"added": ["security"], "removed": ["council"]}
 
 
-async def test_roles_noop_writes_no_audit(manager: AsyncClient, world: World, db: AsyncSession) -> None:
+async def test_roles_noop_writes_no_audit(
+    manager: AsyncClient, world: World, db: AsyncSession
+) -> None:
     target = world.a_resident2.membership.id
     r = await manager.post(
         _member(world.a, target, "roles"), json={"add": ["resident"], "remove": ["security"]}
@@ -501,9 +503,13 @@ async def test_roles_body_validation(
     assert await _roles(db, target) == ["resident"]
 
 
-async def test_cannot_remove_last_role(manager: AsyncClient, world: World, db: AsyncSession) -> None:
+async def test_cannot_remove_last_role(
+    manager: AsyncClient, world: World, db: AsyncSession
+) -> None:
     target = world.a_security.membership.id
-    r = await manager.post(_member(world.a, target, "roles"), json={"add": [], "remove": ["security"]})
+    r = await manager.post(
+        _member(world.a, target, "roles"), json={"add": [], "remove": ["security"]}
+    )
     assert_problem(r, 409, "no_roles_left")
     assert await _roles(db, target) == ["security"]
 
@@ -512,7 +518,9 @@ async def test_cannot_remove_resident_with_unit(
     manager: AsyncClient, world: World, db: AsyncSession
 ) -> None:
     target = world.a_council.membership.id
-    r = await manager.post(_member(world.a, target, "roles"), json={"add": [], "remove": ["resident"]})
+    r = await manager.post(
+        _member(world.a, target, "roles"), json={"add": [], "remove": ["resident"]}
+    )
     assert_problem(r, 409, "resident_has_unit")
     assert await _roles(db, target) == ["council", "resident"]
 
@@ -577,9 +585,7 @@ async def test_last_manager_counts_only_active_managers(
     assert_problem(r, 409, "last_manager")
 
 
-async def test_another_buildings_manager_does_not_count(
-    manager: AsyncClient, world: World
-) -> None:
+async def test_another_buildings_manager_does_not_count(manager: AsyncClient, world: World) -> None:
     # b_manager is active, in building B: A would still have none.
     r = await manager.post(
         _member(world.a, world.a_manager.membership.id, "roles"),

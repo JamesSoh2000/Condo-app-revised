@@ -2,9 +2,9 @@
 demoting or suspending each other, a manager acting after losing their authority, two suspensions of
 one member, and a session write meeting a role change.
 
-On real connections, as `tests/onboarding/test_decisions_concurrency.py` (whose `_run` builds the world
-in a scratch database). The first write is held open (its commit is deferred); the second must wait for
-it on the building lock, then act on what it committed.
+On real connections, as `tests/onboarding/test_decisions_concurrency.py` (whose `_run` builds the
+world in a scratch database). The first write is held open (its commit is deferred); the second must
+wait for it on the building lock, then act on what it committed.
 """
 
 import asyncio
@@ -235,9 +235,9 @@ def test_session_writes_and_a_staff_role_change_take_turns(
 ) -> None:
     # Criterion 14, as `tests/invitations/test_concurrency.py::
     # test_session_writes_and_a_staff_accept_take_turns`: a resident is logged in; one of their
-    # sessions is refreshed (or a new login starts) while a manager gives them `security`. Each waits
-    # for the other on the per-user lock, so whichever writes second sees the first's result; either
-    # way the written session ends after 13 idle hours (ADR-0003).
+    # sessions is refreshed (or a new login starts) while a manager gives them `security`. Each
+    # waits for the other on the per-user lock, so whichever writes second sees the first's result;
+    # either way the written session ends after 13 idle hours (ADR-0003).
     async def body(sessions: Sessions, world: World) -> None:
         user_id = world.a_resident1.user.id
         async with sessions() as db:

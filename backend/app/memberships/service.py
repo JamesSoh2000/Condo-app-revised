@@ -1,10 +1,10 @@
 """Membership administration (P4-06a): the member list, role changes, suspend and reactivate.
 
-Every write takes the building row lock first (`_lock_building`), so these writes run one at a time
-per building. It makes its change, then `_check_managers` counts the building's active managers and
-re-checks the caller, both on what the previous writer committed. A refusal raises, which rolls the
-change back. `change_roles`, `suspend_member` and `reactivate_member` commit once (CLAUDE.md rule 5);
-`list_members` only reads.
+Every write takes the building row lock first (`_lock_building`), so these writes run one at a
+time per building, and reads the caller again under it. It makes its change, then
+`_check_managers` counts the building's active managers and refuses a caller who lost their
+authority while waiting. A refusal raises, which rolls the change back. `change_roles`,
+`suspend_member` and `reactivate_member` commit once (CLAUDE.md rule 5); `list_members` only reads.
 """
 
 from collections import defaultdict
@@ -102,7 +102,8 @@ async def _members_out(
             ),
         )
         .outerjoin(
-            Unit, and_(Unit.building_id == UnitOccupancy.building_id, Unit.id == UnitOccupancy.unit_id)
+            Unit,
+            and_(Unit.building_id == UnitOccupancy.building_id, Unit.id == UnitOccupancy.unit_id),
         )
         .where(
             BuildingMembership.building_id == building_id,
@@ -183,8 +184,9 @@ async def _lock_building(db: AsyncSession, ctx: TenantContext) -> _Caller:
     )
     caller = (
         await db.execute(
-            select(BuildingMembership.status, _holds(Role.PROPERTY_MANAGEMENT).label("manager"))
-            .where(
+            select(
+                BuildingMembership.status, _holds(Role.PROPERTY_MANAGEMENT).label("manager")
+            ).where(
                 BuildingMembership.id == ctx.membership_id,
                 BuildingMembership.building_id == ctx.building_id,
             )
@@ -350,7 +352,9 @@ async def _transition(
         .returning(BuildingMembership.id)
     )
     if changed is None:
-        raise InvalidTransition(detail=f"Only a {from_status.value} member can be {to_status.value}.")
+        raise InvalidTransition(
+            detail=f"Only a {from_status.value} member can be {to_status.value}."
+        )
 
 
 async def suspend_member(
@@ -369,9 +373,7 @@ async def suspend_member(
     return await _finish(db, ctx, caller, target, actions.MEMBERSHIP_SUSPENDED)
 
 
-async def reactivate_member(
-    db: AsyncSession, ctx: TenantContext, membership_id: UUID
-) -> MemberOut:
+async def reactivate_member(db: AsyncSession, ctx: TenantContext, membership_id: UUID) -> MemberOut:
     """Lift a suspension: the member is active again with the roles they had, and the reason is
     cleared. 409 `invalid_transition` unless suspended."""
     caller = await _lock_building(db, ctx)
