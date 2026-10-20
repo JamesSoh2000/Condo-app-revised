@@ -7,11 +7,12 @@ run on the stack in the PR.
 """
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from typer.testing import CliRunner
 
@@ -249,6 +250,41 @@ def test_blank_lines_are_not_rows():
     rows = "".join(f",{n},\n\n" for n in range(MAX_IMPORT_ROWS))
 
     assert len(parse_units_csv(HEADER + rows).rows) == MAX_IMPORT_ROWS
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"], ids=["lf", "crlf", "cr"])
+def test_every_csv_line_ending_is_read(newline):
+    # Review round 2 (Codex): CR-only files were "not valid CSV" (StringIO translated nothing).
+    text = newline.join(["tower,label,floor", "A,101,1", 'A,"10\n2",2', "A,103,3", ""])
+
+    parsed = parse_units_csv(text)
+
+    assert [(r.line, r.label) for r in parsed.rows] == [(2, "101"), (5, "103")]
+    assert [r.line for r in parsed.invalid] == [3]
+
+
+async def test_floor_update_advances_updated_at(db, world):
+    # Review round 2 (Codex): ON CONFLICT DO UPDATE skips the mixin's ORM `onupdate`.
+    unit = await make_unit(db, world.a, tower="A", label="7", floor=7)
+    await db.execute(
+        update(Unit).where(Unit.id == unit.id).values(updated_at=datetime(2020, 1, 1, tzinfo=UTC))
+    )
+
+    await import_units(db, world.a.id, parse_units_csv(HEADER + "A,7,8\nA,9,\n"), dry_run=False)
+
+    await db.refresh(unit)
+    assert unit.updated_at > datetime(2020, 1, 2, tzinfo=UTC)
+
+
+async def test_unchanged_row_keeps_updated_at(db, world):
+    unit = await make_unit(db, world.a, tower="A", label="7", floor=7)
+    old = datetime(2020, 1, 1, tzinfo=UTC)
+    await db.execute(update(Unit).where(Unit.id == unit.id).values(updated_at=old))
+
+    await import_units(db, world.a.id, parse_units_csv(HEADER + "A,7,7\n"), dry_run=False)
+
+    await db.refresh(unit)
+    assert unit.updated_at == old
 
 
 def test_blank_tower_and_floor_are_null_and_values_are_stripped():
