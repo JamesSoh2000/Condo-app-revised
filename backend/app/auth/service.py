@@ -263,6 +263,9 @@ async def touch_session(db: AsyncSession, session: AuthSession) -> None:
     # The lock, then the roles: a staff role granted meanwhile is read here (P4-02b, inbox B-6).
     await lock_idle_deadlines(db, session.user_id)
     idle = await idle_window(db, session.user_id)
+    # And the clock again: the session may have expired while this waited for the lock (review
+    # round 4); `now` from before the wait would still call it live.
+    now = clock.now()
     # Conditional on the value read: of two concurrent requests, only one writes. And only while
     # still live: a role change may have capped the session into the past since it was resolved.
     await db.execute(
