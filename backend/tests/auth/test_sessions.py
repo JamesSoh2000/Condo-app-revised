@@ -275,9 +275,9 @@ async def test_refresh_updates_the_loaded_session_too(db, frozen_clock):
     assert current.session.idle_expires_at == frozen_clock() + timedelta(days=7)
 
 
-# P4-02b review round 2 (Codex): the staff idle window holds when the session is read, whatever
-# deadline was stored. A refresh or a login that read the resident window just before a staff role
-# was granted writes 7 days; the role, not the stored value, decides.
+# P4-02b (inbox B-6, option A): a role change caps the user's stored idle deadlines under a per-user
+# lock that every session start and refresh also takes, so the stored deadline stays the only rule
+# and an expired session stays expired.
 
 
 async def _resident_window_session(db, user) -> str:
@@ -287,20 +287,36 @@ async def _resident_window_session(db, user) -> str:
     return token
 
 
-async def test_session_stored_with_resident_window_dies_after_12_idle_hours_once_staff(
-    app_client, db, frozen_clock
-):
+async def test_staff_grant_caps_a_resident_window_session_to_12_idle_hours(db, frozen_clock):
     user = await make_user(db)
     token = await _resident_window_session(db, user)
     await make_membership(user, await make_building(db), roles=(Role.SECURITY,))
-    # Read without a request: a request would refresh the stored window from the current roles.
+
+    await service.apply_role_change(db, user.id, active_session_id=None)
+
     frozen_clock.advance(hours=11, minutes=59)
     assert await service.resolve_session(db, token) is not None
     frozen_clock.advance(minutes=2)
     assert await service.resolve_session(db, token) is None
-    async with app_client(router) as c:
-        c.cookies.set("session", token)
-        assert_not_authenticated(await c.get("/api/session-probe/whoami"))
+
+
+async def test_role_change_records_activity_on_the_active_session(db, frozen_clock):
+    user = await make_user(db)
+    active = await _resident_window_session(db, user)
+    other = await _resident_window_session(db, user)
+    frozen_clock.advance(hours=13)
+    await make_membership(user, await make_building(db), roles=(Role.SECURITY,))
+    active_id = (await _row(db, active)).id
+
+    await service.apply_role_change(db, user.id, active_session_id=active_id)
+
+    refreshed = await _row(db, active)
+    assert (refreshed.last_seen_at, refreshed.idle_expires_at) == (
+        frozen_clock(),
+        frozen_clock() + timedelta(hours=12),
+    )
+    # The other one was idle 13 h: past the staff window, so it is over.
+    assert await service.resolve_session(db, other) is None
 
 
 @pytest.mark.parametrize(
@@ -308,23 +324,38 @@ async def test_session_stored_with_resident_window_dies_after_12_idle_hours_once
     [((Role.RESIDENT,), "active"), ((Role.SECURITY,), "suspended")],
     ids=["resident", "suspended-staff"],
 )
-async def test_resident_window_stays_without_an_active_staff_role(db, frozen_clock, roles, status):
-
+async def test_role_change_without_an_active_staff_role_keeps_the_resident_window(
+    db, frozen_clock, roles, status
+):
     user = await make_user(db)
     token = await _resident_window_session(db, user)
     await make_membership(
         user, await make_building(db), roles=roles, status=MembershipStatus(status)
     )
+
+    await service.apply_role_change(db, user.id, active_session_id=None)
     frozen_clock.advance(hours=13)
 
     assert await service.resolve_session(db, token) is not None
 
 
-async def test_listing_and_revoking_follow_the_staff_window(db, frozen_clock):
+async def test_role_change_never_lengthens_a_session(db, frozen_clock):
+    user = await make_user(db)
+    await make_membership(user, await make_building(db), roles=(Role.SECURITY,))
+    token = await service.start_session(db, user.id, user_agent=None, ip=None)
+    before = (await _row(db, token)).idle_expires_at
+    frozen_clock.advance(hours=1)
 
+    await service.apply_role_change(db, user.id, active_session_id=None)
+
+    assert (await _row(db, token)).idle_expires_at == before
+
+
+async def test_listing_and_revoking_follow_the_capped_deadline(db, frozen_clock):
     user = await make_user(db)
     stale = await _resident_window_session(db, user)
     await make_membership(user, await make_building(db), roles=(Role.COUNCIL,))
+    await service.apply_role_change(db, user.id, active_session_id=None)
     frozen_clock.advance(hours=13)
     fresh = await service.start_session(db, user.id, user_agent=None, ip=None)
     current = await service.resolve_session(db, fresh)
@@ -335,3 +366,19 @@ async def test_listing_and_revoking_follow_the_staff_window(db, frozen_clock):
     assert [s.id for s in page.items] == [current.session.id]
     with pytest.raises(NotFound):
         await service.revoke_session(db, user.id, stale_id)
+
+
+async def test_refresh_after_a_cap_cannot_revive_the_session(db, frozen_clock):
+    # A request resolved the session while it was live (the resident deadline), then a staff grant
+    # capped it into the past before the request's refresh wrote: the refresh must not write.
+    user = await make_user(db)
+    token = await _resident_window_session(db, user)
+    frozen_clock.advance(hours=13)
+    in_flight = await service.resolve_session(db, token)
+    assert in_flight is not None
+    await make_membership(user, await make_building(db), roles=(Role.SECURITY,))
+    await service.apply_role_change(db, user.id, active_session_id=None)
+
+    await service.touch_session(db, in_flight.session)
+
+    assert await service.resolve_session(db, token) is None

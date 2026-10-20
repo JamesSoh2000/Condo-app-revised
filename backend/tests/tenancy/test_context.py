@@ -453,14 +453,7 @@ async def test_tenant_context_is_one_query_even_with_role_and_feature_guards(
             event.remove(db_connection.sync_connection, "before_cursor_execute", record)
 
     assert response.status_code == 200, response.text
-    # The session lookup (get_current_session) also names building_memberships since P4-02b
-    # review round 2 (the staff idle check, app/auth/service.py::_is_live); it isn't the tenant
-    # query.
-    tenant = [
-        s
-        for s in statements
-        if "building_memberships" in s and not s.startswith("SELECT sessions.")
-    ]
+    tenant = [s for s in statements if "building_memberships" in s]
     assert len(tenant) == 1, statements
     assert "membership_roles" in tenant[0]
     assert "building_features" in tenant[0]

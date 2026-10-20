@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from anyio import to_thread
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditEvent
@@ -1007,3 +1007,93 @@ async def test_password_at_the_maximum_length_is_accepted(
     password = "abcdefgh" * 16
     r = await client.post(_accept_url(token), json=NEW_PERSON | {"password": password})
     assert r.status_code == 200, r.text
+
+
+# Review round 3 (Codex) and inbox B-6 option A: an expired session stays expired whatever later
+# happens to the roles (R3-F1), and the accept is activity on the caller's session (R3-F2).
+
+
+@pytest.mark.parametrize("change", ["suspend", "remove-staff-role"])
+async def test_expired_staff_session_stays_expired_after_a_role_change(
+    as_user: UserClientFactory,
+    db: AsyncSession,
+    world: World,
+    frozen_clock: FrozenClock,
+    change: str,
+) -> None:
+    user = world.no_membership
+    invitee = await as_user(user)
+    token, _ = await _invite(db, world, email=user.email)
+    accepted = await invitee.post(_accept_url(token), json={})
+    assert accepted.status_code == 200, accepted.text
+    membership_id = uuid.UUID(accepted.json()["membership_id"])
+    frozen_clock.advance(hours=settings.session_idle_staff_hours + 1)
+    assert_problem(await invitee.get("/api/auth/me"), 401, "not_authenticated")
+
+    if change == "suspend":
+        await db.execute(
+            update(BuildingMembership)
+            .where(BuildingMembership.id == membership_id)
+            .values(status=MembershipStatus.SUSPENDED)
+        )
+    else:
+        await db.execute(
+            delete(MembershipRole).where(
+                MembershipRole.membership_id == membership_id,
+                MembershipRole.role == Role.SECURITY,
+            )
+        )
+
+    assert_problem(await invitee.get("/api/auth/me"), 401, "not_authenticated")
+
+
+async def test_accept_is_activity_for_the_invitees_session(
+    as_user: UserClientFactory, db: AsyncSession, world: World, frozen_clock: FrozenClock
+) -> None:
+    # Idle 13 h on the resident window (still live), then a staff accept: the next request works,
+    # and the session now runs on the staff window from the accept.
+    invitee = await as_user(world.no_membership)
+    token, _ = await _invite(db, world, email=world.no_membership.email)
+    frozen_clock.advance(hours=settings.session_idle_staff_hours + 1)
+
+    assert (await invitee.post(_accept_url(token), json={})).status_code == 200
+
+    session = await _session_of(db, invitee)
+    assert (session.last_seen_at, session.idle_expires_at) == (
+        frozen_clock.at,
+        frozen_clock.at + timedelta(hours=settings.session_idle_staff_hours),
+    )
+    assert (await invitee.get("/api/auth/me")).status_code == 200
+
+
+# Review round 3 evidence gaps
+
+
+def test_invitation_rate_policy_is_20_per_10_minutes() -> None:
+    assert (
+        settings.model_fields["rate_limit_invitation_ip"].default.limit,
+        settings.model_fields["rate_limit_invitation_ip"].default.window_seconds,
+    ) == (20, 600)
+
+
+async def test_accepts_consume_the_counter_the_lookup_then_hits(
+    client: AsyncClient, db: AsyncSession, world: World
+) -> None:
+    token, _ = await _invite(db, world)
+    for _ in range(settings.rate_limit_invitation_ip.limit):
+        r = await client.post(_accept_url(generate_token()), json=NEW_PERSON)
+        assert r.status_code == 404
+    assert_problem(await client.get(_url(token)), 429, "rate_limited")
+
+
+async def test_second_buildings_invitation_needs_login_once_the_first_created_the_account(
+    client: AsyncClient, db: AsyncSession, world: World
+) -> None:
+    first, _ = await _invite(db, world)
+    second, invitation_b = await _invite(db, world, building=world.b)
+    assert (await client.post(_accept_url(first), json=NEW_PERSON)).status_code == 200
+    client.cookies.clear()
+    before = await _counts(db)
+
+    assert_problem(await client.post(_accept_url(second), json=NEW_PERSON), 409, "login_required")
+    await _assert_nothing_written(db, before, invitation_b)

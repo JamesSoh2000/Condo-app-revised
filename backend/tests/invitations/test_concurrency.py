@@ -233,82 +233,83 @@ def test_racing_accepts_have_one_winner(scratch_database_url: str, same_token: b
 # them.
 
 
+@pytest.mark.parametrize("first", ["writer", "accept"])
 @pytest.mark.parametrize("writer", ["refresh", "new-session"])
-def test_session_writer_racing_a_staff_accept_cannot_keep_the_resident_window(
-    scratch_database_url: str,
-    frozen_clock: FrozenClock,
-    monkeypatch: pytest.MonkeyPatch,
-    writer: str,
+def test_session_writes_and_a_staff_accept_take_turns(
+    scratch_database_url: str, frozen_clock: FrozenClock, writer: str, first: str
 ) -> None:
-    # A refresh (or a new login) of the invitee reads the resident idle window, then the invitee's
-    # accept grants `security` and commits, then the writer stores 7 days. After 13 idle hours the
-    # session must still be over: the staff window is enforced when a session is read (R2-F1).
+    # The invitee is logged in on two devices. One device's session is refreshed (or a new login
+    # starts) while the other accepts a staff invitation. Each waits for the other's transaction
+    # (the per-user lock, inbox B-6 option A), so whichever writes second sees the first's result:
+    # the accept caps a 7-day window the writer stored, or the writer reads the staff role. Either
+    # way, after 13 idle hours the written session is over (review rounds 2-3).
     migrate(scratch_database_url)
 
     async def check() -> None:
         engine = create_async_engine(scratch_database_url)
         sessions = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
         limiter = RateLimiter(sessions)
-        read_old_window, resume = asyncio.Event(), asyncio.Event()
-        original_idle_window = auth.idle_window
-
-        async def paused_idle_window(db: AsyncSession, user_id: UUID) -> timedelta:
-            window = await original_idle_window(db, user_id)
-            task = asyncio.current_task()
-            if task is not None and task.get_name() == "old-session-writer":
-                assert window == timedelta(days=7)
-                read_old_window.set()
-                await resume.wait()
-            return window
-
-        monkeypatch.setattr(auth, "idle_window", paused_idle_window)
         try:
             async with sessions() as db:
                 world = await build_world(db)
-                cookie = await auth.start_session(
-                    db, world.no_membership.id, user_agent=None, ip=None
-                )
+                user_id = world.no_membership.id
+                accepting = await auth.start_session(db, user_id, user_agent=None, ip=None)
+                other = await auth.start_session(db, user_id, user_agent=None, ip=None)
                 await db.commit()
                 token = await _pending(
                     db, world.a.id, world.a_manager.user.id, email=world.no_membership.email
                 )
             frozen_clock.advance(minutes=6)
 
-            async def old_writer() -> str:
-                async with sessions() as db:
-                    if writer == "refresh":
-                        current = await auth.resolve_session(db, cookie)
-                        assert current is not None
-                        await auth.touch_session(db, current.session)
-                        return cookie
-                    created = await auth.start_logged_in_session(
-                        db, world.no_membership.id, user_agent=None, ip=None
-                    )
-                    await db.commit()
-                    return created
+            async def write(db: AsyncSession) -> str:
+                if writer == "refresh":
+                    current = await auth.resolve_session(db, other)
+                    assert current is not None
+                    await auth.touch_session(db, current.session)
+                    return other
+                created = await auth.start_logged_in_session(db, user_id, user_agent=None, ip=None)
+                await db.commit()
+                return created
 
-            task = asyncio.create_task(old_writer(), name="old-session-writer")
-            await asyncio.wait_for(read_old_window.wait(), timeout=5)
-            try:
-                async with sessions() as db:
-                    result = await service.accept_invitation(
-                        db,
-                        limiter,
-                        token,
-                        InvitationAccept(),
-                        session_token=cookie,
-                        user_agent=None,
-                        ip=None,
-                    )
-                    assert result.out.roles == [Role.SECURITY]
-            finally:
-                resume.set()
-            written = await asyncio.wait_for(task, timeout=5)
+            async def accept(db: AsyncSession) -> str:
+                result = await service.accept_invitation(
+                    db,
+                    limiter,
+                    token,
+                    InvitationAccept(),
+                    session_token=accepting,
+                    user_agent=None,
+                    ip=None,
+                )
+                assert result.out.roles == [Role.SECURITY]
+                return accepting
+
+            hold_first, run_second = (write, accept) if first == "writer" else (accept, write)
+            async with sessions() as held:
+                commit = held.commit
+
+                async def hold() -> None:
+                    pass
+
+                held.commit = hold  # type: ignore[method-assign]
+                first_result = await hold_first(held)
+                held.commit = commit  # type: ignore[method-assign]
+
+                async def second() -> str:
+                    async with sessions() as db:
+                        return await run_second(db)
+
+                task = asyncio.create_task(second())
+                await asyncio.sleep(0.5)
+                assert not task.done(), "the second write did not wait for the first"
+                await held.commit()
+                second_result = await asyncio.wait_for(task, timeout=10)
+
+            written = first_result if first == "writer" else second_result
             frozen_clock.advance(hours=13)
             async with sessions() as db:
                 assert await auth.resolve_session(db, written) is None
         finally:
-            resume.set()
             await engine.dispose()
 
     asyncio.run(check())
