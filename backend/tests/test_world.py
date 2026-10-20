@@ -71,6 +71,8 @@ EXPECTED_ROW_COUNTS = {
     "invitations": 0,
     # P4-04: nor asks for a password reset.
     "password_reset_tokens": 0,
+    # P4-05a: its pending resident has no join request.
+    "onboarding_requests": 0,
 }
 
 

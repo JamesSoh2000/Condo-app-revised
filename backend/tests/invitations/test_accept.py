@@ -638,7 +638,10 @@ async def test_password_is_not_stripped(
     assert not verify_password(PASSWORD, user.password_hash)
 
 
-@pytest.mark.parametrize("full_name", ["Gina\x00Guard", "Gina\nGuard", "   ", "x" * 201])
+# P4-05a review round 1 (Codex F3): a control character at either end was stripped, not refused.
+@pytest.mark.parametrize(
+    "full_name", ["Gina\x00Guard", "Gina\nGuard", "Gina\n", "\tGina", "   ", "x" * 201]
+)
 async def test_bad_full_name_is_refused(
     client: AsyncClient, db: AsyncSession, world: World, full_name: str
 ) -> None:

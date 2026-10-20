@@ -6,11 +6,9 @@ from uuid import UUID
 from pydantic import AfterValidator, Field, StringConstraints, model_validator
 from pydantic_core import PydanticCustomError
 
-from app.core.config import MAX_EMAIL_ADDRESS_LENGTH, is_email_address
-from app.core.schemas import APIModel, InputModel
-from app.core.security import PASSWORD_MAX_LENGTH
+from app.auth.schemas import FullName, password_not_too_long
+from app.core.schemas import APIModel, EmailAddress, InputModel
 from app.memberships.enums import OccupancyRelationship, Role
-from app.units.schemas import printable
 
 
 class InvitationStatus(StrEnum):
@@ -22,20 +20,7 @@ class InvitationStatus(StrEnum):
     EXPIRED = "expired"
 
 
-def _email(value: str) -> str:
-    # One bare ASCII address `queue_email` will send to (P3-02), so the length limits are octets
-    # and no NUL or lone surrogate reaches the database. Not stripped: a padded address is refused,
-    # not silently changed (the P1-02 carry). Lowered once, here, as `users.email` is.
-    if not is_email_address(value):
-        raise PydanticCustomError("email_address", "must be one email address")
-    return value.lower()
-
-
-InvitationEmail = Annotated[
-    str,
-    StringConstraints(strip_whitespace=False, min_length=1, max_length=MAX_EMAIL_ADDRESS_LENGTH),
-    AfterValidator(_email),
-]
+InvitationEmail = EmailAddress
 
 
 def _distinct_roles(roles: list[Role]) -> list[Role]:
@@ -82,31 +67,17 @@ class InvitationPublicOut(APIModel):
     roles: list[Role]
 
 
-def _not_too_long(password: str) -> str:
-    # The policy's own error type, not pydantic's `string_too_long`, so a client sees one set of
-    # password errors (review round 1, F4); checked here so no over-long value reaches argon2.
-    if len(password) > PASSWORD_MAX_LENGTH:
-        raise PydanticCustomError("password_too_long", "must be at most 128 characters")
-    return password
-
-
 class InvitationAccept(InputModel):
     """Both fields are for a new account only; an existing account's are ignored. No roles: they
     come from the invitation (extra fields are a 422)."""
 
-    # `users.full_name` is varchar(200). Stripped, and no control characters (NUL fails at flush).
-    full_name: (
-        Annotated[
-            str,
-            StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
-            AfterValidator(printable),
-        ]
-        | None
-    ) = None
+    full_name: FullName | None = None
     # Not stripped, as `app.auth.schemas.LoginIn::password`; the rest of the policy runs in the
     # service.
     password: (
-        Annotated[str, StringConstraints(strip_whitespace=False), AfterValidator(_not_too_long)]
+        Annotated[
+            str, StringConstraints(strip_whitespace=False), AfterValidator(password_not_too_long)
+        ]
         | None
     ) = None
 

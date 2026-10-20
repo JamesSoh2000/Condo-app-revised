@@ -113,6 +113,23 @@ def unguarded_building_routes(application: FastAPI) -> list[str]:
     return violations
 
 
+# `get_own_membership` lets a pending, denied or suspended member through, so it may guard only
+# these onboarding routes: an operational route using it would open to them (P2-03 round 1, L3).
+OWN_MEMBERSHIP_ROUTES = frozenset({("GET", f"{BUILDING_PREFIX}/onboarding/me")})
+
+
+def routes_using_own_membership(application: FastAPI) -> list[str]:
+    """Fitness test 1b: every route that depends on `get_own_membership` is in
+    `OWN_MEMBERSHIP_ROUTES`."""
+    return [
+        f"{method} {route.path}"
+        for route in _api_routes(application)
+        if get_own_membership in set(dependency_calls(route.dependant))
+        for method in _methods(route)
+        if (method, route.path) not in OWN_MEMBERSHIP_ROUTES
+    ]
+
+
 def unauthenticated_routes(application: FastAPI) -> list[str]:
     """Fitness test 2: every route needs a session, unless `AUTH_ALLOWLIST` names it."""
     violations = []
@@ -206,6 +223,20 @@ def test_every_route_is_an_api_route():
 
 def test_every_building_route_is_tenant_guarded():
     assert unguarded_building_routes(app) == []
+
+
+def test_only_onboarding_routes_use_get_own_membership():
+    assert routes_using_own_membership(app) == []
+
+
+def test_every_listed_onboarding_route_exists_and_uses_get_own_membership():
+    found = {
+        (method, route.path)
+        for route in _api_routes(app)
+        if get_own_membership in set(dependency_calls(route.dependant))
+        for method in _methods(route)
+    }
+    assert found >= OWN_MEMBERSHIP_ROUTES
 
 
 def test_every_api_route_requires_a_session_unless_allowlisted():
@@ -323,6 +354,20 @@ def test_meta_guard_deep_in_the_tree_counts():
     assert unauthenticated_routes(test_app) == []
 
 
+def test_meta_unlisted_route_using_get_own_membership_fails_check_1b():
+    async def own(membership: Annotated[Any, Depends(get_own_membership)]) -> None:
+        return None
+
+    router = APIRouter(prefix=BUILDING_PREFIX, tags=["meta"])
+    router.get("/packages", dependencies=[Depends(own)])(_ok)
+
+    test_app = _app_with(router)
+
+    # Check 1 is satisfied (a tenant guard), so only 1b catches it.
+    assert unguarded_building_routes(test_app) == []
+    assert routes_using_own_membership(test_app) == [f"GET {BUILDING_PREFIX}/packages"]
+
+
 def test_meta_unauthenticated_route_fails_check_2():
     router = APIRouter(prefix="/api/things", tags=["meta"])
     router.post("")(_ok)
@@ -423,10 +468,10 @@ def test_meta_mount_or_plain_route_under_api_is_reported():
 def test_meta_stale_allowlist_entry_is_reported(monkeypatch):
     monkeypatch.setattr(
         "tests.test_architecture.AUTH_ALLOWLIST",
-        AUTH_ALLOWLIST | {("POST", "/api/auth/signup")},
+        AUTH_ALLOWLIST | {("POST", "/api/auth/no-such-route")},
     )
 
-    assert stale_allowlist_entries(app) == ["POST /api/auth/signup"]
+    assert stale_allowlist_entries(app) == ["POST /api/auth/no-such-route"]
 
 
 def test_meta_commit_outside_a_service_is_reported(tmp_path, monkeypatch):

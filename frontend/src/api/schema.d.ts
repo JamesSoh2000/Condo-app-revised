@@ -25,6 +25,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signup
+         * @description Create a resident's account and log it in (session cookie). 409 `email_in_use` if an account
+         *     has the email: signup tells that an account exists, unlike password reset, and the per-IP limit
+         *     (429 `rate_limited`) is what bounds testing emails this way. 422 for a password the policy
+         *     refuses.
+         */
+        post: operations["auth_signup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/logout": {
         parameters: {
             query?: never;
@@ -270,6 +293,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/join/{join_code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lookup
+         * @description The building a join link names. 404 `join_code_invalid` for any code that can't be used,
+         *     with one body whatever the reason.
+         */
+        get: operations["onboarding_lookup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/join/{join_code}/units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Units
+         * @description The building's active units whose label starts with `search`, at most 20, to choose from
+         *     when asking to join.
+         */
+        get: operations["onboarding_units"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/join/{join_code}/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Request
+         * @description Ask to join the building as a resident of a unit; the membership waits as `pending` until a
+         *     manager decides. 201 with the new request; 200 with the pending one if there is one already. 409
+         *     `already_member` for an active member, `membership_not_eligible` for a suspended or
+         *     deactivated one; 404 `unit_not_found` for a unit that isn't this building's or is inactive.
+         */
+        post: operations["onboarding_create_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/buildings/{building_id}": {
         parameters: {
             query?: never;
@@ -493,6 +581,27 @@ export interface paths {
          *     else's is a 404.
          */
         post: operations["notifications_read"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/onboarding/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Status
+         * @description The caller's status in this building, pending and denied included, with their latest join
+         *     request's unit and relationship and, after a denial, the reason.
+         */
+        get: operations["onboarding_my_status"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -767,6 +876,32 @@ export interface components {
          * @enum {string}
          */
         InvitationStatus: "pending" | "accepted" | "revoked" | "expired";
+        /**
+         * JoinBuildingOut
+         * @description What the join link shows before signup: the building's name, nothing about its people.
+         */
+        JoinBuildingOut: {
+            /**
+             * Building Id
+             * Format: uuid
+             */
+            building_id: string;
+            /** Building Name */
+            building_name: string;
+        };
+        /**
+         * JoinRequestCreate
+         * @description No role or status: a join request is always for a `pending` resident (extra fields are a
+         *     422).
+         */
+        JoinRequestCreate: {
+            /**
+             * Unit Id
+             * Format: uuid
+             */
+            unit_id: string;
+            relationship: components["schemas"]["OccupancyRelationship"];
+        };
         /** LoginIn */
         LoginIn: {
             /** Email */
@@ -882,6 +1017,56 @@ export interface components {
          * @enum {string}
          */
         OccupancyRelationship: "owner" | "tenant" | "household";
+        /**
+         * OnboardingMeOut
+         * @description The caller's membership status, and the unit, relationship and decision reason of their
+         *     latest join request; the request fields are null when there is none (an invited member).
+         */
+        OnboardingMeOut: {
+            status: components["schemas"]["MembershipStatus"];
+            /** Unit Label */
+            unit_label: string | null;
+            /** Tower */
+            tower: string | null;
+            relationship: components["schemas"]["OccupancyRelationship"] | null;
+            /** Decision Reason */
+            decision_reason: string | null;
+        };
+        /** OnboardingRequestOut */
+        OnboardingRequestOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Building Id
+             * Format: uuid
+             */
+            building_id: string;
+            status: components["schemas"]["OnboardingStatus"];
+            /**
+             * Unit Id
+             * Format: uuid
+             */
+            unit_id: string;
+            /** Unit Label */
+            unit_label: string;
+            /** Tower */
+            tower: string | null;
+            relationship: components["schemas"]["OccupancyRelationship"];
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+        };
+        /**
+         * OnboardingStatus
+         * @description Where a resident's join request stands (`onboarding_requests.status`).
+         * @enum {string}
+         */
+        OnboardingStatus: "pending" | "approved" | "denied";
         /** Page[InvitationOut] */
         Page_InvitationOut_: {
             /** Items */
@@ -967,6 +1152,15 @@ export interface components {
             /** Current */
             current: boolean;
         };
+        /** SignupIn */
+        SignupIn: {
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string;
+            /** Password */
+            password: string;
+        };
         /** UnitCreate */
         UnitCreate: {
             /** Tower */
@@ -975,6 +1169,21 @@ export interface components {
             label: string;
             /** Floor */
             floor?: number | null;
+        };
+        /**
+         * UnitOption
+         * @description What the join flow may show of a unit (P4-05): nothing about who lives there.
+         */
+        UnitOption: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Tower */
+            tower: string | null;
+            /** Label */
+            label: string;
         };
         /** UnitOut */
         UnitOut: {
@@ -1089,6 +1298,57 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    auth_signup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeUserOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1551,6 +1811,187 @@ export interface operations {
             };
             /** @description Too Many Requests */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    onboarding_lookup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                join_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinBuildingOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    onboarding_units: {
+        parameters: {
+            query?: {
+                /** @description Label prefix, any case. */
+                search?: string;
+            };
+            header?: never;
+            path: {
+                join_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitOption"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    onboarding_create_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                join_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingRequestOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2232,6 +2673,55 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    onboarding_my_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingMeOut"];
+                };
             };
             /** @description Unauthorized */
             401: {

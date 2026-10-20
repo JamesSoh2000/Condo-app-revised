@@ -1,12 +1,14 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import Field, StringConstraints, field_validator
+from pydantic import AfterValidator, BeforeValidator, Field, StringConstraints, field_validator
+from pydantic_core import PydanticCustomError
 
-from app.core.schemas import APIModel, InputModel
+from app.core.schemas import APIModel, EmailAddress, InputModel
 from app.core.security import PASSWORD_MAX_LENGTH
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
+from app.units.schemas import printable
 
 
 class LoginIn(InputModel):
@@ -45,6 +47,40 @@ class PasswordResetRequestIn(InputModel):
     email: str = Field(min_length=1, max_length=320)
 
     _email_storable = field_validator("email")(_storable)
+
+
+def password_not_too_long(password: str) -> str:
+    """For a password a new account sets. The policy's own error type, not pydantic's
+    `string_too_long`, so a client sees one set of password errors (P4-02b review round 1, F4);
+    checked in the schema so no over-long value reaches argon2. The rest of the policy is the
+    service's (`check_password_policy`)."""
+    if len(password) > PASSWORD_MAX_LENGTH:
+        raise PydanticCustomError("password_too_long", "must be at most 128 characters")
+    return password
+
+
+def _printable_before_strip(value: Any) -> Any:
+    # Before the strip: a control character at either end (`"Rosa\n"`) would otherwise be stripped,
+    # not refused (P4-05a review round 1, F3). A non-string is left to the type check.
+    return printable(value) if isinstance(value, str) else value
+
+
+# A person's name as a new account stores it: `users.full_name` is varchar(200). No control
+# characters anywhere (NUL fails at flush), then stripped.
+FullName = Annotated[
+    str,
+    BeforeValidator(_printable_before_strip),
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+]
+
+
+class SignupIn(InputModel):
+    email: EmailAddress
+    full_name: FullName
+    # Not stripped, as LoginIn.
+    password: Annotated[
+        str, StringConstraints(strip_whitespace=False), AfterValidator(password_not_too_long)
+    ]
 
 
 class PasswordResetRequestedOut(APIModel):

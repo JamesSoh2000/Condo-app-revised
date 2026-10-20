@@ -1,6 +1,6 @@
-"""Login, logout and password reset (ADR-0003, P4-04), open to unauthenticated callers; the caller's
-account and sessions (P2-02), which need a session. Every unsafe method here goes through the CSRF
-middleware."""
+"""Login, logout, password reset (ADR-0003, P4-04) and signup (P4-05a), open to unauthenticated
+callers; the caller's account and sessions (P2-02), which need a session. Every unsafe method here
+goes through the CSRF middleware."""
 
 import ipaddress
 from typing import Annotated
@@ -14,17 +14,19 @@ from app.auth.deps import get_current_session
 from app.auth.schemas import (
     LoginIn,
     MeOut,
+    MeUserOut,
     PasswordResetConfirmIn,
     PasswordResetRequestedOut,
     PasswordResetRequestIn,
     SessionOut,
+    SignupIn,
 )
 from app.auth.service import CurrentSession
 from app.core.config import settings
 from app.core.dependencies import get_db_session
 from app.core.errors import problem_responses
 from app.core.pagination import CursorParams, Page
-from app.rate_limits.service import RateLimiter, get_rate_limiter
+from app.rate_limits.service import RateLimiter, get_rate_limiter, ip_key
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -53,6 +55,35 @@ async def login(
         ip=client_ip(request),
     )
     set_session_cookie(response, token, max_age=settings.session_absolute_days * 24 * 3600)
+
+
+async def signup_limit(request: Request, limiter: Limiter) -> None:
+    """Count every signup attempt against the IP, as a route dependency: it runs before the body is
+    validated, so a refused body (422) counts too (P4-05a review round 1, F2)."""
+    await limiter.enforce(ip_key("signup", client_ip(request)), settings.rate_limit_signup_ip)
+
+
+@router.post(
+    "/signup",
+    status_code=201,
+    dependencies=[Depends(signup_limit)],
+    responses=problem_responses(409, 429),
+)
+async def signup(body: SignupIn, request: Request, response: Response, db: DbSession) -> MeUserOut:
+    """Create a resident's account and log it in (session cookie). 409 `email_in_use` if an account
+    has the email: signup tells that an account exists, unlike password reset, and the per-IP limit
+    (429 `rate_limited`) is what bounds testing emails this way. 422 for a password the policy
+    refuses."""
+    result = await service.signup(
+        db,
+        email=body.email,
+        full_name=body.full_name,
+        password=body.password,
+        user_agent=request.headers.get("user-agent"),
+        ip=client_ip(request),
+    )
+    set_session_cookie(response, result.token, max_age=settings.session_absolute_days * 24 * 3600)
+    return result.user
 
 
 @router.post("/logout", status_code=204)

@@ -1,10 +1,10 @@
 """Session lifecycle (ADR-0003): login, resolving a cookie, activity refresh, logout, the caller's
-view of their account and sessions (P2-02), and password reset (P4-04).
+view of their account and sessions (P2-02), password reset (P4-04) and signup (P4-05a).
 
-`login`, `touch_session`, `logout`, `logout_all`, `revoke_session`, `request_password_reset` and
-`confirm_password_reset` are use-cases and commit once each (CLAUDE.md rule 5); `start_session`,
-`revoke_all_sessions` and the readers never commit. Each use-case but `touch_session` records its
-audit event (P2-04) in that same commit.
+`login`, `touch_session`, `logout`, `logout_all`, `revoke_session`, `request_password_reset`,
+`confirm_password_reset` and `signup` are use-cases and commit once each (CLAUDE.md rule 5);
+`start_session`, `revoke_all_sessions` and the readers never commit. Each use-case but
+`touch_session` records its audit event (P2-04) in that same commit.
 """
 
 import re
@@ -15,6 +15,7 @@ from uuid import UUID
 
 from anyio import to_thread
 from sqlalchemy import ColumnElement, and_, delete, exists, func, insert, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
@@ -32,7 +33,7 @@ from app.auth.schemas import (
 from app.buildings.models import Building
 from app.core import clock
 from app.core.config import settings
-from app.core.errors import BadRequest, NotFound, Unauthorized, field_errors
+from app.core.errors import BadRequest, Conflict, NotFound, Unauthorized, field_errors
 from app.core.pagination import CursorParams, Page, paginate
 from app.core.security import (
     DUMMY_HASH,
@@ -86,6 +87,15 @@ class InvalidCredentials(Unauthorized):
 
 class ResetTokenInvalid(BadRequest):
     code = "reset_token_invalid"
+
+
+class EmailInUse(Conflict):
+    code = "email_in_use"
+
+
+class SignedUp(NamedTuple):
+    user: MeUserOut
+    token: str
 
 
 async def login(
@@ -567,6 +577,68 @@ async def confirm_password_reset(
         metadata={"sessions_revoked": revoked},
     )
     await db.commit()
+
+
+def _email_in_use() -> EmailInUse:
+    return EmailInUse(detail="An account already uses this email: log in instead.")
+
+
+async def signup(
+    db: AsyncSession,
+    *,
+    email: str,
+    full_name: str,
+    password: str,
+    user_agent: str | None,
+    ip: str | None,
+) -> SignedUp:
+    """Create an account for `email` (lowered by the schema) and log it in.
+
+    409 `email_in_use` if an account has the email in any case: unlike password reset, this tells
+    the caller an account exists, which the ticket accepts for signup; the per-IP limit
+    (`app.auth.router.signup_limit`, counted before the body is even parsed) bounds how many emails
+    one client can test. The email stays unverified
+    (`email_verified_at` NULL) until the pilot's verification.
+
+    Reads first and ends the read so argon2 runs with no connection held (as `login`); the INSERT
+    then decides a race with `ON CONFLICT`: of two signups for one email, the second waits on
+    `uq_users_lower_email` and inserts nothing (D2).
+    """
+    try:
+        check_password_policy(password)
+    except WeakPasswordError as exc:
+        # The reason only: never the password (P2-01b carry).
+        raise field_errors(
+            ("password", PASSWORD_POLICY_MESSAGES[exc.reason], f"password_{exc.reason}")
+        ) from None
+    # lower() on both sides in Postgres, as `login`.
+    if await db.scalar(select(User.id).where(func.lower(User.email) == func.lower(email))):
+        raise _email_in_use()
+    await db.rollback()
+    password_hash = await to_thread.run_sync(hash_password, password)
+    user = (
+        await db.execute(
+            pg_insert(User)
+            .values(email=email, full_name=full_name, password_hash=password_hash)
+            .on_conflict_do_nothing(index_elements=[func.lower(User.email)])
+            .returning(User.id, User.email, User.full_name, User.phone, User.locale)
+        )
+    ).one_or_none()
+    if user is None:
+        raise _email_in_use()
+    await record_audit(
+        db,
+        action=actions.AUTH_SIGNED_UP,
+        entity_type="user",
+        entity_id=user.id,
+        actor_user_id=user.id,
+    )
+    token = await start_logged_in_session(db, user.id, user_agent=user_agent, ip=ip)
+    out = MeUserOut(
+        id=user.id, email=user.email, full_name=user.full_name, phone=user.phone, locale=user.locale
+    )
+    await db.commit()
+    return SignedUp(out, token)
 
 
 async def get_me(db: AsyncSession, user: User) -> MeOut:

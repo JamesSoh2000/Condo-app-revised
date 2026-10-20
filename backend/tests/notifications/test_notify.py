@@ -213,6 +213,11 @@ BAD_INPUT: list[tuple[str, dict[str, Any]]] = [
     ("NUL in the body", {"body": "a\x00b"}),
     ("NUL in the link", {"link": "/a\x00b"}),
     ("NUL in the entity type", {"entity_type": "pack\x00age"}),
+    # Postgres can't store a lone surrogate either: asyncpg raised DBAPIError (P3-03 carry).
+    ("a lone surrogate in the title", {"title": "a\ud800b"}),
+    ("a lone surrogate in the body", {"body": "a\udfffb"}),
+    ("a lone surrogate in the link", {"link": "/a\ud800b"}),
+    ("a lone surrogate in the entity type", {"entity_type": "pack\ud800age"}),
     ("an empty title", {"title": ""}),
     ("an absolute URL", {"link": "https://evil.example/packages"}),
     ("a javascript URL", {"link": "javascript:alert(1)"}),
@@ -459,11 +464,19 @@ async def test_a_user_with_several_matching_roles_is_listed_once(
 # Criterion 12
 
 
+def test_only_the_in_app_kinds_have_no_email() -> None:
+    # P3-03's kinds all email; P4-05a adds the first in-app-only one (the ticket: managers are
+    # notified in-app). A new kind without a template must be added here on purpose.
+    assert sorted(k for k, spec in KINDS.items() if spec.email_template is None) == [
+        "onboarding.submitted"
+    ]
+
+
 @pytest.mark.parametrize("locale", SUPPORTED_LOCALES)
-@pytest.mark.parametrize("kind", sorted(KINDS))
+@pytest.mark.parametrize("kind", sorted(k for k, spec in KINDS.items() if spec.email_template))
 def test_every_kinds_template_renders(kind: str, locale: str) -> None:
     template = KINDS[kind].email_template
-    assert template is not None  # all starting kinds email (ticket: "all registered kinds email")
+    assert template is not None
     email = render_email(
         template,
         {"title": "A package arrived", "body": "At the desk.", "link": "/packages"},
