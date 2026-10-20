@@ -79,5 +79,6 @@ active `property_management` member of the building and can invite staff.
 | Symptom | What to do |
 |---|---|
 | `slug already exists` | The building exists already (perhaps a previous run worked). Check with the audit command above; don't bootstrap it again |
+| `error: the database refused the bootstrap (SQLSTATE …)` | Nothing was written. The message is deliberately short (the full one would print the link); look the SQLSTATE up, or read the database's own log, and run again |
 | The email never arrives | `make cli args="jobs-status"`; a dead job can be retried (`jobs-retry <id>`). Or deliver the accept URL yourself |
 | The URL was lost or leaked before it was used, or expired (7 days) | Revoke and resend are manager routes, and the building has no manager yet. There is no operator command for this (a follow-up of P4-03): raise it in the inbox. Don't bootstrap the slug again; it is refused |
