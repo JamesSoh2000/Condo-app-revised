@@ -1,4 +1,4 @@
-# P4-06 — Membership administration
+# P4-06 — Membership administration (split)
 
 | Field | Value |
 |---|---|
@@ -6,7 +6,14 @@
 | Risk tier | 1 |
 | Depends on | P2-04, P4-05 |
 | Replaces old | M3-T12 (staff administration part) |
-| Status | todo |
+| Status | split into [P4-06a](./P4-06a-members-roles-suspension.md), [P4-06b](./P4-06b-move-out-and-transfer.md) |
+
+Split while framing (2026-10-20): the estimate was ~490 non-test lines. P4-06a is the member list, role
+changes, suspend and reactivate, the last-manager invariant and the building lock (criteria 1, 3, 4, 6, 7,
+sharpened, plus new ones); P4-06b is deactivate (move-out) and transfer, the two that write occupancies
+(criteria 2 and 5, and 6 for its routes). "P4-06" in other tickets' text means both parts; the
+[ticket index](./README.md) lists which part each dependent needs. The text below is the ticket as written
+before the split; its carried notes are divided between the parts.
 
 ## Goal
 

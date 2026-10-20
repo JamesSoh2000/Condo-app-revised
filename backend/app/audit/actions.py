@@ -23,6 +23,9 @@ INVITATION_RESENT = "invitation.resent"
 INVITATION_ACCEPTED = "invitation.accepted"
 
 MEMBERSHIP_ACTIVATED = "membership.activated"
+MEMBERSHIP_ROLES_CHANGED = "membership.roles_changed"
+MEMBERSHIP_SUSPENDED = "membership.suspended"
+MEMBERSHIP_REACTIVATED = "membership.reactivated"
 
 ONBOARDING_SUBMITTED = "onboarding.submitted"
 ONBOARDING_APPROVED = "onboarding.approved"
