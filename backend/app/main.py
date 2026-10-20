@@ -81,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(invitations.router)
     app.include_router(notifications.router)
     app.include_router(onboarding.own_router)
+    app.include_router(onboarding.router)
     app.include_router(units.router)
     return app
 

@@ -2,7 +2,7 @@ import json
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import AfterValidator, StringConstraints
+from pydantic import AfterValidator, BeforeValidator, StringConstraints
 from pydantic_core import PydanticCustomError
 
 from app.audit.service import MAX_VALUE_BYTES
@@ -12,7 +12,7 @@ from app.core.time import validate_timezone
 from app.email.templates import SUPPORTED_LOCALES
 from app.invitations.schemas import InvitationEmail
 from app.memberships.enums import Role
-from app.units.schemas import printable
+from app.units.schemas import printable_before_strip
 
 
 class BuildingOut(APIModel):
@@ -61,10 +61,12 @@ def _stripped(max_length: int) -> StringConstraints:
     return StringConstraints(strip_whitespace=True, min_length=1, max_length=max_length)
 
 
-# The column lengths (`buildings.name` is varchar(200)); `address` is text, capped here.
-Name = Annotated[str, _stripped(200), AfterValidator(printable)]
-LongText = Annotated[str, _stripped(500), AfterValidator(printable)]
-Operator = Annotated[str, _stripped(64), AfterValidator(printable)]
+# The column lengths (`buildings.name` is varchar(200)); `address` is text, capped here. Control
+# characters are refused before the strip (`printable_before_strip`).
+_printable = BeforeValidator(printable_before_strip)
+Name = Annotated[str, _stripped(200), _printable]
+LongText = Annotated[str, _stripped(500), _printable]
+Operator = Annotated[str, _stripped(64), _printable]
 
 
 class BootstrapInput(InputModel):
