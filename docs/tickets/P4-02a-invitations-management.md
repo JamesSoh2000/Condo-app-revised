@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P3-02, P2-04, P2-03, P2-05 |
 | Replaces old | M3-T06 (invitation part), M3-T12 (staff invite part), M3-T13 (invite delivery); part of [P4-02](./P4-02-staff-invitations.md) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 

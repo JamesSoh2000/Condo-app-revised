@@ -91,6 +91,17 @@ This is how staff join, and how the first manager joins after bootstrap (P4-03).
 - `membership.activated` is a new audit action; `invitation.accepted` too. The invitation's
   `unit_id` requires `resident` in its roles and was an active unit at creation; check it is still active at
   accept.
+- **Fix a stale comment** in `backend/app/invitations/models.py::Invitation`: the `(building_id, email)` index
+  serves the pending check of both `create_invitation` and `resend_invitation` (since PR #86 review round 1),
+  not create only.
+- **First follow-ups (step 8, from `docs/AGENT_MISTAKES_LOG.md`):**
+  - Carried from P4-01b and not done in P4-02a: a mutation-probe helper script that refuses to run on a dirty
+    tree ("commit before mutation probes", 3 occurrences).
+  - P4-02a's two review findings were recurrences of the `CLAUDE.md` lessons "every other way to reach the
+    same state" (an invariant enforced on create but not on resend) and "test the fix on its neighbours"
+    (the round-1 fix changed resend's error order). Before the first review, list every write path that can
+    produce the state an invariant guards (accept here: anything that makes a membership active) and test
+    each.
 
 ## Frame notes (filled by the agent in step 1)
 
