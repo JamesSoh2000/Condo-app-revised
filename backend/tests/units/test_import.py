@@ -7,6 +7,7 @@ run on the stack in the PR.
 """
 
 import asyncio
+import csv
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from app.audit.models import AuditEvent
 from app.units import service
 from app.units.models import Unit
 from app.units.service import (
+    MAX_IMPORT_BYTES,
     MAX_IMPORT_ROWS,
     CsvError,
     import_units,
@@ -159,6 +161,39 @@ def test_floor_cell_must_be_an_ascii_whole_number(cell):
 
     assert parsed.rows == []
     assert [(r.line, r.reason) for r in parsed.invalid] == [(2, "floor: must be a whole number")]
+
+
+@pytest.mark.parametrize("cell", ["9" * 4301, "-" + "9" * 4301, "1" + "0" * 9, "0" * 12 + "7"])
+def test_overlong_floor_is_one_invalid_row_not_a_file_error(cell):
+    # Review round 1 (Codex): `int()` raised ValueError past 4,300 digits and aborted the import.
+    parsed = parse_units_csv(HEADER + f"A,good,3\nA,bad,{cell}\n")
+
+    assert [(r.label, r.floor) for r in parsed.rows] == [("good", 3)]
+    assert [(r.line, r.reason) for r in parsed.invalid] == [
+        (3, "floor: must be between -20 and 300")
+    ]
+
+
+@pytest.mark.parametrize("column", ["tower", "label", "floor"])
+def test_overlong_cell_is_one_invalid_row_not_a_file_error(column):
+    # Review round 1 (Codex): a cell over csv's default field limit (128 KiB) made the whole
+    # file "not valid CSV" although it fits in the 1 MiB cap.
+    cells = {"tower": "A", "label": "big", "floor": "4"}
+    cells[column] = "7" * (csv.field_size_limit() + 1)
+    text = HEADER + "A,good,3\n" + ",".join(cells.values()) + "\n"
+    assert len(text.encode()) < MAX_IMPORT_BYTES
+
+    parsed = parse_units_csv(text)
+
+    assert [r.label for r in parsed.rows] == ["good"]
+    assert [r.line for r in parsed.invalid] == [3]
+    assert parsed.invalid[0].reason.startswith(f"{column}: ")
+
+
+def test_text_over_1_mib_is_refused_by_the_parser_too():
+    # P4-03 calls parse_units_csv without the CLI's read cap.
+    with pytest.raises(CsvError, match="larger than"):
+        parse_units_csv(HEADER + ("A," + "x" * 250 + ",\n") * 4500)
 
 
 def test_line_is_where_a_multiline_record_starts():
