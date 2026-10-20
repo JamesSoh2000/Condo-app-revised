@@ -77,8 +77,8 @@ def upgrade() -> None:
             "decision_reason IS NULL OR status = 'denied'",
             name=op.f("ck_onboarding_requests_reason_only_when_denied"),
         ),
-        # Hand-edited: autogenerate rendered each enum check twice (once named after the enum), as in
-        # 87a5795f265e. The columns' Enums have create_constraint=False so they add no third.
+        # Hand-edited: autogenerate rendered each enum check twice (once named after the enum), as
+        # in 87a5795f265e. The columns' Enums have create_constraint=False so they add no third.
         sa.CheckConstraint(
             "relationship IN ('owner', 'tenant', 'household')",
             name=op.f("ck_onboarding_requests_relationship"),
