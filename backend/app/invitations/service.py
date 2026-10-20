@@ -47,6 +47,7 @@ from app.invitations.schemas import (
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
 from app.memberships.models import BuildingMembership, MembershipRole
 from app.memberships.occupancy import end_occupancy, transfer_occupancy
+from app.memberships.service import read_caller, refuse_stale
 from app.rate_limits.service import RateLimiter, ip_key
 from app.tenancy.context import TenantContext
 from app.units.models import Unit
@@ -161,6 +162,9 @@ async def _lock_building(db: AsyncSession, ctx: TenantContext) -> Building:
         select(Building).where(Building.id == ctx.building_id).with_for_update(key_share=True)
     )
     assert building is not None  # noqa: S101 (get_tenant_context found it active)
+    # Membership administration (P4-06a) demotes and suspends managers under this lock: a manager
+    # who lost their authority while waiting must not invite (review round 1, F1).
+    refuse_stale(await read_caller(db, ctx))
     return building
 
 

@@ -8,7 +8,8 @@ authority while waiting. A refusal raises, which rolls the change back. `change_
 """
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from typing import Any, NamedTuple
 from uuid import UUID
 
@@ -19,7 +20,7 @@ from app.audit import actions
 from app.audit.service import record_audit
 from app.auth.service import apply_role_change
 from app.buildings.models import Building
-from app.core.errors import Conflict, NotFound
+from app.core.errors import Conflict, DomainError, NotFound
 from app.core.pagination import CursorParams, Page, paginate
 from app.memberships.enums import MembershipStatus, Role
 from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
@@ -164,24 +165,18 @@ async def list_members(
     )
 
 
-class _Caller(NamedTuple):
+class Caller(NamedTuple):
     """The caller's membership as it stands once the building lock is held."""
 
     active: bool
     manager: bool
 
 
-async def _lock_building(db: AsyncSession, ctx: TenantContext) -> _Caller:
-    """Lock the building row (NO KEY UPDATE, as the invitations' writes; foreign-key checks from
-    other tables don't wait for it) until the transaction ends. Every write here takes it first:
-    they run one at a time per building, and each reads what the previous one committed.
-
-    Then read the caller again. Their tenant context was read before they waited for the lock;
-    another manager may have demoted or suspended them meanwhile (D2). Read before this write's own
-    change, so a manager may still drop their own role."""
-    await db.execute(
-        select(Building.id).where(Building.id == ctx.building_id).with_for_update(key_share=True)
-    )
+async def read_caller(db: AsyncSession, ctx: TenantContext) -> Caller:
+    """The caller's membership read again, after the building lock. Their tenant context was read
+    before they waited for it; a manager may have demoted or suspended them meanwhile (D2). Every
+    manager write that takes the building lock reads it: these and the invitations' (review round
+    1, F1)."""
     caller = (
         await db.execute(
             select(
@@ -192,7 +187,41 @@ async def _lock_building(db: AsyncSession, ctx: TenantContext) -> _Caller:
             )
         )
     ).one()
-    return _Caller(active=caller.status == MembershipStatus.ACTIVE, manager=caller.manager)
+    return Caller(active=caller.status == MembershipStatus.ACTIVE, manager=caller.manager)
+
+
+def refuse_stale(caller: Caller) -> None:
+    """What the caller's next request would get: 404 if no longer active, 403 without the role."""
+    if not caller.active:
+        raise BuildingNotFound(detail="Building not found.")
+    if not caller.manager:
+        raise ForbiddenRole(detail="Your role in this building does not allow this.")
+
+
+@contextmanager
+def _caller_first(caller: Caller) -> Iterator[None]:
+    """A caller who lost their authority gets that refusal instead of any error about the target,
+    so they learn nothing about a member of a building they can no longer manage (review round 1,
+    F2). Their write itself still runs to the last-manager count: of two managers demoting each
+    other, the second gets 409 `last_manager` (criterion 3)."""
+    try:
+        yield
+    except DomainError:
+        refuse_stale(caller)
+        raise
+
+
+async def _lock_building(db: AsyncSession, ctx: TenantContext) -> Caller:
+    """Lock the building row (NO KEY UPDATE, as the invitations' writes; foreign-key checks from
+    other tables don't wait for it) until the transaction ends. Every write here takes it first:
+    they run one at a time per building, and each reads what the previous one committed.
+
+    Then `read_caller`: before this write's own change, so a manager may still drop their own
+    role."""
+    await db.execute(
+        select(Building.id).where(Building.id == ctx.building_id).with_for_update(key_share=True)
+    )
+    return await read_caller(db, ctx)
 
 
 async def _target(db: AsyncSession, ctx: TenantContext, membership_id: UUID) -> Any:
@@ -213,30 +242,31 @@ async def _target(db: AsyncSession, ctx: TenantContext, membership_id: UUID) -> 
     return row
 
 
-async def _check_managers(db: AsyncSession, ctx: TenantContext, caller: _Caller) -> None:
-    """After the change: the building still has an active manager (409 `last_manager`), checked
-    first, so of two managers demoting each other the second gets that. Then the caller, as
-    `_lock_building` read them: 404 if no longer active, 403 without the role, what their next
-    request would get."""
+async def _check_managers(db: AsyncSession, ctx: TenantContext, caller: Caller) -> None:
+    """After the change: the building still has an active manager who can log in (409
+    `last_manager`; an inactive user has no session, review round 1), checked first, so of two
+    managers demoting each other the second gets that. Then the caller, as `_lock_building` read
+    them (`refuse_stale`)."""
     managers = await db.scalar(
-        select(func.count()).where(
+        select(func.count())
+        .select_from(BuildingMembership)
+        .join(User, User.id == BuildingMembership.user_id)
+        .where(
             BuildingMembership.building_id == ctx.building_id,
             BuildingMembership.status == MembershipStatus.ACTIVE,
+            User.is_active,
             _holds(Role.PROPERTY_MANAGEMENT),
         )
     )
     if not managers:
         raise LastManager(detail="The building must keep at least one active property manager.")
-    if not caller.active:
-        raise BuildingNotFound(detail="Building not found.")
-    if not caller.manager:
-        raise ForbiddenRole(detail="Your role in this building does not allow this.")
+    refuse_stale(caller)
 
 
 async def _finish(
     db: AsyncSession,
     ctx: TenantContext,
-    caller: _Caller,
+    caller: Caller,
     target: Any,
     action: str,
     metadata: dict[str, Any] | None = None,
@@ -267,55 +297,56 @@ async def change_roles(
     `no_roles_left`, `resident_has_unit` (ADR-0010: a unit belongs to a resident; move them out or
     transfer them first, P4-06b) or `last_manager`."""
     caller = await _lock_building(db, ctx)
-    target = await _target(db, ctx, membership_id)
-    if target.status != MembershipStatus.ACTIVE:
-        raise MembershipNotActive(detail="Only an active member's roles can be changed.")
-    held = set(
-        await db.scalars(
-            select(MembershipRole.role).where(
-                MembershipRole.building_id == ctx.building_id,
-                MembershipRole.membership_id == target.id,
+    with _caller_first(caller):
+        target = await _target(db, ctx, membership_id)
+        if target.status != MembershipStatus.ACTIVE:
+            raise MembershipNotActive(detail="Only an active member's roles can be changed.")
+        held = set(
+            await db.scalars(
+                select(MembershipRole.role).where(
+                    MembershipRole.building_id == ctx.building_id,
+                    MembershipRole.membership_id == target.id,
+                )
             )
         )
-    )
-    added = sorted(set(data.add) - held)
-    removed = sorted(set(data.remove) & held)
-    if not added and not removed:
-        # Nothing written, but a stale manager still gets their refusal, not the member.
-        await _check_managers(db, ctx, caller)
-        [out] = await _members_out(db, ctx.building_id, [target.id])
-        await db.commit()
-        return out
-    if not (held - set(removed)) | set(added):
-        raise NoRolesLeft(detail="A member must keep at least one role.")
-    if Role.RESIDENT in removed and await db.scalar(
-        select(
-            exists().where(
-                UnitOccupancy.building_id == ctx.building_id,
-                UnitOccupancy.membership_id == target.id,
-                UnitOccupancy.ended_at.is_(None),
+        added = sorted(set(data.add) - held)
+        removed = sorted(set(data.remove) & held)
+        if not added and not removed:
+            # Nothing written, but a stale manager still gets their refusal, not the member.
+            refuse_stale(caller)
+            [out] = await _members_out(db, ctx.building_id, [target.id])
+            await db.commit()
+            return out
+        if not (held - set(removed)) | set(added):
+            raise NoRolesLeft(detail="A member must keep at least one role.")
+        if Role.RESIDENT in removed and await db.scalar(
+            select(
+                exists().where(
+                    UnitOccupancy.building_id == ctx.building_id,
+                    UnitOccupancy.membership_id == target.id,
+                    UnitOccupancy.ended_at.is_(None),
+                )
             )
-        )
-    ):
-        raise ResidentHasUnit(
-            detail="This member lives in a unit: move them out or transfer them first."
-        )
-    if removed:
-        await db.execute(
-            delete(MembershipRole).where(
-                MembershipRole.building_id == ctx.building_id,
-                MembershipRole.membership_id == target.id,
-                MembershipRole.role.in_(removed),
+        ):
+            raise ResidentHasUnit(
+                detail="This member lives in a unit: move them out or transfer them first."
             )
-        )
-    if added:
-        await db.execute(
-            insert(MembershipRole),
-            [
-                {"building_id": ctx.building_id, "membership_id": target.id, "role": role}
-                for role in added
-            ],
-        )
+        if removed:
+            await db.execute(
+                delete(MembershipRole).where(
+                    MembershipRole.building_id == ctx.building_id,
+                    MembershipRole.membership_id == target.id,
+                    MembershipRole.role.in_(removed),
+                )
+            )
+        if added:
+            await db.execute(
+                insert(MembershipRole),
+                [
+                    {"building_id": ctx.building_id, "membership_id": target.id, "role": role}
+                    for role in added
+                ],
+            )
     return await _finish(
         db,
         ctx,
@@ -364,12 +395,13 @@ async def suspend_member(
     is a 404 (`get_tenant_context` reads the status on every request); their other buildings are
     unaffected. 409 `cannot_target_self`, `invalid_transition` or `last_manager`."""
     caller = await _lock_building(db, ctx)
-    target = await _target(db, ctx, membership_id)
-    if target.id == ctx.membership_id:
-        raise CannotTargetSelf(detail="You can't suspend yourself.")
-    await _transition(
-        db, ctx, target, MembershipStatus.ACTIVE, MembershipStatus.SUSPENDED, data.reason
-    )
+    with _caller_first(caller):
+        target = await _target(db, ctx, membership_id)
+        if target.id == ctx.membership_id:
+            raise CannotTargetSelf(detail="You can't suspend yourself.")
+        await _transition(
+            db, ctx, target, MembershipStatus.ACTIVE, MembershipStatus.SUSPENDED, data.reason
+        )
     return await _finish(db, ctx, caller, target, actions.MEMBERSHIP_SUSPENDED)
 
 
@@ -377,6 +409,9 @@ async def reactivate_member(db: AsyncSession, ctx: TenantContext, membership_id:
     """Lift a suspension: the member is active again with the roles they had, and the reason is
     cleared. 409 `invalid_transition` unless suspended."""
     caller = await _lock_building(db, ctx)
-    target = await _target(db, ctx, membership_id)
-    await _transition(db, ctx, target, MembershipStatus.SUSPENDED, MembershipStatus.ACTIVE, None)
+    with _caller_first(caller):
+        target = await _target(db, ctx, membership_id)
+        await _transition(
+            db, ctx, target, MembershipStatus.SUSPENDED, MembershipStatus.ACTIVE, None
+        )
     return await _finish(db, ctx, caller, target, actions.MEMBERSHIP_REACTIVATED)

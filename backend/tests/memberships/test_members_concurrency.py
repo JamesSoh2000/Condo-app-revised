@@ -10,7 +10,7 @@ wait for it on the building lock, then act on what it committed.
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import func, select
@@ -19,6 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.audit.models import AuditEvent
 from app.auth import service as auth
 from app.core.errors import DomainError
+from app.invitations import service as invitations
+from app.invitations.models import Invitation
+from app.invitations.schemas import InvitationCreate
 from app.memberships import service
 from app.memberships.enums import MembershipStatus, Role
 from app.memberships.models import BuildingMembership, MembershipRole
@@ -290,5 +293,113 @@ def test_session_writes_and_a_staff_role_change_take_turns(
         frozen_clock.advance(hours=13)
         async with sessions() as db:
             assert await auth.resolve_session(db, written) is None
+
+    _run(scratch_database_url, body)
+
+
+# Review round 1 (Codex F2, Claude L2): a stale caller's refusal comes before anything about the
+# target, so a manager who lost access learns nothing about the member's state.
+
+
+@pytest.mark.parametrize(
+    ("demotion", "expected"),
+    [(_demote, "forbidden_role"), (_suspend, "building_not_found")],
+    ids=["role-removed", "suspended"],
+)
+@pytest.mark.parametrize(
+    "operation",
+    ["suspend-suspended", "reactivate-active", "roles-on-pending", "unknown-member", "self"],
+)
+def test_stale_manager_gets_the_refusal_before_target_errors(
+    scratch_database_url: str,
+    demotion: Callable[[TenantContext, UUID], Write],
+    expected: str,
+    operation: str,
+) -> None:
+    async def body(sessions: Sessions, world: World) -> None:
+        second = await _second_manager(sessions, world)
+        ctx = _ctx(world, second)
+
+        async def queued(db: AsyncSession) -> Any:
+            match operation:
+                case "suspend-suspended":
+                    return await service.suspend_member(
+                        db, ctx, world.a_suspended.membership.id, REASON
+                    )
+                case "reactivate-active":
+                    return await service.reactivate_member(db, ctx, world.a_resident1.membership.id)
+                case "roles-on-pending":
+                    return await service.change_roles(
+                        db,
+                        ctx,
+                        world.a_pending.membership.id,
+                        MemberRolesIn(add=[Role.SECURITY], remove=[]),
+                    )
+                case "unknown-member":
+                    return await service.suspend_member(db, ctx, uuid4(), REASON)
+                case _:
+                    return await service.suspend_member(db, ctx, second.membership.id, REASON)
+
+        outcomes = await _held_then(
+            sessions, demotion(_ctx(world, world.a_manager), second.membership.id), queued
+        )
+
+        assert outcomes == ("ok", expected)
+
+    _run(scratch_database_url, body)
+
+
+# Review round 1 (Codex F1, Claude M1): the invitations' writes wait on the same building lock, and
+# a manager demoted or suspended meanwhile must not invite a new manager.
+
+
+@pytest.mark.parametrize(
+    ("demotion", "expected"),
+    [(_demote, "forbidden_role"), (_suspend, "building_not_found")],
+    ids=["role-removed", "suspended"],
+)
+@pytest.mark.parametrize("write", ["create", "resend"])
+def test_revoked_manager_cannot_create_or_resend_an_invitation(
+    scratch_database_url: str,
+    demotion: Callable[[TenantContext, UUID], Write],
+    expected: str,
+    write: str,
+) -> None:
+    async def body(sessions: Sessions, world: World) -> None:
+        second = await _second_manager(sessions, world)
+        ctx = _ctx(world, second)
+        async with sessions() as db:
+            pending = await invitations.create_invitation(
+                db,
+                _ctx(world, world.a_manager),
+                InvitationCreate(email="guard@example.test", roles=[Role.SECURITY]),
+            )
+        token_before = await _scalar(
+            sessions, select(Invitation.token_hash).where(Invitation.id == pending.id)
+        )
+
+        async def queued(db: AsyncSession) -> Any:
+            if write == "create":
+                return await invitations.create_invitation(
+                    db,
+                    ctx,
+                    InvitationCreate(email="taker@example.test", roles=[Role.PROPERTY_MANAGEMENT]),
+                )
+            return await invitations.resend_invitation(db, ctx, pending.id)
+
+        outcomes = await _held_then(
+            sessions, demotion(_ctx(world, world.a_manager), second.membership.id), queued
+        )
+
+        assert outcomes == ("ok", expected)
+        by_second = await _scalar(
+            sessions,
+            select(func.count()).where(Invitation.created_by_user_id == second.user.id),
+        )
+        assert by_second == 0
+        token_after = await _scalar(
+            sessions, select(Invitation.token_hash).where(Invitation.id == pending.id)
+        )
+        assert token_after == token_before
 
     _run(scratch_database_url, body)

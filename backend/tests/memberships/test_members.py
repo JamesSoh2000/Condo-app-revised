@@ -585,6 +585,21 @@ async def test_last_manager_counts_only_active_managers(
     assert_problem(r, 409, "last_manager")
 
 
+async def test_a_manager_whose_account_is_inactive_does_not_count(
+    manager: AsyncClient, world: World, db: AsyncSession
+) -> None:
+    # Review round 1 (Claude residual): an inactive user can't log in (`resolve_session`), so the
+    # building would be left with no manager who can act.
+    second = await _second_manager(db, world)
+    second.user.is_active = False
+    await db.flush()
+    r = await manager.post(
+        _member(world.a, world.a_manager.membership.id, "roles"),
+        json={"add": ["council"], "remove": ["property_management"]},
+    )
+    assert_problem(r, 409, "last_manager")
+
+
 async def test_another_buildings_manager_does_not_count(manager: AsyncClient, world: World) -> None:
     # b_manager is active, in building B: A would still have none.
     r = await manager.post(
