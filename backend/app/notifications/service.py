@@ -152,6 +152,12 @@ def _check_text(**values: str | None) -> None:
             raise ValueError(f"`{name}` must be at most {_MAX_LENGTHS[name]} characters")
         if "\x00" in value:
             raise ValueError(f"`{name}` must not contain NUL characters")
+        try:
+            value.encode()
+        except UnicodeEncodeError:
+            # A lone surrogate: Postgres can't store it, and asyncpg would raise DBAPIError at the
+            # INSERT instead (P3-03 carry).
+            raise ValueError(f"`{name}` must be valid Unicode") from None
 
 
 async def staff_user_ids(db: AsyncSession, building_id: UUID, roles: Sequence[Role]) -> list[UUID]:

@@ -23,6 +23,9 @@ KINDS: dict[str, NotificationKind] = {
             "membership.denied", "A manager denied the user's membership request", "notification"
         ),
         NotificationKind(
+            "onboarding.submitted", "A resident asked to join the building (managers)", None
+        ),
+        NotificationKind(
             "package.arrived", "Security logged a package for the user's unit", "notification"
         ),
         NotificationKind(
