@@ -26,8 +26,8 @@ from tests.notifications.test_concurrency import migrate
 
 EMAIL = "forgetful@example.test"
 OLD_PASSWORD = "the-old-password-2026"  # noqa: S105 (test value)
-FIRST = "the-first-new-password"  # noqa: S105 (test value)
-SECOND = "the-second-new-password"  # noqa: S105 (test value)
+FIRST = "the-first-new-password"
+SECOND = "the-second-new-password"
 
 
 async def _wait_for_a_lock(sessions: async_sessionmaker[AsyncSession]) -> None:
@@ -72,9 +72,7 @@ def _run(scratch_database_url: str, check: Callable[..., Awaitable[None]]) -> No
         sessions = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
         try:
             async with sessions() as db:
-                user = await make_user(
-                    db, email=EMAIL, password_hash=hash_password(OLD_PASSWORD)
-                )
+                user = await make_user(db, email=EMAIL, password_hash=hash_password(OLD_PASSWORD))
                 await db.commit()
             await check(sessions, RateLimiter(sessions), user.id)
         finally:
@@ -92,7 +90,7 @@ async def _token(sessions: async_sessionmaker[AsyncSession]) -> str:
         link = await db.scalar(
             select(Job.payload["context"]["link"].astext).order_by(Job.id.desc()).limit(1)
         )
-    assert link is not None
+    assert isinstance(link, str)
     return link.rsplit("/", 1)[1]
 
 
@@ -176,9 +174,7 @@ def test_token_that_expires_while_the_confirm_waits_is_refused(
         async with sessions() as db:
             await _request(db, limiter)
             await db.execute(
-                update(PasswordResetToken).values(
-                    expires_at=frozen_clock() + timedelta(seconds=1)
-                )
+                update(PasswordResetToken).values(expires_at=frozen_clock() + timedelta(seconds=1))
             )
             await db.commit()
         token = await _token(sessions)

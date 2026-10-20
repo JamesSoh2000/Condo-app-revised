@@ -26,6 +26,7 @@ from app.core.config import settings
 from app.core.errors import Conflict, Forbidden, NotFound, field_errors
 from app.core.pagination import CursorParams, Page, paginate
 from app.core.security import (
+    PASSWORD_POLICY_MESSAGES,
     WeakPasswordError,
     check_password_policy,
     generate_token,
@@ -340,12 +341,6 @@ async def resend_invitation(
 _TOKEN = re.compile(r"[A-Za-z0-9_-]{43}")
 # An invitation can't change these: role changes and lifting a suspension are P4-06's (D1).
 _REACTIVATABLE = (MembershipStatus.PENDING, MembershipStatus.DENIED, MembershipStatus.DEACTIVATED)
-_POLICY_MESSAGES = {
-    "too_short": "must be at least 12 characters",
-    "too_long": "must be at most 128 characters",
-    "too_common": "is too common",
-    "invalid_characters": "contains characters that can't be stored",
-}
 
 
 class InvitationInvalid(NotFound):
@@ -458,7 +453,7 @@ def _new_account_input(data: InvitationAccept) -> tuple[str, str]:
     except WeakPasswordError as exc:
         # The reason only: never the password (P2-01b carry).
         raise field_errors(
-            ("password", _POLICY_MESSAGES[exc.reason], f"password_{exc.reason}")
+            ("password", PASSWORD_POLICY_MESSAGES[exc.reason], f"password_{exc.reason}")
         ) from None
     return data.full_name, data.password
 

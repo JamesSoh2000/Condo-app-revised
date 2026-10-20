@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, c
 
 from app.core import clock
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocal, make_engine
 from app.core.dependencies import get_db_session
 from app.main import app, create_app
 from app.rate_limits.service import RateLimiter, get_rate_limiter
@@ -172,7 +172,8 @@ async def _drop_database(test_url: str) -> None:
 
 @pytest.fixture(scope="session")
 async def engine(migrated_test_database: str) -> AsyncIterator[AsyncEngine]:
-    test_engine = create_async_engine(migrated_test_database)
+    # The app's engine options (hide_parameters), so requests fail as they do in production.
+    test_engine = make_engine(migrated_test_database)
     yield test_engine
     await test_engine.dispose()
 

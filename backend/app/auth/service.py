@@ -1,38 +1,44 @@
-"""Session lifecycle (ADR-0003): login, resolving a cookie, activity refresh, logout, and the
-caller's view of their account and sessions (P2-02).
+"""Session lifecycle (ADR-0003): login, resolving a cookie, activity refresh, logout, the caller's
+view of their account and sessions (P2-02), and password reset (P4-04).
 
-`login`, `touch_session`, `logout`, `logout_all` and `revoke_session` are use-cases and commit once
-each (CLAUDE.md rule 5); `start_session`, `revoke_all_sessions` and the readers never commit. Each
-use-case but `touch_session` records its audit event (P2-04) in that same commit.
+`login`, `touch_session`, `logout`, `logout_all`, `revoke_session`, `request_password_reset` and
+`confirm_password_reset` are use-cases and commit once each (CLAUDE.md rule 5); `start_session`,
+`revoke_all_sessions` and the readers never commit. Each use-case but `touch_session` records its
+audit event (P2-04) in that same commit.
 """
 
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import NamedTuple
+from typing import NamedTuple, NoReturn
 from uuid import UUID
 
 from anyio import to_thread
-from sqlalchemy import ColumnElement, and_, delete, exists, func, or_, select, update
+from sqlalchemy import ColumnElement, and_, delete, exists, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
 from app.audit.service import record_audit
-from app.auth.models import AuthSession
+from app.auth.models import AuthSession, PasswordResetToken
 from app.auth.schemas import (
     MeBuildingOut,
     MeMembershipOut,
     MeOccupancyOut,
     MeOut,
     MeUserOut,
+    PasswordResetRequestedOut,
     SessionOut,
 )
 from app.buildings.models import Building
 from app.core import clock
 from app.core.config import settings
-from app.core.errors import NotFound, Unauthorized
+from app.core.errors import BadRequest, NotFound, Unauthorized, field_errors
 from app.core.pagination import CursorParams, Page, paginate
 from app.core.security import (
     DUMMY_HASH,
+    PASSWORD_POLICY_MESSAGES,
+    WeakPasswordError,
+    check_password_policy,
     generate_token,
     hash_password,
     hash_token,
@@ -40,6 +46,8 @@ from app.core.security import (
     needs_rehash,
     verify_password,
 )
+from app.email.service import queue_email
+from app.email.templates import DEFAULT_LOCALE, SUPPORTED_LOCALES
 from app.memberships.enums import STAFF_ROLES, MembershipStatus, Role
 from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
 from app.rate_limits.service import RateLimiter, ip_key
@@ -52,6 +60,13 @@ REFRESH_EVERY = timedelta(minutes=5)
 # An ended session's row (with its IP and user agent) is kept this long for investigations that
 # start from an audit event, then deleted by `sessions.cleanup` (P3-01b D1).
 SESSION_RETENTION = timedelta(days=30)
+PASSWORD_RESET_TTL = timedelta(hours=1)
+# What `generate_token` makes; anything else is no token of ours (as invitations).
+_RESET_TOKEN = re.compile(r"[A-Za-z0-9_-]{43}")
+# The one answer to every allowed reset request, whether or not an account matched (criterion 1).
+RESET_REQUESTED = PasswordResetRequestedOut(
+    detail="If an account exists for this email, we sent a link to reset its password."
+)
 
 
 class CurrentSession(NamedTuple):
@@ -67,6 +82,10 @@ class NewSession(NamedTuple):
 class InvalidCredentials(Unauthorized):
     code = "invalid_credentials"
     title = "Unauthorized"
+
+
+class ResetTokenInvalid(BadRequest):
+    code = "reset_token_invalid"
 
 
 async def login(
@@ -106,16 +125,19 @@ async def login(
     # argon2 is CPU-bound and memory-hard: run it off the event loop.
     matches = await to_thread.run_sync(verify_password, password, usable or DUMMY_HASH)
     if found is None or usable is None or not matches or not found.is_active:
-        # Never the attempted email or password; the user's id only when the email matched one.
-        await record_audit(
-            db,
-            action=actions.AUTH_LOGIN_FAILED,
-            entity_type="user",
-            metadata={"user_id": found.id} if found is not None else None,
+        await _login_failed(db, found.id if found is not None else None)
+    # The user's lock (taken again by the session's start), then the hash and status again: a
+    # password reset may have committed while argon2 ran, and a session started from the old
+    # password would outlive the reset that ended them all (P4-04 criterion 8).
+    current = (
+        await db.execute(
+            select(User.password_hash, User.is_active)
+            .where(User.id == found.id)
+            .with_for_update(key_share=True)
         )
-        # Committed although the login fails: the router commits nothing on an error.
-        await db.commit()
-        raise InvalidCredentials(detail="The email or password is incorrect.")
+    ).one()
+    if current.password_hash != usable or not current.is_active:
+        await _login_failed(db, found.id)
     if needs_rehash(usable):
         upgraded = await to_thread.run_sync(hash_password, password)
         # Only over the hash that was verified: a password changed meanwhile wins.
@@ -127,6 +149,19 @@ async def login(
     token = await start_logged_in_session(db, found.id, user_agent=user_agent, ip=ip)
     await db.commit()
     return token
+
+
+async def _login_failed(db: AsyncSession, user_id: UUID | None) -> NoReturn:
+    # Never the attempted email or password; the user's id only when the email matched one.
+    await record_audit(
+        db,
+        action=actions.AUTH_LOGIN_FAILED,
+        entity_type="user",
+        metadata={"user_id": user_id} if user_id is not None else None,
+    )
+    # Committed although the login fails: the router commits nothing on an error.
+    await db.commit()
+    raise InvalidCredentials(detail="The email or password is incorrect.")
 
 
 async def start_logged_in_session(
@@ -393,6 +428,143 @@ async def revoke_session(db: AsyncSession, user_id: UUID, session_id: UUID) -> N
         entity_type="session",
         entity_id=session_id,
         actor_user_id=user_id,
+    )
+    await db.commit()
+
+
+def _reset_token_live(now: datetime) -> ColumnElement[bool]:
+    return and_(
+        PasswordResetToken.used_at.is_(None),
+        PasswordResetToken.revoked_at.is_(None),
+        PasswordResetToken.expires_at > now,
+    )
+
+
+def _reset_invalid() -> ResetTokenInvalid:
+    # One body for unknown, malformed, expired, used and replaced tokens, and a deactivated user's.
+    return ResetTokenInvalid(
+        detail="This password reset link is invalid or has expired. Ask for a new one."
+    )
+
+
+async def request_password_reset(
+    db: AsyncSession, limiter: RateLimiter, *, email: str, ip: str | None
+) -> None:
+    """Email a reset link if `email` is an active account's; otherwise do nothing visible.
+
+    The caller answers `RESET_REQUESTED` either way. Every request counts against the IP, then the
+    email, before the lookup (P2-05), and makes a token whether or not it is used, so an unknown
+    email takes no early return (ticket: timing).
+
+    The user row is locked first (D2): of two requests for one account the second waits, then
+    revokes the first's token, so a user has one live token (the partial unique index).
+    """
+    await limiter.enforce(ip_key("reset", ip), settings.rate_limit_reset_ip)
+    await limiter.enforce(await limiter.email_key("reset", email), settings.rate_limit_reset_email)
+    token = generate_token()
+    token_hash = hash_token(token)
+    # lower() on both sides in Postgres, as `login`.
+    found = (
+        await db.execute(
+            select(User.id, User.email, User.locale, User.is_active)
+            .where(func.lower(User.email) == func.lower(email))
+            .with_for_update(key_share=True)
+        )
+    ).one_or_none()
+    if found is not None and found.is_active:
+        now = clock.now()
+        # Expired ones too: the index counts every token neither used nor revoked.
+        await db.execute(
+            update(PasswordResetToken)
+            .where(
+                PasswordResetToken.user_id == found.id,
+                PasswordResetToken.used_at.is_(None),
+                PasswordResetToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
+        await db.execute(
+            insert(PasswordResetToken).values(
+                user_id=found.id, token_hash=token_hash, expires_at=now + PASSWORD_RESET_TTL
+            )
+        )
+        await queue_email(
+            db,
+            # The stored address, not the one typed.
+            to=found.email,
+            template="password_reset",
+            # A path: the template puts APP_BASE_URL in front. In `context`, the payload key the
+            # worker drops once the email is sent.
+            context={"link": f"/reset-password/{token}"},
+            locale=found.locale if found.locale in SUPPORTED_LOCALES else DEFAULT_LOCALE,
+        )
+    await record_audit(
+        db,
+        action=actions.AUTH_PASSWORD_RESET_REQUESTED,
+        entity_type="user",
+        metadata={"user_id": found.id} if found is not None else None,
+    )
+    await db.commit()
+
+
+async def confirm_password_reset(
+    db: AsyncSession, limiter: RateLimiter, *, token: str, new_password: str, ip: str | None
+) -> None:
+    """Set the password of the live token's active user, use the token, and revoke every session
+    of the user. 422 if the policy refuses the password (the token stays usable); 400
+    `reset_token_invalid` for any token that can't be used.
+
+    Reads first, then ends the read so argon2 runs with no connection held, then writes in one
+    transaction that takes the user's lock (the same order as the request and login, D2) and claims
+    the token with a conditional UPDATE and the clock read after that lock (D3).
+    """
+    await limiter.enforce(ip_key("reset_confirm", ip), settings.rate_limit_reset_ip)
+    try:
+        check_password_policy(new_password)
+    except WeakPasswordError as exc:
+        # The reason only: never the password (P2-01b carry).
+        raise field_errors(
+            ("new_password", PASSWORD_POLICY_MESSAGES[exc.reason], f"password_{exc.reason}")
+        ) from None
+    if not _RESET_TOKEN.fullmatch(token):
+        raise _reset_invalid()
+    token_hash = hash_token(token)
+    # Before argon2: a token that can't be used costs no hashing.
+    user_id = await db.scalar(
+        select(PasswordResetToken.user_id)
+        .join(User, User.id == PasswordResetToken.user_id)
+        .where(
+            PasswordResetToken.token_hash == token_hash,
+            _reset_token_live(clock.now()),
+            User.is_active,
+        )
+    )
+    if user_id is None:
+        raise _reset_invalid()
+    await db.rollback()
+    password_hash = await to_thread.run_sync(hash_password, new_password)
+
+    active = await db.scalar(
+        select(User.id).where(User.id == user_id, User.is_active).with_for_update(key_share=True)
+    )
+    now = clock.now()
+    claimed = await db.scalar(
+        update(PasswordResetToken)
+        .where(PasswordResetToken.token_hash == token_hash, _reset_token_live(now))
+        .values(used_at=now)
+        .returning(PasswordResetToken.id)
+    )
+    if active is None or claimed is None:
+        raise _reset_invalid()
+    await db.execute(update(User).where(User.id == user_id).values(password_hash=password_hash))
+    revoked = await revoke_all_sessions(db, user_id)
+    await record_audit(
+        db,
+        action=actions.AUTH_PASSWORD_RESET_COMPLETED,
+        entity_type="user",
+        entity_id=user_id,
+        actor_user_id=user_id,
+        metadata={"sessions_revoked": revoked},
     )
     await db.commit()
 

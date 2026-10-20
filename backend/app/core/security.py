@@ -107,6 +107,15 @@ def hash_token(token: str) -> str:
 type WeakPasswordReason = Literal["too_short", "too_long", "too_common", "invalid_characters"]
 
 
+# The 422 message for each reason, on the password field (invitation accept, password reset).
+PASSWORD_POLICY_MESSAGES: dict[WeakPasswordReason, str] = {
+    "too_short": f"must be at least {PASSWORD_MIN_LENGTH} characters",
+    "too_long": f"must be at most {PASSWORD_MAX_LENGTH} characters",
+    "too_common": "is too common",
+    "invalid_characters": "contains characters that can't be stored",
+}
+
+
 class WeakPasswordError(ValueError):
     def __init__(self, reason: WeakPasswordReason) -> None:
         super().__init__(f"password rejected by the policy: {reason}")

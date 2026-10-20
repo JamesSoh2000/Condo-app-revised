@@ -16,18 +16,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.models import AuditEvent
 from app.auth import service
 from app.auth.models import AuthSession, PasswordResetToken
-from app.core.config import settings
+from app.core import clock
 from app.core.security import hash_password, hash_token, verify_password
+from app.email import service as email_service
 from app.jobs.models import Job, JobStatus
 from app.jobs.worker import Worker
 from app.logging_config import JsonFormatter
 from app.users.models import User
 from tests.conftest import FrozenClock
-from tests.email.conftest import FakeSMTP, email_handler, point_settings_at, smtp  # noqa: F401
+from tests.email.conftest import FakeSMTP, point_settings_at
 from tests.factories import make_user
 from tests.helpers.auth import login_as
 from tests.helpers.tenancy import assert_problem, without_request_id
-from tests.jobs.conftest import Sessions, sessions  # noqa: F401
+from tests.jobs.conftest import Sessions
 
 pytestmark = pytest.mark.anyio
 
@@ -199,7 +200,9 @@ async def test_stored_token_hash_must_be_sha256_hex(db: AsyncSession):
     user = await _user(db)
     db.add(
         PasswordResetToken(
-            user_id=user.id, token_hash="not-a-hash", expires_at=service.clock.now()
+            user_id=user.id,
+            token_hash="not-a-hash",  # noqa: S106 (not a secret)
+            expires_at=clock.now(),
         )
     )
     with pytest.raises(Exception, match="ck_password_reset_tokens_token_hash_is_sha256_hex"):
@@ -247,7 +250,9 @@ async def test_confirm_sets_the_password_and_revokes_every_session(
     (row,) = await _tokens(db)
     assert row.used_at is not None
     live = await db.scalars(
-        select(AuthSession.id).where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
+        select(AuthSession.id).where(
+            AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None)
+        )
     )
     assert live.all() == []
     (event,) = await _audit(db, "auth.password_reset_completed")
@@ -387,9 +392,7 @@ async def test_ninth_request_for_one_email_is_rate_limited(client: AsyncClient, 
 
     for email in (EMAIL, "nobody@example.test"):
         allowed = [await client.post(REQUEST, json={"email": email}) for _ in range(8)]
-        assert {(r.status_code, r.content) for r in allowed} == {
-            (202, allowed[0].content)
-        }, email
+        assert {(r.status_code, r.content) for r in allowed} == {(202, allowed[0].content)}, email
         assert allowed[0].json() == GENERIC
 
         limited = await client.post(REQUEST, json={"email": email})
@@ -493,7 +496,7 @@ async def test_failed_request_leaks_no_token(
         )
     else:
         queued: list[AsyncSession] = []
-        real_queue = service.queue_email
+        real_queue = email_service.queue_email
         real_commit = AsyncSession.commit
 
         async def queue_and_mark(session: AsyncSession, **kwargs: Any) -> object:
@@ -534,20 +537,21 @@ def test_app_engine_hides_sql_parameters():
 @pytest.mark.parametrize(
     "body",
     [
-        {},
-        {"email": None},
-        {"email": 42},
-        {"email": ""},
-        {"email": "a" * 321},
-        {"email": "nul\u0000@example.test"},
-        {"email": "lone\ud800@example.test"},
+        "{}",
+        '{"email": null}',
+        '{"email": 42}',
+        '{"email": ""}',
+        json.dumps({"email": "a" * 321}),
+        '{"email": "nul\\u0000@example.test"}',
+        # A lone surrogate: valid JSON, but no UTF-8 for Postgres (httpx can't encode a str one).
+        '{"email": "lone\\ud800@example.test"}',
     ],
     ids=["missing", "null", "number", "empty", "too-long", "nul", "lone-surrogate"],
 )
 async def test_malformed_email_is_422_without_a_lookup(
-    client: AsyncClient, db: AsyncSession, body: dict[str, Any]
+    client: AsyncClient, db: AsyncSession, body: str
 ):
-    r = await client.post(REQUEST, json=body)
+    r = await client.post(REQUEST, content=body, headers={"content-type": "application/json"})
 
     assert r.status_code == 422, r.text
     assert await _audit(db, "auth.password_reset_requested") == []
@@ -556,16 +560,16 @@ async def test_malformed_email_is_422_without_a_lookup(
 @pytest.mark.parametrize(
     "body",
     [
-        {"token": "A" * 43},
-        {"new_password": NEW_PASSWORD},
-        {"token": "A" * 43, "new_password": None},
-        {"token": "A" * 201, "new_password": NEW_PASSWORD},
-        {"token": "A" * 43, "new_password": "lone\ud800-password-2026"},
+        json.dumps({"token": "A" * 43}),
+        json.dumps({"new_password": NEW_PASSWORD}),
+        json.dumps({"token": "A" * 43, "new_password": None}),
+        json.dumps({"token": "A" * 201, "new_password": NEW_PASSWORD}),
+        '{"token": "' + "A" * 43 + '", "new_password": "lone\\ud800-password-2026"}',
     ],
     ids=["no-password", "no-token", "null-password", "long-token", "lone-surrogate"],
 )
-async def test_malformed_confirm_is_422(client: AsyncClient, body: dict[str, Any]):
-    r = await client.post(CONFIRM, json=body)
+async def test_malformed_confirm_is_422(client: AsyncClient, body: str):
+    r = await client.post(CONFIRM, content=body, headers={"content-type": "application/json"})
 
     assert r.status_code == 422, r.text
 

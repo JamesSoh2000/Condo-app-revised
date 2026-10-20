@@ -38,3 +38,33 @@ class AuthSession(UUIDPrimaryKeyMixin, Base):
 
     # For flush order only (users before their sessions), as on BuildingMembership.
     user: Mapped[User] = relationship(lazy="raise")
+
+
+class PasswordResetToken(UUIDPrimaryKeyMixin, Base):
+    """An emailed password reset link (P4-04). Only the token's sha256 is stored; the token itself
+    is in the email alone. Live while `used_at` and `revoked_at` are NULL and before `expires_at`.
+
+    A user has at most one live token: a new request revokes the earlier ones (D1).
+    """
+
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (
+        CheckConstraint("token_hash ~ '^[0-9a-f]{64}$'", name="token_hash_is_sha256_hex"),
+        # Backs the request's lock on the user row (D2): a second live token can't be inserted.
+        Index(
+            "uq_password_reset_tokens_user_id_live",
+            "user_id",
+            unique=True,
+            postgresql_where=text("used_at IS NULL AND revoked_at IS NULL"),
+        ),
+    )
+
+    # CASCADE: a token is a credential, not history (as sessions).
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # A password was set with it.
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # A newer request replaced it.
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

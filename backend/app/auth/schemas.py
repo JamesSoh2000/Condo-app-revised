@@ -28,6 +28,39 @@ class LoginIn(InputModel):
         return email
 
 
+def _storable(value: str) -> str:
+    # Postgres text can't hold NUL or a lone surrogate: a lookup would fail with a 500 (CLAUDE.md
+    # lesson). Rejecting them depends on the input only, never on an account.
+    if "\x00" in value:
+        raise ValueError("must not contain NUL characters")
+    try:
+        value.encode()
+    except UnicodeEncodeError:
+        raise ValueError("must be valid Unicode") from None
+    return value
+
+
+class PasswordResetRequestIn(InputModel):
+    # A plain string, as LoginIn: a malformed address is an unknown one, with the same 202.
+    email: str = Field(min_length=1, max_length=320)
+
+    _email_storable = field_validator("email")(_storable)
+
+
+class PasswordResetRequestedOut(APIModel):
+    detail: str
+
+
+class PasswordResetConfirmIn(InputModel):
+    # Any short string: one of the wrong shape is an invalid token (400), as an unknown one is.
+    token: str = Field(max_length=200)
+    # Not stripped, as LoginIn; the policy (12-128 characters, not common) is the service's.
+    new_password: Annotated[
+        str,
+        StringConstraints(strip_whitespace=False, min_length=1, max_length=PASSWORD_MAX_LENGTH),
+    ]
+
+
 # Responses. Built field by field from the rows the service selects: never from a User or
 # AuthSession, so password_hash, token_hash and ip can't reach a response.
 

@@ -6,6 +6,9 @@ AUTH_LOGGED_OUT = "auth.logged_out"
 AUTH_LOGGED_OUT_ALL = "auth.logged_out_all"
 AUTH_SESSION_REVOKED = "auth.session_revoked"
 
+AUTH_PASSWORD_RESET_REQUESTED = "auth.password_reset_requested"  # noqa: S105
+AUTH_PASSWORD_RESET_COMPLETED = "auth.password_reset_completed"  # noqa: S105
+
 BUILDING_BOOTSTRAPPED = "building.bootstrapped"
 
 UNIT_CREATED = "unit.created"
