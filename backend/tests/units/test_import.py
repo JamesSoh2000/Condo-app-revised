@@ -140,6 +140,20 @@ async def test_label_match_is_case_sensitive(db, world):
     assert {("a", "ph"), ("A", "PH")} <= set(await _units(db, world.a.id))
 
 
+async def test_import_flushes_but_never_commits(db, world, monkeypatch):
+    # P4-03 calls it inside its own transaction (ticket "Interfaces").
+    async def no_commit() -> None:
+        pytest.fail("import_units committed")
+
+    monkeypatch.setattr(db, "commit", no_commit)
+    parsed = parse_units_csv(HEADER + "A,1,1\n")
+
+    await import_units(db, world.a.id, parsed, dry_run=False)
+
+    assert not db.new
+    assert (await _units(db, world.a.id))[("A", "1")].floor == 1
+
+
 async def test_header_only_reports_zeros(db, world):
     report = await import_units(db, world.a.id, parse_units_csv(HEADER), dry_run=False)
 

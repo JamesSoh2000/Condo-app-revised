@@ -296,7 +296,8 @@ def parse_units_csv(text: str) -> ParsedUnits:
     # A cell may be as long as the file: an overlong one is an invalid row, not broken CSV (review
     # round 1). The limit is process-wide; it is only ever raised.
     csv.field_size_limit(max(csv.field_size_limit(), MAX_IMPORT_BYTES))
-    reader = csv.reader(io.StringIO(text.removeprefix("\ufeff")), strict=True)
+    # newline="": the csv module reads LF, CRLF and CR itself (CR-only was refused, review round 2).
+    reader = csv.reader(io.StringIO(text.removeprefix("\ufeff"), newline=""), strict=True)
     rows: list[ImportRow] = []
     invalid: list[InvalidRow] = []
     first_line: dict[tuple[str | None, str], int] = {}
@@ -370,7 +371,8 @@ async def _write_row(db: AsyncSession, building_id: UUID, row: ImportRow) -> str
         await db.execute(
             stmt.on_conflict_do_update(
                 constraint="uq_units_building_id_tower_label",
-                set_={"floor": stmt.excluded.floor},
+                # updated_at by hand: the mixin's `onupdate` is ORM-only (review round 2).
+                set_={"floor": stmt.excluded.floor, "updated_at": func.now()},
                 where=Unit.floor.is_distinct_from(stmt.excluded.floor),
             ).returning(Unit.id, literal_column("old.id IS NULL", Boolean))
         )
