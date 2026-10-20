@@ -14,6 +14,7 @@ from uuid import UUID
 
 import typer
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.report import render
@@ -209,8 +210,8 @@ def email_test_command(
     typer.echo(f"queued email job {queued[0]}")
 
 
-def _read_units_csv(csv_path: str) -> ParsedUnits:
-    """Read and parse a units CSV, or print the error and exit 1."""
+def _read_units_csv(csv_path: str, option: str) -> ParsedUnits:
+    """Read and parse a units CSV, or print the error, naming `option`, and exit 1."""
     try:
         with Path(csv_path).open("rb") as file:
             data = file.read(MAX_IMPORT_BYTES + 1)
@@ -218,13 +219,13 @@ def _read_units_csv(csv_path: str) -> ParsedUnits:
             raise CsvError(f"the file is larger than {MAX_IMPORT_BYTES // 1024} KiB")
         return parse_units_csv(data.decode("utf-8"))
     except OSError as exc:
-        typer.echo(f"error: can't read {csv_path}: {exc.strerror}", err=True)
+        typer.echo(f"error: {option}: can't read {csv_path}: {exc.strerror}", err=True)
         raise typer.Exit(1) from None
     except UnicodeDecodeError:
-        typer.echo("error: the file is not UTF-8 text", err=True)
+        typer.echo(f"error: {option}: the file is not UTF-8 text", err=True)
         raise typer.Exit(1) from None
     except CsvError as exc:
-        typer.echo(f"error: {exc}", err=True)
+        typer.echo(f"error: {option}: {exc}", err=True)
         raise typer.Exit(1) from None
 
 
@@ -239,7 +240,7 @@ def import_units_command(
     Invalid rows are skipped and listed by line; the valid ones are written.
     """
     # Read and checked before any session: a bad file must not touch the database.
-    parsed = _read_units_csv(csv_path)
+    parsed = _read_units_csv(csv_path, "--csv")
     output: list[str] = []
 
     async def work(db: AsyncSession) -> None:
@@ -308,7 +309,7 @@ def bootstrap_building_command(
         for error in exc.errors():
             typer.echo(f"error: {_option_name(str(error['loc'][0]))}: {error['msg']}", err=True)
         raise typer.Exit(1) from None
-    units = _read_units_csv(units_csv) if units_csv is not None else None
+    units = _read_units_csv(units_csv, "--units-csv") if units_csv is not None else None
     if units is not None and units.invalid:
         # P4-03 D3: a building is provisioned from a clean file or not at all.
         typer.echo(f"error: --units-csv: {len(units.invalid)} invalid rows", err=True)
@@ -332,6 +333,15 @@ def bootstrap_building_command(
     except SlugExists as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
+    except SQLAlchemyError as exc:
+        # Never the message or the traceback: they carry the statements' parameters, and the
+        # email job's hold the accept link (review round 1, F1). The SQLSTATE says what failed.
+        state = getattr(getattr(exc, "orig", None), "sqlstate", None) or type(exc).__name__
+        typer.echo(
+            f"error: the database refused the bootstrap (SQLSTATE {state}); nothing was written",
+            err=True,
+        )
+        raise typer.Exit(1) from None
     typer.echo("\n".join(output))
 
 

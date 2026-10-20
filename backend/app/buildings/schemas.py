@@ -1,9 +1,11 @@
+import json
 from typing import Annotated
 from uuid import UUID
 
 from pydantic import AfterValidator, StringConstraints
 from pydantic_core import PydanticCustomError
 
+from app.audit.service import MAX_VALUE_BYTES
 from app.buildings.enums import Feature
 from app.core.schemas import APIModel, InputModel
 from app.core.time import validate_timezone
@@ -45,6 +47,16 @@ def _distinct_features(features: list[Feature]) -> list[Feature]:
     return sorted(features)
 
 
+def _fits_audit_value(value: str) -> str:
+    # `record_audit` measures a metadata value as JSON (ensure_ascii=False) in UTF-8 bytes: a
+    # reason it would refuse must fail here, before any write, not after (review round 1, F2).
+    if len(json.dumps(value, ensure_ascii=False).encode()) > MAX_VALUE_BYTES:
+        raise PydanticCustomError(
+            "too_long", "must be at most {limit} bytes", {"limit": MAX_VALUE_BYTES}
+        )
+    return value
+
+
 def _stripped(max_length: int) -> StringConstraints:
     return StringConstraints(strip_whitespace=True, min_length=1, max_length=max_length)
 
@@ -69,5 +81,5 @@ class BootstrapInput(InputModel):
     # Shown in the plan and summary only: invitations store no name (P4-03 F7).
     manager_name: Name | None = None
     # The operator's own words and name, for the audit event; `record_audit` caps a value at 1 KiB.
-    reason: LongText
+    reason: Annotated[LongText, AfterValidator(_fits_audit_value)]
     operator: Operator
