@@ -29,5 +29,6 @@ himself. Reading them is a core learning activity, because they state the trade-
 | [0016](./0016-occupancy-windows-and-writes.md) | Occupancy windows: half-open, on the database clock, tested in a database function; writes serialize per membership (agent and James, P1-03) | Accepted |
 | [0017](./0017-implementer-writes-the-explanation.md) | The implementer session writes and edits the explanation, after a reality pass (James) | Accepted; amends 0014 |
 | [0018](./0018-file-deletion-state.md) | Files are deleted through a committed `deleting` status: `files.cleanup` marks, `files.purge` deletes (agent, P3-04c) | Accepted; amends 0007 |
+| [0019](./0019-sql-parameters-hidden-from-errors.md) | The engine hides SQL parameters from database error messages, so emailed tokens reach no log (agent, P4-04) | Accepted |
 
 Template: [../templates/ADR.md](../templates/ADR.md).

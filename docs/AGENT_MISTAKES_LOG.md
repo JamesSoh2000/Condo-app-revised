@@ -98,6 +98,7 @@ project-specific guidance you have, and it shows how well the autonomous gates w
 | Recording a future step as done (P1-04, P1-05, P1-07) | `CLAUDE.md` lesson "Write in the PR only what is already on the branch" (P1-07) | 2026-10-16 |
 | Mutating uncommitted files (P1-03, P1-05) | `CLAUDE.md` lesson "Commit before mutation probes" (P1-07) | 2026-10-16 |
 | Fix not tested on adjacent cases, recurring (P1-07 round 2, P1-08 round 1) | the same `CLAUDE.md` lesson, widened to other options of the changed path and other paths into the same state (P1 recap) | 2026-10-16 |
+| A secret leaks through a second output path (P4-02b CSRF log line, P4-03 SQL parameters) | a fix at the source, `hide_parameters` on the engine (ADR-0019), and the test `tests/auth/test_password_reset.py::test_failed_request_leaks_no_token`, which fails a request at the token insert, job insert, audit insert and commit and checks every log line, stderr and the response (P4-04, PR #90) | 2026-10-20 |
 
 Both P1-05 pending promotions were done in P1-07 (above); P1-06 hadn't picked them up.
 

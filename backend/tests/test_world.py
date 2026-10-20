@@ -69,6 +69,8 @@ EXPECTED_ROW_COUNTS = {
     "notifications": 0,
     # P4-02a: nor invites anyone.
     "invitations": 0,
+    # P4-04: nor asks for a password reset.
+    "password_reset_tokens": 0,
 }
 
 

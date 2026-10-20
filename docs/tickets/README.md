@@ -74,7 +74,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-02a](./P4-02a-invitations-management.md) | Invitations: table and manager endpoints (split from [P4-02](./P4-02-staff-invitations.md)) | A | 1 | P3-02, P2-04, P2-03, P2-05 | done | — |
 | [P4-02b](./P4-02b-invitation-accept.md) | Invitation lookup and accept (split from P4-02) | A | 1 | P4-02a | done | — |
 | [P4-03](./P4-03-bootstrap-building-command.md) | Bootstrap-building operator command | A | 1 | P4-02b, P4-01b, P1-06 | done | — |
-| [P4-04](./P4-04-password-reset.md) | Password reset | B | 1 | P3-02, P2-05, P2-04 | todo | — |
+| [P4-04](./P4-04-password-reset.md) | Password reset | B | 1 | P3-02, P2-05, P2-04 | done | — |
 | [P4-05](./P4-05-resident-join-onboarding-approval.md) | Resident join, onboarding and approval | A | 1 | P4-01a, P3-03, P2-04, P2-05 | todo | — |
 | [P4-06](./P4-06-membership-administration.md) | Membership administration | A | 1 | P2-04, P4-05 | todo | — |
 | [P4-07](./P4-07-frontend-account-screens.md) | Frontend account screens | B | 2 | P4-02b, P4-04, P2-06c | todo | — |

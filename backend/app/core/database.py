@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -8,7 +10,17 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 
-engine: AsyncEngine = create_async_engine(
+
+def make_engine(url: str, **options: Any) -> AsyncEngine:
+    """An engine with the app's options; the tests build theirs with it too.
+
+    `hide_parameters`: a database error's message and traceback never carry a statement's values,
+    such as an emailed link in a job's payload, into a log line or stderr (ADR-0019).
+    """
+    return create_async_engine(url, hide_parameters=True, **options)
+
+
+engine: AsyncEngine = make_engine(
     settings.database_url,
     echo=False,
     pool_pre_ping=True,

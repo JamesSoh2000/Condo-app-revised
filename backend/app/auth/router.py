@@ -1,5 +1,6 @@
-"""Login and logout (ADR-0003), open to unauthenticated callers; the caller's account and sessions
-(P2-02), which need a session. Every unsafe method here goes through the CSRF middleware."""
+"""Login, logout and password reset (ADR-0003, P4-04), open to unauthenticated callers; the caller's
+account and sessions (P2-02), which need a session. Every unsafe method here goes through the CSRF
+middleware."""
 
 import ipaddress
 from typing import Annotated
@@ -10,7 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import service
 from app.auth.deps import get_current_session
-from app.auth.schemas import LoginIn, MeOut, SessionOut
+from app.auth.schemas import (
+    LoginIn,
+    MeOut,
+    PasswordResetConfirmIn,
+    PasswordResetRequestedOut,
+    PasswordResetRequestIn,
+    SessionOut,
+)
 from app.auth.service import CurrentSession
 from app.core.config import settings
 from app.core.dependencies import get_db_session
@@ -23,6 +31,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 DbSession = Annotated[AsyncSession, Depends(get_db_session)]
 # Listed first in every signature below: its activity refresh commits (app/auth/deps.py).
 Current = Annotated[CurrentSession, Depends(get_current_session)]
+Limiter = Annotated[RateLimiter, Depends(get_rate_limiter)]
 
 
 @router.post("/login", status_code=204, responses=problem_responses(401, 429))
@@ -52,6 +61,29 @@ async def logout(request: Request, response: Response, db: DbSession) -> None:
     await service.logout(db, request.cookies.get(settings.session_cookie_name))
     # Deleting: same name, Path and flags, or the browser treats it as another cookie.
     set_session_cookie(response, "", max_age=0)
+
+
+@router.post("/password-reset/request", status_code=202, responses=problem_responses(429))
+async def password_reset_request(
+    body: PasswordResetRequestIn, request: Request, db: DbSession, limiter: Limiter
+) -> PasswordResetRequestedOut:
+    """Email a password reset link if the address is an active account's. Always the same 202,
+    so the answer never tells whether an account exists; 429 `rate_limited` after too many
+    requests from the IP or for the email."""
+    await service.request_password_reset(db, limiter, email=body.email, ip=client_ip(request))
+    return service.RESET_REQUESTED
+
+
+@router.post("/password-reset/confirm", status_code=204, responses=problem_responses(400, 429))
+async def password_reset_confirm(
+    body: PasswordResetConfirmIn, request: Request, db: DbSession, limiter: Limiter
+) -> None:
+    """Set a new password with an emailed token, and log out every session of the account. 400
+    `reset_token_invalid` for a token that is unknown, used, replaced or expired; 422 if the
+    password policy refuses the password (the token stays usable)."""
+    await service.confirm_password_reset(
+        db, limiter, token=body.token, new_password=body.new_password, ip=client_ip(request)
+    )
 
 
 @router.get("/me", responses=problem_responses(401))
