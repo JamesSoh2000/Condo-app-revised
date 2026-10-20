@@ -20,6 +20,7 @@ from app.buildings.models import Building
 from app.core import clock
 from app.core.config import settings
 from app.core.security import generate_token, hash_password, hash_token, verify_password
+from app.invitations import service
 from app.invitations.models import Invitation
 from app.main import app
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
@@ -613,7 +614,11 @@ async def test_too_long_password_is_refused_without_echo(
 
     r = await client.post(_accept_url(token), json=NEW_PERSON | {"password": password})
 
-    assert_problem(r, 422, "validation_error")
+    problem = assert_problem(r, 422, "validation_error")
+    # The policy's reason, as for a short or common one (review round 1, F4).
+    assert [(e["loc"], e["type"]) for e in problem["errors"]] == [
+        (["body", "password"], "password_too_long")
+    ]
     assert password not in r.text
     await _assert_nothing_written(db, before, invitation)
 
@@ -812,3 +817,200 @@ async def test_accept_without_csrf_headers_is_refused(
 
     assert r.status_code == 403, r.text
     await _assert_nothing_written(db, before, invitation)
+
+
+# Review round 1 (Codex): sessions of an account that becomes staff (F1), and the time between
+# the read and the write transaction, while the password hashes (F2, F3), with their neighbours.
+
+
+async def _session_of(db: AsyncSession, client: AsyncClient) -> AuthSession:
+    cookie = client.cookies.get(settings.session_cookie_name)
+    assert cookie
+    session = await db.scalar(
+        select(AuthSession)
+        .where(AuthSession.token_hash == hash_token(cookie))
+        .execution_options(populate_existing=True)
+    )
+    assert session is not None
+    return session
+
+
+async def test_existing_session_gets_the_staff_idle_window_on_accept(
+    as_user: UserClientFactory, db: AsyncSession, world: World, frozen_clock: FrozenClock
+) -> None:
+    # F1: the session was started with the resident window (7 days); after accepting a staff role
+    # it must end after 12 idle hours, as a staff login's would (ADR-0003).
+    invitee = await as_user(world.no_membership)
+    before = await _session_of(db, invitee)
+    assert before.idle_expires_at - before.last_seen_at == timedelta(
+        days=settings.session_idle_resident_days
+    )
+    token, _ = await _invite(db, world, email=world.no_membership.email)
+    assert (await invitee.post(_accept_url(token), json={})).status_code == 200
+
+    after = await _session_of(db, invitee)
+    assert after.idle_expires_at - after.last_seen_at == timedelta(
+        hours=settings.session_idle_staff_hours
+    )
+    frozen_clock.advance(hours=settings.session_idle_staff_hours + 1)
+    assert_problem(await invitee.get("/api/auth/me"), 401, "not_authenticated")
+
+
+async def test_accept_shortens_the_accounts_other_sessions_too(
+    as_user: UserClientFactory, db: AsyncSession, world: World
+) -> None:
+    # F1 neighbour: another device's session of the same account becomes staff as well.
+    other_device = await as_user(world.no_membership)
+    invitee = await as_user(world.no_membership)
+    token, _ = await _invite(db, world, email=world.no_membership.email)
+    assert (await invitee.post(_accept_url(token), json={})).status_code == 200
+
+    other = await _session_of(db, other_device)
+    assert other.idle_expires_at - other.last_seen_at == timedelta(
+        hours=settings.session_idle_staff_hours
+    )
+
+
+async def test_resident_invitation_keeps_the_resident_idle_window(
+    as_user: UserClientFactory, db: AsyncSession, world: World
+) -> None:
+    # F1 neighbour: the change only ever shortens, and only for a staff role.
+    invitee = await as_user(world.no_membership)
+    token, _ = await _invite(db, world, email=world.no_membership.email, roles=(Role.RESIDENT,))
+    assert (await invitee.post(_accept_url(token), json={})).status_code == 200
+
+    session = await _session_of(db, invitee)
+    assert session.idle_expires_at - session.last_seen_at == timedelta(
+        days=settings.session_idle_resident_days
+    )
+
+
+async def test_idle_expired_session_counts_as_no_session(
+    as_user: UserClientFactory, db: AsyncSession, world: World, frozen_clock: FrozenClock
+) -> None:
+    user = await make_user(db, email=EMAIL)
+    invitee = await as_user(user)
+    token, invitation = await _invite(db, world)
+    frozen_clock.advance(days=settings.session_idle_resident_days, seconds=1)
+    invitation.expires_at = frozen_clock.at + timedelta(days=1)
+    await db.flush()
+    before = await _counts(db)
+
+    assert_problem(await invitee.post(_accept_url(token), json={}), 409, "login_required")
+    await _assert_nothing_written(db, before, invitation)
+
+
+@pytest.fixture
+def while_hashing(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """`while_hashing(action)`: run `action()` when the accept starts hashing the new password,
+    after its read and before its write transaction."""
+
+    def install(action: Any) -> None:
+        original = service.to_thread.run_sync
+
+        async def run_sync(func: Any, *args: Any, **kwargs: Any) -> Any:
+            if func is service.hash_password:
+                await action()
+            return await original(func, *args, **kwargs)
+
+        monkeypatch.setattr(service.to_thread, "run_sync", run_sync)
+
+    return install
+
+
+async def test_token_expiring_while_the_password_hashes_is_invalid(
+    client: AsyncClient,
+    db: AsyncSession,
+    world: World,
+    frozen_clock: FrozenClock,
+    while_hashing: Any,
+) -> None:
+    # F2: the claim must use the time of the claim, not of the read.
+    token, invitation = await _invite(db, world)
+    frozen_clock.at = invitation.expires_at - timedelta(seconds=1)
+
+    async def expire() -> None:
+        frozen_clock.advance(seconds=2)
+
+    while_hashing(expire)
+    before = await _counts(db)
+
+    assert_problem(
+        await client.post(_accept_url(token), json=NEW_PERSON), 404, "invitation_invalid"
+    )
+    await _assert_nothing_written(db, before, invitation)
+
+
+async def _deactivate_building(db: AsyncSession, world: World, _: Invitation) -> None:
+    await db.execute(update(Building).where(Building.id == world.a.id).values(is_active=False))
+
+
+async def _revoke(db: AsyncSession, world: World, invitation: Invitation) -> None:
+    await db.execute(
+        update(Invitation).where(Invitation.id == invitation.id).values(revoked_at=clock.now())
+    )
+
+
+async def _resend(db: AsyncSession, world: World, invitation: Invitation) -> None:
+    await db.execute(
+        update(Invitation)
+        .where(Invitation.id == invitation.id)
+        .values(token_hash=hash_token(generate_token()))
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [_deactivate_building, _revoke, _resend],
+    ids=["building-deactivated", "revoked", "resent"],
+)
+async def test_change_while_the_password_hashes_makes_the_token_invalid(
+    client: AsyncClient, db: AsyncSession, world: World, while_hashing: Any, change: Any
+) -> None:
+    # F3 (building) and its neighbours: whatever made the token invalid since the read is seen by
+    # the write transaction.
+    token, invitation = await _invite(db, world)
+
+    async def act() -> None:
+        await change(db, world, invitation)
+
+    while_hashing(act)
+    before = await _counts(db)
+
+    assert_problem(
+        await client.post(_accept_url(token), json=NEW_PERSON), 404, "invitation_invalid"
+    )
+    assert await _counts(db) == before
+    assert (await _fresh(db, invitation)).accepted_at is None
+
+
+async def test_unit_deactivated_while_the_password_hashes_refuses_accept(
+    client: AsyncClient, db: AsyncSession, world: World, while_hashing: Any
+) -> None:
+    token, invitation = await _invite(
+        db,
+        world,
+        email="owner@example.test",
+        roles=(Role.RESIDENT,),
+        unit=world.a_102,
+        relationship=OccupancyRelationship.OWNER,
+    )
+
+    async def deactivate() -> None:
+        await db.execute(update(Unit).where(Unit.id == world.a_102.id).values(is_active=False))
+
+    while_hashing(deactivate)
+    before = await _counts(db)
+
+    assert_problem(await client.post(_accept_url(token), json=NEW_PERSON), 409, "unit_inactive")
+    await _assert_nothing_written(db, before, invitation)
+
+
+async def test_password_at_the_maximum_length_is_accepted(
+    client: AsyncClient, db: AsyncSession, world: World
+) -> None:
+    # F4 neighbour: 128 characters is the policy's maximum, still allowed.
+    token, _ = await _invite(db, world)
+    password = "abcdefgh" * 16
+    r = await client.post(_accept_url(token), json=NEW_PERSON | {"password": password})
+    assert r.status_code == 200, r.text
