@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
 from app.audit.service import record_audit
-from app.auth.service import resolve_session, start_logged_in_session
+from app.auth.service import apply_role_change, resolve_session, start_logged_in_session
 from app.buildings.models import Building
 from app.core import clock
 from app.core.config import settings
@@ -458,6 +458,7 @@ async def accept_invitation(
     invitation = await _find_valid(db, token, now)
     caller = await resolve_session(db, session_token) if session_token else None
     caller_id = caller.user.id if caller is not None else None
+    caller_session_id = caller.session.id if caller is not None else None
     # lower() in Postgres, as `login` and `uq_users_lower_email`; the invitation's email is lowered.
     account_id = await db.scalar(select(User.id).where(func.lower(User.email) == invitation.email))
     if caller_id is not None and caller_id != account_id:
@@ -530,6 +531,11 @@ async def accept_invitation(
         update(Invitation).where(Invitation.id == invitation.id).values(accepted_user_id=account_id)
     )
     membership_id = await _activate_membership(db, invitation, account_id, now)
+    if new_account is None:
+        # The caller's sessions follow the roles just granted: the accept counts as activity on
+        # this one, and the others are capped (inbox B-6, review rounds 1-3). A new account's
+        # session starts below, under the same lock.
+        await apply_role_change(db, account_id, active_session_id=caller_session_id)
     await record_audit(
         db,
         action=actions.INVITATION_ACCEPTED,

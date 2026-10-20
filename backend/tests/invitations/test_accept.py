@@ -19,7 +19,7 @@ from app.audit.models import AuditEvent
 from app.auth.models import AuthSession
 from app.buildings.models import Building
 from app.core import clock
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.security import generate_token, hash_password, hash_token, verify_password
 from app.invitations.models import Invitation
 from app.main import app
@@ -1070,10 +1070,9 @@ async def test_accept_is_activity_for_the_invitees_session(
 
 
 def test_invitation_rate_policy_is_20_per_10_minutes() -> None:
-    assert (
-        settings.model_fields["rate_limit_invitation_ip"].default.limit,
-        settings.model_fields["rate_limit_invitation_ip"].default.window_seconds,
-    ) == (20, 600)
+    # The default, not `settings` (an environment variable may override it).
+    default = Settings.model_fields["rate_limit_invitation_ip"].default
+    assert (default.limit, default.window_seconds) == (20, 600)
 
 
 async def test_accepts_consume_the_counter_the_lookup_then_hits(

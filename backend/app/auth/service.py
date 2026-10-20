@@ -12,17 +12,7 @@ from typing import NamedTuple
 from uuid import UUID
 
 from anyio import to_thread
-from sqlalchemy import (
-    ColumnElement,
-    SQLColumnExpression,
-    and_,
-    delete,
-    exists,
-    func,
-    or_,
-    select,
-    update,
-)
+from sqlalchemy import ColumnElement, and_, delete, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
@@ -165,6 +155,8 @@ async def start_session(
 async def _new_session(
     db: AsyncSession, user_id: UUID, *, user_agent: str | None, ip: str | None
 ) -> NewSession:
+    # The lock, then the roles (`idle_window` below), as `touch_session` does.
+    await lock_idle_deadlines(db, user_id)
     now = clock.now()
     token = generate_token()
     session = AuthSession(
@@ -183,21 +175,61 @@ async def _new_session(
     return NewSession(token, session.id)
 
 
-def _holds_staff_role(user_id: UUID | SQLColumnExpression[UUID]) -> ColumnElement[bool]:
-    """The user holds a staff role on an active membership."""
-    return exists().where(
-        BuildingMembership.user_id == user_id,
-        BuildingMembership.status == MembershipStatus.ACTIVE,
-        MembershipRole.membership_id == BuildingMembership.id,
-        MembershipRole.role.in_(STAFF_ROLES),
-    )
+async def lock_idle_deadlines(db: AsyncSession, user_id: UUID) -> None:
+    """Take the user's idle-deadline lock until the transaction ends: the user row, FOR NO KEY
+    UPDATE (foreign-key checks from sessions and memberships don't wait for it).
+
+    Every write that sets a user's idle deadlines takes it before reading the roles: a session's
+    start or refresh, and a role change (`apply_role_change`). They run one at a time per user, and
+    each reads the roles the previous one committed, so none can store a window read before a
+    staff role was granted (P4-02b, inbox B-6).
+    """
+    await db.execute(select(User.id).where(User.id == user_id).with_for_update(key_share=True))
 
 
 async def idle_window(db: AsyncSession, user_id: UUID) -> timedelta:
     """12 hours if the user holds a staff role on an active membership, else 7 days (ADR-0003)."""
-    if await db.scalar(select(_holds_staff_role(user_id))):
+    is_staff = await db.scalar(
+        select(
+            exists().where(
+                BuildingMembership.user_id == user_id,
+                BuildingMembership.status == MembershipStatus.ACTIVE,
+                MembershipRole.membership_id == BuildingMembership.id,
+                MembershipRole.role.in_(STAFF_ROLES),
+            )
+        )
+    )
+    if is_staff:
         return timedelta(hours=settings.session_idle_staff_hours)
     return timedelta(days=settings.session_idle_resident_days)
+
+
+async def apply_role_change(
+    db: AsyncSession, user_id: UUID, *, active_session_id: UUID | None
+) -> None:
+    """Make the user's sessions follow roles just changed in this transaction (an invitation's
+    accept): record activity on `active_session_id` (the request's own session), then cap every
+    live session's idle deadline to the window the roles allow, from its last activity. Never
+    lengthens one, so an expired session stays expired. Takes the user's idle-deadline lock first.
+    Flushes, never commits."""
+    await lock_idle_deadlines(db, user_id)
+    now = clock.now()
+    window = await idle_window(db, user_id)
+    if active_session_id is not None:
+        await db.execute(
+            update(AuthSession)
+            .where(AuthSession.id == active_session_id, _is_live(now))
+            .values(last_seen_at=now, idle_expires_at=now + window)
+        )
+    await db.execute(
+        update(AuthSession)
+        .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
+        .values(
+            idle_expires_at=func.least(
+                AuthSession.idle_expires_at, AuthSession.last_seen_at + window
+            )
+        )
+    )
 
 
 async def resolve_session(db: AsyncSession, token: str) -> CurrentSession | None:
@@ -215,23 +247,11 @@ async def resolve_session(db: AsyncSession, token: str) -> CurrentSession | None
 
 
 def _is_live(now: datetime) -> ColumnElement[bool]:
-    """Not revoked, before both deadlines, and within the staff idle window if the user is staff.
-
-    The stored `idle_expires_at` follows the roles read when it was written. A staff role granted
-    since (an invitation accepted, P4-02b) would leave a session written with the resident window
-    usable for 7 idle days, and capping the stored value can't win against a refresh or login that
-    read the old roles and writes after it (review round 2). So the role is checked here, on every
-    read, as the stored deadline is.
-    """
-    staff_idle = timedelta(hours=settings.session_idle_staff_hours)
+    """Not revoked, and before both deadlines."""
     return and_(
         AuthSession.revoked_at.is_(None),
         AuthSession.expires_at > now,
         AuthSession.idle_expires_at > now,
-        or_(
-            AuthSession.last_seen_at > now - staff_idle,
-            ~_holds_staff_role(AuthSession.user_id),
-        ),
     )
 
 
@@ -240,11 +260,18 @@ async def touch_session(db: AsyncSession, session: AuthSession) -> None:
     now = clock.now()
     if now - session.last_seen_at < REFRESH_EVERY:
         return
+    # The lock, then the roles: a staff role granted meanwhile is read here (P4-02b, inbox B-6).
+    await lock_idle_deadlines(db, session.user_id)
     idle = await idle_window(db, session.user_id)
-    # Conditional on the value read: of two concurrent requests, only one writes.
+    # Conditional on the value read: of two concurrent requests, only one writes. And only while
+    # still live: a role change may have capped the session into the past since it was resolved.
     await db.execute(
         update(AuthSession)
-        .where(AuthSession.id == session.id, AuthSession.last_seen_at == session.last_seen_at)
+        .where(
+            AuthSession.id == session.id,
+            AuthSession.last_seen_at == session.last_seen_at,
+            _is_live(now),
+        )
         .values(last_seen_at=now, idle_expires_at=now + idle)
     )
     await db.commit()

@@ -146,5 +146,9 @@ Everything a command prints is re-read on every later turn, so don't print the s
   added to the inbox / <ticket> in step 6", not "listed in" (P1-04, P1-05, P1-07; 2026-10-16).
 - Commit before mutation probes; restore only tracked files with `git checkout`, and re-run the clean
   baseline after each mutation (P1-03, P1-05; 2026-10-16).
+- Don't act on a value read before an `await` that can take time (argon2, a lock wait, a second
+  transaction): re-check it in the statement that writes, after the lock, with a fresh clock. And a
+  rule that decides access must not stop applying when unrelated state changes later (an expired
+  session came back when a role was removed). P4-02b rounds 1-3 (×3, plus one revival; 2026-10-20).
 - Validate caller input by what Postgres accepts, not Python: lone surrogates, NUL, NaN and byte lengths
   fail at flush as `DBAPIError`, not the documented `ValueError` (P3-02 ×2, P3-03; 2026-10-18).
