@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P2-04, P4-05b |
 | Replaces old | part of [P4-06](./P4-06-membership-administration.md) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
@@ -181,3 +181,15 @@ From PR #92; see [the explanation](../explanations/P4-05b-onboarding-decisions.m
     join submission building → membership, a session refresh only the user: no cycle.
 - Split: part a of [P4-06](./P4-06-membership-administration.md). Estimate ~340 non-test lines (service
   ~210, router ~60, schemas ~45, migration and model ~20, actions ~5).
+
+## Follow-ups (from PR #93)
+
+- **Open Medium (review round 3, Codex):** criterion 3's variant where the losing manager also holds another role
+  gets 403 `forbidden_role`, not 409 `last_manager` (safety holds: one manager remains). Carried to
+  [P4-06b](./P4-06b-move-out-and-transfer.md) to fix test-first.
+- A manager's pending invitations stay valid after they are demoted or suspended (policy): carried to P4-06b and
+  the inbox.
+- Tests to tighten: criterion 8's three non-cursor 422s (the test accepts 400 or 422); criterion 7 with several
+  roles in one list. Wording: the `invalid_transition` detail says "Only a active member…". Carried to P4-06b.
+- P5: fan-out to a unit's occupants must keep active members only (a suspended member keeps their occupancy).
+- See [the explanation](../explanations/P4-06a-members-roles-suspension.md) §7.

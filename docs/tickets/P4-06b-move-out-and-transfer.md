@@ -73,6 +73,21 @@ From the P1-03 reviews (PR #45, ADR-0016). The occupancy helpers in `app/members
 - Transfer: decide whether it needs the `resident` role and an active unit (P4-05b locks the unit
   `FOR KEY SHARE` and re-checks `is_active`), and whether a same-unit transfer (relationship change) is allowed.
 - The P4-05b carry (requests left `pending` by an invitation) still applies to deactivation.
+- **First, the open Medium from PR #93 (review round 3, Codex), test-first:** A holds only
+  `property_management`, B holds `property_management` and `council`; A removes B's manager role while B's
+  request removing A's waits on the building lock. B gets 403 `forbidden_role` instead of criterion 3's 409
+  `last_manager`, because `change_roles` raises `LastManager` (the round 2 precedence check) inside
+  `_caller_first`, which turns it into the stale refusal. Fix: let `LastManager` pass through `_caller_first`
+  (keep the stale refusal for every other error), and add the case to
+  `tests/memberships/test_members_concurrency.py::test_managers_acting_on_each_other_leave_one_manager`.
+- **Pending invitations of a revoked manager** stay valid (Claude rounds 1-2): decide whether demoting or
+  suspending a manager revokes the open invitations they created (in the same transaction, under the building
+  lock), or whether the accept checks the creator; test the race with an accept.
+- New writes follow P4-06a's pattern: `caller = await _lock_building(db, ctx)`, the target work inside
+  `with _caller_first(caller):`, then `_finish` (see the P4-06a explanation §8).
+- Tighten P4-06a's tests: criterion 8's non-cursor invalid parameters should assert 422 exactly; criterion 7
+  with several roles added and removed (sorted lists). Fix the `invalid_transition` detail ("Only a active
+  member…").
 
 ## Frame notes (filled by the agent in step 1)
 

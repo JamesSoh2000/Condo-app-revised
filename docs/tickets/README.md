@@ -77,7 +77,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-04](./P4-04-password-reset.md) | Password reset | B | 1 | P3-02, P2-05, P2-04 | done | — |
 | [P4-05a](./P4-05a-resident-signup-and-join.md) | Resident signup and join request (split from [P4-05](./P4-05-resident-join-onboarding-approval.md)) | A | 1 | P4-01a, P3-03, P2-04, P2-05 | done | — |
 | [P4-05b](./P4-05b-onboarding-decisions.md) | Onboarding decisions: list, approve, deny (split from P4-05) | A | 1 | P4-05a | done | — |
-| [P4-06a](./P4-06a-members-roles-suspension.md) | Members: list, roles, suspend, reactivate (split from [P4-06](./P4-06-membership-administration.md)) | A | 1 | P2-04, P4-05b | in progress | — |
+| [P4-06a](./P4-06a-members-roles-suspension.md) | Members: list, roles, suspend, reactivate (split from [P4-06](./P4-06-membership-administration.md)) | A | 1 | P2-04, P4-05b | done | — |
 | [P4-06b](./P4-06b-move-out-and-transfer.md) | Members: move-out and transfer (split from P4-06) | A | 1 | P4-06a | todo | — |
 | [P4-07](./P4-07-frontend-account-screens.md) | Frontend account screens | B | 2 | P4-02b, P4-04, P2-06c | todo | — |
 | [P4-08](./P4-08-frontend-onboarding-approval-screens.md) | Frontend onboarding and approval screens | B | 2 | P4-05b, P4-06b, P2-06c | todo | — |
