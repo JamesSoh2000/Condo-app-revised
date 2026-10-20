@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    String,
     UniqueConstraint,
     Uuid,
     func,
@@ -48,6 +49,9 @@ class BuildingMembership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status_changed_by_user_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT")
     )
+    # Why property management suspended the membership (P4-06a); null otherwise. Managers see it,
+    # the member doesn't, and it never goes into audit metadata (CLAUDE.md rule 10).
+    status_reason: Mapped[str | None] = mapped_column(String(500))
 
     # Declared so the unit of work orders a flush by these FKs: users before the memberships that
     # name them, roles deleted before their membership. Without relationships it orders tables by

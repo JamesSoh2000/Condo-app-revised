@@ -56,7 +56,7 @@ async def _second_manager(sessions: Sessions, world: World) -> Member:
 def _demote(ctx: TenantContext, target: UUID) -> Write:
     async def write(db: AsyncSession) -> Any:
         return await service.change_roles(
-            db, ctx, target, MemberRolesIn(add=[], remove=[Role.PROPERTY_MANAGEMENT])
+            db, ctx, target, MemberRolesIn(add=[Role.COUNCIL], remove=[Role.PROPERTY_MANAGEMENT])
         )
 
     return write

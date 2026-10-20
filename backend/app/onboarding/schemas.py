@@ -63,17 +63,21 @@ def _visible(value: Any) -> Any:
     return value
 
 
+# A reason a person reads: a denial's (`onboarding_requests.decision_reason`) or a suspension's
+# (`building_memberships.status_reason`), both varchar(500). No control or invisible characters,
+# checked before the strip (tests/test_architecture.py, fitness test 6).
+Reason = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=3, max_length=500),
+    BeforeValidator(_visible),
+    BeforeValidator(printable_before_strip),
+]
+
+
 class OnboardingDecisionIn(InputModel):
     """A denial's reason, which the resident sees (`/onboarding/me`, the notification and email)."""
 
-    # `onboarding_requests.decision_reason` is varchar(500). No control or invisible characters,
-    # checked before the strip (tests/test_architecture.py, fitness test 6).
-    reason: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, min_length=3, max_length=500),
-        BeforeValidator(_visible),
-        BeforeValidator(printable_before_strip),
-    ]
+    reason: Reason
 
 
 class OnboardingRequestManagerOut(APIModel):
