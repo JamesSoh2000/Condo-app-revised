@@ -61,7 +61,7 @@ def _open() -> ColumnElement[bool]:
     return and_(Invitation.accepted_at.is_(None), Invitation.revoked_at.is_(None))
 
 
-def _status_clause(status: InvitationStatus, now: datetime) -> ColumnElement[bool]:
+def status_clause(status: InvitationStatus, now: datetime) -> ColumnElement[bool]:
     # The same order of precedence as `status_of`.
     match status:
         case InvitationStatus.ACCEPTED:
@@ -123,19 +123,45 @@ async def _queue_invitation_email(
     )
 
 
-async def create_invitation(
-    db: AsyncSession, ctx: TenantContext, data: InvitationCreate
-) -> InvitationOut:
-    """Create a pending invitation and queue its email.
-
-    At most one pending invitation per email and building: the building row is locked first (NO
-    KEY UPDATE, which foreign-key checks from other tables don't wait for), so two creates for one
-    building run one after the other and the second sees the first's row.
-    """
+async def _lock_building(db: AsyncSession, ctx: TenantContext) -> Building:
+    """Lock the building row (NO KEY UPDATE, which foreign-key checks from other tables don't wait
+    for). Every write that makes an invitation pending takes it first, so two of them for one
+    building run one after the other and the second sees the first's row (D2)."""
     building = await db.scalar(
         select(Building).where(Building.id == ctx.building_id).with_for_update(key_share=True)
     )
     assert building is not None  # noqa: S101 (get_tenant_context found it active)
+    return building
+
+
+async def _refuse_another_pending(
+    db: AsyncSession,
+    ctx: TenantContext,
+    email: str,
+    now: datetime,
+    *,
+    besides: UUID | None = None,
+) -> None:
+    """At most one pending invitation per email and building. Call after `_lock_building`."""
+    stmt = select(Invitation.id).where(
+        Invitation.building_id == ctx.building_id,
+        Invitation.email == email,
+        status_clause(InvitationStatus.PENDING, now),
+    )
+    if besides is not None:
+        stmt = stmt.where(Invitation.id != besides)
+    if await db.scalar(stmt.limit(1)) is not None:
+        raise InvitationPending(
+            detail="This email already has a pending invitation; resend or revoke it."
+        )
+
+
+async def create_invitation(
+    db: AsyncSession, ctx: TenantContext, data: InvitationCreate
+) -> InvitationOut:
+    """Create a pending invitation and queue its email; 409 `invitation_pending` if the email has
+    one here already."""
+    building = await _lock_building(db, ctx)
     if data.unit_id is not None:
         # Loaded within the caller's building (CLAUDE.md rule 2): another building's unit is a 404.
         unit = await db.scalar(
@@ -146,17 +172,7 @@ async def create_invitation(
         if not unit.is_active:
             raise UnitInactive(detail="This unit is deactivated.")
     now = clock.now()
-    pending = await db.scalar(
-        select(Invitation.id).where(
-            Invitation.building_id == ctx.building_id,
-            Invitation.email == data.email,
-            _status_clause(InvitationStatus.PENDING, now),
-        )
-    )
-    if pending is not None:
-        raise InvitationPending(
-            detail="This email already has a pending invitation; resend or revoke it."
-        )
+    await _refuse_another_pending(db, ctx, data.email, now)
     token = generate_token()
     invitation = Invitation(
         building_id=ctx.building_id,
@@ -184,7 +200,7 @@ async def list_invitations(
     now = clock.now()
     stmt = select(Invitation).where(Invitation.building_id == ctx.building_id)
     if status is not None:
-        stmt = stmt.where(_status_clause(status, now))
+        stmt = stmt.where(status_clause(status, now))
     return await paginate(db, stmt, Invitation.id, params, lambda row: _out(row, now))
 
 
@@ -226,13 +242,26 @@ async def resend_invitation(
     db: AsyncSession, ctx: TenantContext, invitation_id: UUID
 ) -> InvitationOut:
     """A new token and expiry, and the email again. The old token's hash is replaced in the same
-    statement, so the old link stops working the moment this commits."""
+    statement, so the old link stops working the moment this commits.
+
+    Resending makes the invitation pending again, so it is refused (409 `invitation_pending`) while
+    another invitation for the email is pending: an expired offer must not come back beside its
+    replacement (review round 1).
+    """
+    building = await _lock_building(db, ctx)
     now = clock.now()
+    email = await db.scalar(
+        select(Invitation.email).where(
+            Invitation.id == invitation_id, Invitation.building_id == ctx.building_id
+        )
+    )
+    if email is None:
+        raise _not_found()
+    await _refuse_another_pending(db, ctx, email, now, besides=invitation_id)
     token = generate_token()
     invitation = await _transition(
         db, ctx, invitation_id, token_hash=hash_token(token), expires_at=now + INVITATION_TTL
     )
-    building = await db.get_one(Building, ctx.building_id)
     await _queue_invitation_email(db, building, invitation, token)
     await _audit(db, ctx, actions.INVITATION_RESENT, invitation_id)
     out = _out(invitation, now)

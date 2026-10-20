@@ -595,6 +595,61 @@ async def test_resend_of_a_closed_invitation_is_409_and_queues_nothing(
     assert await _audit(db, "invitation.resent") == []
 
 
+async def test_resend_of_an_expired_invitation_beside_a_pending_replacement_is_409(
+    as_user, db, world
+):
+    # Review round 1 (Codex): resend revived the old invitation next to its replacement, so two
+    # live links offered conflicting roles.
+    client = await as_user(world.a_manager.user)
+    old = await _invite(client, world, roles=["property_management"])
+    await _expire(db, old["id"])
+    replacement = await _invite(client, world, roles=["security"])
+    hash_before = (await _row(db, old["id"])).token_hash
+
+    r = await client.post(f"{_url(world)}/{old['id']}/resend")
+
+    assert_problem(r, 409, "invitation_pending")
+    pending = (await client.get(_url(world), params={"status": "pending"})).json()["items"]
+    assert [item["id"] for item in pending] == [replacement["id"]]
+    assert (await _row(db, old["id"])).token_hash == hash_before
+    assert len(await _email_jobs(db)) == 2
+    assert await _audit(db, "invitation.resent") == []
+
+
+@pytest.mark.parametrize("replacement_closed_by", ["revoked", "accepted", "expired"])
+async def test_resend_is_allowed_once_the_replacement_is_closed(
+    as_user, db, world, replacement_closed_by
+):
+    client = await as_user(world.a_manager.user)
+    old = await _invite(client, world)
+    await _expire(db, old["id"])
+    replacement = await _invite(client, world)
+    if replacement_closed_by == "revoked":
+        r = await client.post(f"{_url(world)}/{replacement['id']}/revoke")
+        assert r.status_code == 204
+    elif replacement_closed_by == "accepted":
+        await _mark_accepted(db, replacement["id"], world)
+    else:
+        await _expire(db, replacement["id"])
+
+    r = await client.post(f"{_url(world)}/{old['id']}/resend")
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "pending"
+
+
+async def test_pending_invitation_in_another_building_does_not_block_resend(as_user, db, world):
+    client = await as_user(world.a_manager.user)
+    old = await _invite(client, world)
+    await _expire(db, old["id"])
+    r = await (await as_user(world.b_manager.user)).post(_url(world, world.b), json=_guard())
+    assert r.status_code == 201, r.text
+
+    r = await client.post(f"{_url(world)}/{old['id']}/resend")
+
+    assert r.status_code == 200, r.text
+
+
 # Criterion 10
 
 
