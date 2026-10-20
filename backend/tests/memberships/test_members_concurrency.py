@@ -308,7 +308,14 @@ def test_session_writes_and_a_staff_role_change_take_turns(
 )
 @pytest.mark.parametrize(
     "operation",
-    ["suspend-suspended", "reactivate-active", "roles-on-pending", "unknown-member", "self"],
+    [
+        "suspend-suspended",
+        "reactivate-active",
+        "roles-on-pending",
+        "roles-no-op",
+        "unknown-member",
+        "self",
+    ],
 )
 def test_stale_manager_gets_the_refusal_before_target_errors(
     scratch_database_url: str,
@@ -334,6 +341,13 @@ def test_stale_manager_gets_the_refusal_before_target_errors(
                         ctx,
                         world.a_pending.membership.id,
                         MemberRolesIn(add=[Role.SECURITY], remove=[]),
+                    )
+                case "roles-no-op":
+                    return await service.change_roles(
+                        db,
+                        ctx,
+                        world.a_resident1.membership.id,
+                        MemberRolesIn(add=[Role.RESIDENT], remove=[]),
                     )
                 case "unknown-member":
                     return await service.suspend_member(db, ctx, uuid4(), REASON)
@@ -401,5 +415,46 @@ def test_revoked_manager_cannot_create_or_resend_an_invitation(
             sessions, select(Invitation.token_hash).where(Invitation.id == pending.id)
         )
         assert token_after == token_before
+
+    _run(scratch_database_url, body)
+
+
+@pytest.mark.parametrize("demotion", [_demote, _suspend], ids=["role-removed", "suspended"])
+def test_a_revocation_that_rolls_back_leaves_the_waiting_manager_in_charge(
+    scratch_database_url: str, demotion: Callable[[TenantContext, UUID], Write]
+) -> None:
+    # Round 1 neighbour (a failure instead of success): the second manager waits on the lock; the
+    # demotion rolls back, so they are still a manager and their suspension lands.
+    async def body(sessions: Sessions, world: World) -> None:
+        second = await _second_manager(sessions, world)
+        target = world.a_resident1.membership.id
+        async with sessions() as held:
+            commit = held.commit
+
+            async def hold() -> None:
+                pass
+
+            held.commit = hold  # type: ignore[method-assign]
+            assert (
+                await _outcome(demotion(_ctx(world, world.a_manager), second.membership.id), held)
+                == "ok"
+            )
+            held.commit = commit  # type: ignore[method-assign]
+
+            async def run_second() -> str:
+                async with sessions() as db:
+                    return await _outcome(_suspend(_ctx(world, second), target), db)
+
+            task = asyncio.create_task(run_second())
+            await asyncio.sleep(0.5)
+            assert not task.done(), "the second write did not wait for the first"
+            await held.rollback()
+            outcome = await asyncio.wait_for(task, timeout=10)
+
+        assert outcome == "ok"
+        status = await _scalar(
+            sessions, select(BuildingMembership.status).where(BuildingMembership.id == target)
+        )
+        assert status == MembershipStatus.SUSPENDED
 
     _run(scratch_database_url, body)
