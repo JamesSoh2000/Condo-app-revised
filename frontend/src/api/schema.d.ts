@@ -1125,7 +1125,7 @@ export interface components {
         };
         /**
          * OnboardingRequestManagerOut
-         * @description A join request as property management sees it: who asked, for which unit, and the decision.
+         * @description A join request as property management sees it: who asked, for which unit, the decision.
          */
         OnboardingRequestManagerOut: {
             /**
