@@ -7,7 +7,6 @@ run on the stack in the PR.
 """
 
 import asyncio
-import csv
 from pathlib import Path
 from typing import Any
 
@@ -147,7 +146,30 @@ async def test_header_only_reports_zeros(db, world):
 
 
 @pytest.mark.parametrize(
-    ("cell", "floor"), [("-3", -3), (" 7 ", 7), ("0", 0), ("", None), ("  ", None), ("007", 7)]
+    ("cell", "floor"),
+    [
+        ("-3", -3),
+        (" 7 ", 7),
+        ("0", 0),
+        ("", None),
+        ("  ", None),
+        ("007", 7),
+        ("-000", 0),
+        # Leading zeros don't count towards int()'s 4,300-digit limit (review round 1 neighbour).
+        ("0" * 5000 + "7", 7),
+        ("-" + "0" * 5000 + "20", -20),
+    ],
+    ids=[
+        "neg",
+        "spaces",
+        "zero",
+        "blank",
+        "blank-spaces",
+        "zeros",
+        "neg-zero",
+        "zeros-5000",
+        "neg-zeros",
+    ],
 )
 def test_floor_cell_whole_numbers_are_accepted(cell, floor):
     parsed = parse_units_csv(HEADER + f"A,1,{cell}\n")
@@ -163,7 +185,7 @@ def test_floor_cell_must_be_an_ascii_whole_number(cell):
     assert [(r.line, r.reason) for r in parsed.invalid] == [(2, "floor: must be a whole number")]
 
 
-@pytest.mark.parametrize("cell", ["9" * 4301, "-" + "9" * 4301, "1" + "0" * 9, "0" * 12 + "7"])
+@pytest.mark.parametrize("cell", ["9" * 4301, "-" + "9" * 4301, "1" + "0" * 9, "-1000"])
 def test_overlong_floor_is_one_invalid_row_not_a_file_error(cell):
     # Review round 1 (Codex): `int()` raised ValueError past 4,300 digits and aborted the import.
     parsed = parse_units_csv(HEADER + f"A,good,3\nA,bad,{cell}\n")
@@ -179,7 +201,8 @@ def test_overlong_cell_is_one_invalid_row_not_a_file_error(column):
     # Review round 1 (Codex): a cell over csv's default field limit (128 KiB) made the whole
     # file "not valid CSV" although it fits in the 1 MiB cap.
     cells = {"tower": "A", "label": "big", "floor": "4"}
-    cells[column] = "7" * (csv.field_size_limit() + 1)
+    # csv's default limit; the parser raises it process-wide, so don't read it back here.
+    cells[column] = "7" * (128 * 1024 + 1)
     text = HEADER + "A,good,3\n" + ",".join(cells.values()) + "\n"
     assert len(text.encode()) < MAX_IMPORT_BYTES
 

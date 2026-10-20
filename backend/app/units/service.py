@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from pydantic import ValidationError
-from sqlalchemy import ColumnElement, and_, exists, func, select, update
+from sqlalchemy import Boolean, ColumnElement, exists, func, literal_column, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,13 +25,14 @@ from app.core.pagination import CursorParams, Page, paginate
 from app.memberships.models import UnitOccupancy
 from app.tenancy.context import TenantContext
 from app.units.models import Unit
-from app.units.schemas import UnitCreate, UnitOption, UnitOut, UnitUpdate
+from app.units.schemas import MAX_FLOOR, MIN_FLOOR, UnitCreate, UnitOption, UnitOut, UnitUpdate
 
 MAX_OPTIONS = 50
 MAX_IMPORT_ROWS = 5000
 # 5,000 rows of three cells of at most 20 characters fit many times over (P4-01b F5).
 MAX_IMPORT_BYTES = 1024 * 1024
 _WHOLE_NUMBER = re.compile(r"-?[0-9]+")
+_MAX_FLOOR_DIGITS = 3
 _COLUMNS = ("tower", "label", "floor")
 _FIELDS = list(_COLUMNS)
 
@@ -290,6 +291,11 @@ def parse_units_csv(text: str) -> ParsedUnits:
     `tower,label,floor` (any order), more than `MAX_IMPORT_ROWS` rows, or broken CSV.
 
     A row's line is the file line its record starts on (a quoted cell may span lines)."""
+    if len(text.encode()) > MAX_IMPORT_BYTES:
+        raise CsvError(f"the file is larger than {MAX_IMPORT_BYTES // 1024} KiB")
+    # A cell may be as long as the file: an overlong one is an invalid row, not broken CSV (review
+    # round 1). The limit is process-wide; it is only ever raised.
+    csv.field_size_limit(max(csv.field_size_limit(), MAX_IMPORT_BYTES))
     reader = csv.reader(io.StringIO(text.removeprefix("\ufeff")), strict=True)
     rows: list[ImportRow] = []
     invalid: list[InvalidRow] = []
@@ -315,7 +321,13 @@ def parse_units_csv(text: str) -> ParsedUnits:
             if cell and _WHOLE_NUMBER.fullmatch(cell) is None:
                 invalid.append(InvalidRow(start, "floor: must be a whole number"))
                 continue
-            floor = int(cell) if cell else None
+            digits = cell.lstrip("-").lstrip("0")
+            if len(digits) > _MAX_FLOOR_DIGITS:
+                # Before `int()`, which raises ValueError past 4,300 digits (review round 1).
+                reason = f"floor: must be between {MIN_FLOOR} and {MAX_FLOOR}"
+                invalid.append(InvalidRow(start, reason))
+                continue
+            floor = (-1 if cell.startswith("-") else 1) * int(digits or "0") if cell else None
             try:
                 tower, label = record[index["tower"]], record[index["label"]]
                 unit = UnitCreate.model_validate({"tower": tower, "label": label, "floor": floor})
@@ -342,46 +354,45 @@ async def building_id_for_slug(db: AsyncSession, slug: str) -> UUID:
     return building_id
 
 
-def _same_unit(building_id: UUID, row: ImportRow) -> ColumnElement[bool]:
-    tower = Unit.tower.is_(None) if row.tower is None else Unit.tower == row.tower
-    return and_(Unit.building_id == building_id, tower, Unit.label == row.label)
-
-
 async def _write_row(db: AsyncSession, building_id: UUID, row: ImportRow) -> str:
     """Create the unit, or set the floor of the existing one; "created", "updated" or "unchanged".
 
-    ON CONFLICT, then a conditional UPDATE: a unit created concurrently (by the API, or another
-    import) makes the insert wait for it and fall through to the update, never an
-    IntegrityError."""
-    unit_id = await db.scalar(
-        insert(Unit)
-        .values(building_id=building_id, tower=row.tower, label=row.label, floor=row.floor)
-        .on_conflict_do_nothing(constraint="uq_units_building_id_tower_label")
-        .returning(Unit.id)
+    One statement, so no other transaction can change the unit in between: a separate INSERT and
+    UPDATE lost the floor when the API renamed the unit between them (review round 1). A
+    conflicting insert in flight (API or another import) makes it wait, never an IntegrityError.
+    `old` in RETURNING (Postgres 18) is null for an inserted row; no row comes back when the floor
+    is the same.
+    """
+    stmt = insert(Unit).values(
+        building_id=building_id, tower=row.tower, label=row.label, floor=row.floor
     )
-    metadata: dict[str, object] = {"source": "import"}
-    if unit_id is not None:
-        action, outcome = actions.UNIT_CREATED, "created"
-    else:
-        unit_id = await db.scalar(
-            update(Unit)
-            .where(_same_unit(building_id, row), Unit.floor.is_distinct_from(row.floor))
-            .values(floor=row.floor)
-            .returning(Unit.id)
+    written = (
+        await db.execute(
+            stmt.on_conflict_do_update(
+                constraint="uq_units_building_id_tower_label",
+                set_={"floor": stmt.excluded.floor},
+                where=Unit.floor.is_distinct_from(stmt.excluded.floor),
+            ).returning(Unit.id, literal_column("old.id IS NULL", Boolean))
         )
-        if unit_id is None:
-            return "unchanged"
-        action, outcome = actions.UNIT_UPDATED, "updated"
-        metadata = {"fields": ["floor"]} | metadata
+    ).one_or_none()
+    if written is None:
+        return "unchanged"
+    unit_id, created = written
     await record_audit(
         db,
-        action=action,
+        action=actions.UNIT_CREATED if created else actions.UNIT_UPDATED,
         entity_type="unit",
         entity_id=unit_id,
         building_id=building_id,
-        metadata=metadata,
+        metadata={"source": "import"} if created else {"fields": ["floor"], "source": "import"},
     )
-    return outcome
+    return "created" if created else "updated"
+
+
+def _write_order(row: ImportRow) -> tuple[bool, str, str]:
+    # One order for every import, so two imports lock the same units in the same order and can't
+    # deadlock (review round 1). No tower first.
+    return (row.tower is not None, row.tower or "", row.label)
 
 
 async def import_units(
@@ -407,7 +418,7 @@ async def import_units(
             else:
                 counts["unchanged"] += 1
     else:
-        for row in parsed.rows:
+        for row in sorted(parsed.rows, key=_write_order):
             counts[await _write_row(db, building_id, row)] += 1
         await db.flush()
     return ImportReport(

@@ -243,9 +243,7 @@ def test_import_waits_for_a_concurrent_rename_then_creates_the_unit(
             parsed = service.parse_units_csv("tower,label,floor\nA,x,5\n")
 
             async with sessions() as api:
-                await api.execute(
-                    sql_update(Unit).where(Unit.id == original.id).values(label="z")
-                )
+                await api.execute(sql_update(Unit).where(Unit.id == original.id).values(label="z"))
 
                 async def run_import() -> service.ImportReport:
                     async with sessions() as db:
