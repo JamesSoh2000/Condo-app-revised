@@ -3,6 +3,9 @@
 import logging
 
 import pytest
+from httpx import ASGITransport, AsyncClient
+
+from app.main import app
 
 
 @pytest.mark.anyio
@@ -37,4 +40,18 @@ async def test_invitation_token_is_not_logged(client, caplog):
         f"/api/buildings/{building}/invitations",
     ]
     # The app's records only: httpx, the test's client, logs the URL it sent.
+    assert not any(token in str(vars(r)) for r in caplog.records if r.name.startswith("app"))
+
+
+@pytest.mark.anyio
+async def test_csrf_rejection_does_not_log_the_invitation_token(caplog):
+    # The CSRF check logs the path of what it refuses (app/core/csrf.py), before any route runs.
+    token = "T" * 43
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as bare:
+        with caplog.at_level(logging.INFO, logger="app"):
+            response = await bare.post(f"/api/invitations/{token}/accept", json={})
+
+    assert response.status_code == 403
+    [rejected] = [r for r in caplog.records if r.getMessage() == "csrf_rejected"]
+    assert rejected.path == "/api/invitations/{token}/accept"
     assert not any(token in str(vars(r)) for r in caplog.records if r.name.startswith("app"))

@@ -1,6 +1,7 @@
 import contextvars
 import json
 import logging
+import re
 import socket
 import sys
 from datetime import UTC, datetime
@@ -17,6 +18,15 @@ building_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "building_id", default=None
 )
 user_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar("user_id", default=None)
+
+# The public invitation routes carry their token in the path (P4-02b). Anchored: building routes'
+# `/invitations/{id}` hold no secret.
+_INVITATION_TOKEN = re.compile(r"^/api/invitations/[^/]*")
+
+
+def loggable_path(path: str) -> str:
+    """`path` as a log may record it: a token in it replaced by `{token}` (CLAUDE.md rule 10)."""
+    return _INVITATION_TOKEN.sub("/api/invitations/{token}", path, count=1)
 
 
 class JsonFormatter(logging.Formatter):
