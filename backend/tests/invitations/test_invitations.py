@@ -650,6 +650,29 @@ async def test_pending_invitation_in_another_building_does_not_block_resend(as_u
     assert r.status_code == 200, r.text
 
 
+@pytest.mark.parametrize("closed_by", ["revoked", "accepted"])
+async def test_resend_of_a_closed_invitation_beside_a_pending_replacement_is_invalid_transition(
+    as_user, db, world, closed_by
+):
+    # Review round 2 (Codex): the pending check ran before the state check, so this answered
+    # `invitation_pending`, against criterion 9.
+    client = await as_user(world.a_manager.user)
+    old = await _invite(client, world)
+    if closed_by == "revoked":
+        assert (await client.post(f"{_url(world)}/{old['id']}/revoke")).status_code == 204
+    else:
+        await _mark_accepted(db, old["id"], world)
+    await _invite(client, world)
+    hash_before = (await _row(db, old["id"])).token_hash
+
+    r = await client.post(f"{_url(world)}/{old['id']}/resend")
+
+    assert_problem(r, 409, "invalid_transition")
+    assert (await _row(db, old["id"])).token_hash == hash_before
+    assert len(await _email_jobs(db)) == 2
+    assert await _audit(db, "invitation.resent") == []
+
+
 # Criterion 10
 
 

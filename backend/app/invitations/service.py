@@ -92,6 +92,10 @@ def _not_found() -> InvitationNotFound:
     return InvitationNotFound(detail="Invitation not found.")
 
 
+def _invalid_transition() -> InvalidTransition:
+    return InvalidTransition(detail="This invitation was already accepted or revoked.")
+
+
 async def _audit(db: AsyncSession, ctx: TenantContext, action: str, invitation_id: UUID) -> None:
     await record_audit(
         db,
@@ -229,7 +233,7 @@ async def _transition(
     )
     if exists is None:
         raise _not_found()
-    raise InvalidTransition(detail="This invitation was already accepted or revoked.")
+    raise _invalid_transition()
 
 
 async def revoke_invitation(db: AsyncSession, ctx: TenantContext, invitation_id: UUID) -> None:
@@ -250,14 +254,20 @@ async def resend_invitation(
     """
     building = await _lock_building(db, ctx)
     now = clock.now()
-    email = await db.scalar(
-        select(Invitation.email).where(
-            Invitation.id == invitation_id, Invitation.building_id == ctx.building_id
+    target = (
+        await db.execute(
+            select(Invitation.email, Invitation.accepted_at, Invitation.revoked_at).where(
+                Invitation.id == invitation_id, Invitation.building_id == ctx.building_id
+            )
         )
-    )
-    if email is None:
+    ).one_or_none()
+    if target is None:
         raise _not_found()
-    await _refuse_another_pending(db, ctx, email, now, besides=invitation_id)
+    # Its own state first: an accepted or revoked one is `invalid_transition` whatever else is
+    # pending (review round 2). `_transition` checks it again, in the statement that writes.
+    if target.accepted_at is not None or target.revoked_at is not None:
+        raise _invalid_transition()
+    await _refuse_another_pending(db, ctx, target.email, now, besides=invitation_id)
     token = generate_token()
     invitation = await _transition(
         db, ctx, invitation_id, token_hash=hash_token(token), expires_at=now + INVITATION_TTL
