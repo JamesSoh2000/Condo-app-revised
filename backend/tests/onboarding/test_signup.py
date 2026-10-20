@@ -132,7 +132,21 @@ async def test_signup_refuses_malformed_emails(
     assert await _counts(db) == before
 
 
-@pytest.mark.parametrize("full_name", ["Rosa\x00", "Rosa\nResident", "", "   ", "r" * 201])
+# Review round 1 (Codex F3): a control character at either end was stripped, not refused.
+@pytest.mark.parametrize(
+    "full_name",
+    [
+        "Rosa\x00",
+        "Rosa\nResident",
+        "Rosa\n",
+        "\tRosa",
+        "\r\nRosa",
+        "Rosa\x0b",
+        "",
+        "   ",
+        "r" * 201,
+    ],
+)
 async def test_signup_refuses_a_bad_full_name(
     client: AsyncClient, db: AsyncSession, full_name: str
 ) -> None:
@@ -195,3 +209,26 @@ async def test_a_taken_email_still_counts_against_the_limit(
 def test_signup_rate_policy_is_10_per_hour() -> None:
     default = Settings.model_fields["rate_limit_signup_ip"].default
     assert (default.limit, default.window_seconds) == (10, 3600)
+
+
+# Review round 1 (Codex F2): a request the schema refused never reached the service's limiter, so
+# malformed attempts were free and the 11th valid signup was still 201.
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"email": "not-an-email"},
+        {"password": "tiny"},
+        {"full_name": "Rosa\n"},
+        {"extra": "field"},
+    ],
+    ids=["bad-email", "weak-password", "control-in-name", "extra-field"],
+)
+async def test_refused_signups_count_against_the_ip_limit(
+    client: AsyncClient, db: AsyncSession, bad: dict[str, object]
+) -> None:
+    for _ in range(settings.rate_limit_signup_ip.limit):
+        assert (await client.post(URL, json=_body(**bad))).status_code == 422
+    before = await _counts(db)
+
+    assert_problem(await client.post(URL, json=_body()), 429, "rate_limited")
+    assert await _counts(db) == before

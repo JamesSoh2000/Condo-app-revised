@@ -23,7 +23,6 @@ from app.memberships.models import BuildingMembership
 from app.onboarding import service
 from app.onboarding.models import OnboardingRequest
 from app.onboarding.schemas import JoinRequestCreate
-from app.rate_limits.service import RateLimiter
 from app.units.models import Unit
 from app.units.service import UnitNotFound
 from app.users.models import User
@@ -62,7 +61,6 @@ async def _signup(sessions: Sessions, email: str) -> str:
         try:
             await auth_service.signup(
                 db,
-                RateLimiter(sessions),
                 email=email,
                 full_name="Rosa",
                 password=PASSWORD,

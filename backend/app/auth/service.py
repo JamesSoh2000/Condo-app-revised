@@ -585,7 +585,6 @@ def _email_in_use() -> EmailInUse:
 
 async def signup(
     db: AsyncSession,
-    limiter: RateLimiter,
     *,
     email: str,
     full_name: str,
@@ -596,15 +595,15 @@ async def signup(
     """Create an account for `email` (lowered by the schema) and log it in.
 
     409 `email_in_use` if an account has the email in any case: unlike password reset, this tells
-    the caller an account exists, which the ticket accepts for signup; the per-IP limit, counted
-    before anything else, bounds how many emails one client can test. The email stays unverified
+    the caller an account exists, which the ticket accepts for signup; the per-IP limit
+    (`app.auth.router.signup_limit`, counted before the body is even parsed) bounds how many emails
+    one client can test. The email stays unverified
     (`email_verified_at` NULL) until the pilot's verification.
 
     Reads first and ends the read so argon2 runs with no connection held (as `login`); the INSERT
     then decides a race with `ON CONFLICT`: of two signups for one email, the second waits on
     `uq_users_lower_email` and inserts nothing (D2).
     """
-    await limiter.enforce(ip_key("signup", ip), settings.rate_limit_signup_ip)
     try:
         check_password_policy(password)
     except WeakPasswordError as exc:

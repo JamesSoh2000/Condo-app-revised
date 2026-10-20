@@ -26,7 +26,7 @@ from app.core.config import settings
 from app.core.dependencies import get_db_session
 from app.core.errors import problem_responses
 from app.core.pagination import CursorParams, Page
-from app.rate_limits.service import RateLimiter, get_rate_limiter
+from app.rate_limits.service import RateLimiter, get_rate_limiter, ip_key
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -57,17 +57,25 @@ async def login(
     set_session_cookie(response, token, max_age=settings.session_absolute_days * 24 * 3600)
 
 
-@router.post("/signup", status_code=201, responses=problem_responses(409, 429))
-async def signup(
-    body: SignupIn, request: Request, response: Response, db: DbSession, limiter: Limiter
-) -> MeUserOut:
+async def signup_limit(request: Request, limiter: Limiter) -> None:
+    """Count every signup attempt against the IP, as a route dependency: it runs before the body is
+    validated, so a refused body (422) counts too (P4-05a review round 1, F2)."""
+    await limiter.enforce(ip_key("signup", client_ip(request)), settings.rate_limit_signup_ip)
+
+
+@router.post(
+    "/signup",
+    status_code=201,
+    dependencies=[Depends(signup_limit)],
+    responses=problem_responses(409, 429),
+)
+async def signup(body: SignupIn, request: Request, response: Response, db: DbSession) -> MeUserOut:
     """Create a resident's account and log it in (session cookie). 409 `email_in_use` if an account
     has the email: signup tells that an account exists, unlike password reset, and the per-IP limit
     (429 `rate_limited`) is what bounds testing emails this way. 422 for a password the policy
     refuses."""
     result = await service.signup(
         db,
-        limiter,
         email=body.email,
         full_name=body.full_name,
         password=body.password,
