@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import AfterValidator, Field, StringConstraints, field_validator
+from pydantic import AfterValidator, BeforeValidator, Field, StringConstraints, field_validator
 from pydantic_core import PydanticCustomError
 
 from app.core.schemas import APIModel, EmailAddress, InputModel
@@ -59,14 +59,24 @@ def password_not_too_long(password: str) -> str:
     return password
 
 
+def _printable_before_strip(value: Any) -> Any:
+    # Before the strip: a control character at either end (`"Rosa\n"`) would otherwise be stripped,
+    # not refused (P4-05a review round 1, F3). A non-string is left to the type check.
+    return printable(value) if isinstance(value, str) else value
+
+
+# A person's name as a new account stores it: `users.full_name` is varchar(200). No control
+# characters anywhere (NUL fails at flush), then stripped.
+FullName = Annotated[
+    str,
+    BeforeValidator(_printable_before_strip),
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+]
+
+
 class SignupIn(InputModel):
     email: EmailAddress
-    # `users.full_name` is varchar(200). Stripped, and no control characters (NUL fails at flush).
-    full_name: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
-        AfterValidator(printable),
-    ]
+    full_name: FullName
     # Not stripped, as LoginIn.
     password: Annotated[
         str, StringConstraints(strip_whitespace=False), AfterValidator(password_not_too_long)

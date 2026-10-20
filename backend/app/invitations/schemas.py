@@ -6,10 +6,9 @@ from uuid import UUID
 from pydantic import AfterValidator, Field, StringConstraints, model_validator
 from pydantic_core import PydanticCustomError
 
-from app.auth.schemas import password_not_too_long
+from app.auth.schemas import FullName, password_not_too_long
 from app.core.schemas import APIModel, EmailAddress, InputModel
 from app.memberships.enums import OccupancyRelationship, Role
-from app.units.schemas import printable
 
 
 class InvitationStatus(StrEnum):
@@ -72,15 +71,7 @@ class InvitationAccept(InputModel):
     """Both fields are for a new account only; an existing account's are ignored. No roles: they
     come from the invitation (extra fields are a 422)."""
 
-    # `users.full_name` is varchar(200). Stripped, and no control characters (NUL fails at flush).
-    full_name: (
-        Annotated[
-            str,
-            StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
-            AfterValidator(printable),
-        ]
-        | None
-    ) = None
+    full_name: FullName | None = None
     # Not stripped, as `app.auth.schemas.LoginIn::password`; the rest of the policy runs in the
     # service.
     password: (
