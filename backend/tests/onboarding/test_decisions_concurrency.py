@@ -18,8 +18,9 @@ from app.onboarding import service
 from app.onboarding.models import OnboardingRequest, OnboardingStatus
 from app.onboarding.schemas import OnboardingDecisionIn
 from app.tenancy.context import TenantContext
+from app.units import service as unit_service
 from app.units.models import Unit
-from tests.factories import make_membership, make_user
+from tests.factories import make_membership, make_unit, make_user
 from tests.onboarding.test_concurrency import _run
 from tests.world import World
 
@@ -37,14 +38,16 @@ def _ctx(world: World) -> TenantContext:
     )
 
 
-async def _pending_request(sessions: Sessions, world: World) -> tuple[Any, Any]:
+async def _pending_request(
+    sessions: Sessions, world: World, unit_id: Any = None
+) -> tuple[Any, Any]:
     async with sessions() as db:
         user = await make_user(db)
         membership = await make_membership(user, world.a, status=MembershipStatus.PENDING)
         request = OnboardingRequest(
             building_id=world.a.id,
             membership_id=membership.id,
-            unit_id=world.a_102.id,
+            unit_id=unit_id or world.a_102.id,
             relationship=OccupancyRelationship.TENANT,
         )
         db.add(request)
@@ -146,3 +149,59 @@ def test_approval_waits_for_a_unit_deactivation(
             )
 
     _run(scratch_database_url, body)
+
+
+@pytest.mark.parametrize("approval_commits", [True, False], ids=["commits", "rolls-back"])
+def test_unit_deactivation_waits_for_an_approval(
+    scratch_database_url: str, approval_commits: bool
+) -> None:
+    # The other order (criterion 14; review round 1, Claude: tested only sequentially). The approval
+    # holds the unit FOR KEY SHARE and its new occupancy until it commits; `deactivate_unit`'s FOR
+    # UPDATE waits, then sees the occupancy (409) or, after a rollback, deactivates the unit.
+    async def body(sessions: Sessions, world: World) -> None:
+        # A unit nobody lives in (102 has residents in the world, which would refuse it anyway).
+        async with sessions() as db:
+            unit_id = (await make_unit(db, world.a)).id
+            await db.commit()
+        _, request_id = await _pending_request(sessions, world, unit_id)
+        release = asyncio.Event()
+        async with sessions() as approving:
+            real_commit = approving.commit
+
+            async def held_commit() -> None:
+                await release.wait()
+                if not approval_commits:
+                    raise RuntimeError("simulated failure at commit")
+                await real_commit()
+
+            approving.commit = held_commit  # type: ignore[method-assign]
+            approval = asyncio.create_task(
+                service.approve_request(approving, _ctx(world), request_id)
+            )
+            await asyncio.sleep(0.5)
+            deactivation = asyncio.create_task(_deactivate(sessions, world, unit_id))
+            await asyncio.sleep(1.0)
+            assert not deactivation.done(), "the deactivation did not wait for the approval"
+            release.set()
+            if approval_commits:
+                await asyncio.wait_for(approval, timeout=10)
+            else:
+                with pytest.raises(RuntimeError, match="simulated failure"):
+                    await asyncio.wait_for(approval, timeout=10)
+                await approving.rollback()
+            outcome = await asyncio.wait_for(deactivation, timeout=10)
+
+        assert outcome == ("unit_has_occupants" if approval_commits else "deactivated")
+        active = await _scalar(sessions, select(Unit.is_active).where(Unit.id == unit_id))
+        assert active is approval_commits
+
+    _run(scratch_database_url, body)
+
+
+async def _deactivate(sessions: Sessions, world: World, unit_id: Any) -> str:
+    async with sessions() as db:
+        try:
+            await unit_service.deactivate_unit(db, _ctx(world), unit_id)
+        except DomainError as exc:
+            return exc.code
+        return "deactivated"

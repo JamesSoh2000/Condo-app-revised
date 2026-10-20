@@ -294,6 +294,12 @@ async def test_a_decided_request_is_409_already_decided(
         {"reason": "Not on the lease\n"},
         {"reason": "\tNot on the lease"},
         {"reason": "Not on\x00 the lease"},
+        # Invisible: zero-width spaces (Cf) pass the length check; a bidi override (Cf) and a line
+        # separator (Zl) change what the resident sees (review round 1, Claude L1).
+        {"reason": "\u200b\u200b\u200b"},
+        {"reason": "Not on \u202ethe lease"},
+        {"reason": "Not on\u2028the lease"},
+        {"reason": "Not on\u2029the lease"},
         {"reason": "Not on the lease", "status": "approved"},
     ],
     ids=[
@@ -305,6 +311,10 @@ async def test_a_decided_request_is_409_already_decided(
         "trailing-lf",
         "leading-tab",
         "nul",
+        "zero-width",
+        "bidi-override",
+        "line-separator",
+        "paragraph-separator",
         "extra",
     ],
 )
