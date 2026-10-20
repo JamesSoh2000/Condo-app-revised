@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P3-02, P2-05, P2-04 |
 | Replaces old | M3-T06 (reset part), M3-T13 (reset delivery) |
-| Status | todo |
+| Status | in progress |
 
 ## Goal
 
@@ -122,6 +122,55 @@ This completes demo journey 7, and it is one of the most commonly attacked flows
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+  - **1** "Byte-identical" means: status 202, the same body bytes, and the same headers apart from
+    `X-Request-ID`. Checked for an unknown email, a known active one, the known one in other case, a
+    malformed address (`not-an-email`) and an inactive user (7). Only the known active email produces a
+    job: exactly one `email.send`, to the stored address, with the `password_reset` template.
+  - **2** The row's `token_hash` is sha256 hex (check constraint, as `sessions`); no column, response or
+    audit row holds the token; after `Worker.run_once` sends it, the job payload has no `context` and no
+    token, and the sent email's text and HTML parts hold the same `${APP_BASE_URL}/reset-password/<token>`.
+  - **3** Confirm → 204; the token gets `used_at`; every session of the user that existed (two of them,
+    one being the caller's own cookie) answers 401 on `/api/auth/me`; another user's session still works;
+    login with the old password is 401 and with the new one 204; audit `auth.password_reset_completed`
+    with `{"sessions_revoked": n}`.
+  - **4** Also invalid, with the same 400 `reset_token_invalid` body and no password change: a token at
+    exactly 1 hour (`expires_at <= now`), an unknown well-formed token, a malformed one, and a token whose
+    user was deactivated after the request.
+  - **5** 422 names `new_password` with the policy's reason code (`password_too_common` for
+    `password123`… which is 11 characters, so `password_too_short`; both are tested), never echoes the
+    password; the same token then succeeds with a strong password.
+  - **6** The 9th request for one email in 15 minutes is 429 with `Retry-After`, whether or not the email
+    has an account (the count runs before the lookup); 8 allowed ones had the identical 202 body. The 31st
+    request from one IP in 10 minutes is 429 too.
+- Cases the ticket missed (added):
+  - **8 Concurrency.** Two confirms of one token: one 204, one 400. Two requests for one email at once:
+    one live token (the user row is locked first). A confirm that waits on a lock and passes the hour
+    meanwhile is refused (expiry is final; CLAUDE.md lesson). A login whose argon2 check started before a
+    reset committed cannot start a session after it: login re-reads the hash under the user lock.
+  - **9 Secrets through a second output path** (the P4-03 carry). A request that fails at the token
+    insert, the job insert, the audit insert or the commit answers the generic 500, and no log line,
+    traceback or response holds the token or the link. Fix at the source: the engine hides SQL parameters
+    from error messages.
+  - **10** Confirm is rate-limited per IP (scope `reset_confirm`, `settings.rate_limit_reset_ip`): 429.
+  - **11** Input shape: a missing or non-string email, one over 320 characters, with NUL or a lone
+    surrogate is 422 before any lookup (it can't depend on an account). Passwords aren't stripped.
+  - **12** A confirm needs no session and leaves none; it doesn't log the caller in.
+- Tenant table (docs/ENGINEERING_PRACTICES.md §7): n/a for rows 1-7, these are not building routes
+  (`/api/auth/...`, allowlisted). Row 8 (invalid transition) is criterion 4, row 9 (retry) the reused
+  token, row 10 (concurrency) criterion 8.
+- Criteria loosened (with reason; also listed in the inbox): none. "Always 202" stays for every
+  well-formed request; a 422 for a body that is not a string email of at most 320 storable characters
+  (11) depends on the input only, never on an account.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - D1 Earlier unused tokens are **revoked** (`revoked_at`, a column the ticket's list lacks), not deleted
+    or marked used: `used_at` keeps meaning "a password was set with it" (autonomous).
+  - D2 The request locks the user row (`FOR NO KEY UPDATE`) before revoking and inserting, and the confirm
+    locks it before claiming the token: one lock order (user, then tokens, then sessions) and one live
+    token per user; a partial unique index backs it (autonomous).
+  - D3 Confirm checks the policy first, reads the token, ends the read, hashes with argon2, then claims
+    the token with a fresh clock in the conditional UPDATE (as `accept_invitation`; CLAUDE.md lesson).
+  - D4 `hide_parameters=True` on the app's engine and the tests' (one factory), for criterion 9: lasting,
+    so an ADR and a line in the inbox (autonomous).
+  - D5 The email's locale is the user's when supported, else `en` (as invitations use the building's).
+- Split: none. Estimate ~350 non-test lines (model and migration ~80, service ~160, router and schemas
+  ~60, templates ~20, engine and login ~20).
