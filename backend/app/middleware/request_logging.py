@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.logging_config import building_id_ctx, request_id_ctx, user_id_ctx
+from app.logging_config import building_id_ctx, loggable_path, request_id_ctx, user_id_ctx
 
 logger = logging.getLogger("app.request")
 
@@ -28,7 +28,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         start = time.perf_counter()
 
         method = request.method
-        path = request.url.path
+        path = loggable_path(request.url.path)
         client_ip = _get_client_ip(request)
         user_agent = request.headers.get("user-agent")
 

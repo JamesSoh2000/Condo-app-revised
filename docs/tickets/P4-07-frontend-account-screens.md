@@ -88,6 +88,15 @@ round (PR #65 round 3). Fix them test-first if this ticket touches the menu, or 
 2. How does `next=` work safely? Why must it only allow internal paths (open-redirect risk)?
 3. How are server validation errors mapped onto form fields?
 
+## Carried from P4-02b (do while framing)
+
+- `/invite/:token` carries the invitation token in the URL. Set `Referrer-Policy: no-referrer` (or
+  `same-origin`) for that page, so the token doesn't leave in a `Referer` header to a third-party resource.
+- The API it consumes (PR #87): 404 `invitation_invalid` (one body for every bad token), 409 `login_required`,
+  403 `invitation_email_mismatch` (logged in as someone else: ask them to log out), 409 `membership_exists`,
+  409 `unit_inactive`, 422 `validation_error` with `errors[].type` `missing` or `password_<reason>`, 429 with
+  `Retry-After`. The accept answers `{building_id, membership_id, roles}`.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

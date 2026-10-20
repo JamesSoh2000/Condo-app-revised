@@ -13,5 +13,8 @@ AUTH_ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/auth/login"),
         # Always 204: it revokes the session the cookie names, if any.
         ("POST", "/api/auth/logout"),
+        # The invitee has no session yet (P4-02b); the token in the path is the credential.
+        ("GET", "/api/invitations/{token}"),
+        ("POST", "/api/invitations/{token}/accept"),
     }
 )

@@ -134,13 +134,15 @@ class Settings(BaseSettings):
     session_idle_staff_hours: int = Field(12, gt=0)
 
     # Rate limits (P2-05), per client IP (IPv6 per /64) and per hashed email. Login applies its two
-    # here; P4-04 applies the reset ones and P4-05 the signup and join ones.
+    # here; P4-04 applies the reset ones and P4-05 the signup and join ones. The invitation lookup
+    # and accept (P4-02b) share one per-IP counter; the token, not an email, is what they check.
     rate_limit_login_ip: RatePolicy = RatePolicy(limit=30, window_seconds=600)
     rate_limit_login_email: RatePolicy = RatePolicy(limit=8, window_seconds=900)
     rate_limit_reset_ip: RatePolicy = RatePolicy(limit=30, window_seconds=600)
     rate_limit_reset_email: RatePolicy = RatePolicy(limit=8, window_seconds=900)
     rate_limit_signup_ip: RatePolicy = RatePolicy(limit=10, window_seconds=3600)
     rate_limit_join_ip: RatePolicy = RatePolicy(limit=20, window_seconds=600)
+    rate_limit_invitation_ip: RatePolicy = RatePolicy(limit=20, window_seconds=600)
 
     @field_validator("email_recipient_allowlist", mode="before")
     @classmethod

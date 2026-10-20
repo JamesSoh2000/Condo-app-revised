@@ -8,7 +8,9 @@ from pydantic_core import PydanticCustomError
 
 from app.core.config import MAX_EMAIL_ADDRESS_LENGTH, is_email_address
 from app.core.schemas import APIModel, InputModel
+from app.core.security import PASSWORD_MAX_LENGTH
 from app.memberships.enums import OccupancyRelationship, Role
+from app.units.schemas import printable
 
 
 class InvitationStatus(StrEnum):
@@ -70,3 +72,46 @@ class InvitationOut(APIModel):
     status: InvitationStatus
     expires_at: datetime
     created_at: datetime
+
+
+class InvitationPublicOut(APIModel):
+    """What the invitee sees before accepting: never the token, its hash, ids or the full email."""
+
+    building_name: str
+    email_masked: str
+    roles: list[Role]
+
+
+def _not_too_long(password: str) -> str:
+    # The policy's own error type, not pydantic's `string_too_long`, so a client sees one set of
+    # password errors (review round 1, F4); checked here so no over-long value reaches argon2.
+    if len(password) > PASSWORD_MAX_LENGTH:
+        raise PydanticCustomError("password_too_long", "must be at most 128 characters")
+    return password
+
+
+class InvitationAccept(InputModel):
+    """Both fields are for a new account only; an existing account's are ignored. No roles: they
+    come from the invitation (extra fields are a 422)."""
+
+    # `users.full_name` is varchar(200). Stripped, and no control characters (NUL fails at flush).
+    full_name: (
+        Annotated[
+            str,
+            StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+            AfterValidator(printable),
+        ]
+        | None
+    ) = None
+    # Not stripped, as `app.auth.schemas.LoginIn::password`; the rest of the policy runs in the
+    # service.
+    password: (
+        Annotated[str, StringConstraints(strip_whitespace=False), AfterValidator(_not_too_long)]
+        | None
+    ) = None
+
+
+class InvitationAcceptedOut(APIModel):
+    building_id: UUID
+    membership_id: UUID
+    roles: list[Role]

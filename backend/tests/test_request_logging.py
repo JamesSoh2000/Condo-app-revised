@@ -3,6 +3,9 @@
 import logging
 
 import pytest
+from httpx import ASGITransport, AsyncClient
+
+from app.main import app
 
 
 @pytest.mark.anyio
@@ -17,3 +20,38 @@ async def test_request_log_ignores_a_client_supplied_x_forwarded_for(client, cap
     assert response.status_code == 200
     [record] = [r for r in caplog.records if r.getMessage() == "request_completed"]
     assert record.client_ip == "127.0.0.1"
+
+
+@pytest.mark.anyio
+async def test_invitation_token_is_not_logged(client, caplog):
+    # The public invitation routes carry their token in the path (P4-02b criterion 11), and a token
+    # is never logged (CLAUDE.md rule 10). Building routes keep their path: an id is no secret.
+    token = "T" * 43
+    building = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
+    with caplog.at_level(logging.INFO, logger="app.request"):
+        await client.get(f"/api/invitations/{token}")
+        await client.post(f"/api/invitations/{token}/accept", json={})
+        await client.get(f"/api/buildings/{building}/invitations")
+
+    paths = [r.path for r in caplog.records if r.getMessage() == "request_completed"]
+    assert paths == [
+        "/api/invitations/{token}",
+        "/api/invitations/{token}/accept",
+        f"/api/buildings/{building}/invitations",
+    ]
+    # The app's records only: httpx, the test's client, logs the URL it sent.
+    assert not any(token in str(vars(r)) for r in caplog.records if r.name.startswith("app"))
+
+
+@pytest.mark.anyio
+async def test_csrf_rejection_does_not_log_the_invitation_token(caplog):
+    # The CSRF check logs the path of what it refuses (app/core/csrf.py), before any route runs.
+    token = "T" * 43
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as bare:
+        with caplog.at_level(logging.INFO, logger="app"):
+            response = await bare.post(f"/api/invitations/{token}/accept", json={})
+
+    assert response.status_code == 403
+    [rejected] = [r for r in caplog.records if r.getMessage() == "csrf_rejected"]
+    assert rejected.path == "/api/invitations/{token}/accept"
+    assert not any(token in str(vars(r)) for r in caplog.records if r.name.startswith("app"))

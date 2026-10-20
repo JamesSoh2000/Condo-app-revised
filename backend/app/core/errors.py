@@ -123,6 +123,15 @@ class RateLimited(_StatusError):
         self.headers["Retry-After"] = str(retry_after)
 
 
+def field_errors(*errors: tuple[str, str, str]) -> RequestValidationError:
+    """A 422 `validation_error` on body fields only the service can check (a password the policy
+    refuses), each `(field, message, type)`, with the same `errors[]` shape as pydantic's, so a
+    client maps both alike."""
+    return RequestValidationError(
+        [{"loc": ("body", field), "msg": message, "type": kind} for field, message, kind in errors]
+    )
+
+
 class ProblemError(BaseModel):
     loc: list[str | int]
     msg: str

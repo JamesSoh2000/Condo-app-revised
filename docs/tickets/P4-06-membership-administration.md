@@ -98,6 +98,17 @@ From the P1-03 reviews (PR #45, ADR-0016). The occupancy helpers in `app/members
   `require_roles` route refuses it, but "any member" routes admit it (P2-03 review round 1, L2). Decide
   whether a membership may lose its last role (refuse with 409, or deactivate it), and test it.
 
+## Carried from P4-02b (do while framing)
+
+- **Sessions follow role changes.** Every write here that changes a user's roles or a membership's status
+  (approve, suspend, reinstate, deactivate, change roles) must call
+  `backend/app/auth/service.py::apply_role_change(db, user_id, active_session_id=...)` in the same transaction,
+  after the change. It takes the per-user idle-deadline lock (`lock_idle_deadlines`) and caps the user's stored
+  idle deadlines to what the new roles allow (ADR-0003: staff 12 h). Without it, a user who becomes staff keeps a
+  7-day idle window on sessions that already exist (P4-02b review rounds 1-4, inbox B-6 option A, PR #87 D6).
+  Copy `backend/tests/invitations/test_concurrency.py::test_session_writes_and_a_staff_accept_take_turns` for the
+  races.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

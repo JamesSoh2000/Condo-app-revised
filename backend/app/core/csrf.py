@@ -18,6 +18,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.core.config import settings
 from app.core.errors import problem_response
+from app.logging_config import loggable_path
 
 logger = logging.getLogger("app.csrf")
 
@@ -40,7 +41,9 @@ class CSRFMiddleware:
         if reason is None:
             await self.app(scope, receive, send)
             return
-        logger.warning("csrf_rejected", extra={"reason": reason, "path": scope["path"]})
+        logger.warning(
+            "csrf_rejected", extra={"reason": reason, "path": loggable_path(scope["path"])}
+        )
         # A response, not a raised DomainError: an exception raised in a middleware never reaches
         # the app's exception handlers and would become a 500.
         response = problem_response(

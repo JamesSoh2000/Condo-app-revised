@@ -72,7 +72,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-01a](./P4-01a-units-api.md) | Units API and unit options (split from [P4-01](./P4-01-units-api.md)) | A | 2 | P2-03, P2-04 | done | — |
 | [P4-01b](./P4-01b-units-csv-import.md) | Units CSV import (split from P4-01) | A | 2 | P4-01a | done | — |
 | [P4-02a](./P4-02a-invitations-management.md) | Invitations: table and manager endpoints (split from [P4-02](./P4-02-staff-invitations.md)) | A | 1 | P3-02, P2-04, P2-03, P2-05 | done | — |
-| [P4-02b](./P4-02b-invitation-accept.md) | Invitation lookup and accept (split from P4-02) | A | 1 | P4-02a | blocked (inbox B-6) | — |
+| [P4-02b](./P4-02b-invitation-accept.md) | Invitation lookup and accept (split from P4-02) | A | 1 | P4-02a | done | — |
 | [P4-03](./P4-03-bootstrap-building-command.md) | Bootstrap-building operator command | A | 1 | P4-02b, P4-01b, P1-06 | todo | — |
 | [P4-04](./P4-04-password-reset.md) | Password reset | B | 1 | P3-02, P2-05, P2-04 | todo | — |
 | [P4-05](./P4-05-resident-join-onboarding-approval.md) | Resident join, onboarding and approval | A | 1 | P4-01a, P3-03, P2-04, P2-05 | todo | — |
