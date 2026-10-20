@@ -79,7 +79,8 @@ def test_upgrade_check_downgrade_with_deleting_rows_and_upgrade_again(scratch_da
     command.check(cfg)
     ids = asyncio.run(_add_deleting_files(scratch_database_url))
 
-    command.downgrade(cfg, "-1")
+    # To the revision before f727e687ccf2 by name, not "-1": later migrations sit on top (P4-02a).
+    command.downgrade(cfg, "05c58ec89743")
     # The old constraints are back and hold: each file is what its version says it was.
     assert asyncio.run(_state(scratch_database_url, ids)) == (
         False,

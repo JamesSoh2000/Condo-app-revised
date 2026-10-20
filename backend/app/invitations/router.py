@@ -27,7 +27,9 @@ async def create(ctx: Ctx, db: DbSession, body: InvitationCreate) -> InvitationO
     return await service.create_invitation(db, ctx, body)
 
 
-@router.get("/invitations", dependencies=_MANAGEMENT, responses=problem_responses(400, 401, 403, 404))
+@router.get(
+    "/invitations", dependencies=_MANAGEMENT, responses=problem_responses(400, 401, 403, 404)
+)
 async def list(
     ctx: Ctx,
     db: DbSession,

@@ -25,7 +25,8 @@ class Invitation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """An emailed offer to join a building with preassigned roles (P4-02a); accepted in P4-02b.
 
     Only the token's sha256 is stored; the token itself is in the email alone. The status is read
-    from the timestamps (`app.invitations.service.status_of`): accepted, revoked, expired or pending.
+    from the timestamps (`app.invitations.service.status_of`): accepted, revoked, expired or
+    pending.
     """
 
     __tablename__ = "invitations"
@@ -42,7 +43,9 @@ class Invitation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         # its values checked here.
         CheckConstraint("cardinality(roles) > 0", name="roles_not_empty"),
         CheckConstraint(f"roles <@ ARRAY[{_ROLE_VALUES}]::varchar[]", name="roles_known"),
-        CheckConstraint("(unit_id IS NULL) = (relationship IS NULL)", name="unit_with_relationship"),
+        CheckConstraint(
+            "(unit_id IS NULL) = (relationship IS NULL)", name="unit_with_relationship"
+        ),
         CheckConstraint("email = lower(email)", name="email_lowercase"),
         # The one-pending-per-email check in `create_invitation`.
         Index("ix_invitations_building_id_email", "building_id", "email"),

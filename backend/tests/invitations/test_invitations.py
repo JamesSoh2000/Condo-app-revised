@@ -1,4 +1,5 @@
-"""The manager's invitation routes (P4-02a criteria 1-10) and the tenant table (ENGINEERING_PRACTICES §7)."""
+"""The manager's invitation routes (P4-02a criteria 1-10) and the tenant table
+(docs/ENGINEERING_PRACTICES.md §7)."""
 
 import re
 import uuid
@@ -17,7 +18,7 @@ from app.invitations.models import Invitation
 from app.jobs.models import Job, JobStatus
 from app.jobs.worker import Worker
 from tests.conftest import FrozenClock
-from tests.email.conftest import FakeSMTP, email_handler, point_settings_at, smtp  # noqa: F401
+from tests.email.conftest import FakeSMTP, point_settings_at
 from tests.factories import make_unit
 from tests.helpers.tenancy import (
     assert_cross_building_404,
@@ -25,7 +26,7 @@ from tests.helpers.tenancy import (
     assert_problem,
     without_request_id,
 )
-from tests.jobs.conftest import Sessions, sessions  # noqa: F401
+from tests.jobs.conftest import Sessions
 from tests.world import World
 
 pytestmark = pytest.mark.anyio
@@ -383,7 +384,9 @@ async def test_non_managers_get_403_on_every_route(as_user, db, world):
     item = f"{_url(world)}/{invitation['id']}"
     for member in (world.a_security, world.a_resident1, world.a_council):
         client = await as_user(member.user)
-        await assert_forbidden_role(client, "POST", _url(world), json=_guard(email="x@example.test"))
+        await assert_forbidden_role(
+            client, "POST", _url(world), json=_guard(email="x@example.test")
+        )
         await assert_forbidden_role(client, "GET", _url(world))
         await assert_forbidden_role(client, "POST", f"{item}/revoke")
         await assert_forbidden_role(client, "POST", f"{item}/resend")
@@ -561,7 +564,9 @@ async def test_resend_rotates_token_and_expiry_and_requeues(
     new_token = _token_of(jobs[1])
     assert new_token != old_token
     assert row.token_hash == hash_token(new_token)
-    stale = await db.scalar(select(Invitation).where(Invitation.token_hash == hash_token(old_token)))
+    stale = await db.scalar(
+        select(Invitation).where(Invitation.token_hash == hash_token(old_token))
+    )
     assert stale is None
     assert jobs[1].payload["to"] == "guard@example.test"
     assert new_token not in r.text

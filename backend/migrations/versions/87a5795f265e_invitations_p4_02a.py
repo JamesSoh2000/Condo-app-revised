@@ -58,8 +58,8 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        # Hand-edited: autogenerate rendered this check twice (once named just "relationship"), as in
-        # 8887ac143e98. The column's Enum has create_constraint=False so it doesn't add another.
+        # Hand-edited: autogenerate rendered this check twice (once named just "relationship"), as
+        # in 8887ac143e98. The column's Enum has create_constraint=False so it doesn't add another.
         sa.CheckConstraint(
             "relationship IN ('owner', 'tenant', 'household')",
             name=op.f("ck_invitations_relationship"),
