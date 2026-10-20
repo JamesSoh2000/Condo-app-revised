@@ -67,7 +67,7 @@ backend/app/
   notifications/          Notification model, notify(), list/summary/mark-read router
   files/                  File model, presign/complete/download, storage adapter (boto3)
   packages/ notices/ maintenance/ dashboard/
-  cli.py                  operator commands: bootstrap-building, seed, audit, create-invite
+  cli.py                  operator commands: seed, bootstrap-building, import-units, audit, jobs-*, email-test
   worker.py               entrypoint for the worker process
 ```
 

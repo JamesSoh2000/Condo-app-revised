@@ -111,6 +111,14 @@ This completes demo journey 7, and it is one of the most commonly attacked flows
   `reset` scope so reset and login counts stay apart; document 429 (`problem_responses(..., 429)`). See
   `docs/explanations/P2-05-rate-limiting.md` §8.
 
+## Carried from P4-03 (do while framing; first follow-up)
+
+- Pattern "a secret leaks through a second output path" appeared twice (P4-02b: the CSRF middleware's log
+  line kept the invitation token the request log redacted; P4-03: a database error's message printed the
+  email job's `/invite/<token>` though logs and tracebacks were covered). The reset token has the same
+  paths. Promote it in this PR: a `CLAUDE.md` lesson, or better a test that fails a request, a job insert
+  and a commit while holding a token and asserts the token reaches no log line and no error output.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

@@ -457,18 +457,13 @@ def test_cli_help_lists_every_command() -> None:
         assert command in result.output
 
 
-@pytest.mark.parametrize(
-    ("command", "ticket"),
-    [
-        ("bootstrap-building", "P4-03"),
-    ],
-)
-def test_cli_placeholders_exit_nonzero_naming_their_ticket(command: str, ticket: str) -> None:
-    result = runner.invoke(cli.app, [command])
+def test_no_placeholder_commands_are_left() -> None:
+    # The last placeholder, bootstrap-building, became a command in P4-03 (tests/cli/).
+    result = runner.invoke(cli.app, ["bootstrap-building"])
 
-    assert result.exit_code == 1
-    assert "not implemented" in result.output
-    assert ticket in result.output
+    assert result.exit_code == 2
+    assert "not implemented" not in result.output
+    assert "Missing option" in result.output
 
 
 # Criterion 6

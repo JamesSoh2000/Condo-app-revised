@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P4-02, P4-01, P1-06 |
 | Replaces old | M3-T12 (bootstrap part), M4-T09 (pilot data preparation part) |
-| Status | todo |
+| Status | done |
 
 ## Goal
 
@@ -58,15 +58,35 @@ CLI `bootstrap-building`. Audit action `building.bootstrapped`.
 
 ## Acceptance criteria
 
-1. **Given** `--dry-run`, **then** the table row counts before and after are identical, and the plan is
-   printed.
-2. **Given** a real run with a 40-unit CSV, **then** exactly 1 building, 3 features, 40 units, 1 invitation, 1
-   email job and 1 audit event are created.
-3. **Given** the same slug again, **then** it exits non-zero with `slug already exists`, and nothing is written.
-4. **Given** `--timezone Mars/Base` or a malformed CSV row, **then** it exits non-zero before writing.
-5. **Given** the printed URL, **when** the manager accepts, **then** they log in as active
-   `property_management` and can invite staff (P4-02).
-6. **Given** the logs and the audit metadata, **then** they contain no token or URL.
+Sharpened while framing (see Frame notes); the original six are kept, numbered as before.
+
+1. **Given** `--dry-run` with valid input, **then** the row counts of `buildings`, `building_features`,
+   `units`, `invitations`, `jobs` and `audit_events` are identical before and after, the exit code is 0, and
+   stdout shows the plan: slug, name, timezone, locale, the features, the unit count, the invitation target
+   (email, role `property_management`) and `dry run: nothing was written`. No accept URL is printed.
+2. **Given** a real run with a 40-unit CSV and `--features packages,notices,maintenance`, **then** exactly 1
+   building (with a non-null `join_code`), 3 enabled features, 40 units, 1 pending invitation (roles
+   `[property_management]`, no unit, `created_by_user_id` NULL), 1 `email.send` job (template `invitation`,
+   to the manager) and 1 audit event (`building.bootstrapped`, `actor_user_id` NULL, `building_id` and
+   `entity_id` the new building, metadata `{operator, reason, invitation_id, units}`) are created, and stdout
+   ends with the accept URL `<APP_BASE_URL>/invite/<token>` exactly once.
+3. **Given** the same slug again, **then** it exits non-zero with `slug already exists` on stderr, and nothing
+   is written (also with `--dry-run`).
+4. **Given** `--timezone Mars/Base`, a malformed CSV row (any row `parse_units_csv` reports invalid), an
+   unreadable, non-UTF-8 or malformed CSV file, a bad slug (outside `^[a-z0-9-]{1,63}$`), an invalid
+   `--manager-email`, an unknown or repeated feature, an unsupported locale, a blank `--reason`, or neither
+   `OPERATOR` nor `USER` set, **then** it exits non-zero with an error naming the option, before any database
+   session is opened.
+5. **Given** the printed URL, **when** the manager accepts it (P4-02b), **then** they have an active
+   membership in the new building with exactly the role `property_management`, and can create a staff
+   invitation there (P4-02a, 201).
+6. **Given** the logs captured during a real run and the accept, and the audit event's metadata, **then**
+   neither contains the token or the URL.
+7. *(added)* **Given** `APP_ENV=prod`, **then** the command runs (unlike `seed`).
+8. *(added)* **Given** a real run, **then** the command commits once, and an error raised after the first
+   write (e.g. the email can't be queued) leaves no building, feature, unit, invitation, job or audit row.
+9. *(added)* **Given** an existing building, **then** a bootstrap of another slug changes none of its rows
+   (row counts of the world's buildings, units and invitations are unchanged).
 
 ## Test plan
 
@@ -103,6 +123,44 @@ CLI `bootstrap-building`. Audit action `building.bootstrapped`.
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+  - All six criteria made precise (exact tables, columns and outputs) above; AC4 lists every input refused
+    before a session; AC3 also applies to a dry run (the slug check is a read).
+  - Added AC7 (prod), AC8 (one transaction, rollback on a late failure), AC9 (other buildings untouched:
+    the tenant table's "related records of another building" row, the only one that applies to a CLI with
+    no request or role).
+  - Not applicable from the 10-case table (no HTTP route, no role, no tenant context): rows 1-6, 8-10.
+    The accept and invite of AC5 run through P4-02's routes, which their own tests cover.
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - F1 `invitations.created_by_user_id` becomes nullable (new expand migration; NULL = created by an
+    operator command). The ticket needs an invitation with no inviting user, and the column is NOT NULL.
+    The accept already copies it into `status_changed_by_user_id`, which is nullable. Lasting (table shape):
+    inbox. Basis: autonomous (rule 3), expand-only (CLAUDE.md rule 11).
+  - F2 A CSV with any invalid row refuses the whole run (the P4-01b carry's open question). Basis: AC4.
+  - F3 `import_units` takes `audit=False` for bootstrap, so its rows get no `unit.created` events and AC2's
+    "1 audit event" holds; the bootstrap event records the unit count. Basis: AC2 + "reuse, don't
+    duplicate" (ticket).
+  - F4 The invitation is written by the same helper as `create_invitation` (token, hash, 7-day expiry,
+    email in the building's locale), with no `invitation.created` event (AC2). Basis: ticket (reuse).
+  - F5 `join_code` is generated: 10 characters from an unambiguous upper-case alphabet in two groups,
+    `XXXXX-XXXXX` (11 of the column's 16), from `secrets`. Basis: autonomous; the seed's `MAPLE-2026` is
+    the same shape.
+  - F6 `--features` defaults to `packages,notices,maintenance`; an empty value means none; unknown or
+    repeated names are refused. `--locale` defaults to `en` and must be an email locale (`en`, `fr`).
+    Basis: ticket's option list; `SUPPORTED_LOCALES`.
+  - F7 `--manager-name` is optional and only shown in the plan and summary: invitations store no name and
+    the accept form asks for it (P4-02b). Storing it to prefill the form is a follow-up. Basis: code.
+  - F8 Operator = `$OPERATOR`, else `$USER`, 1-64 printable characters; neither set is refused (inside
+    `docker compose exec` `USER` is usually unset, so the runbook passes `-e OPERATOR`). `--reason` is
+    1-500 printable characters. Both are written to the audit metadata as the ticket says; they are the
+    operator's own words, not secrets. Basis: ticket.
+  - F9 A concurrent bootstrap of the same slug: the building insert is `ON CONFLICT (slug) DO NOTHING`, so
+    the loser gets `slug already exists`, not an IntegrityError. Basis: autonomous.
+- Split: no. Estimate ~330 non-test lines (CLI ~100, service ~130, schema ~50, invitations and units
+  changes ~20, migration ~25), plus the runbook.
+
+## Follow-ups (from PR #89)
+
+- No operator command recovers a lost or expired first-manager invitation (revoke and resend need a manager
+  in the building). Listed in the inbox.
+- `--manager-name` is not stored, so the accept form can't prefill it; P4-07 may add it (needs a column).

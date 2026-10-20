@@ -5,6 +5,7 @@ A command is a use-case, like a service function: it opens its own session throu
 """
 
 import asyncio
+import os
 import re
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
@@ -12,10 +13,14 @@ from pathlib import Path
 from uuid import UUID
 
 import typer
+from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.report import render
 from app.audit.service import AuditQuery, UnknownFilterValue, find_audit_events
+from app.buildings.schemas import BootstrapInput
+from app.buildings.service import SlugExists, bootstrap_building, render_bootstrap
 from app.core import clock
 from app.core.config import is_email_address, settings
 from app.core.database import AsyncSessionLocal, dispose_database_engine
@@ -26,6 +31,7 @@ from app.seed import SeedRefusedError, check_seed_allowed, seed, seed_password_f
 from app.units.service import (
     MAX_IMPORT_BYTES,
     CsvError,
+    ParsedUnits,
     UnknownBuilding,
     building_id_for_slug,
     import_units,
@@ -33,7 +39,12 @@ from app.units.service import (
     render_import_report,
 )
 
-app = typer.Typer(help="Condo management operator commands.", no_args_is_help=True)
+app = typer.Typer(
+    help="Condo management operator commands.",
+    no_args_is_help=True,
+    # A traceback must not print local variables: `bootstrap-building` holds an invitation token.
+    pretty_exceptions_show_locals=False,
+)
 
 
 def run_in_session(work: Callable[[AsyncSession], Awaitable[None]], *, commit: bool = True) -> None:
@@ -199,6 +210,25 @@ def email_test_command(
     typer.echo(f"queued email job {queued[0]}")
 
 
+def _read_units_csv(csv_path: str, option: str) -> ParsedUnits:
+    """Read and parse a units CSV, or print the error, naming `option`, and exit 1."""
+    try:
+        with Path(csv_path).open("rb") as file:
+            data = file.read(MAX_IMPORT_BYTES + 1)
+        if len(data) > MAX_IMPORT_BYTES:
+            raise CsvError(f"the file is larger than {MAX_IMPORT_BYTES // 1024} KiB")
+        return parse_units_csv(data.decode("utf-8"))
+    except OSError as exc:
+        typer.echo(f"error: {option}: can't read {csv_path}: {exc.strerror}", err=True)
+        raise typer.Exit(1) from None
+    except UnicodeDecodeError:
+        typer.echo(f"error: {option}: the file is not UTF-8 text", err=True)
+        raise typer.Exit(1) from None
+    except CsvError as exc:
+        typer.echo(f"error: {option}: {exc}", err=True)
+        raise typer.Exit(1) from None
+
+
 @app.command("import-units")
 def import_units_command(
     building: str = typer.Option(..., "--building", help="Building slug."),
@@ -209,22 +239,8 @@ def import_units_command(
 
     Invalid rows are skipped and listed by line; the valid ones are written.
     """
-    try:
-        # Read and checked before any session: a bad file must not touch the database.
-        with Path(csv_path).open("rb") as file:
-            data = file.read(MAX_IMPORT_BYTES + 1)
-        if len(data) > MAX_IMPORT_BYTES:
-            raise CsvError(f"the file is larger than {MAX_IMPORT_BYTES // 1024} KiB")
-        parsed = parse_units_csv(data.decode("utf-8"))
-    except OSError as exc:
-        typer.echo(f"error: can't read {csv_path}: {exc.strerror}", err=True)
-        raise typer.Exit(1) from None
-    except UnicodeDecodeError:
-        typer.echo("error: the file is not UTF-8 text", err=True)
-        raise typer.Exit(1) from None
-    except CsvError as exc:
-        typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(1) from None
+    # Read and checked before any session: a bad file must not touch the database.
+    parsed = _read_units_csv(csv_path, "--csv")
     output: list[str] = []
 
     async def work(db: AsyncSession) -> None:
@@ -240,16 +256,93 @@ def import_units_command(
     typer.echo(output[0])
 
 
-def _placeholder(name: str, ticket: str) -> None:
-    def command() -> None:
-        typer.echo(f"error: {name} is not implemented yet; {ticket} adds it", err=True)
+DEFAULT_FEATURES = "packages,notices,maintenance"
+
+
+def _option_name(field: str) -> str:
+    return "OPERATOR" if field == "operator" else "--" + field.replace("_", "-")
+
+
+@app.command("bootstrap-building")
+def bootstrap_building_command(
+    slug: str = typer.Option(..., "--slug", help="a-z, 0-9 and -, at most 63."),
+    name: str = typer.Option(..., "--name"),
+    address: str = typer.Option(..., "--address"),
+    timezone: str = typer.Option(..., "--timezone", help="IANA name, e.g. America/Toronto."),
+    locale: str = typer.Option("en", "--locale", help="The emails' language: en or fr."),
+    features: str = typer.Option(
+        DEFAULT_FEATURES, "--features", help='Comma-separated; "" for none.'
+    ),
+    units_csv: str | None = typer.Option(
+        None, "--units-csv", help="UTF-8 CSV: tower,label,floor columns; every row must be valid."
+    ),
+    manager_email: str = typer.Option(..., "--manager-email"),
+    manager_name: str | None = typer.Option(None, "--manager-name", help="Shown in the summary."),
+    reason: str = typer.Option(..., "--reason", help="Why; recorded in the audit event."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan; write nothing."),
+) -> None:
+    """Provision a building, its features and units, and invite its first manager, in one audited
+    transaction. Prints the accept URL once (deliver it yourself if the email fails).
+
+    The operator's name comes from $OPERATOR, else $USER.
+    """
+    # Everything is checked before any session: a refused run must not touch the database.
+    operator = os.environ.get("OPERATOR") or os.environ.get("USER")
+    if operator is None:
+        typer.echo("error: set OPERATOR (or USER) to your name for the audit event", err=True)
         raise typer.Exit(1)
+    try:
+        data = BootstrapInput(
+            slug=slug,
+            name=name,
+            address=address,
+            timezone=timezone,
+            locale=locale,
+            # Each item is checked, so "a,,b" is refused, not read as "a,b".
+            features=[item.strip() for item in features.split(",")] if features.strip() else [],
+            manager_email=manager_email,
+            manager_name=manager_name,
+            reason=reason,
+            operator=operator,
+        )
+    except ValidationError as exc:
+        for error in exc.errors():
+            typer.echo(f"error: {_option_name(str(error['loc'][0]))}: {error['msg']}", err=True)
+        raise typer.Exit(1) from None
+    units = _read_units_csv(units_csv, "--units-csv") if units_csv is not None else None
+    if units is not None and units.invalid:
+        # P4-03 D3: a building is provisioned from a clean file or not at all.
+        typer.echo(f"error: --units-csv: {len(units.invalid)} invalid rows", err=True)
+        for row in units.invalid:
+            typer.echo(f"  line {row.line}: {row.reason}", err=True)
+        raise typer.Exit(1)
+    output: list[str] = []
 
-    app.command(name, help=f"Not implemented yet ({ticket}).")(command)
+    async def work(db: AsyncSession) -> None:
+        result = await bootstrap_building(db, data, units, dry_run=dry_run)
+        output.append(render_bootstrap(data, result, dry_run=dry_run))
+        if result.token is not None:
+            # stdout only, once: never logged (ticket). The link the email carries.
+            output.append(
+                "deliver this link to the manager only if the email does not arrive:\n"
+                f"accept URL: {settings.app_base_url}/invite/{result.token}"
+            )
 
-
-# Fail loudly: a script that calls a placeholder must not mistake it for success.
-_placeholder("bootstrap-building", "P4-03")
+    try:
+        run_in_session(work, commit=not dry_run)
+    except SlugExists as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    except SQLAlchemyError as exc:
+        # Never the message or the traceback: they carry the statements' parameters, and the
+        # email job's hold the accept link (review round 1, F1). The SQLSTATE says what failed.
+        state = getattr(getattr(exc, "orig", None), "sqlstate", None) or type(exc).__name__
+        typer.echo(
+            f"error: the database refused the bootstrap (SQLSTATE {state}); nothing was written",
+            err=True,
+        )
+        raise typer.Exit(1) from None
+    typer.echo("\n".join(output))
 
 
 if __name__ == "__main__":

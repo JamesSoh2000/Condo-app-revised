@@ -7,6 +7,7 @@ Each write use-case commits once (CLAUDE.md rule 5).
 """
 
 import re
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import NamedTuple
 from uuid import UUID
@@ -184,6 +185,40 @@ async def _refuse_another_pending(
         )
 
 
+async def add_invitation(
+    db: AsyncSession,
+    building: Building,
+    *,
+    email: str,
+    roles: Sequence[Role],
+    created_by_user_id: UUID | None,
+    now: datetime,
+    unit_id: UUID | None = None,
+    relationship: OccupancyRelationship | None = None,
+) -> tuple[Invitation, str]:
+    """Insert a pending invitation to `building` and queue its email; return it and the raw token.
+
+    No checks, no audit and no commit: the caller has validated `email`, `roles` and the unit, and
+    records its own event. `created_by_user_id` is None for an operator command (P4-03).
+    """
+    token = generate_token()
+    invitation = Invitation(
+        building_id=building.id,
+        email=email,
+        roles=[role.value for role in roles],
+        unit_id=unit_id,
+        relationship=relationship,
+        token_hash=hash_token(token),
+        expires_at=now + INVITATION_TTL,
+        created_by_user_id=created_by_user_id,
+    )
+    db.add(invitation)
+    await db.flush()
+    await db.refresh(invitation, ["created_at"])
+    await _queue_invitation_email(db, building, invitation, token)
+    return invitation, token
+
+
 async def create_invitation(
     db: AsyncSession, ctx: TenantContext, data: InvitationCreate
 ) -> InvitationOut:
@@ -201,21 +236,16 @@ async def create_invitation(
             raise UnitInactive(detail="This unit is deactivated.")
     now = clock.now()
     await _refuse_another_pending(db, ctx, data.email, now)
-    token = generate_token()
-    invitation = Invitation(
-        building_id=ctx.building_id,
+    invitation, _token = await add_invitation(
+        db,
+        building,
         email=data.email,
-        roles=[role.value for role in data.roles],
+        roles=data.roles,
         unit_id=data.unit_id,
         relationship=data.relationship,
-        token_hash=hash_token(token),
-        expires_at=now + INVITATION_TTL,
         created_by_user_id=ctx.user_id,
+        now=now,
     )
-    db.add(invitation)
-    await db.flush()
-    await db.refresh(invitation, ["created_at"])
-    await _queue_invitation_email(db, building, invitation, token)
     await _audit(db, ctx, actions.INVITATION_CREATED, invitation.id)
     out = _out(invitation, now)
     await db.commit()
@@ -344,7 +374,7 @@ class _Pending(NamedTuple):
     unit_id: UUID | None
     relationship: OccupancyRelationship | None
     token_hash: str
-    created_by_user_id: UUID
+    created_by_user_id: UUID | None
     building_name: str
 
 
@@ -575,7 +605,7 @@ async def _activate_membership(
     activated = {
         "status": MembershipStatus.ACTIVE,
         "status_changed_at": now,
-        # The manager who invited authorised the change.
+        # The manager who invited authorised the change; None for an operator's invitation (P4-03).
         "status_changed_by_user_id": invitation.created_by_user_id,
     }
     inserted = await db.scalar(
