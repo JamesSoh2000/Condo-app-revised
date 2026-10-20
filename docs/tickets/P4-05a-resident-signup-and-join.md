@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P4-01a, P3-03, P2-04, P2-05 |
 | Replaces old | part of [P4-05](./P4-05-resident-join-onboarding-approval.md) |
-| Status | in progress |
+| Status | done (PR #91) |
 
 ## Goal
 

@@ -73,6 +73,25 @@ The second half of demo journey 3. Approval creates the occupancy data every lat
 - A denied applicant can't read in-app notifications (the notifications routes need an active membership);
   `/onboarding/me` is where they see the reason.
 
+## Carried from P4-05a (do while framing)
+
+From PR #91 and its review rounds; see [the explanation](../explanations/P4-05a-resident-signup-and-join.md) §7.
+- **First, the promoted pattern (step 8):** "a control-character check after the strip" is now in the
+  mistakes log twice (P3-04a, P4-05a round 1 F3). Add the fitness test or `CLAUDE.md` lesson in this PR. The
+  round 2 reviewer noted the same order still in `app/units/schemas.py` (`Label`; check `SearchText` and `Tower` too) and the
+  building schemas: fix them with it, or record why not.
+- **Approval updates the membership only from `pending`.** An invitation accept (P4-02b, `_REACTIVATABLE`)
+  can make a `pending`/`denied` membership `active` while its join request stays `pending`; approving that
+  request must not start a second occupancy or overwrite the invited roles (round 2 residual). Expire or
+  refuse such a request (409), with a test.
+- **Rate-limit resubmissions** (round 1, Claude L3): once deny exists, a denied resident can resubmit
+  repeatedly and every manager is notified each time. A per-user or per-membership limit, as a route
+  dependency (as `signup_limit`).
+- The approval reads the unit `FOR KEY SHARE` (`with_for_update(read=True, key_share=True)`) and re-checks
+  `is_active`: a pending request's unit may have been deactivated since (P4-05a accepted this).
+- Optional, any later ticket: `app/logging_config.py::loggable_path` redacts only invitation tokens; the join
+  code appears verbatim in request logs (round 2, Claude L1, Low).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
