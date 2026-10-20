@@ -67,6 +67,8 @@ EXPECTED_ROW_COUNTS = {
     "files": 0,
     # P3-03: nor notifies anyone.
     "notifications": 0,
+    # P4-02a: nor invites anyone.
+    "invitations": 0,
 }
 
 

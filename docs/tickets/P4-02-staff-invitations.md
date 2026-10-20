@@ -1,4 +1,4 @@
-# P4-02 — Staff invitations
+# P4-02 — Staff invitations (split)
 
 | Field | Value |
 |---|---|
@@ -6,7 +6,13 @@
 | Risk tier | 1 |
 | Depends on | P3-02, P2-04, P2-03, P2-05 |
 | Replaces old | M3-T06 (invitation part), M3-T12 (staff invite part), M3-T13 (invite delivery) |
-| Status | todo |
+| Status | split into [P4-02a](./P4-02a-invitations-management.md), [P4-02b](./P4-02b-invitation-accept.md) |
+
+Split while framing (2026-10-19): the estimate was ~550 non-test lines. P4-02a is the table, the manager
+endpoints and the email (criteria 1 and 6, sharpened, plus new ones); P4-02b is the public lookup and accept
+(criteria 2, 3, 4, 5, 7, 8). "P4-02" in other tickets' text means both parts; the
+[ticket index](./README.md) lists which part each dependent needs. The text below is the ticket as written
+before the split.
 
 ## Goal
 

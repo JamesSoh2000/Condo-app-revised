@@ -8,6 +8,7 @@ import app.audit.models
 import app.auth.models
 import app.buildings.models
 import app.files.models
+import app.invitations.models
 import app.jobs.models
 import app.memberships.models
 import app.notifications.models
