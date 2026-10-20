@@ -127,20 +127,6 @@ async def submit_request(
     (D4). The unit must be active and the building's, else 404 `unit_not_found`.
     """
     building = await _find_building(db, join_code, lock=True)
-    # FOR KEY SHARE (the P4-01a carry): `deactivate_unit` locks the unit FOR UPDATE, so a
-    # deactivation committing now makes this wait, and `is_active` is then re-checked on the row
-    # it committed.
-    unit = (
-        await db.execute(
-            select(Unit.label, Unit.tower)
-            .where(Unit.id == data.unit_id, Unit.building_id == building.id, Unit.is_active)
-            .with_for_update(key_share=True)
-        )
-    ).one_or_none()
-    if unit is None:
-        # One body for another building's, an inactive and an unknown unit (ADR-0004).
-        raise UnitNotFound(detail="Unit not found.")
-
     membership_id = await db.scalar(
         pg_insert(BuildingMembership)
         .values(
@@ -154,6 +140,8 @@ async def submit_request(
         .returning(BuildingMembership.id)
     )
     if membership_id is None:
+        # Before the unit is checked: a retry returns the pending request even if its unit was
+        # deactivated since, or the retry names another unit (criterion 7; review round 1, F1).
         existing = await _reopen_or_refuse(db, building.id, user_id)
         if isinstance(existing, OnboardingRequestOut):
             return Submitted(existing, created=False)
@@ -164,6 +152,21 @@ async def submit_request(
                 building_id=building.id, membership_id=membership_id, role=Role.RESIDENT
             )
         )
+
+    # FOR KEY SHARE (the P4-01a carry): `deactivate_unit` locks the unit FOR UPDATE, so a
+    # deactivation committing now makes this wait, and `is_active` is then re-checked on the row
+    # it committed. Join requests for one unit don't wait for each other.
+    unit = (
+        await db.execute(
+            select(Unit.label, Unit.tower)
+            .where(Unit.id == data.unit_id, Unit.building_id == building.id, Unit.is_active)
+            .with_for_update(read=True, key_share=True)
+        )
+    ).one_or_none()
+    if unit is None:
+        # One body for another building's, an inactive and an unknown unit (ADR-0004). Raising
+        # rolls back the membership written above: nothing is kept.
+        raise UnitNotFound(detail="Unit not found.")
 
     request = OnboardingRequest(
         building_id=building.id,
@@ -206,9 +209,9 @@ async def submit_request(
 async def _reopen_or_refuse(
     db: AsyncSession, building_id: UUID, user_id: UUID
 ) -> UUID | OnboardingRequestOut:
-    """The caller already has a membership here. Lock it (one submission at a time per membership),
-    then: its pending request, if any, to return as is; or the membership's id once it is pending
-    (reopened from `denied`, with exactly the role `resident`); or a refusal."""
+    """The caller already has a membership here. Lock it (FOR NO KEY UPDATE: one submission at a
+    time per membership), then: its pending request, if any, to return as is; or a refusal; or the
+    membership's id once it is pending (reopened from `denied`) with exactly the role `resident`."""
     row = (
         await db.execute(
             select(BuildingMembership.id, BuildingMembership.status)
@@ -247,7 +250,6 @@ async def _reopen_or_refuse(
             ).one_or_none()
             if pending is not None:
                 return _request_out(*pending)
-            return membership_id
         case MembershipStatus.DENIED:
             # Conditional (CLAUDE.md rule 7); the row lock above makes it match.
             await db.execute(
@@ -262,18 +264,20 @@ async def _reopen_or_refuse(
                     status_changed_by_user_id=user_id,
                 )
             )
-            # Pending grants nothing, but P4-05b's approval activates the membership's roles.
-            await db.execute(
-                delete(MembershipRole).where(
-                    MembershipRole.building_id == building_id,
-                    MembershipRole.membership_id == membership_id,
-                )
-            )
-            await db.execute(
-                insert(MembershipRole).values(
-                    building_id=building_id, membership_id=membership_id, role=Role.RESIDENT
-                )
-            )
+    # A new request is coming, from a pending or a reopened membership: exactly the role
+    # `resident`. Pending grants nothing, but P4-05b's approval activates the membership's roles
+    # (review round 1, L4: a pending membership without a request kept its roles).
+    await db.execute(
+        delete(MembershipRole).where(
+            MembershipRole.building_id == building_id,
+            MembershipRole.membership_id == membership_id,
+        )
+    )
+    await db.execute(
+        insert(MembershipRole).values(
+            building_id=building_id, membership_id=membership_id, role=Role.RESIDENT
+        )
+    )
     return membership_id
 
 

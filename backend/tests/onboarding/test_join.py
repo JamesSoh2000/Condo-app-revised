@@ -17,6 +17,7 @@ from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
 from app.memberships.models import BuildingMembership, MembershipRole
 from app.notifications.models import Notification
 from app.onboarding.models import OnboardingRequest, OnboardingStatus
+from app.units.models import Unit
 from tests.conftest import CSRF_HEADERS, UserClientFactory
 from tests.factories import make_membership, make_unit, make_user
 from tests.helpers.tenancy import assert_problem, without_request_id
@@ -334,6 +335,55 @@ async def test_a_second_submission_returns_the_pending_request(
     assert again.status_code == 200, again.text
     assert again.json() == first.json()
     assert await _counts(db) == before
+
+
+# Review round 1 (Codex F1): the unit was checked before the pending request was found, so a retry
+# after the unit's deactivation was 404, not the request (criterion 7).
+@pytest.mark.parametrize("retry_unit", ["same", "inactive-other", "other-building", "unknown"])
+async def test_a_retry_returns_the_pending_request_whatever_its_unit(
+    db: AsyncSession, world: World, codes: None, as_user: UserClientFactory, retry_unit: str
+) -> None:
+    client = await as_user(await make_user(db))
+    first = await client.post(
+        _requests_url(), json={"unit_id": str(world.a_101.id), "relationship": "tenant"}
+    )
+    assert first.status_code == 201
+    await db.execute(update(Unit).where(Unit.id == world.a_101.id).values(is_active=False))
+    await db.flush()
+    unit_id = {
+        "same": world.a_101.id,
+        "inactive-other": (await make_unit(db, world.a, is_active=False)).id,
+        "other-building": world.b_101.id,
+        "unknown": "0190b4a4-0000-7000-8000-000000000000",
+    }[retry_unit]
+    before = await _counts(db)
+
+    again = await client.post(
+        _requests_url(), json={"unit_id": str(unit_id), "relationship": "owner"}
+    )
+
+    assert again.status_code == 200, again.text
+    assert again.json() == first.json()
+    assert await _counts(db) == before
+
+
+async def test_a_pending_membership_without_a_request_gets_only_the_resident_role(
+    db: AsyncSession, world: World, codes: None, as_user: UserClientFactory
+) -> None:
+    # Review round 1 (Claude L4): nothing creates such a membership today, but approval (P4-05b)
+    # activates whatever roles a pending membership holds.
+    user = await make_user(db)
+    membership = await make_membership(
+        user, world.a, roles=(Role.SECURITY,), status=MembershipStatus.PENDING
+    )
+    client = await as_user(user)
+
+    response = await client.post(
+        _requests_url(), json={"unit_id": str(world.a_101.id), "relationship": "tenant"}
+    )
+
+    assert response.status_code == 201, response.text
+    assert await _roles(db, membership.id) == [Role.RESIDENT]
 
 
 # Criterion 8: membership states
