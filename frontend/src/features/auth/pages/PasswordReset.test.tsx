@@ -214,6 +214,14 @@ describe('reset password (P4-07a criteria 3–8)', () => {
   it.each([
     ['an unknown field', [{ loc: ['body', 'token'], msg: 'x', type: 'string_too_long' }]],
     ['no errors', []],
+    ['an unknown type on the field', [{ loc: ['body', 'new_password'], msg: 'x', type: 'password_new_rule' }]],
+    [
+      'one placeable and one not',
+      [
+        { loc: ['body', 'new_password'], msg: 'x', type: 'password_too_common' },
+        { loc: ['query', 'new_password'], msg: 'x', type: 'missing' },
+      ],
+    ],
   ])("shows a generic alert for an error it can't place (%s)", async (_, errors) => {
     stubApi({ [CONFIRM]: () => invalid(errors) });
     renderApp([`/reset-password/${TOKEN}`]);
