@@ -384,3 +384,94 @@ describe('password field (P4-07a criterion 9)', () => {
     expect(hint().closest('[aria-live], [role="status"], [role="alert"]')).toBeNull();
   });
 });
+
+describe('review round 1 (Codex): history entries and reentrant submits', () => {
+  const OTHER = 'b'.repeat(43);
+
+  it('does not send a second forgot request while the first is pending (F2)', async () => {
+    const slow = deferred(() => json({ detail: DETAIL }, 202));
+    const fetchMock = stubApi({ [REQUEST]: slow.handler });
+    renderApp(['/forgot-password']);
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'resident1@example.test' } });
+    fireEvent.submit(screen.getByTestId('forgot-form'));
+    await waitFor(() => expect(calls(fetchMock)).toEqual([REQUEST]));
+    expect(screen.getByTestId<HTMLButtonElement>('forgot-submit').disabled).toBe(true);
+    fireEvent.submit(screen.getByTestId('forgot-form'));
+    slow.release();
+
+    expect(await screen.findByTestId('forgot-status')).toBeTruthy();
+    expect(calls(fetchMock)).toEqual([REQUEST]);
+  });
+
+  it('sends again after a failed forgot request (F2 neighbour)', async () => {
+    let answers = 0;
+    const fetchMock = stubApi({ [REQUEST]: () => (++answers === 1 ? problem(500, 'internal_error') : json({ detail: DETAIL }, 202)) });
+    renderApp(['/forgot-password']);
+
+    requestLink('resident1@example.test');
+    await screen.findByTestId('forgot-error');
+    requestLink('resident1@example.test');
+
+    expect(await screen.findByTestId('forgot-status')).toBeTruthy();
+    expect(calls(fetchMock)).toEqual([REQUEST, REQUEST]);
+  });
+
+  it.each([
+    ['another reset link', OTHER],
+    ['the same link in another history entry', TOKEN],
+  ])('Back to %s: the abandoned reset does not navigate (F1)', async (_, previous) => {
+    const slow = deferred(() => noContent());
+    const fetchMock = stubApi({ [CONFIRM]: slow.handler });
+    const app = renderApp([`/reset-password/${previous}`, `/reset-password/${TOKEN}`]);
+
+    setPassword(GOOD);
+    await waitFor(() => expect(calls(fetchMock)).toEqual([CONFIRM]));
+    app.navigate()(-1);
+    await waitFor(() => expect(app.location().key).not.toBe('default'));
+    slow.release();
+
+    await waitFor(() => expect(sessionStorage.length).toBe(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(location()).toBe(`/reset-password/${previous}`);
+    expect(screen.getByTestId('reset-form')).toBeTruthy();
+    expect(screen.queryByTestId('login-banner')).toBeNull();
+  });
+
+  it.each([
+    ['another reset link', `/reset-password/${OTHER}`],
+    ['the same link again', `/reset-password/${TOKEN}`],
+  ])('%s does not inherit the invalid screen (F1)', async (_, next) => {
+    stubApi({ [CONFIRM]: () => problem(400, 'reset_token_invalid') });
+    const app = renderApp([`/reset-password/${TOKEN}`]);
+
+    setPassword(GOOD);
+    await screen.findByTestId('reset-invalid');
+    app.navigate()(next);
+
+    expect(await screen.findByTestId('reset-form')).toBeTruthy();
+    expect(screen.queryByTestId('reset-invalid')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: /choose a new password/i }));
+  });
+
+  it('a field error does not follow the user to another reset link (F1 neighbour)', async () => {
+    stubApi({ [CONFIRM]: () => invalid([{ loc: ['body', 'new_password'], msg: 'x', type: 'password_too_common' }]) });
+    const app = renderApp([`/reset-password/${TOKEN}`]);
+
+    setPassword(GOOD);
+    await screen.findByText('This password is too common. Choose another.');
+    app.navigate()(`/reset-password/${OTHER}`);
+
+    await waitFor(() => expect(screen.queryByText('This password is too common. Choose another.')).toBeNull());
+    expect(screen.getByLabelText<HTMLInputElement>('New password').value).toBe('');
+  });
+
+  it('the login page reached after a reset focuses its heading (F3)', async () => {
+    stubApi({ [CONFIRM]: () => noContent() });
+    renderApp([`/reset-password/${TOKEN}`]);
+
+    setPassword(GOOD);
+
+    await screen.findByTestId('login-banner');
+    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Sign in' }));
+  });
+});

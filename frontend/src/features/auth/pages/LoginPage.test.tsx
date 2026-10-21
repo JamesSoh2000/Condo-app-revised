@@ -267,6 +267,13 @@ describe('failed login (criteria 2, 3 and 4)', () => {
 describe('forgot password link and reset banner (P4-07a criteria 4, 10)', () => {
   const BANNER = 'Your password was updated. Sign in with your new password.';
 
+  it('focuses its heading on load (review round 1, F3 neighbour)', () => {
+    backend(() => noContent());
+    renderApp(['/login']);
+
+    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Sign in' }));
+  });
+
   it('links to forgot password', () => {
     backend(() => noContent());
     renderApp(['/login']);
