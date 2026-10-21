@@ -5,7 +5,7 @@
  */
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter, useLocation, useNavigate, type NavigateFunction } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate, type Location, type NavigateFunction } from 'react-router-dom';
 import { vi } from 'vitest';
 
 import type { components } from '@/api/schema';
@@ -100,15 +100,22 @@ export interface RenderedApp {
   queryClient: QueryClient;
   /** The router's navigate, to simulate Back (`navigate(-1)`) and links. */
   navigate: () => NavigateFunction;
+  /** The router's current location, with its history `state`. */
+  location: () => Location;
 }
 
-/** Renders the shell's routes at `entries` (a history; the last one is current). */
-export function renderApp(entries: string[]): RenderedApp {
+/**
+ * Renders the shell's routes at `entries` (a history; the last one is current). An entry can be a
+ * `{ pathname, state }` object, for a history entry that carries router state.
+ */
+export function renderApp(entries: (string | Partial<Location>)[]): RenderedApp {
   const queryClient = createQueryClient({ retryDelay: 0 });
   let navigate: NavigateFunction | undefined;
+  let current: Location | undefined;
   function Probe() {
     navigate = useNavigate();
     const location = useLocation();
+    current = location;
     return <div data-testid="location">{location.pathname + location.search}</div>;
   }
   render(
@@ -121,7 +128,7 @@ export function renderApp(entries: string[]): RenderedApp {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return { queryClient, navigate: () => navigate! };
+  return { queryClient, navigate: () => navigate!, location: () => current! };
 }
 
 /** Opens the header's account menu (P2-06c), where the building switcher, "view as" and "Log out" are. */

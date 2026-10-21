@@ -13,7 +13,9 @@
 		# Browsers ignore HSTS over plain http, so it is harmless locally.
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
+		# A default (`?`): the token pages below set their own. This block is deferred (it deletes `Server`), so a
+		# plain set here would overwrite theirs.
+		?Referrer-Policy "strict-origin-when-cross-origin"
 		# camera=(self): residents photograph packages and maintenance issues from the app.
 		Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=()"
 		# frame-ancestors 'none' also stops the bundled Base44 SDK from posting API traffic to a framing
@@ -27,6 +29,12 @@
 	encode zstd gzip
 
 	import security_headers
+
+	# Pages whose URL can carry a secret token (an emailed reset or invitation link, login's `next` back to an
+	# invitation) send no Referer to another origin (P4-07a). Not no-referrer: under it browsers send
+	# `Origin: null` on a same-origin POST, which the CSRF check refuses.
+	@token_pages path /login /login/ /reset-password/* /invite/*
+	header @token_pages Referrer-Policy "same-origin"
 
 	# The same paths the Vite dev proxy forwards (P0-03b): /api, /api/… and /api?…, not /apifoo.
 	@api path /api /api/*

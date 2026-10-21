@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 
 import { api } from '@/api/client';
@@ -10,11 +10,13 @@ import { ApiError } from '@/api/errors';
 import { runAuthCall } from '@/app/authQueue';
 import { clearTabChoices } from '@/app/buildingStorage';
 import { safeNext } from '@/app/safeNext';
+import { Field } from '@/features/auth/components/Field';
+import { PageHeading } from '@/features/auth/components/PageHeading';
+import { codePoints, waitText } from '@/features/auth/formErrors';
+import type { LoginState } from '@/features/auth/pages/ResetPasswordPage';
 
 // The backend takes any non-empty email string (a malformed one is just unknown: 401, not 422), so the
-// form checks no email format either. Lengths match app/auth/schemas.py::LoginIn, which counts code points;
-// JavaScript's length counts UTF-16 units (an emoji is 2), hence codePoints().
-const codePoints = (value: string) => [...value].length;
+// form checks no email format either. Lengths match app/auth/schemas.py::LoginIn, which counts code points.
 const schema = z.object({
   email: z
     .string()
@@ -34,9 +36,7 @@ export function loginErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 429) {
     const seconds = error.retryAfter;
     if (!seconds) return 'Too many sign-in attempts. Try again later.';
-    const wait =
-      seconds < 120 ? `${seconds} second${seconds === 1 ? '' : 's'}` : `${Math.ceil(seconds / 60)} minutes`;
-    return `Too many sign-in attempts. Try again in ${wait}.`;
+    return `Too many sign-in attempts. Try again in ${waitText(seconds)}.`;
   }
   return 'Could not sign in. Try again.';
 }
@@ -45,6 +45,14 @@ export function LoginPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const location = useLocation();
+  // After a reset (router state, never the URL: D2). Kept here and dropped from the history entry, so a
+  // reload or a return to this entry doesn't announce it again.
+  const [passwordUpdated] = useState(() => (location.state as LoginState | null)?.passwordUpdated === true);
+  useEffect(() => {
+    if ((location.state as LoginState | null)?.passwordUpdated)
+      navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null });
+  }, [location, navigate]);
   // An object, so the same message twice is still a new value and moves focus again.
   const [failure, setFailure] = useState<{ message: string } | null>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
@@ -110,7 +118,16 @@ export function LoginPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
-      <h1 className="mb-6 text-2xl font-semibold">Sign in</h1>
+      <PageHeading>Sign in</PageHeading>
+      {passwordUpdated && (
+        <div
+          role="status"
+          data-testid="login-banner"
+          className="mb-4 rounded border border-green-300 bg-green-50 p-3 text-sm text-green-800"
+        >
+          Your password was updated. Sign in with your new password.
+        </div>
+      )}
       {failure && (
         <div
           ref={summaryRef}
@@ -152,22 +169,9 @@ export function LoginPage() {
           Sign in
         </button>
       </form>
+      <Link to="/forgot-password" data-testid="login-forgot-link" className="mt-4 text-sm underline">
+        Forgot password?
+      </Link>
     </main>
-  );
-}
-
-function Field({ label, id, error, children }: { label: string; id: string; error?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
-      {children}
-      {error && (
-        <p id={`${id}-error`} className="text-sm text-red-700">
-          {error}
-        </p>
-      )}
-    </div>
   );
 }

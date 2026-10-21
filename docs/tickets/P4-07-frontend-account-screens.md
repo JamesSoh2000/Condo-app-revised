@@ -1,4 +1,4 @@
-# P4-07 — Frontend account screens
+# P4-07 — Frontend account screens (split)
 
 | Field | Value |
 |---|---|
@@ -6,7 +6,13 @@
 | Risk tier | 2 |
 | Depends on | P4-02, P4-04, P2-06 |
 | Replaces old | M4-T07 (without MFA) |
-| Status | todo |
+| Status | split into [P4-07a](./P4-07a-password-reset-screens.md), [P4-07b](./P4-07b-frontend-accept-invite.md) |
+
+Split while framing (2026-10-20): the estimate was ~560 non-test lines. P4-07a is the forgot-password and
+reset screens, the password field, the login link and the Referrer-Policy (criteria 4, 5 and 6 for those
+screens, sharpened, plus new ones); P4-07b is the accept-invitation screen (criteria 1, 2, 3 and 6 for it).
+"P4-07" in other tickets' text means both parts; the [ticket index](./README.md) lists which part each
+dependent needs. The text below is the ticket as written before the split.
 
 ## Goal
 
