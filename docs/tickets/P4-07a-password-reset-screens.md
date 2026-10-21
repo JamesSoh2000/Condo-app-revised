@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-04, P2-06c |
 | Replaces old | part of [P4-07](./P4-07-frontend-account-screens.md) |
-| Status | in progress |
+| Status | done (PR #95) |
 
 ## Goal
 

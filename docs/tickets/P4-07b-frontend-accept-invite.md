@@ -61,6 +61,20 @@ Consumes `invitations_get_public` and `invitations_accept`.
 
 ## Carried from P4-07a
 
+- **First: promote a repeated mistake** (playbook step 8). "React keeps a page mounted when only its URL
+  changes, so state of the abandoned entry acts on the new one" now appears twice in
+  `docs/AGENT_MISTAKES_LOG.md` (P2-06c round 2 M1: Back between two `/login` URLs; P4-07a round 1 F1: Back
+  between two reset links). Add a `CLAUDE.md` lesson or a test helper, and key the invite screen per history
+  entry as `ResetPasswordPage` does (`key={useLocation().key}`).
+- **Open Medium F6 from P4-07a review round 3** (test-first): resetting account A's password while account B is
+  signed in on the same browser ends only A's sessions, so `LoginPage`'s `/me` check redirects to B's home and
+  the "password updated" banner is never seen. Don't auto-redirect from a login reached with
+  `state.passwordUpdated`. This ticket changes the same `next`/redirect flow.
+- **Open Medium F7 from P4-07a review round 3** (test-first): `/reset-password`, `/reset-password/` and
+  `/reset-password/a/b` show "Page not found" instead of the invalid-link screen with "Request a new link". Add
+  a public fallback route next to the invite routes. Codex's proof cases: those three paths.
+- Reuse `PasswordField`, `Field`, `PageHeading` and `formErrors.ts::serverFieldErrors`, and drop a duplicate
+  submit before react-hook-form's `handleSubmit` (P4-07a round 2, F5).
 - `Referrer-Policy: same-origin` is already set by Caddy on `/invite/*` and `/login` (P4-07a criterion 12).
 - `/invite/:token` is outside `RequireAuth`. `AuthProvider` sends any 401 except the login call's to
   `/login`, so the page must not call `/me` while logged out, or handle that redirect.
