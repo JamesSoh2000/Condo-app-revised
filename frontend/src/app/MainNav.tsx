@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 
 import { useBuilding, useBuildingContext, useBuildingDenied } from '@/app/BuildingProvider';
-import { navPages, PAGE_ACCESS } from '@/app/pages';
+import { navPages, PAGE_ACCESS, pagePath } from '@/app/pages';
 import type { components } from '@/api/schema';
 import type { ViewAs } from '@/app/buildingStorage';
 
@@ -49,7 +49,7 @@ function BuildingNav() {
         {navPages(building.data, effectiveView(canViewAs, viewAs)).map((page) => (
           <li key={page}>
             <NavLink
-              to={`/${page}`}
+              to={pagePath(page)}
               className={({ isActive }) =>
                 isActive ? 'font-semibold text-slate-900 underline' : 'text-slate-700 hover:underline'
               }

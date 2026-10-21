@@ -37,6 +37,9 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | Date | Ticket | Decision | Where recorded | Reversible? |
 |---|---|---|---|---|
+| 2026-10-21 | P4-08b | Split P4-08b while framing: the nav pending badge and the carried P4-08a/P4-07b fixes moved to the new P4-08d (estimate ~470 with them, against ~400) | PR #99 D1; ticket Frame notes | Yes |
+| 2026-10-21 | P4-08b | Migrated pages get their own path through `PageAccess.path` (`frontend/src/app/pages.ts::pagePath`); `Residents` left the legacy allowlist and `/Residents` is now "Page not found" (no redirect). Later migrations (P4-08c, P5) will follow it | PR #99 smaller decisions; explanation §2 | Yes |
+| 2026-10-21 | P4-08b | Modal dialogs in typed code are hand-written (`frontend/src/features/residents/DecisionDialog.tsx`: `role="dialog"`, Tab trap, Escape), not the legacy shadcn dialog nor a new dependency; the page behind isn't `inert` | PR #99 D2 | Yes |
 | 2026-10-21 | P4-08a | A denied resident's "Submit again" asks for the join code or link again, because no endpoint gives a denied member the building's code (`MeMembershipOut`, `OnboardingMeOut`). Overturning it means a backend change (expose the code to denied members, or a resubmit endpoint by building) | PR #98 D2; ticket Frame notes | Yes |
 | 2026-10-21 | P4-07b | The invite page sends the accept with `{}` first and lets the answer pick the screen (200 accepted, 409 log in, 403 another account, 422 `missing` → new-account form), since the page can't know whether the email has an account or call `/me` while logged out. A new user sends one extra accept against the per-IP limit | PR #96 D1 | Yes |
 | 2026-10-21 | P4-07b | Every post-login navigation carries router state `{signedIn: true}`; the invite page accepts by itself only on that state, never on a URL | PR #96 D2 | Yes |
