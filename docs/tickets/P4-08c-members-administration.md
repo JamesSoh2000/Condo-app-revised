@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-08b, P4-06b |
 | Replaces old | part of [P4-08](./P4-08-frontend-onboarding-approval-screens.md) (M4-T08) |
-| Status | in progress |
+| Status | done |
 
 Split from P4-08 while framing P4-08a (2026-10-21). Framed 2026-10-21; the roles editor and the unit transfer
 moved to [P4-08e](./P4-08e-member-roles-and-transfer.md) (see the Frame notes).
@@ -151,3 +151,11 @@ and no request), and row 10 as criteria 9 and 14.
     Escape, Tab trap) and the reason rules move out of `DecisionDialog` into shared modules (autonomous,
     convention: no UI kit; reuse over a copy).** `DecisionDialog`'s tests stay as they are.
 - Split: the roles editor and the transfer → [P4-08e](./P4-08e-member-roles-and-transfer.md).
+
+## Follow-ups (from PR #100)
+
+- P4-08b's `PendingRequests` outcome message has no `[overflow-wrap:anywhere]` (a long name in "<name> was
+  approved." overflows at 375 px; PR #100 D3): carried to [P4-08d](./P4-08d-pending-badge-and-onboarding-follow-ups.md).
+- The roles editor, the transfer and the original criterion 1: [P4-08e](./P4-08e-member-roles-and-transfer.md).
+- Accepted: re-submitting the same search doesn't refresh (PR #100 D4); the round 1 fix commits were not re-reviewed
+  (round 1 said `MERGE`). See [the explanation](../explanations/P4-08c-members-administration.md) §7.
