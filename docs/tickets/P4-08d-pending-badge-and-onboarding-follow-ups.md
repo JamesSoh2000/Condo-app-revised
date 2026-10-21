@@ -1,0 +1,67 @@
+# P4-08d — Pending-requests nav badge and onboarding follow-ups (split from P4-08b)
+
+| Field | Value |
+|---|---|
+| Phase / lane | P4 / B |
+| Risk tier | 2 |
+| Depends on | P4-08b |
+| Replaces old | part of [P4-08](./P4-08-frontend-onboarding-approval-screens.md) (M4-T08) |
+| Status | todo |
+
+Split from [P4-08b](./P4-08b-manager-pending-requests.md) while framing it (2026-10-21): with the badge and
+the carried fixes its estimate was ~470 non-test lines. Not framed yet: frame it when it is picked.
+
+## Goal
+
+Managers see how many join requests wait, from anywhere in the app; and the follow-ups left open by the
+P4-08a and P4-07b reviews are fixed.
+
+## Scope
+
+- In:
+  - The pending count badge on the nav's "Residents" item (`onboarding_summary`), for property managers
+    only; refreshed after a decision on `/manage/residents` (P4-08b's mutations invalidate
+    `['b', id, 'onboarding-requests']`), and polled like the notification summary (ADR-0012).
+  - The carried items below, test-first.
+- Out: anything else on `/manage/residents`.
+
+## Acceptance criteria (to sharpen when framing)
+
+1. **Given** a property manager with 3 pending requests, **then** the nav's "Residents" item reads
+   "Residents, 3 pending" to a screen reader and shows a "3" badge; with none, no badge.
+2. **Given** a decision on `/manage/residents`, **then** the badge's count is asked for again.
+3. **Given** a member without `property_management`, **then** no summary request is made.
+
+## Carried from P4-08a (via P4-08b)
+
+- Review round 3 of PR #98, open at merge (fix test-first):
+  - **Medium:** `frontend/src/features/onboarding/api.ts::useMyOnboarding` reuses a cached status's details: denial A →
+    resubmit in another tab → denial B within 30 s shows A's reason. Proposed: `staleTime: 0`.
+  - **Low:** `frontend/src/features/onboarding/JoinCodeForm.tsx::parseJoinCode` accepts `/join/<code>` anywhere in a
+    link (`…/join/MAPLE-2026/garbage`, `…?next=/join/MAPLE-2026`). Proposed: match the whole pathname `/join/<code>/?`.
+- Likely the same race as PR #98 round 1 M2 in `frontend/src/features/auth/pages/AcceptInvitePage.tsx`: its `guarded`
+  checks `inFlight` but `accept` sets it after react-hook-form's async validation, so two submits of the new-account
+  form in one tick may send two accepts. Not verified: write the test first.
+
+## Carried from P4-07b (via P4-08, P4-08b)
+
+- **Four Lows from P2-06c's account menu** (`frontend/src/app/AccountMenu.tsx`, PR #65 round 3). Fix them
+  test-first if this ticket touches the menu (the badge sits in the nav, not the menu):
+  - Back to the history entry where the panel was opened shows it again (`open = openAt === key`): clear
+    `openAt` when the key changes.
+  - A `/me`-driven change of the selected building leaves the panel open with new contents: also close it
+    when `buildingId` changes.
+  - During a building 401/404 the nav hides but the menu still offers "View as" from cached roles: apply the
+    same 401/404 check in `BuildingChoices` (or in `useCanViewAs`).
+  - Click outside listens to `mousedown`; iOS Safari may send none for a tap on empty space: use `pointerdown`.
+
+## Must explain (learning checkpoint)
+
+1. Why is the badge's count polled while the pending list is only refetched on focus and after a decision?
+
+## Frame notes (filled by the agent in step 1)
+
+- Criteria added or sharpened:
+- Criteria loosened (with reason; also listed in the inbox):
+- Decisions taken (with basis: ticket / ADR / default / autonomous):
+- Split:
