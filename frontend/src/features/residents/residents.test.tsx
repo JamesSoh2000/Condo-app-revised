@@ -324,7 +324,7 @@ describe('approve (criteria 1, 7)', () => {
     expect(count(fetchMock, approve(ROBIN.id))).toBe(1);
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
     // Not closable while it is sent.
-    expect((within(dialog).getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Cancel' }).disabled).toBe(true);
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeNull();
     gate.release();
@@ -364,7 +364,7 @@ describe('approve (criteria 1, 7)', () => {
 });
 
 describe('deny (criteria 1, 8)', () => {
-  const reason = () => screen.getByLabelText(/reason/i) as HTMLTextAreaElement;
+  const reason = () => screen.getByLabelText<HTMLTextAreaElement>(/reason/i);
   const type = (value: string) => fireEvent.change(reason(), { target: { value } });
 
   it('denies with the reason as typed', async () => {
@@ -438,7 +438,7 @@ describe('deny (criteria 1, 8)', () => {
 
     expect(await within(dialog).findByText(message)).toBeTruthy();
     expect(reason().value).toBe('Looks fine here');
-    expect((within(dialog).getByRole('button', { name: 'Deny' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Deny' }).disabled).toBe(false);
   });
 
   it('sends one deny on a double-click', async () => {
@@ -533,7 +533,7 @@ describe('failures that keep the dialog (criterion 10)', () => {
 
     const alert = await within(dialog).findByRole('alert');
     expect(alert.textContent).toBe(message);
-    const confirm = within(dialog).getByRole('button', { name: 'Approve' }) as HTMLButtonElement;
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Approve' });
     expect(confirm.disabled).toBe(false);
     press(confirm);
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -549,7 +549,7 @@ describe('failures that keep the dialog (criterion 10)', () => {
     press(within(dialog).getByRole('button', { name: 'Deny' }));
 
     expect((await within(dialog).findByRole('alert')).textContent).toBe('Could not deny the request. Try again.');
-    expect((screen.getByLabelText(/reason/i) as HTMLTextAreaElement).value).toBe('Not on the lease');
+    expect(screen.getByLabelText<HTMLTextAreaElement>(/reason/i).value).toBe('Not on the lease');
   });
 });
 
@@ -620,12 +620,16 @@ describe('leaving, history and buildings (criteria 11, 12)', () => {
       [list(BIRCH)]: () => page([request(7, { full_name: 'Birch Person' })]),
     });
     sessionStorage.setItem('condo.buildingId', MAPLE.id);
-    renderApp([PAGE]);
+    const app = renderApp([PAGE]);
     await openDialog('Robin Park', 'Approve');
 
     openAccountMenu();
     fireEvent.change(screen.getByLabelText(/building/i), { target: { value: BIRCH.id } });
 
+    // A switch goes home (BuildingProvider::select); the page opened again is Birch's.
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    act(() => app.navigate()(PAGE));
     await waitFor(() => expect(rows().map((item) => item.querySelector('h3')?.textContent)).toEqual(['Birch Person']));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(calls(fetchMock)).toContain(list(BIRCH));

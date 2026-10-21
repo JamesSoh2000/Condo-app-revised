@@ -96,8 +96,8 @@ if it didn't.
 3. On a **stop rule** (human-only resource, contradicts an ADR/scope/rule above, needs a weaker gate, review
    not converging, unnamed outward-facing action): set the ticket `blocked`, write it in the inbox, move on.
    Never guess past one.
-4. Tests first for each acceptance criterion. Keep the PR ≤ ~400 non-test lines (tests don't count; never
-   cut tests to fit). Stay in scope; put extras under "follow-ups".
+4. Tests first for each acceptance criterion. Keep the PR ≤ ~400 non-test lines, estimated with the error and race
+   criteria costed (P4-01, P4-08a); tests don't count, never cut them to fit. Stay in scope; extras go to follow-ups.
 5. Branch `<ticket-id lowercase>-<slug>` in its own worktree. Rebase onto `main` before review and merge.
 6. **Never review your own work.** The review runs in fresh sessions (subagents). Fix confirmed findings
    test-first; at most 3 review rounds. You write the explanation yourself, last (after the final `MERGE`,

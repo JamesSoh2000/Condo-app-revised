@@ -12,10 +12,12 @@ import { AcceptInvitePage, InviteInvalid } from '@/features/auth/pages/AcceptInv
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { ResetLinkInvalid, ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage';
 import { JoinInvalid, JoinPage } from '@/features/onboarding/JoinPage';
+import { ResidentsPage } from '@/features/residents/ResidentsPage';
 
 /**
  * The app's routes. Legacy demo pages keep their old paths but render a placeholder until their slice
- * migrates them, so the shell imports no Base44 page (P2-06a). Other legacy pages are 404, as before.
+ * migrates them, so the shell imports no Base44 page (P2-06a); a migrated page takes its own path (P4-08b). Other
+ * legacy pages are 404, as before.
  * Building pages need an active building and their `PAGE_ACCESS` row (P2-06b); `/403` needs only a session. The
  * login, password-reset, invitation and join pages need none; their paths without a token or code show the page's
  * invalid-link screen, not "Page not found".
@@ -51,6 +53,14 @@ export function AppRoutes() {
           }
         >
           <Route index element={<HomePlaceholder />} />
+          <Route
+            path={PAGE_ACCESS.Residents.path}
+            element={
+              <RequirePageAccess access={PAGE_ACCESS.Residents}>
+                <ResidentsPage />
+              </RequirePageAccess>
+            }
+          />
           {DEMO_PAGES.map((page) => (
             <Route
               key={page}

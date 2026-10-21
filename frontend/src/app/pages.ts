@@ -14,7 +14,12 @@ export interface PageAccess {
   feature?: Feature;
   /** The navigation's label; a page without one is not in the navigation (P2-06c). */
   label?: string;
+  /** A migrated page's own path; a legacy one keeps `/<Name>`. */
+  path?: string;
 }
+
+/** The demo's legacy pages and the migrated ones that took a legacy page's place (P4-08b). */
+export type Page = DemoPage | 'Residents';
 
 const STAFF: readonly Role[] = ['security', 'property_management', 'council'];
 
@@ -23,18 +28,21 @@ const STAFF: readonly Role[] = ['security', 'property_management', 'council'];
  * (P5-03, P5-04) and docs/PRODUCT_SCOPE.md otherwise; each slice may change its own row. The routes guard
  * on it and the navigation lists from it, so the two can't disagree. UX only: the API checks again.
  */
-export const PAGE_ACCESS: Record<DemoPage, PageAccess> = {
+export const PAGE_ACCESS: Record<Page, PageAccess> = {
   Home: {},
   Dashboard: { label: 'Dashboard' },
   Profile: { label: 'My profile' },
   Contacts: { label: 'Contacts' },
-  Residents: { roles: ['property_management'], label: 'Residents' },
+  Residents: { roles: ['property_management'], label: 'Residents', path: '/manage/residents' },
   Packages: { roles: ['resident'], feature: 'packages', label: 'My packages' },
   SecurityPackages: { roles: ['security', 'property_management'], feature: 'packages', label: 'Package log' },
   ManagementNotices: { roles: STAFF, feature: 'notices', label: 'Daily notices' },
   Maintenance: { roles: ['resident'], feature: 'maintenance', label: 'Maintenance requests' },
   ManagementMaintenance: { roles: STAFF, feature: 'maintenance', label: 'Maintenance' },
 };
+
+/** Where a page is: its own path, or the legacy `/<Name>`. */
+export const pagePath = (page: Page): string => PAGE_ACCESS[page].path ?? `/${page}`;
 
 /** True if the caller's roles in `building` include one of `roles` (any role when absent). */
 export function hasRole(building: Building, roles: readonly Role[] | undefined): boolean {
@@ -52,8 +60,8 @@ export function hasFeature(building: Building, feature: Feature | undefined): bo
  * any member plus those for a resident (`resident`) or for a staff role (`management`): it only ever hides
  * items, never adds one the roles don't allow.
  */
-export function navPages(building: Building, view: ViewAs | null): DemoPage[] {
-  return (Object.keys(PAGE_ACCESS) as DemoPage[]).filter((page) => {
+export function navPages(building: Building, view: ViewAs | null): Page[] {
+  return (Object.keys(PAGE_ACCESS) as Page[]).filter((page) => {
     const { label, roles, feature } = PAGE_ACCESS[page];
     if (!label || !hasRole(building, roles) || !hasFeature(building, feature)) return false;
     if (view === null || !roles) return true;

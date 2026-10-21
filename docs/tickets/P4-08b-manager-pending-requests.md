@@ -45,7 +45,7 @@ Consumes `onboarding_list` (`GET …/onboarding-requests`, pending by default, c
 2. **Given** mobile width (375 px), **then** the pending list, its buttons and both dialogs fit without
    horizontal scrolling, also with a 254-character email and a long name without spaces (checked in Chromium
    on the stack).
-3. **Given** the ratchet, **then** `pages/Residents.jsx` is deleted, `base44-baseline.txt` drops by its 18
+3. **Given** the ratchet, **then** `pages/Residents.jsx` is deleted, `base44-baseline.txt` drops by its 17
    references, and `/Residents` is "Page not found".
 4. **Given** a property manager of the selected building, **then** the nav's "Residents" item (same label and
    place as today) links to `/manage/residents`, which shows the heading, the two tabs with "Pending requests"
