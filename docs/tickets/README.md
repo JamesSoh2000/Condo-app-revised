@@ -81,7 +81,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-06b](./P4-06b-move-out-and-transfer.md) | Members: move-out and transfer (split from P4-06) | A | 1 | P4-06a | done | — |
 | [P4-07a](./P4-07a-password-reset-screens.md) | Password reset screens and password field (split from [P4-07](./P4-07-frontend-account-screens.md)) | B | 2 | P4-04, P2-06c | done | — |
 | [P4-07b](./P4-07b-frontend-accept-invite.md) | Accept-invitation screen (split from P4-07) | B | 2 | P4-07a, P4-02b, P2-06c | done | — |
-| [P4-08a](./P4-08a-join-flow-and-status-screens.md) | Join flow and pending/denied screens (split from [P4-08](./P4-08-frontend-onboarding-approval-screens.md)) | B | 2 | P4-05b, P2-06c, P4-07b | in progress | — |
+| [P4-08a](./P4-08a-join-flow-and-status-screens.md) | Join flow and pending/denied screens (split from [P4-08](./P4-08-frontend-onboarding-approval-screens.md)) | B | 2 | P4-05b, P2-06c, P4-07b | done | — |
 | [P4-08b](./P4-08b-manager-pending-requests.md) | Manager pending requests (split from P4-08) | B | 2 | P4-08a, P4-05b, P2-06c | todo | — |
 | [P4-08c](./P4-08c-members-administration.md) | Members administration screen (split from P4-08) | B | 2 | P4-08b, P4-06b | todo | — |
 | [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07b, P4-08c, P4-03, P1-08 | todo | — |

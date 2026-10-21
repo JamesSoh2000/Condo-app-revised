@@ -35,6 +35,20 @@ Managers review the pending join requests and approve or deny them in the new ty
 2. **Given** mobile width (375 px), **then** the manager pending list is usable.
 3. **Given** the ratchet, **then** the Base44 count drops by the removed legacy page.
 
+## Carried from P4-08a
+
+- **First follow-up (playbook step 8):** the pattern "size estimate too low" now appears twice in
+  `docs/AGENT_MISTAKES_LOG.md` (P4-01, P4-08a). Turn it into a `CLAUDE.md` lesson (or a check) in this ticket's PR:
+  estimate the error and race criteria added while framing, not only the happy path.
+- Review round 3 of PR #98, open at merge (fix test-first):
+  - **Medium:** `frontend/src/features/onboarding/api.ts::useMyOnboarding` reuses a cached status's details: denial A →
+    resubmit in another tab → denial B within 30 s shows A's reason. Proposed: `staleTime: 0`.
+  - **Low:** `frontend/src/features/onboarding/JoinCodeForm.tsx::parseJoinCode` accepts `/join/<code>` anywhere in a
+    link (`…/join/MAPLE-2026/garbage`, `…?next=/join/MAPLE-2026`). Proposed: match the whole pathname `/join/<code>/?`.
+- Likely the same race as PR #98 round 1 M2 in `frontend/src/features/auth/pages/AcceptInvitePage.tsx`: its `guarded`
+  checks `inFlight` but `accept` sets it after react-hook-form's async validation, so two submits of the new-account
+  form in one tick may send two accepts. Not verified: write the test first.
+
 ## Carried from P4-07b (via P4-08)
 
 - **Four Lows from P2-06c's account menu** (`frontend/src/app/AccountMenu.tsx`, PR #65 round 3). Fix them

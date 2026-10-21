@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-05b, P2-06c, P4-07b |
 | Replaces old | part of [P4-08](./P4-08-frontend-onboarding-approval-screens.md) (M4-T08) |
-| Status | in progress |
+| Status | done (PR #98) |
 
 Split from P4-08 while framing (2026-10-21). Criteria 1–3 and the join half of 6 and 7 are P4-08's,
 sharpened; 8–17 are added (see Frame notes).
