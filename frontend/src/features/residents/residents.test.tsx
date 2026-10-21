@@ -677,3 +677,149 @@ describe('a refetch under an open dialog (criterion 13)', () => {
     expect(document.activeElement).toBe(status());
   });
 });
+
+describe('review round 1 (Codex gpt-6.1-sol): the answer is not held back by the list refresh (F1)', () => {
+  /** The first list answers; every later one waits for `release`, as a slow refresh would. */
+  function stalledList() {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let n = 0;
+    const handler: Handler = () => (++n === 1 ? page([ROBIN, SAM]) : gate.then(() => page([SAM])));
+    return { handler, release: () => act(async () => { release(); await gate; }) };
+  }
+
+  it.each([
+    ['approve answered 200', 'approve', () => json({ ...ROBIN, status: 'approved' }), 'Robin Park was approved.'],
+    ['deny answered 200', 'deny', () => json({ ...ROBIN, status: 'denied' }), 'Robin Park’s request was denied.'],
+    ['approve answered 409 already_decided', 'approve', () => problem(409, 'already_decided'), 'Already decided by someone else.'],
+  ] as const)('%s: closes and says so while the refresh is still out', async (_label, kind, answer, message) => {
+    const list$ = stalledList();
+    const route = kind === 'approve' ? approve(ROBIN.id) : deny(ROBIN.id);
+    const fetchMock = stubApi(manager({ [list()]: list$.handler, [route]: answer }));
+    renderApp([PAGE]);
+
+    const dialog = await openDialog('Robin Park', kind === 'approve' ? 'Approve' : 'Deny');
+    if (kind === 'deny') fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'Not on the lease' } });
+    press(within(dialog).getByRole('button', { name: kind === 'approve' ? 'Approve' : 'Deny' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(status().textContent).toBe(message);
+    expect(document.activeElement).toBe(status());
+    expect(count(fetchMock, list())).toBe(2);
+    await list$.release();
+    await waitFor(() => expect(rows()).toHaveLength(1));
+  });
+
+  it('a 500 re-enables the dialog while the refresh is still out', async () => {
+    const list$ = stalledList();
+    stubApi(manager({ [list()]: list$.handler, [approve(ROBIN.id)]: () => problem(500, 'internal_error') }));
+    renderApp([PAGE]);
+
+    const dialog = await openDialog('Robin Park', 'Approve');
+    press(within(dialog).getByRole('button', { name: 'Approve' }));
+
+    expect((await within(dialog).findByRole('alert')).textContent).toBe('Could not approve the request. Try again.');
+    expect(within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Approve' }).disabled).toBe(false);
+    await list$.release();
+  });
+});
+
+describe('review round 1 (Codex gpt-6.1-sol): Tab stays in the dialog from any focus inside it (F2)', () => {
+  it.each([
+    ['Shift+Tab', 'Approve', true],
+    ['Tab', 'Cancel', false],
+  ] as const)('%s from the alert a failure focused goes to the %s button', async (_label, target, shiftKey) => {
+    stubApi(manager({ [approve(ROBIN.id)]: () => problem(500, 'internal_error') }));
+    renderApp([PAGE]);
+    const dialog = await openDialog('Robin Park', 'Approve');
+    press(within(dialog).getByRole('button', { name: 'Approve' }));
+    const alert = await within(dialog).findByRole('alert');
+    await waitFor(() => expect(document.activeElement).toBe(alert));
+
+    const allowed = fireEvent.keyDown(alert, { key: 'Tab', shiftKey });
+
+    expect(allowed).toBe(false);
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: target }));
+  });
+
+  it.each([
+    ['Shift+Tab', true],
+    ['Tab', false],
+  ] as const)('%s from the dialog itself while a denial is sent goes to the reason (the only control left)', async (_label, shiftKey) => {
+    const gate = deferred(() => json({ ...SAM, status: 'denied' }));
+    stubApi(manager({ [deny(SAM.id)]: gate.handler }));
+    renderApp([PAGE]);
+    const dialog = await openDialog('Sam Lee', 'Deny');
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'Not on the lease' } });
+    press(within(dialog).getByRole('button', { name: 'Deny' }));
+    expect(document.activeElement).toBe(dialog);
+
+    const allowed = fireEvent.keyDown(dialog, { key: 'Tab', shiftKey });
+
+    expect(allowed).toBe(false);
+    expect(document.activeElement).toBe(screen.getByLabelText(/reason/i));
+    gate.release();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+});
+
+describe('review round 1 (Codex gpt-6.1-sol): in-flight decisions across history and buildings (criteria 11, 12)', () => {
+  it('Back to the Members tab while a decision is in flight: nothing of it shows, and the list is asked again', async () => {
+    const gate = deferred(() => json({ ...ROBIN, status: 'approved' }));
+    const fetchMock = stubApi(manager({ [approve(ROBIN.id)]: gate.handler }));
+    const app = renderApp([`${PAGE}?tab=members`, PAGE]);
+    const dialog = await openDialog('Robin Park', 'Approve');
+    press(within(dialog).getByRole('button', { name: 'Approve' }));
+    await settle();
+
+    act(() => app.navigate()(-1));
+    await waitFor(() => expect(screen.getByRole('tabpanel').textContent).toMatch(/member administration/i));
+    gate.release();
+    await settle();
+    act(() => app.navigate()(1));
+
+    await screen.findByRole('list', { name: 'Pending requests' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByTestId('decision-message')).toBeNull();
+    await waitFor(() => expect(count(fetchMock, list())).toBe(2));
+  });
+
+  it('a building switch while a decision is in flight: Birch shows nothing of it, and Maple’s list is not kept', async () => {
+    const gate = deferred(() => json({ ...ROBIN, status: 'approved' }));
+    const me = {
+      ...RESIDENT_ME,
+      memberships: [
+        membership(MAPLE, { roles: ['property_management'] }),
+        membership(BIRCH, { roles: ['property_management'] }),
+      ],
+    };
+    stubApi({
+      'GET /api/auth/me': () => json(me),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['property_management'])),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['property_management'])),
+      [`GET /api/buildings/${BIRCH.id}/notifications/summary`]: () => json({ unread_count: 0 }),
+      [list()]: () => page([ROBIN, SAM]),
+      [list(BIRCH)]: () => page([request(7, { full_name: 'Birch Person' })]),
+      [approve(ROBIN.id)]: gate.handler,
+    });
+    sessionStorage.setItem('condo.buildingId', MAPLE.id);
+    const app = renderApp([PAGE]);
+    const dialog = await openDialog('Robin Park', 'Approve');
+    press(within(dialog).getByRole('button', { name: 'Approve' }));
+    await settle();
+
+    openAccountMenu();
+    fireEvent.change(screen.getByLabelText(/building/i), { target: { value: BIRCH.id } });
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'));
+    act(() => app.navigate()(PAGE));
+    await waitFor(() => expect(rows().map((item) => item.querySelector('h3')?.textContent)).toEqual(['Birch Person']));
+    gate.release();
+    await settle();
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByTestId('decision-message')).toBeNull();
+    expect(rows().map((item) => item.querySelector('h3')?.textContent)).toEqual(['Birch Person']);
+    // The switch removed Maple's queries (BuildingProvider), and the late answer's invalidation recreates none.
+    expect(app.queryClient.getQueryState(['b', MAPLE.id, 'onboarding-requests', 'pending'])).toBeUndefined();
+  });
+});

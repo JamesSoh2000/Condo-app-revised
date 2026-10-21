@@ -45,6 +45,10 @@ export function useDecide(buildingId: string) {
             body: { reason: decision.reason },
           });
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: requestsKey(buildingId) }),
+    // Not returned: `mutateAsync` would wait for the refetch, and a slow list would hold back the dialog's answer
+    // (review round 1, Codex F1).
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: requestsKey(buildingId) });
+    },
   });
 }

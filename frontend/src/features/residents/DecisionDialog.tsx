@@ -134,7 +134,9 @@ export function DecisionDialog({ kind, request, buildingId, onClose }: Props) {
     const focusable = Array.from(root.current?.querySelectorAll<HTMLElement>('textarea, button:not(:disabled)') ?? []);
     const [first, last] = [focusable[0], focusable[focusable.length - 1]];
     if (!first) return event.preventDefault();
-    if (event.shiftKey ? document.activeElement === first : document.activeElement === last) {
+    // From the dialog itself or its alert (focused on purpose, not tabbable controls) too (review round 1, Codex F2).
+    const index = focusable.indexOf(document.activeElement as HTMLElement);
+    if (event.shiftKey ? index <= 0 : index === -1 || index === focusable.length - 1) {
       event.preventDefault();
       (event.shiftKey ? last : first).focus();
     }
