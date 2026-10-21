@@ -68,6 +68,9 @@ const SERVER_MESSAGES = {
   },
 };
 
+/** Everything but the invitations' public details: what a change of user (accept, logout) must not leave behind. */
+const userData = ({ queryKey }: { queryKey: readonly unknown[] }) => queryKey[0] !== 'invitation';
+
 /** What the accept's refusal leads to; `form` only for the probe's 422 (D1). */
 type Stage = 'details' | 'form' | 'login' | 'mismatch' | 'member' | 'unit' | 'invalid';
 
@@ -200,10 +203,19 @@ function AcceptInviteScreen({ token }: { token: string }) {
       return;
     }
     if (accepted === null) return;
-    // A new account is now signed in, or this one has a new membership: nothing cached may outlive it, and
-    // the tab opens the accepted building even when the user has others.
-    queryClient.clear();
+    // A new account is now signed in, or this one has a new membership: nothing cached of the user may outlive
+    // it. The invitations' details stay, so an accept that answers after Back doesn't empty the page now shown
+    // (review round 1, F2).
+    queryClient.removeQueries({ predicate: userData });
     clearTabChoices();
+    // /me before the selection: AuthProvider drops the tab's choices when /me names another user than the one
+    // it last saw, which would undo the selection below (review round 1, F1). On failure the shell asks again.
+    try {
+      queryClient.setQueryData(['me'], await api.get('/api/auth/me'));
+    } catch {
+      // Nothing to do: the selection below still applies once /me answers.
+    }
+    // The tab opens the accepted building even when the user has others.
     writeSelectedBuilding(accepted.building_id);
     if (mounted.current) navigate('/', { replace: true });
   };
@@ -223,7 +235,7 @@ function AcceptInviteScreen({ token }: { token: string }) {
       setFailure({ message: 'Could not log out. Try again.' });
       return;
     }
-    queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'invitation' });
+    queryClient.removeQueries({ predicate: userData });
     clearTabChoices();
     inFlight.current = false;
     if (!mounted.current) return;

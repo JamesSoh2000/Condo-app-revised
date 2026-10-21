@@ -813,7 +813,7 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
   it('F2 neighbour: an abandoned accept keeps the details now shown without asking for them again', async () => {
     const slow = deferred(() => json(ACCEPTED));
     let otherGets = 0;
-    stubApi({
+    const fetchMock = stubApi({
       [GET]: () => json(PUBLIC),
       [ACCEPT]: slow.handler,
       [`GET /api/invitations/${OTHER}`]: () => {
@@ -824,6 +824,7 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     });
     const app = renderApp([`/invite/${TOKEN}`]);
     click(await screen.findByTestId('invite-accept'));
+    await waitFor(() => expect(calls(fetchMock)).toContain(ACCEPT));
     act(() => app.navigate()(`/invite/${OTHER}`));
     await screen.findByTestId('invite-details');
     app.queryClient.setQueryData(['stale'], 'user data');
