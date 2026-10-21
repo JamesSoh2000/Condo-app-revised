@@ -90,7 +90,11 @@ export function ForgotPasswordPage() {
           <form
             noValidate
             data-testid="forgot-form"
-            onSubmit={(event) => void handleSubmit(onSubmit)(event)}
+            onSubmit={(event) => {
+              // Before react-hook-form, as on the reset page (review round 2, F5).
+              if (inFlight.current) event.preventDefault();
+              else void handleSubmit(onSubmit)(event);
+            }}
             className="flex flex-col gap-4"
           >
             <Field label="Email" id="email" error={errors.email?.message}>

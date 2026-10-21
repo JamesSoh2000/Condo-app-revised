@@ -96,6 +96,12 @@ function ResetPasswordScreen({ token }: { token: string }) {
         setInvalid(true);
         return;
       }
+      // A token the schema refuses (over 200 characters, from a mangled link) is a 422 on `token`, not a 400:
+      // it is just as unusable (review round 2, F4).
+      if (error instanceof ApiError && error.status === 422 && error.errors?.some(({ loc }) => loc[0] === 'body' && loc[1] === 'token')) {
+        setInvalid(true);
+        return;
+      }
       const placed = serverFieldErrors(error, ['new_password'] as const);
       if (placed) {
         placed.forEach(({ field, message }, index) => setError(field, { message }, { shouldFocus: index === 0 }));
@@ -141,7 +147,12 @@ function ResetPasswordScreen({ token }: { token: string }) {
       <form
         noValidate
         data-testid="reset-form"
-        onSubmit={(event) => void handleSubmit(onSubmit)(event)}
+        onSubmit={(event) => {
+          // Before react-hook-form: a duplicate it handled would end its isSubmitting and re-enable the button
+          // while the first request is still out (review round 2, F5).
+          if (inFlight.current) event.preventDefault();
+          else void handleSubmit(onSubmit)(event);
+        }}
         className="flex flex-col gap-4"
       >
         <PasswordField
