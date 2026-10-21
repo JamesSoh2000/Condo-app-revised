@@ -49,6 +49,19 @@ export function ResetPasswordPage() {
   return <ResetPasswordScreen key={key} token={token} />;
 }
 
+/** Every bad token, and the reset paths without one (P4-07a review round 3, F7): one screen. */
+export function ResetLinkInvalid() {
+  return (
+    <main data-testid="reset-invalid" className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
+      <PageHeading>This reset link is no longer valid</PageHeading>
+      <p className="mb-4 text-sm">Links work once and expire. Request a new one to choose your password.</p>
+      <Link to="/forgot-password" className="underline">
+        Request a new link
+      </Link>
+    </main>
+  );
+}
+
 /**
  * Sets a new password with the emailed token (P4-04). Success logs out every session on the server, so the
  * tab forgets everything cached and goes to the login page. Every bad token is one 400, shown as one screen;
@@ -116,19 +129,9 @@ function ResetPasswordScreen({ token }: { token: string }) {
     if (mounted.current) navigate('/login', { replace: true, state: { passwordUpdated: true } satisfies LoginState });
   };
 
-  if (invalid) {
-    // Its own key: otherwise React keeps the form's <main> and heading, the heading's mount effect doesn't run
-    // again, and focus falls to the body with the form's button.
-    return (
-      <main key="invalid" data-testid="reset-invalid" className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
-        <PageHeading>This reset link is no longer valid</PageHeading>
-        <p className="mb-4 text-sm">Links work once and expire. Request a new one to choose your password.</p>
-        <Link to="/forgot-password" className="underline">
-          Request a new link
-        </Link>
-      </main>
-    );
-  }
+  // Another component, so React doesn't keep the form's <main> and heading: the heading's mount effect runs
+  // again, and focus doesn't fall to the body with the form's button.
+  if (invalid) return <ResetLinkInvalid />;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">

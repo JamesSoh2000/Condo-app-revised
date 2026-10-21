@@ -313,3 +313,49 @@ describe('forgot password link and reset banner (P4-07a criteria 4, 10)', () => 
     expect(screen.queryByTestId('login-banner')).toBeNull();
   });
 });
+
+describe('after a reset with another account signed in (P4-07b criterion 12, carried F6)', () => {
+  const BANNER = 'Your password was updated. Sign in with your new password.';
+  it('stays on the login page with the banner although /me answers', async () => {
+    const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME) });
+    const app = renderApp([{ pathname: '/login', state: { passwordUpdated: true } }]);
+
+    await sessionChecked(fetchMock);
+
+    expect(location()).toBe('/login');
+    expect(screen.getByTestId('login-banner').textContent).toBe(BANNER);
+    expect(app.location().state).toBeNull();
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeTruthy();
+  });
+
+  it('a later login from that page still follows next', async () => {
+    const fetchMock = backend(() => noContent());
+    renderApp([{ pathname: '/login', search: '?next=%2FPackages', state: { passwordUpdated: true } }]);
+    await sessionChecked(fetchMock);
+
+    fillAndSubmit('resident1@example.test', 'DevPassword!2026');
+
+    await waitFor(() => expect(location()).toBe('/Packages'));
+  });
+});
+
+describe('post-login state (P4-07b criteria 3, 11)', () => {
+  it('marks the navigation after a login with signedIn, on the path next chose', async () => {
+    const fetchMock = backend(() => noContent());
+    const app = renderApp(['/login?next=%2FPackages']);
+    await sessionChecked(fetchMock);
+
+    fillAndSubmit('resident1@example.test', 'DevPassword!2026');
+
+    await waitFor(() => expect(location()).toBe('/Packages'));
+    expect(app.location().state).toEqual({ signedIn: true });
+  });
+
+  it('marks the navigation when the page finds a session', async () => {
+    stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME) });
+    const app = renderApp(['/login?next=%2FPackages']);
+
+    await waitFor(() => expect(location()).toBe('/Packages'));
+    expect(app.location().state).toEqual({ signedIn: true });
+  });
+});

@@ -538,3 +538,21 @@ describe('review round 2 (Codex)', () => {
     expect(screen.getByTestId<HTMLButtonElement>(submit).disabled).toBe(false);
   });
 });
+
+describe('reset paths without a token (P4-07b criterion 13, carried F7)', () => {
+  it.each(['/reset-password', '/reset-password/', '/reset-password/a/b'])(
+    '%s shows the invalid-link screen, without a request',
+    async (path) => {
+      const fetchMock = stubApi({});
+      renderApp([path]);
+
+      const invalidScreen = screen.getByTestId('reset-invalid');
+      expect(invalidScreen.textContent).toContain('This reset link is no longer valid');
+      expect(screen.getByRole('link', { name: /request a new link/i }).getAttribute('href')).toBe('/forgot-password');
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 }));
+      expect(document.body.textContent).not.toMatch(/page not found/i);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(calls(fetchMock)).toEqual([]);
+    },
+  );
+});

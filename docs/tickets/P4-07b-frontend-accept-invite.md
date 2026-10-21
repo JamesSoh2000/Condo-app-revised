@@ -6,10 +6,10 @@
 | Risk tier | 2 |
 | Depends on | P4-07a, P4-02b, P2-06c |
 | Replaces old | part of [P4-07](./P4-07-frontend-account-screens.md) |
-| Status | todo |
+| Status | done (PR #96) |
 
-Split from P4-07 while framing P4-07a (2026-10-20). Not framed yet: the scope and criteria below are P4-07's
-invite parts as written; this ticket's own framing sharpens them.
+Split from P4-07 while framing P4-07a (2026-10-20). Framed 2026-10-21: criteria 1–4 are P4-07's, sharpened;
+5–14 are added (see Frame notes).
 
 ## Goal
 
@@ -42,18 +42,68 @@ Consumes `invitations_get_public` and `invitations_accept`.
 
 ## Acceptance criteria
 
-1. **Given** a valid invite link for a new email, **when** the form is completed, **then** the user lands in
-   the shell with the invited role's navigation.
-2. **Given** an invite for an existing account while logged out, **then** the user is guided through login
-   and the invitation is accepted afterwards.
-3. **Given** an invalid, expired or used invite token, **then** the friendly invalid screen shows. There are
-   no stack traces or raw codes.
-4. **Given** keyboard-only use, **then** the form can be completed. Errors are announced and focused.
+1. **Details.** `/invite/:token` (outside `RequireAuth`) sends one `GET /api/invitations/{token}` and shows the
+   building name, the masked email as sent and the roles as words ("Resident", "Security", "Property
+   management", "Council"), with an "Accept invitation" button. While it loads, a `role="status"` region says
+   so. It never calls `/api/auth/me`.
+2. **Accept, new email** (sharpens P4-07 criterion 1). "Accept invitation" sends
+   `POST /api/invitations/{token}/accept` with `{}`; the server's 422 `validation_error` whose `errors[]` are
+   `missing` on `body.full_name` / `body.password` (no account has the email) replaces the button with a
+   form: full name, password and confirm (`PasswordField`). Submitting a valid form sends `{full_name,
+   password}` (name trimmed, password as typed). On 200 the tab forgets its cached data and choices, selects
+   the accepted `building_id` for the tab, and replaces the history entry with `/`: the shell shows the
+   navigation of the invited roles (from `/me` and the building's answer).
+3. **Accept, existing account, logged out** (sharpens P4-07 criterion 2). The accept's 409 `login_required`
+   shows "Log in to accept" with a link to `/login?next=%2Finvite%2F<token>`. After a successful login (or the
+   login page finding a session), the login page navigates to `/invite/<token>` with router state
+   `{signedIn: true}`, and the invite page sends the accept once by itself when the details have loaded; on
+   200 it goes to the shell as in 2. The state is dropped from the history entry, so a reload or Back to it
+   doesn't accept again. A link (any `/invite/…?…` URL) can't trigger the automatic accept.
+4. **Accept, existing account, logged in.** One click on "Accept invitation" accepts (200) and goes to the
+   shell as in 2, in the accepted building even when the user has other active memberships.
+5. **Logged in as another account.** 403 `invitation_email_mismatch` shows "You're signed in with another
+   account" naming the masked email, and a "Log out" button. Logging out (queued like every logout, 204)
+   forgets the tab's cached data and choices and returns to the details on the same page, where "Accept
+   invitation" starts again; a failed logout shows an error and keeps the user signed in.
+6. **Invalid link** (sharpens P4-07 criterion 3). A 404 `invitation_invalid` from either call, and the paths
+   `/invite`, `/invite/` and `/invite/a/b`, show "This invitation is no longer valid" with "Ask your building
+   manager to resend it." No code, status or stack trace is shown on any screen of this page.
+7. **Other refusals.** 409 `membership_exists` shows "You're already a member of <building>" with a link to
+   `/`. 409 `unit_inactive` shows that the invited unit is no longer active and to ask the building manager.
+   A 429 from either call shows the wait time (`Retry-After`, else "later"); a 5xx, network error or an
+   unplaceable 422 shows a generic message. The details load failure has a "Try again" button that sends the
+   GET again.
+8. **Form checks.** An empty (after trimming) name, a name over 200 code points, a password under 12 or over
+   128 code points, or a confirmation that doesn't match shows the message on its field, focuses the first,
+   and sends nothing. A server 422 on `body.full_name` or `body.password` shows this page's own message on
+   that field (never the server's `msg`), and the form stays.
+9. **Keyboard and screen readers** (sharpens P4-07 criterion 4). Every screen's `<h1>` has focus when it
+   appears (load, form, login-required, mismatch, invalid, member, unit). Labels on every input; field errors
+   are tied by `aria-invalid`/`aria-describedby`; a form-level error is a focused `role="alert"`. The flow can
+   be completed with the keyboard alone (Enter submits).
+10. **No double accept, no late navigation.** While an accept or logout is in flight its button is disabled
+    and a second submit sends nothing (dropped before react-hook-form). The accept runs through
+    `runAuthCall` (it can set the session cookie). An answer that arrives after the user has left the history
+    entry (Back, another invite link, which keeps the page mounted) navigates nowhere and changes nothing on
+    the screen now shown: the page is keyed per history entry (`useLocation().key`).
+11. **`next` stays safe.** The login link's `next` goes through `safeNext` unchanged; the post-login state
+    is only added to the navigation `safeNext` already chose.
+12. **Carried F6 (P4-07a).** `/login` reached with `state.passwordUpdated` does not auto-redirect when `/me`
+    answers (another account still signed in): the banner and the form stay.
+13. **Carried F7 (P4-07a).** `/reset-password`, `/reset-password/` and `/reset-password/a/b` show the reset
+    page's invalid-link screen with "Request a new link", not "Page not found".
+14. **E2E hooks.** The details, form, inputs, buttons, status/alert regions and each result screen carry
+    `data-testid` attributes, listed in the PR for P4-09.
+
+Tenant table (`docs/ENGINEERING_PRACTICES.md` §7): no row applies. The page calls no building-scoped endpoint;
+the token in the path decides the building on the server (P4-02b's tests cover it).
 
 ## Test plan
 
-- Vitest component tests for state handling (mock the client).
+- Vitest component tests for state handling (`renderApp` with a stubbed `fetch`), one or more per criterion.
+- The journey on `make prodlike` (invite created with the operator command or the API, link from Mailpit).
 - E2E coverage comes in P4-09.
+- Commands: `npm run test`, `npm run typecheck`, `npm run lint`; `make check`.
 
 ## Likely files
 
@@ -104,8 +154,28 @@ round (PR #65 round 3). Fix them test-first if this ticket touches the menu, or 
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+- Criteria added or sharpened: 1–4, 6, 9 sharpen P4-07's four (exact calls, texts, focus). Added: 5 (the
+  403 mismatch, which P4-02b's API has and P4-07 didn't mention), 7 (`membership_exists`, `unit_inactive`,
+  429, load failure), 8 (form checks), 10 (double submit, Back between two invite links: the carried
+  mistake pattern), 11 (`next`), 12–13 (carried F6, F7), 14 (E2E hooks). The missed case: a signed-in user of
+  another account (5).
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
+  - D1 (autonomous): "Accept invitation" first sends the accept with `{}` and lets the server's answer choose
+    the next screen (200 accepted, 409 log in, 403 another account, 422 `missing` → the new-account form).
+    The page can't know whether the email has an account (the public GET doesn't say, by design) or whether
+    a session exists without calling `/me`, whose 401 `AuthProvider` turns into a redirect to `/login`.
+    Alternatives: the form first with a "Log in instead" link (a signed-in invitee would see a form it doesn't
+    need, and a new user could follow the link by mistake); `/me` first (the 401 redirect). Cost: one
+    extra request against the 20/10 min per-IP limit for a new user.
+  - D2 (autonomous): the automatic accept after login is triggered by router state `{signedIn: true}` set by
+    the login page on its post-login navigation, not by the URL, as P4-07a's `passwordUpdated` banner (D2
+    there): a link can't make the page accept on its own.
+  - D3 (ticket + carried): key the page per history entry; promote the mistake to the existing `CLAUDE.md`
+    lesson (reworded in place: `CLAUDE.md` is at its 150-line limit).
+  - D4 (autonomous): a mismatch's "Log out" stays on the invite page (logout, then the details again) instead
+    of `useLogout`, which navigates to `/login` and would lose the invite.
+  - D5 (ticket): the header account menu is not touched, so P2-06c's four open Lows stay open; they move to
+    P4-08's carried items in step 6.
 - Split: this is part b of [P4-07](./P4-07-frontend-account-screens.md); part a is
   [P4-07a](./P4-07a-password-reset-screens.md).

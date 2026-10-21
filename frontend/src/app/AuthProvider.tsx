@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, type Location } from 'react-router-dom';
 
 import { api, onUnauthenticated } from '@/api/client';
@@ -12,6 +12,24 @@ export type Me = components['schemas']['MeOut'];
 
 /** The router's current location, readable after the component that started a call has unmounted. */
 const CurrentLocation = createContext<{ readonly current: Location } | null>(null);
+
+/** The tab's session epoch and the way to start a new one (see `useNewSession`). */
+const Session = createContext<{ epoch: number; newSession: () => void }>({ epoch: 0, newSession: () => undefined });
+
+/**
+ * Bumped by `useNewSession`: the routes key the signed-in tree by it, so nothing mounted keeps rendering the
+ * previous user's data from its last result (removing queries doesn't reset mounted observers; P4-07b review
+ * round 3, R3-1). A user change seen on `/me` needs no bump: `BuildingProvider` remounts the shell per user.
+ */
+export const useSessionEpoch = (): number => useContext(Session).epoch;
+
+/**
+ * For a caller that has itself removed every query of the previous user (an invitation's accept, its logout):
+ * the signed-in tree is rebuilt, and the next `/me` starts a new user without the user-change sweep, which would
+ * also drop the tab's choices the caller has just made (P4-07b review rounds 2 and 3). Never for anyone who keeps
+ * that user's data cached.
+ */
+export const useNewSession = (): (() => void) => useContext(Session).newSession;
 
 /** The signed-in user and their memberships (P2-02). A 401 means there is no session. */
 export function useMe() {
@@ -65,19 +83,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // `/me` answering for another user than before means another tab logged in on the shared cookie: drop
   // everything cached for the previous user, and their building selection (review round 1, Claude M1).
+  const lastUser = useRef<string | undefined>(undefined);
   useEffect(() => {
-    let userId = queryClient.getQueryData<Me>(['me'])?.user.id;
+    lastUser.current = queryClient.getQueryData<Me>(['me'])?.user.id;
     return queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== 'updated' || event.query.queryHash !== '["me"]') return;
       const next = (event.query.state.data as Me | undefined)?.user.id;
       if (next === undefined) return;
-      if (userId !== undefined && next !== userId) {
+      if (lastUser.current !== undefined && next !== lastUser.current) {
         queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' });
         clearTabChoices();
       }
-      userId = next;
+      lastUser.current = next;
     });
   }, [queryClient]);
+  const [epoch, setEpoch] = useState(0);
+  const newSession = useCallback(() => {
+    lastUser.current = undefined;
+    setEpoch((n) => n + 1);
+  }, []);
+  const session = useMemo(() => ({ epoch, newSession }), [epoch, newSession]);
 
   useEffect(
     () =>
@@ -91,5 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient, navigate],
   );
 
-  return <CurrentLocation.Provider value={locationRef}>{children}</CurrentLocation.Provider>;
+  return (
+    <CurrentLocation.Provider value={locationRef}>
+      <Session.Provider value={session}>{children}</Session.Provider>
+    </CurrentLocation.Provider>
+  );
 }
