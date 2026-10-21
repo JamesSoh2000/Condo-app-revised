@@ -27,6 +27,17 @@ Managers change a member's roles and move a resident to another unit from the me
   - A change to the manager's own roles refreshes `/me` (the nav and page guards follow).
 - Out: bulk actions.
 
+## First follow-ups (playbook step 8, from P4-08d)
+
+- Pattern "cached answer reused on remount" reached 2 (PR #98 R3 M1: `useMyOnboarding`; P4-08d R1 F2: the badge after
+  "view as"): the client's 30 s `staleTime` serves a remounted component an answer from before it was hidden. Promote it
+  (a `CLAUDE.md` lesson, keeping it within 150 lines, or a test): a query whose component can unmount and come back
+  while its data changes elsewhere needs `refetchOnMount: 'always'` or `gcTime: 0`.
+- Pattern "checked only in jsdom" reached 4 (focus: P2-06c, P4-07a, P4-08b; accessible name: P4-08d D4, Chromium spaced
+  an `sr-only` part). Widen the focus lesson to accessible names when promoting, without growing `CLAUDE.md` past 150.
+- This ticket changes roles: a manager removing their own `property_management` must lose the nav's Residents badge with
+  the item (P4-08d's `ResidentsNavLabel` unmounts with it; `/me` refresh); add it to the criteria.
+
 ## Acceptance criteria (to sharpen when framing)
 
 1. **Given** the last manager tries to remove their own role, **then** the `last_manager` message shows, and

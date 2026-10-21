@@ -1182,3 +1182,35 @@ describe('review round 3 (Codex gpt-6.1-sol; inbox B-7 option A)', () => {
     expect(await screen.findByTestId('invite-invalid')).toBeTruthy();
   });
 });
+
+describe('P4-08d: two submits in one tick (criterion 12; suspected race from PR #98 round 1 M2)', () => {
+  it('the new-account form sends one accept when submitted twice before validation ends', async () => {
+    let accepts = 0;
+    const slow = deferred(() => json(ACCEPTED));
+    const fetchMock = stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: (r) => (++accepts === 1 ? needsAccount() : slow.handler(r)),
+      [ME]: () => json(GUARD_ME),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['security'])),
+    });
+    renderApp([`/invite/${TOKEN}`]);
+    click(await screen.findByRole('button', { name: /accept invitation/i }));
+    await screen.findByTestId('invite-form');
+
+    fireEvent.change(screen.getByLabelText<HTMLInputElement>('Full name'), { target: { value: 'Nadia' } });
+    fireEvent.change(screen.getByLabelText<HTMLInputElement>('Password'), { target: { value: GOOD } });
+    fireEvent.change(screen.getByLabelText<HTMLInputElement>('Confirm password'), { target: { value: GOOD } });
+    // Both before react-hook-form's async validation of the first one ends.
+    const form = screen.getByTestId('invite-form');
+    act(() => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+    });
+    await waitFor(() => expect(calls(fetchMock).filter((c) => c === ACCEPT)).toHaveLength(2));
+    await settle();
+    slow.release();
+
+    await waitFor(() => expect(location()).toBe('/'));
+    expect(calls(fetchMock).filter((c) => c === ACCEPT)).toHaveLength(2);
+  });
+});

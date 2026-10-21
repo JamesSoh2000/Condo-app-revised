@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-08b |
 | Replaces old | part of [P4-08](./P4-08-frontend-onboarding-approval-screens.md) (M4-T08) |
-| Status | todo |
+| Status | done |
 
 Split from [P4-08b](./P4-08b-manager-pending-requests.md) while framing it (2026-10-21): with the badge and
 the carried fixes its estimate was ~470 non-test lines. Not framed yet: frame it when it is picked.
@@ -25,12 +25,50 @@ P4-08a and P4-07b reviews are fixed.
   - The carried items below, test-first.
 - Out: anything else on `/manage/residents`.
 
-## Acceptance criteria (to sharpen when framing)
+## Acceptance criteria (framed 2026-10-21)
 
-1. **Given** a property manager with 3 pending requests, **then** the nav's "Residents" item reads
-   "Residents, 3 pending" to a screen reader and shows a "3" badge; with none, no badge.
-2. **Given** a decision on `/manage/residents`, **then** the badge's count is asked for again.
-3. **Given** a member without `property_management`, **then** no summary request is made.
+Badge (the nav's "Residents" item, `frontend/src/app/MainNav.tsx`):
+
+1. **Given** a property manager whose building has 3 pending requests (`GET …/onboarding-requests/summary` →
+   `{"pending_onboarding_count": 3}`), **then** the nav's "Residents" link's accessible name is "Residents, 3 pending"
+   and it shows a "3" badge hidden from screen readers. With 0: the name is "Residents" and no badge. With 120: the
+   badge reads "99+" (as the bell) and the name keeps the exact count, "Residents, 120 pending".
+2. **Given** a decision on `/manage/residents` (approve or deny; a 200, a 409 or a 500), **then** the summary is asked
+   for again, so the badge shows the new count.
+3. **Given** a member without `property_management` (a resident; security; council only), **then** no summary
+   request is made (exact request list).
+4. *(added)* **Given** a property manager who also holds `council` and views as Resident, **then** "Residents" isn't
+   listed and no summary request is made; switching back to Management asks for it.
+5. *(added)* Polled like the notification summary (ADR-0012): asked again every 30 s while the tab is visible, never
+   while it is hidden, and again when it becomes visible even if the last answer is under 30 s old.
+6. *(added)* **Given** a summary request that fails (500, or a 403 when the role was just removed), **then** no badge
+   shows and the name is "Residents": never the last count.
+7. *(added)* **Given** a switch to another building where the member is also a manager, **then** the badge shows
+   that building's count (keyed by building).
+
+Carried fixes:
+
+8. **After a decision whose list refresh fails** (500), **then** "Show more" is not offered, only "Try again"
+   (as `Members`); "Try again" removes the decided row and "Show more" comes back (PR #99 R3 F1).
+9. **The decision's outcome message** wraps any long text (`[overflow-wrap:anywhere]`): at 375 px, a 176-character
+   name in "… was approved." doesn't widen the page (checked in Chromium on the stack). *(added, the "overflow at
+   375 px" promotion)* A test checks that every element on both `/manage/residents` tabs that can hold a user's name,
+   email or reason (each list row, each outcome message, the dialogs) carries the class or sits inside one that does.
+10. **`useMyOnboarding` never shows a previous request's details** (PR #98 R3 M1): denied with reason A → `/me` says
+    pending → `/me` says denied with reason B, within 30 s: the screen shows B and never A, not even while B loads.
+    *(added)* A denied screen left open while another tab resubmits and is denied again shows B once the tab is
+    visible again.
+11. **`parseJoinCode` matches the whole path** (PR #98 R3 L1): `…/join/MAPLE-2026/garbage`, `…/help?next=/join/MAPLE-2026`
+    and `…/help#/join/MAPLE-2026` are refused with the criterion-17 error; the five accepted forms of P4-08a's table
+    stay accepted.
+12. **The accept-invitation new-account form sends one accept** when submitted twice in one tick. Test first: if it
+    is green before any change, the race isn't real; record that and keep the test.
+
+Lessons (playbook step 8):
+
+13. `CLAUDE.md` gains the lessons "list refresh defeated by another fetch" and "focus dropped to body", and rule 4's
+    size-estimate lesson is tightened to "estimate a UI component from a measured one of the same kind"; `CLAUDE.md`
+    stays within 150 lines and no rule or lesson loses content. The overflow pattern is promoted as criterion 9's test.
 
 ## First follow-ups (playbook step 8, from P4-08b)
 
@@ -96,7 +134,34 @@ P4-08a and P4-07b reviews are fixed.
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+- Criteria added or sharpened: 1 (exact names, the 0 and 99+ cases), 2 (every outcome), 3 (which roles, exact request
+  list); added 4 (council "view as"), 5 (polling, ADR-0012), 6 (failed summary), 7 (building switch); carried items
+  written as criteria 8–12 with their tests; 9 adds the overflow test (the P4-08c promotion); 13 the lessons.
+- Criteria loosened (with reason; also listed in the inbox): criterion 9's test, while implementing: framed as "every
+  list row and every `role="status"` / `role="alert"` message", narrowed to the elements that can hold a user's name,
+  email or reason. The others ("Loading requests…", "Could not refresh the requests.") are fixed short texts, which
+  is the scope of the pattern in `docs/AGENT_MISTAKES_LOG.md` ("every text that can hold a user's name, email or
+  reason").
+- Tenant table (ENGINEERING_PRACTICES §7): no new endpoint. The summary endpoint's rows (role 403, cross-building 404,
+  unauthenticated) are in `backend/tests/onboarding/test_decisions.py` (P4-05b).
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+  - The badge component is rendered inside the "Residents" nav item, so the query exists only while the item is
+    listed (criteria 3, 4): role, feature and "view as" filtering come from `navPages` for free (autonomous; simplest).
+  - Summary key `['b', id, 'onboarding-requests', 'summary']`, under `useDecide`'s invalidation prefix (ticket: "P4-08b's
+    mutations invalidate `['b', id, 'onboarding-requests']`").
+  - Criterion 10 goes beyond the proposed `staleTime: 0`: alone it would still show A's cached reason while B loads
+    (the screen renders `data` as soon as there is any). Also `gcTime: 0`, so a status screen that unmounts drops its
+    answer (autonomous; recorded in the PR).
+  - The four AccountMenu Lows from P2-06c stay out: the ticket takes them only if it touches the menu, and the badge
+    is in the nav (ticket). They will go to a new stub ticket in step 6, with the notifications panel's "Show more"
+    (`NotificationPanel.tsx`: `fetchNextPage()` without `cancelRefetch: false`, disabled only while fetching the next
+    page), a neighbour of criterion 8 outside this ticket's scope, not verified.
+- Estimate: ~90 non-test lines (badge hook ~20 and nav item ~30, measured against `NotificationBell.tsx`'s count
+  markup; carried fixes ~25; `CLAUDE.md` ~10). No split.
+- Split: none.
+
+## Follow-ups (at merge, PR #101)
+
+- The four AccountMenu Lows ("Carried from P4-07b" above) and the notifications panel's "Show more" moved to
+  [P4-08f](./P4-08f-account-menu-and-notifications-follow-ups.md).
+- Pattern promotions for the next ticket: see [P4-08e](./P4-08e-member-roles-and-transfer.md) "First follow-ups".

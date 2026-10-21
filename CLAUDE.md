@@ -89,62 +89,62 @@ if it didn't.
 
 1. Read the ticket in `docs/tickets/`, the ADRs it links, and the **current code** before planning.
    The docs describe targets; the code is the truth. Check `docs/HUMAN_INBOX.md`: stop if `paused`.
-2. Frame, then plan, without waiting for approval: sharpen the criteria (never loosen one silently), write
-   the plan into the PR. Decide open questions with the playbook's **decision rules** and record each one in
-   the PR when you make it (alternatives, tradeoffs, basis); lasting decisions get an ADR and a line in the
-   inbox's "Decisions to audit".
-3. On a **stop rule** (human-only resource, contradicts an ADR/scope/rule above, needs a weaker gate, review
-   not converging, unnamed outward-facing action): set the ticket `blocked`, write it in the inbox, move on.
-   Never guess past one.
-4. Tests first for each acceptance criterion. Keep the PR ≤ ~400 non-test lines, estimated with the error and race
-   criteria costed (P4-01, P4-08a); tests don't count, never cut them to fit. Stay in scope; extras go to follow-ups.
+2. Frame, then plan, without waiting for approval: sharpen the criteria (never loosen one silently), write the plan
+   into the PR. Decide open questions with the playbook's **decision rules** and record each one in the PR when you
+   make it (alternatives, tradeoffs, basis); lasting decisions get an ADR and a line in the inbox's "Decisions to
+   audit".
+3. On a **stop rule** (human-only resource, contradicts an ADR/scope/rule above, needs a weaker gate, review not
+   converging, unnamed outward-facing action): set the ticket `blocked`, write it in the inbox, move on. Never guess
+   past one.
+4. Tests first per criterion. PR ≤ ~400 non-test lines: cost the error and race criteria, size UI from a measured
+   component of its kind (P4-01, P4-08a–c); tests don't count, never cut them. Stay in scope; extras: follow-ups.
 5. Branch `<ticket-id lowercase>-<slug>` in its own worktree. Rebase onto `main` before review and merge.
-6. **Never review your own work.** The review runs in fresh sessions (subagents). Fix confirmed findings
-   test-first; at most 3 review rounds. You write the explanation yourself, last (after the final `MERGE`,
-   the rebase and green CI), following a reality pass: re-read the diff, the cited files and the tests from
-   disk, run them, and keep implemented behaviour, design rationale and limitations apart. What you
-   remember of building it is not a source (ADR-0017).
+6. **Never review your own work.** The review runs in fresh sessions (subagents). Fix confirmed findings test-first;
+   at most 3 review rounds. You write the explanation yourself, last (after the final `MERGE`, the rebase and green
+   CI), following a reality pass: re-read the diff, the cited files and the tests from disk, run them, and keep
+   implemented behaviour, design rationale and limitations apart. What you remember of building it is not a source
+   (ADR-0017).
 7. Merge (`gh pr merge --squash`) only when the playbook's **merge gate** passes. End with the handoff block.
-8. In explanations and answers, reference code as `path::symbol`, not bare line numbers. Name the PR and
-   revision you describe, and mark a "why" no record states as inferred.
+8. In explanations and answers, reference code as `path::symbol`, not bare line numbers. Name the PR and revision you
+   describe, and mark a "why" no record states as inferred.
 
 ## Context hygiene
 
 Everything a command prints is re-read on every later turn, so don't print the same text twice.
-- Large diff: `git diff --stat` first, then one path's patch at a time. A reviewer still reads every changed
-  path; the stat orders the reading and never replaces it.
-- `gh pr view --json <only the fields you need>` (`-q` to cut further), once per step. Fetch again only after
-  the PR changed (a push, a review round, a comment).
+- Large diff: `git diff --stat` first, then one path's patch at a time. A reviewer still reads every changed path;
+  the stat orders the reading and never replaces it.
+- `gh pr view --json <only the fields you need>` (`-q` to cut further), once per step. Fetch again only after the PR
+  changed (a push, a review round, a comment).
 
 ## Never
 
-- Touch staging/production data or credentials, `.env` files with real values, branch protection or CI
-  permissions, unless the ticket says so.
-- Loosen a protected gate (CI jobs, lint/type config, fitness or existing tests, check scripts, these rules)
-  to make CI pass. Fix the cause, or block the ticket.
+- Touch staging/production data or credentials, `.env` files with real values, branch protection or CI permissions,
+  unless the ticket says so.
+- Loosen a protected gate (CI jobs, lint/type config, fitness or existing tests, check scripts, these rules) to make
+  CI pass. Fix the cause, or block the ticket.
 - Add dependencies without saying why in the PR.
 
 ## Lessons learned (from docs/AGENT_MISTAKES_LOG.md)
 
-<!-- Append one line per promoted lesson, e.g.:
-- Unit-addressed queries must also check the occupancy window (P5-02a, 2026-11-xx). -->
-- When fixing a review finding, also test the fix on its neighbours: error paths, malformed input, the
-  same check one notch weaker (warn vs error), every other option the changed code path takes, and every
-  other way to reach the same state (another command, another response path). A fix that only covers the
-  reported case gets reopened (P0-05 round 3, P0-03a round 2, 2026-10-14; P1-07 round 2, P1-08 round 1,
-  2026-10-16). For state and concurrency fixes, list these ways before the first review: a second instance
-  of the action, Back/Forward (one route's URL change keeps the page mounted: key it by `useLocation().key`),
-  an abandoned caller, a failure, and a server-driven change (a refetch, `/me`) (P2-06a–c, P4-07a; 2026-10-20).
-- Don't claim an effect ("unbreaks main", "new revisions come out ruff-clean") until you have run the
-  thing that shows it and pasted the output (fix PR #3, P0-02, 2026-10-14).
-- Prove a gate, check or health signal can fail before trusting it: make it fail once on purpose (a probe
-  PR, a mutation, a failing init script) and paste that output too. Four checks passed vacuously in P0
-  (P0-03a fence, P0-03b route check, P0-04a LocalStack health, P0-05 ORM test; 2026-10-15).
-- Write in the PR only what is already on the branch. Until the bookkeeping commit exists, say "will be
-  added to the inbox / <ticket> in step 6", not "listed in" (P1-04, P1-05, P1-07; 2026-10-16).
-- Commit before mutation probes: `scripts/mutation-probe.sh` refuses a dirty tree, restores and re-runs
-  the baseline (P1-03, P1-05; 2026-10-16).
-- Don't write from a value read before a slow `await` (argon2, a lock wait): re-check it after the lock,
-  with a fresh clock, in the writing statement. Expiry must be final (P4-02b ×4; 2026-10-20).
-- Validate caller input by what Postgres accepts, not Python: lone surrogates, NUL, NaN and byte lengths
-  fail at flush as `DBAPIError`, not the documented `ValueError` (P3-02 ×2, P3-03; 2026-10-18).
+- When fixing a review finding, also test the fix on its neighbours: error paths, malformed input, the same check one
+  notch weaker (warn vs error), every other option the changed code path takes, and every other way to reach the same
+  state (another command, another response path). A fix that only covers the reported case gets reopened (P0-05 round
+  3, P0-03a round 2, 2026-10-14; P1-07 round 2, P1-08 round 1, 2026-10-16). For state and concurrency fixes, list
+  these ways before the first review: a second instance of the action, Back/Forward (one route's URL change keeps the
+  page mounted: key it by `useLocation().key`), an abandoned caller, a failure, a server-driven change (a refetch,
+  `/me`) (P2-06a–c, P4-07a; 2026-10-20), and every other fetch that can interleave with a list's refresh: the next
+  page, a focus refetch, a failed refresh, an awaited `onSettled` (P4-08b R1–R3; 2026-10-21).
+- Don't claim an effect ("unbreaks main", "new revisions come out ruff-clean") until you have run the thing that
+  shows it and pasted the output (fix PR #3, P0-02, 2026-10-14).
+- Prove a gate, check or health signal can fail before trusting it: make it fail once on purpose (a probe PR, a
+  mutation, a failing init script) and paste that output too. Four checks passed vacuously in P0 (P0-03a fence,
+  P0-03b route check, P0-04a LocalStack health, P0-05 ORM test; 2026-10-15).
+- Write in the PR only what is already on the branch. Until the bookkeeping commit exists, say "will be added to the
+  inbox / <ticket> in step 6", not "listed in" (P1-04, P1-05, P1-07; 2026-10-16).
+- Commit before mutation probes: `scripts/mutation-probe.sh` refuses a dirty tree, restores and re-runs the baseline
+  (P1-03, P1-05; 2026-10-16).
+- Don't write from a value read before a slow `await` (argon2, a lock wait): re-check it after the lock, with a fresh
+  clock, in the writing statement. Expiry must be final (P4-02b ×4; 2026-10-20).
+- Validate caller input by what Postgres accepts, not Python: lone surrogates, NUL, NaN and byte lengths fail at
+  flush as `DBAPIError`, not the documented `ValueError` (P3-02 ×2, P3-03; 2026-10-18).
+- Check focus after anything disappears in Chromium, not only jsdom (no CSS, no click focus; P2-06c, P4-07a, P4-08b).

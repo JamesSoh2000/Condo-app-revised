@@ -31,10 +31,15 @@ export const unitName = (tower: string | null, label: string): string => (tower 
  * endpoint checks only the caller's own membership, not an active one (P4-05a), so it is the one building
  * request the status screens make (P4-08 must-explain 1). Keyed by the status `/me` reports, so a change seen there
  * (a denial, a new request) asks again instead of showing the previous request's details (review round 2, M1).
+ * A status can come back (denied → pending → denied), so nothing is kept for its key: an unmounted screen's answer
+ * goes at once (`gcTime: 0`), and a screen left open asks again on focus (`staleTime: 0`). With the stale time alone a
+ * second denial showed the first one's reason until its own arrived (P4-08d criterion 10; PR #98 round 3 M1).
  */
 export function useMyOnboarding(buildingId: string, status: MembershipStatus) {
   return useQuery({
     queryKey: ['b', buildingId, 'onboarding', 'me', status],
+    staleTime: 0,
+    gcTime: 0,
     queryFn: ({ signal }) =>
       api.get('/api/buildings/{building_id}/onboarding/me', { params: { path: { building_id: buildingId } }, signal }),
   });
