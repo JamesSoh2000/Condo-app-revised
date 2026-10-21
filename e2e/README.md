@@ -10,7 +10,7 @@ cover the rest.
 | `tests/j1-bootstrap.spec.ts` | J1: `bootstrap-building` (CLI) → invitation email → the first manager sets a password → home; the link is single-use |
 | `tests/j2-staff-invite.spec.ts` | J2: the manager invites security → email → accept → security's home; the account menu opens with Enter and Space |
 | `tests/j3-onboarding.spec.ts` | J3: join link → signup → unit → pending → the manager approves → email, notification, home; Birch can't see the resident. Plus the deny path |
-| `tests/j7-password-reset.spec.ts` | J7: forgot → email → reset → another device is signed out. Plus the `condo.auth` Web Lock across two pages |
+| `tests/j7-password-reset.spec.ts` | J7: forgot → email → reset → another device is signed out. Plus the `condo.auth` Web Lock across two pages (a seeded resident) |
 
 J2 creates the invitation through the API as the manager: no screen creates invitations yet (P4-09 Frame notes).
 
@@ -46,8 +46,19 @@ E2E_BASE_URL=http://localhost:8080 E2E_COMPOSE_FILE=compose.prodlike.yml E2E_API
 
 A journey makes its own users and building, with random emails and slugs, so the two projects can run in
 parallel and a retry needs no reset. The shared seeded managers (Maple's and Birch's) log in once per run, in
-`tests/auth.setup.ts`, and their cookies are reused from `.auth/`. The login rate limits keep their production
-values (8 per email per 15 minutes), so log a shared persona in with `storageState`, not in each test.
+`tests/auth.setup.ts`, and their cookies are reused from `.auth/`.
+
+The rate limits keep their production values, and every request comes from one IP, so a run has a budget. The
+reset empties the windows, which is why `make e2e` resets every time:
+
+| Limit | Per run (both projects) | Allowed |
+|---|---|---|
+| Signups per IP | 6 (J3 ×2, J7 reset ×1, per project) | 10 per hour |
+| Logins per email | 4 for `resident5@example.test` (J7 Web Lock); 1 for each manager | 8 per 15 minutes |
+| Logins per IP | 10 | 30 per 10 minutes |
+
+So run `make e2e` again rather than repeating `npx playwright test` on the same database, log a shared persona in
+with `storageState`, not in each test, and count a new journey's signups and logins against this table.
 
 ## Debug
 
@@ -85,4 +96,5 @@ retry is flaky: the run shows it as "flaky", not "passed".
   quarantined today.
 - Never raise the retries, add a sleep or widen a timeout to hide flakiness. Find the race: usually an
   assertion that doesn't wait, a shared row, or a request the test doesn't wait for.
-- Before merging a new journey, run it five times in a row: `make e2e args="--repeat-each=5"`.
+- Before merging a new journey, run `make e2e` five times in a row (each run resets, so the rate-limit budget
+  above holds; `--repeat-each` on one database would exceed it).

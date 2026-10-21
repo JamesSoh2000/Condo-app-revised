@@ -1,11 +1,16 @@
 import { expect, type Request, test } from '@playwright/test';
 
-import { apiLogin, apiSignup, NEW_PASSWORD, uniqueEmail } from '../helpers/auth';
+import { apiLogin, apiSignup, NEW_PASSWORD, SEED_PASSWORD, uniqueEmail } from '../helpers/auth';
 import { extractLink, waitForEmail } from '../helpers/mailpit';
 
 const RESET_PASSWORD = 'E2e-Reset-Password-2026!';
 /** What a signed-in account with no building sees (MembershipScreens). */
 const NO_BUILDING = 'You are not a member of a building yet';
+/**
+ * A seeded Maple resident no other journey uses. A logout ends only its own session, so both projects can use it at
+ * once; it saves two signups a run against the signup limit (10 per IP per hour).
+ */
+const WEB_LOCK_USER = 'resident5@example.test';
 
 test('J7: a password reset by email signs out another logged-in context', async ({ page, browser, baseURL }) => {
   const email = uniqueEmail('j7-reset');
@@ -59,11 +64,10 @@ test('J7 Web Lock: a slow logout in one page and a login in another stay ordered
   await pageB.goto('/login');
   await expect(pageB.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 
-  const email = uniqueEmail('j7-lock');
-  await apiSignup(context.request, baseURL!, email, 'Lee Lock');
+  await apiLogin(context.request, baseURL!, WEB_LOCK_USER);
   const pageA = await context.newPage();
   await pageA.goto('/');
-  await expect(pageA.getByRole('heading', { name: NO_BUILDING })).toBeVisible();
+  await expect(pageA.getByRole('heading', { name: 'Home' })).toBeVisible();
 
   // The order the auth calls reach the network, and the logout's answer.
   const order: string[] = [];
@@ -89,8 +93,8 @@ test('J7 Web Lock: a slow logout in one page and a login in another stay ordered
   await pageA.getByRole('button', { name: 'Log out' }).click();
   await logoutHeld;
 
-  await pageB.getByLabel('Email').fill(email);
-  await pageB.getByLabel('Password').fill(NEW_PASSWORD);
+  await pageB.getByLabel('Email').fill(WEB_LOCK_USER);
+  await pageB.getByLabel('Password').fill(SEED_PASSWORD);
   await pageB.getByRole('button', { name: 'Sign in' }).click();
   // B's login queues behind A's logout, which holds the lock.
   await expect
@@ -98,11 +102,11 @@ test('J7 Web Lock: a slow logout in one page and a login in another stay ordered
     .toContain('condo.auth');
   release();
 
-  await expect(pageB.getByRole('heading', { name: NO_BUILDING })).toBeVisible();
+  await expect(pageB.getByRole('heading', { name: 'Home' })).toBeVisible();
   // The login went out only after the logout answered, so the logout's cleared cookie can't undo it.
   expect(order).toEqual(['request /api/auth/logout', 'response /api/auth/logout', 'request /api/auth/login']);
   await pageB.reload();
-  await expect(pageB.getByRole('heading', { name: NO_BUILDING })).toBeVisible();
+  await expect(pageB.getByRole('heading', { name: 'Home' })).toBeVisible();
   expect((await context.request.get('/api/auth/me')).status()).toBe(200);
   await context.close();
 });
