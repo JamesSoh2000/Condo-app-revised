@@ -92,7 +92,7 @@ export function PendingRequests() {
   return (
     <div className="flex flex-col gap-4">
       <h2 className="sr-only">Pending requests</h2>
-      <p ref={messageRef} role="status" tabIndex={-1} data-testid={message ? 'decision-message' : undefined} className="text-sm font-medium empty:hidden">
+      <p ref={messageRef} role="status" tabIndex={-1} data-testid={message ? 'decision-message' : undefined} className="text-sm font-medium empty:hidden [overflow-wrap:anywhere]">
         {message}
       </p>
       {body}
@@ -102,9 +102,10 @@ export function PendingRequests() {
           Could not load more requests.
         </p>
       )}
-      {requests.hasNextPage && (
+      {requests.hasNextPage && !requests.isRefetchError && (
         // Not while any fetch is out: a next page would cancel a refresh (after a decision, on focus) and append to
-        // the old pages, leaving a decided request listed (review round 2, Codex F1).
+        // the old pages, leaving a decided request listed (review round 2, Codex F1). Not after a failed refresh
+        // either: a next page would clear the error and keep the old first page (P4-08b round 3 F1); Try again first.
         <button
           type="button"
           disabled={requests.isFetching}

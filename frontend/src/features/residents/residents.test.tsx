@@ -932,3 +932,87 @@ describe('review round 2 (Codex gpt-6.1-sol): Show more never discards a refresh
     expect(rows().map((item) => item.querySelector('h3')?.textContent)).not.toContain('Robin Park');
   });
 });
+
+describe('P4-08d: Show more after a failed refresh (criterion 8; PR #99 round 3 F1)', () => {
+  it('offers only Try again, which removes the decided row and brings Show more back', async () => {
+    let decided = false;
+    let fail = false;
+    stubApi(
+      manager({
+        [list()]: (req) => {
+          if (new URL(req.url).searchParams.has('cursor')) return page([request(3, { full_name: 'Older Person' })]);
+          if (fail) return problem(500, 'internal_error');
+          return decided ? page([SAM], 'older-page') : page([ROBIN, SAM], 'older-page');
+        },
+        [approve(ROBIN.id)]: () => {
+          decided = true;
+          fail = true;
+          return json({ ...ROBIN, status: 'approved' });
+        },
+      }),
+    );
+    renderApp([PAGE]);
+
+    const dialog = await openDialog('Robin Park', 'Approve');
+    press(within(dialog).getByRole('button', { name: 'Approve' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/could not refresh the requests/i);
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+
+    fail = false;
+    press(within(alert).getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(rows().map((item) => item.querySelector('h3')?.textContent)).toEqual(['Sam Lee']));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
+  });
+});
+
+describe('P4-08d: long names wrap (criterion 9; the "overflow at 375 px" pattern)', () => {
+  /** jsdom can't measure widths: the check is that each element holding a user's text wraps anywhere. */
+  const wraps = (element: Element) => element.closest('[class~="[overflow-wrap:anywhere]"]') !== null;
+  const long = 'Robin '.repeat(30).trim();
+
+  it('pending tab: each row, the outcome message and the dialog', async () => {
+    stubApi(
+      manager({
+        [list()]: () => page([{ ...ROBIN, full_name: long }, SAM]),
+        [approve(ROBIN.id)]: () => json({ ...ROBIN, full_name: long, status: 'approved' }),
+      }),
+    );
+    renderApp([PAGE]);
+
+    const dialog = await openDialog(long, 'Approve');
+    expect(wraps(dialog)).toBe(true);
+    for (const item of rows()) expect(wraps(item)).toBe(true);
+    press(within(dialog).getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() => expect(status().textContent).toBe(`${long} was approved.`));
+    expect(wraps(status())).toBe(true);
+  });
+
+  it('members tab: each row and the outcome message', async () => {
+    const member = {
+      membership_id: '01929a4e-0000-7000-8000-0000000d0001',
+      user_id: '01929a4e-0000-7000-8000-0000000f0001',
+      full_name: long,
+      email: 'robin@example.test',
+      status: 'active',
+      status_reason: null,
+      roles: ['resident'],
+      unit_id: ROBIN.unit_id,
+      unit_label: '1203',
+      tower: null,
+      relationship: 'owner',
+    } satisfies Schemas['MemberOut'];
+    stubApi(manager({ [`GET /api/buildings/${MAPLE.id}/members`]: () => json({ items: [member], next_cursor: null }) }));
+    renderApp([`${PAGE}?tab=members`]);
+
+    const members = await screen.findByRole('list', { name: 'Members' });
+    for (const item of within(members).getAllByRole('listitem')) expect(wraps(item)).toBe(true);
+    // The outcome message's element is there, empty and hidden, before any action.
+    const message = screen.getByRole('tabpanel').querySelector('p[role="status"]');
+    expect(message && wraps(message)).toBe(true);
+  });
+});
