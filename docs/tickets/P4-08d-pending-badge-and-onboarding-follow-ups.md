@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-08b |
 | Replaces old | part of [P4-08](./P4-08-frontend-onboarding-approval-screens.md) (M4-T08) |
-| Status | in progress |
+| Status | done |
 
 Split from [P4-08b](./P4-08b-manager-pending-requests.md) while framing it (2026-10-21): with the badge and
 the carried fixes its estimate was ~470 non-test lines. Not framed yet: frame it when it is picked.
@@ -159,3 +159,9 @@ Lessons (playbook step 8):
 - Estimate: ~90 non-test lines (badge hook ~20 and nav item ~30, measured against `NotificationBell.tsx`'s count
   markup; carried fixes ~25; `CLAUDE.md` ~10). No split.
 - Split: none.
+
+## Follow-ups (at merge, PR #101)
+
+- The four AccountMenu Lows ("Carried from P4-07b" above) and the notifications panel's "Show more" moved to
+  [P4-08f](./P4-08f-account-menu-and-notifications-follow-ups.md).
+- Pattern promotions for the next ticket: see [P4-08e](./P4-08e-member-roles-and-transfer.md) "First follow-ups".
