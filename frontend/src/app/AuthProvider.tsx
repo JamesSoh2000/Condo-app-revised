@@ -17,9 +17,9 @@ const CurrentLocation = createContext<{ readonly current: Location } | null>(nul
 const Session = createContext<{ epoch: number; newSession: () => void }>({ epoch: 0, newSession: () => undefined });
 
 /**
- * Bumped whenever the user behind the tab changes: the routes key the signed-in tree by it, so nothing mounted
- * keeps rendering the previous user's data from its last result (removing queries doesn't reset mounted
- * observers; P4-07b review round 3, R3-1).
+ * Bumped by `useNewSession`: the routes key the signed-in tree by it, so nothing mounted keeps rendering the
+ * previous user's data from its last result (removing queries doesn't reset mounted observers; P4-07b review
+ * round 3, R3-1). A user change seen on `/me` needs no bump: `BuildingProvider` remounts the shell per user.
  */
 export const useSessionEpoch = (): number => useContext(Session).epoch;
 
@@ -93,7 +93,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (lastUser.current !== undefined && next !== lastUser.current) {
         queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' });
         clearTabChoices();
-        setEpoch((n) => n + 1);
       }
       lastUser.current = next;
     });
