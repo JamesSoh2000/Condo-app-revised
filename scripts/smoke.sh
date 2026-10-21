@@ -43,6 +43,7 @@ status_is() { [ "$(cat "$tmp/$1.status")" = "$2" ]; }
 header() { grep -m1 "^$2: " "$tmp/$1.headers" | cut -d' ' -f2-; }
 header_has() { header "$1" "$2" | grep -qiF -- "$3"; }
 header_lacks() { ! header_has "$@"; }
+header_once() { [ "$(grep -c "^$2: " "$tmp/$1.headers")" = 1 ]; }
 is_spa() { grep -q '<div id="root">' "$tmp/$1.body"; }
 not_spa() { ! is_spa "$1"; }
 json_field_is() { python3 -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get(sys.argv[2]) != sys.argv[3])' "$tmp/$1.body" "$2" "$3" 2>/dev/null; }
@@ -89,6 +90,16 @@ for page in root version missing; do
   check "$page: Permissions-Policy" header_has "$page" permissions-policy "camera=(self)"
   check "$page: CSP frame-ancestors 'none'" header_has "$page" content-security-policy "frame-ancestors 'none'"
   check "$page: Strict-Transport-Security" header_has "$page" strict-transport-security "max-age=31536000"
+done
+
+# Pages whose URL can carry a token: no Referer to other origins (P4-07a); the rest keep the default above.
+fetch loginpage /login
+fetch resetpage /reset-password/smoke-token
+fetch invitepage /invite/smoke-token
+for page in loginpage resetpage invitepage; do
+  check "$page is an SPA route" is_spa "$page"
+  check "$page: Referrer-Policy same-origin" header_has "$page" referrer-policy same-origin
+  check "$page: a single Referrer-Policy" header_once "$page" referrer-policy
 done
 
 if [ "$failures" -gt 0 ]; then
