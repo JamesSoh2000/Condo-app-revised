@@ -44,15 +44,21 @@ async function bodyOf(fetchMock: ReturnType<typeof stubApi>, key: string): Promi
   return request!.clone().json();
 }
 
+/** Clicks like a browser does: the button takes focus first (fireEvent.click alone leaves focus where it was). */
+function click(button: HTMLElement) {
+  button.focus();
+  fireEvent.click(button);
+}
+
 function requestLink(value: string) {
   fireEvent.change(screen.getByLabelText<HTMLInputElement>('Email'), { target: { value } });
-  fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
+  click(screen.getByRole('button', { name: /send reset link/i }));
 }
 
 function setPassword(password: string, confirm = password) {
   fireEvent.change(screen.getByLabelText<HTMLInputElement>('New password'), { target: { value: password } });
   fireEvent.change(screen.getByLabelText<HTMLInputElement>('Confirm new password'), { target: { value: confirm } });
-  fireEvent.click(screen.getByRole('button', { name: /set new password/i }));
+  click(screen.getByRole('button', { name: /set new password/i }));
 }
 
 describe('forgot password (P4-07a criteria 1, 2)', () => {
@@ -67,6 +73,8 @@ describe('forgot password (P4-07a criteria 1, 2)', () => {
       const status = await screen.findByTestId('forgot-status');
       expect(status.getAttribute('role')).toBe('status');
       expect(status.textContent).toBe(DETAIL);
+      // The form (and its focused button) is gone: focus moves to the answer, not to the page's body.
+      expect(document.activeElement).toBe(status);
       expect(screen.queryByTestId('forgot-form')).toBeNull();
       expect(calls(fetchMock)).toEqual([REQUEST]);
       expect(await bodyOf(fetchMock, REQUEST)).toEqual({ email });
