@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/api/client';
 import type { components } from '@/api/schema';
@@ -24,6 +24,25 @@ export function usePendingRequests(buildingId: string) {
         signal,
       }),
     getNextPageParam: (page) => page.next_cursor,
+  });
+}
+
+/**
+ * How many requests the pending list shows, for the nav's badge (P4-08d). Polled like the notification summary: every
+ * 30 s in a visible tab, never in a hidden one, and again whenever the tab becomes visible (ADR-0012). Under
+ * `requestsKey`, so a decision's invalidation asks for it again too.
+ */
+export function usePendingSummary(buildingId: string) {
+  return useQuery({
+    queryKey: [...requestsKey(buildingId), 'summary'],
+    queryFn: ({ signal }) =>
+      api.get('/api/buildings/{building_id}/onboarding-requests/summary', {
+        params: { path: { building_id: buildingId } },
+        signal,
+      }),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: 'always',
   });
 }
 

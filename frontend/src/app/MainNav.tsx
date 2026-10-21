@@ -4,6 +4,7 @@ import { useBuilding, useBuildingContext, useBuildingDenied } from '@/app/Buildi
 import { navPages, PAGE_ACCESS, pagePath } from '@/app/pages';
 import type { components } from '@/api/schema';
 import type { ViewAs } from '@/app/buildingStorage';
+import { ResidentsNavLabel } from '@/features/residents/PendingBadge';
 
 type Building = components['schemas']['BuildingOut'];
 
@@ -54,7 +55,7 @@ function BuildingNav() {
                 isActive ? 'font-semibold text-slate-900 underline' : 'text-slate-700 hover:underline'
               }
             >
-              {PAGE_ACCESS[page].label}
+              {page === 'Residents' ? <ResidentsNavLabel label={PAGE_ACCESS[page].label!} /> : PAGE_ACCESS[page].label}
             </NavLink>
           </li>
         ))}
