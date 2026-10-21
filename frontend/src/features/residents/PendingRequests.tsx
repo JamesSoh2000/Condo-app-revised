@@ -103,10 +103,12 @@ export function PendingRequests() {
         </p>
       )}
       {requests.hasNextPage && (
+        // Not while any fetch is out: a next page would cancel a refresh (after a decision, on focus) and append to
+        // the old pages, leaving a decided request listed (review round 2, Codex F1).
         <button
           type="button"
-          disabled={requests.isFetchingNextPage}
-          onClick={() => void requests.fetchNextPage()}
+          disabled={requests.isFetching}
+          onClick={() => void requests.fetchNextPage({ cancelRefetch: false })}
           className="self-start rounded border px-4 py-2 text-sm disabled:opacity-50"
         >
           Show more

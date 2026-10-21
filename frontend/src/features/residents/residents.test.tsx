@@ -823,3 +823,106 @@ describe('review round 1 (Codex gpt-6.1-sol): in-flight decisions across history
     expect(app.queryClient.getQueryState(['b', MAPLE.id, 'onboarding-requests', 'pending'])).toBeUndefined();
   });
 });
+
+describe('review round 2 (Codex gpt-6.1-sol): Show more never discards a refresh (F1)', () => {
+  const older = request(3, { full_name: 'Older Person' });
+
+  /** First page: Robin then a cursor, Sam on the next page; after `decided`, the first page waits for `release`. */
+  function pagedList() {
+    let decided = false;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const refreshes: Request[] = [];
+    const handler: Handler = async (req) => {
+      if (new URL(req.url).searchParams.has('cursor')) return page([older]);
+      if (!decided) return page([ROBIN, SAM], 'older-page');
+      refreshes.push(req as unknown as Request);
+      await gate;
+      return page([SAM], 'older-page');
+    };
+    return {
+      handler,
+      decide: () => (decided = true),
+      release: () => act(async () => { release(); await gate; }),
+      aborted: () => refreshes.some((req) => (req as unknown as globalThis.Request).signal.aborted),
+    };
+  }
+
+  it('after a decision, Show more waits for the refresh, which then removes the decided row', async () => {
+    const list$ = pagedList();
+    const fetchMock = stubApi(
+      manager({
+        [list()]: list$.handler,
+        [approve(ROBIN.id)]: () => {
+          list$.decide();
+          return json({ ...ROBIN, status: 'approved' });
+        },
+      }),
+    );
+    const app = renderApp([PAGE]);
+    const dialog = await openDialog('Robin Park', 'Approve');
+    press(within(dialog).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(count(fetchMock, list())).toBe(2));
+
+    const more = screen.getByRole<HTMLButtonElement>('button', { name: 'Show more' });
+    expect(more.disabled).toBe(true);
+    fireEvent.click(more);
+    await list$.release();
+
+    await waitFor(() => expect(rows().map((item) => item.querySelector('h3')?.textContent)).toEqual(['Sam Lee']));
+    expect(list$.aborted()).toBe(false);
+    expect(app.queryClient.getQueryState(['b', MAPLE.id, 'onboarding-requests', 'pending'])?.isInvalidated).toBe(false);
+    press(screen.getByRole('button', { name: 'Show more' }));
+    await waitFor(() => expect(rows().map((item) => item.querySelector('h3')?.textContent)).toEqual(['Sam Lee', 'Older Person']));
+  });
+
+  it('Show more is disabled during any refetch (a focus refetch too)', async () => {
+    const list$ = pagedList();
+    stubApi(manager({ [list()]: list$.handler }));
+    const app = renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Pending requests' });
+
+    list$.decide();
+    void app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'onboarding-requests'] });
+
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Show more' }).disabled).toBe(true));
+    await list$.release();
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Show more' }).disabled).toBe(false));
+  });
+
+  it('a decision while Show more is loading ends with the server’s list, not a stale page', async () => {
+    let releaseMore = () => {};
+    const moreGate = new Promise<void>((resolve) => (releaseMore = resolve));
+    let decided = false;
+    stubApi(
+      manager({
+        [list()]: async (req) => {
+          if (new URL(req.url).searchParams.has('cursor')) {
+            await moreGate;
+            return page([older]);
+          }
+          return decided ? page([SAM], 'older-page') : page([ROBIN, SAM], 'older-page');
+        },
+        [approve(ROBIN.id)]: () => {
+          decided = true;
+          return json({ ...ROBIN, status: 'approved' });
+        },
+      }),
+    );
+    renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Pending requests' });
+    press(screen.getByRole('button', { name: 'Show more' }));
+
+    const dialog = await openDialog('Robin Park', 'Approve');
+    press(within(dialog).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await act(async () => {
+      releaseMore();
+      await moreGate;
+    });
+
+    await waitFor(() => expect(rows().map((item) => item.querySelector('h3')?.textContent)).not.toContain('Robin Park'));
+    await settle();
+    expect(rows().map((item) => item.querySelector('h3')?.textContent)).not.toContain('Robin Park');
+  });
+});
