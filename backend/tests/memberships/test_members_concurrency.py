@@ -740,7 +740,7 @@ def test_transfer_waits_for_a_unit_deactivation(
     _run(scratch_database_url, body)
 
 
-@pytest.mark.parametrize("write", ["deactivate", "transfer"])
+@pytest.mark.parametrize("write", ["deactivate", "transfer", "noop"])
 @pytest.mark.parametrize(
     ("demotion", "expected"),
     [(_demote, "forbidden_role"), (_suspend, "building_not_found")],
@@ -754,15 +754,17 @@ def test_stale_manager_cannot_move_a_member(
 ) -> None:
     # Criterion 8's last sentence (review round 1, Sonnet: not tested): a manager demoted or
     # suspended while their move-out or transfer waited on the building lock gets their own refusal,
-    # and nothing is written.
+    # and nothing is written. `noop` (P4-08c, PR #94 round 2 L1): a transfer to the member's own
+    # unit and relationship, which writes nothing, still refuses the stale manager.
     async def body(sessions: Sessions, world: World) -> None:
         second = await _second_manager(sessions, world)
         target = world.a_resident1.membership.id
-        move = (
-            _deactivate(_ctx(world, second), target)
-            if write == "deactivate"
-            else _transfer(_ctx(world, second), target, world.a_102.id)
-        )
+        moves = {
+            "deactivate": lambda: _deactivate(_ctx(world, second), target),
+            "transfer": lambda: _transfer(_ctx(world, second), target, world.a_102.id),
+            "noop": lambda: _transfer(_ctx(world, second), target, world.a_101.id),
+        }
+        move = moves[write]()
 
         outcomes = await _held_then(
             sessions, demotion(_ctx(world, world.a_manager), second.membership.id), move

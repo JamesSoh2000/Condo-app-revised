@@ -37,6 +37,7 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | Date | Ticket | Decision | Where recorded | Reversible? |
 |---|---|---|---|---|
+| 2026-10-21 | P4-08c | Split P4-08c while framing: the roles editor and the unit transfer (with the original criterion 1, last manager removing their own role) moved to the new P4-08e (estimate ~585 with them, against ~400). Also: the members' filters live in component state, not the URL (Back resets them) | PR #100 D1, smaller decisions; ticket Frame notes | Yes |
 | 2026-10-21 | P4-08b | Split P4-08b while framing: the nav pending badge and the carried P4-08a/P4-07b fixes moved to the new P4-08d (estimate ~470 with them, against ~400) | PR #99 D1; ticket Frame notes | Yes |
 | 2026-10-21 | P4-08b | Migrated pages get their own path through `PageAccess.path` (`frontend/src/app/pages.ts::pagePath`); `Residents` left the legacy allowlist and `/Residents` is now "Page not found" (no redirect). Later migrations (P4-08c, P5) will follow it | PR #99 smaller decisions; explanation §2 | Yes |
 | 2026-10-21 | P4-08b | Modal dialogs in typed code are hand-written (`frontend/src/features/residents/DecisionDialog.tsx`: `role="dialog"`, Tab trap, Escape), not the legacy shadcn dialog nor a new dependency; the page behind isn't `inert` | PR #99 D2 | Yes |

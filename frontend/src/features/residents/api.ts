@@ -52,3 +52,72 @@ export function useDecide(buildingId: string) {
     },
   });
 }
+
+export type Member = components['schemas']['MemberOut'];
+export type MemberRole = components['schemas']['Role'];
+export type MemberStatus = components['schemas']['MembershipStatus'];
+export interface MemberFilters {
+  role: MemberRole | null;
+  status: MemberStatus | null;
+  /** Trimmed; empty for none. */
+  search: string;
+}
+export type MemberActionKind = 'suspend' | 'reactivate' | 'deactivate';
+export type MemberAction = { kind: 'reactivate'; id: string } | { kind: 'suspend' | 'deactivate'; id: string; reason: string };
+
+/** Every key of the members list starts here, so one invalidation covers every filter combination and its pages. */
+const membersKey = (buildingId: string) => ['b', buildingId, 'members'] as const;
+export const membersListKey = (buildingId: string, filters: MemberFilters) => [...membersKey(buildingId), 'list', filters] as const;
+
+/**
+ * The building's members matching `filters`, newest first, one page at a time. Each combination is its own query;
+ * `Members` removes a cached one before going back to it, so every filter change starts from its first page (review
+ * round 1, Codex F1). Stale at once, as the pending requests (ADR-0012).
+ */
+export function useMembers(buildingId: string, filters: MemberFilters) {
+  return useInfiniteQuery({
+    queryKey: membersListKey(buildingId, filters),
+    staleTime: 0,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      api.get('/api/buildings/{building_id}/members', {
+        params: {
+          path: { building_id: buildingId },
+          query: {
+            ...(filters.role && { role: filters.role }),
+            ...(filters.status && { status: filters.status }),
+            ...(filters.search && { search: filters.search }),
+            ...(pageParam !== null && { cursor: pageParam }),
+          },
+        },
+        signal,
+      }),
+    getNextPageParam: (page) => page.next_cursor,
+  });
+}
+
+/**
+ * Suspend, reactivate or move out one member. The list is asked for again after every outcome, from here, as
+ * `useDecide`: the answer may come after the dialog or the page is gone.
+ */
+export function useMemberAction(buildingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
+    mutationKey: [...membersKey(buildingId), 'action'],
+    mutationFn: (action: MemberAction) => {
+      const path = { building_id: buildingId, membership_id: action.id };
+      if (action.kind === 'reactivate') {
+        return api.post('/api/buildings/{building_id}/members/{membership_id}/reactivate', { params: { path } });
+      }
+      const body = { reason: action.reason };
+      return action.kind === 'suspend'
+        ? api.post('/api/buildings/{building_id}/members/{membership_id}/suspend', { params: { path }, body })
+        : api.post('/api/buildings/{building_id}/members/{membership_id}/deactivate', { params: { path }, body });
+    },
+    // Not returned, so `mutateAsync` doesn't wait for the refetch (P4-08b round 1, Codex F1).
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: membersKey(buildingId) });
+    },
+  });
+}

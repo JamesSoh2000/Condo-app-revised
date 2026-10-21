@@ -41,6 +41,23 @@ P4-08a and P4-07b reviews are fixed.
   - "focus dropped to body" (3: P2-06c, P4-07a, P4-08b): check focus after any control or row disappears in a real
     browser, not only jsdom (which loads no CSS and doesn't move focus on `fireEvent.click`).
 
+## First follow-ups (playbook step 8, from P4-08c)
+
+- Pattern "size estimate too low" reached 4 (P4-01, P4-08a, P4-08b, P4-08c) although `CLAUDE.md` rule 4 already says to
+  cost the error and race criteria: P4-08c's `Members.tsx` was 256 lines against ~170 (markup again). Tighten the lesson
+  in this PR: estimate a UI component from a measured one of the same kind (`PendingRequests.tsx` 120 lines,
+  `DecisionDialog.tsx` ~200 before P4-08c's refactor, `Members.tsx` 256) rather than from its behaviours.
+- Pattern "overflow at 375 px with long text" reached 2 (P4-08a round 2 M2, P4-08c stack run): every text that can hold
+  a user's name, email or reason gets `[overflow-wrap:anywhere]`, including outcome messages, and every flex row of
+  inputs needs a basis to wrap. Prefer a test: a check in the residents tests that every `role="status"` message and
+  list row carries the class, or a `CLAUDE.md` lesson.
+
+## Carried from P4-08c
+
+- `frontend/src/features/residents/PendingRequests.tsx::PendingRequests`: the outcome message lacks
+  `[overflow-wrap:anywhere]`, so "<176-character name> was approved." overflows at 375 px (PR #100 D3, where the same
+  bug was found in `Members` on the stack). Fix test-first, check in Chromium.
+
 ## Carried from P4-08b
 
 - **Review round 3 F1 of PR #99 (Medium, open at merge; fix test-first):**
