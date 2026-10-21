@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P4-06a |
 | Replaces old | part of [P4-06](./P4-06-membership-administration.md) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
