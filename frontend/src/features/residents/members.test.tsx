@@ -193,6 +193,23 @@ describe('the list (criterion 3)', () => {
     expect(email).toHaveLength(254);
     expect(rows()[0].className).toContain('[overflow-wrap:anywhere]');
   });
+
+  it('wraps the outcome message, which names the member (criterion 2, jsdom part; stack run)', async () => {
+    const long = 'X'.repeat(176);
+    stubApi(
+      manager({
+        [list()]: () => page([member(1, { full_name: long, status: 'suspended' })]),
+        [action('reactivate', member(1).membership_id)]: () => json(member(1, { full_name: long })),
+      }),
+    );
+    renderApp([PAGE]);
+
+    const dialog = await openDialog(long, 'reactivate');
+    press(confirmButton(dialog, 'reactivate'));
+
+    await waitFor(() => expect(status().textContent).toBe(`${long} was reactivated.`));
+    expect(status().className).toContain('[overflow-wrap:anywhere]');
+  });
 });
 
 describe('filters and search (criterion 4)', () => {

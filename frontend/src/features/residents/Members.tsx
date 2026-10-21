@@ -184,7 +184,8 @@ export function Members() {
             ))}
           </select>
         </div>
-        <form role="search" onSubmit={onSearch} className="flex min-w-0 flex-1 flex-col gap-1">
+        {/* A 15rem basis, so on a phone it wraps below the selects instead of shrinking beside them. */}
+        <form role="search" onSubmit={onSearch} className="flex min-w-0 flex-[1_1_15rem] flex-col gap-1">
           <label htmlFor={`${id}-search`} className="text-sm font-medium">
             Search members
           </label>
@@ -215,7 +216,7 @@ export function Members() {
           )}
         </form>
       </div>
-      <p ref={messageRef} role="status" tabIndex={-1} data-testid={message ? 'member-message' : undefined} className="text-sm font-medium empty:hidden">
+      <p ref={messageRef} role="status" tabIndex={-1} data-testid={message ? 'member-message' : undefined} className="text-sm font-medium empty:hidden [overflow-wrap:anywhere]">
         {message}
       </p>
       {body}
