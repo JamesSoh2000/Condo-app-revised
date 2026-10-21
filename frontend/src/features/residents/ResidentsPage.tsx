@@ -2,6 +2,7 @@ import { useRef, type KeyboardEvent } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
 import { useBuildingId } from '@/app/BuildingProvider';
+import { Members } from '@/features/residents/Members';
 import { PendingRequests } from '@/features/residents/PendingRequests';
 
 const TABS = [
@@ -61,11 +62,7 @@ export function ResidentsPage() {
         ))}
       </div>
       <div key={`${buildingId}:${key}`} role="tabpanel" id="residents-panel" aria-labelledby={`residents-tab-${tab}`} className="mt-4">
-        {tab === 'pending' ? (
-          <PendingRequests />
-        ) : (
-          <p className="text-slate-600">Member administration is coming in a later update.</p>
-        )}
+        {tab === 'pending' ? <PendingRequests /> : <Members />}
       </div>
     </section>
   );

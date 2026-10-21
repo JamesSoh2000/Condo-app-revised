@@ -185,7 +185,7 @@ describe('the list (criterion 3)', () => {
   });
 
   it('wraps a long name and a 254-character email instead of overflowing (criterion 2, jsdom part)', async () => {
-    const email = `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(57)}.test`;
+    const email = `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(56)}.test`;
     stubApi(manager({ [list()]: () => page([member(1, { full_name: 'X'.repeat(120), email })]) }));
     renderApp([PAGE]);
 

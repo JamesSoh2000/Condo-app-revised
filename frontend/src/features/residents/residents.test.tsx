@@ -82,7 +82,13 @@ function persona(roles: Role[], routes: Record<string, Handler> = {}): Record<st
 }
 
 const manager = (routes: Record<string, Handler> = {}) =>
-  persona(['property_management'], { [list()]: () => page([ROBIN, SAM]), ...routes });
+  persona(['property_management'], {
+    [list()]: () => page([ROBIN, SAM]),
+    [`GET /api/buildings/${MAPLE.id}/members`]: () => json({ items: [], next_cursor: null }),
+    ...routes,
+  });
+/** The Members tab's panel (P4-08c), where P4-08b had a placeholder. */
+const membersPanel = () => within(screen.getByRole('tabpanel')).queryByRole('searchbox', { name: 'Search members' });
 
 /** A response that answers only when `release` is called. */
 function deferred(response: () => Response): { handler: Handler; release: () => void } {
@@ -201,7 +207,7 @@ describe('tabs (criterion 5)', () => {
     await waitFor(() => expect(members.getAttribute('aria-selected')).toBe('true'));
     expect(document.activeElement).toBe(members);
     expect(screen.getByTestId('location').textContent).toBe(`${PAGE}?tab=members`);
-    expect(screen.getByRole('tabpanel').textContent).toMatch(/member administration is coming/i);
+    expect(membersPanel()).not.toBeNull();
     expect(screen.queryByRole('list', { name: 'Pending requests' })).toBeNull();
 
     fireEvent.keyDown(members, { key: 'ArrowLeft' });
@@ -221,7 +227,7 @@ describe('tabs (criterion 5)', () => {
     act(() => app.navigate()(-1));
     await screen.findByRole('list', { name: 'Pending requests' });
     act(() => app.navigate()(1));
-    await waitFor(() => expect(screen.getByRole('tabpanel').textContent).toMatch(/member administration/i));
+    await waitFor(() => expect(membersPanel()).not.toBeNull());
   });
 
   it('opens the Members tab from a link', async () => {
@@ -586,7 +592,7 @@ describe('leaving, history and buildings (criteria 11, 12)', () => {
 
     await openDialog('Robin Park', 'Approve');
     act(() => app.navigate()(-1));
-    await waitFor(() => expect(screen.getByRole('tabpanel').textContent).toMatch(/member administration/i));
+    await waitFor(() => expect(membersPanel()).not.toBeNull());
     expect(screen.queryByRole('dialog')).toBeNull();
     act(() => app.navigate()(1));
 
@@ -773,7 +779,7 @@ describe('review round 1 (Codex gpt-6.1-sol): in-flight decisions across history
     await settle();
 
     act(() => app.navigate()(-1));
-    await waitFor(() => expect(screen.getByRole('tabpanel').textContent).toMatch(/member administration/i));
+    await waitFor(() => expect(membersPanel()).not.toBeNull());
     gate.release();
     await settle();
     act(() => app.navigate()(1));
