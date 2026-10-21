@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-07a, P4-02b, P2-06c |
 | Replaces old | part of [P4-07](./P4-07-frontend-account-screens.md) |
-| Status | in progress |
+| Status | done (PR #96) |
 
 Split from P4-07 while framing P4-07a (2026-10-20). Framed 2026-10-21: criteria 1–4 are P4-07's, sharpened;
 5–14 are added (see Frame notes).

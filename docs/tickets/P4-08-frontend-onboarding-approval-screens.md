@@ -94,6 +94,21 @@ Consumes `auth_signup`, `join_*`, `onboarding_*` and `members_*`.
 - The screens should handle the new 409 codes: `occupancy_changed` (reload and retry), `not_a_resident`,
   `unit_inactive`, `cannot_target_self`, `last_manager`.
 
+## Carried from P4-07b
+
+- **Four Lows from P2-06c's account menu** (`frontend/src/app/AccountMenu.tsx`, PR #65 round 3), carried
+  through P4-07a and P4-07b, which didn't touch the menu. Fix them test-first if this ticket touches the menu:
+  - Back to the history entry where the panel was opened shows it again (`open = openAt === key`): clear
+    `openAt` when the key changes.
+  - A `/me`-driven change of the selected building leaves the panel open with new contents: also close it
+    when `buildingId` changes.
+  - During a building 401/404 the nav hides but the menu still offers "View as" from cached roles: apply the
+    same 401/404 check in `BuildingChoices` (or in `useCanViewAs`).
+  - Click outside listens to `mousedown`; iOS Safari may send none for a tap on empty space: use `pointerdown`.
+- A signup or join that logs a new user in while the signed-in tree may be mounted must sweep the previous
+  user's queries and call `useNewSession()` (`frontend/src/app/AuthProvider.tsx`), as
+  `AcceptInvitePage.tsx` does after an accept (PR #96 D5/D6, review round 3 R3-1).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
