@@ -11,16 +11,14 @@ import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage';
 import { AcceptInvitePage, InviteInvalid } from '@/features/auth/pages/AcceptInvitePage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { ResetLinkInvalid, ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage';
-
-const onboardingPages = DEMO_PAGES.filter((page) => PAGE_ACCESS[page].onboarding);
-const buildingPages = DEMO_PAGES.filter((page) => !PAGE_ACCESS[page].onboarding);
+import { JoinInvalid, JoinPage } from '@/features/onboarding/JoinPage';
 
 /**
  * The app's routes. Legacy demo pages keep their old paths but render a placeholder until their slice
  * migrates them, so the shell imports no Base44 page (P2-06a). Other legacy pages are 404, as before.
- * Building pages need an active building and their `PAGE_ACCESS` row (P2-06b); `/403` and the onboarding
- * pages need only a session. The login, password-reset and invitation pages need none; their paths without a
- * token show the page's invalid-link screen, not "Page not found".
+ * Building pages need an active building and their `PAGE_ACCESS` row (P2-06b); `/403` needs only a session. The
+ * login, password-reset, invitation and join pages need none; their paths without a token or code show the page's
+ * invalid-link screen, not "Page not found".
  */
 export function AppRoutes() {
   // A new user in the tab rebuilds the signed-in tree (P4-07b review round 3).
@@ -33,6 +31,8 @@ export function AppRoutes() {
       <Route path="/reset-password/*" element={<ResetLinkInvalid />} />
       <Route path="/invite/:token" element={<AcceptInvitePage />} />
       <Route path="/invite/*" element={<InviteInvalid />} />
+      <Route path="/join/:code" element={<JoinPage />} />
+      <Route path="/join/*" element={<JoinInvalid />} />
       <Route
         element={
           <RequireAuth key={epoch}>
@@ -43,9 +43,6 @@ export function AppRoutes() {
         }
       >
         <Route path="/403" element={<ForbiddenPage />} />
-        {onboardingPages.map((page) => (
-          <Route key={page} path={`/${page}`} element={<BeingMigrated page={page} />} />
-        ))}
         <Route
           element={
             <RequireActiveMembership>
@@ -54,7 +51,7 @@ export function AppRoutes() {
           }
         >
           <Route index element={<HomePlaceholder />} />
-          {buildingPages.map((page) => (
+          {DEMO_PAGES.map((page) => (
             <Route
               key={page}
               path={`/${page}`}

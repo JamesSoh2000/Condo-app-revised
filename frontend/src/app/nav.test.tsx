@@ -495,7 +495,8 @@ describe('review round 1 (Claude F1–F3, Codex M1 and L1)', () => {
 
 describe('review round 2 (Codex L1)', () => {
   // Ported from Codex's round-2 proof: these routes have no building guard, so nothing else loads the building.
-  it.each(['/403', '/Onboarding', '/ResidentSetup'])(
+  // `/Onboarding` and `/ResidentSetup` were here too until P4-08a removed them (now "Page not found", below).
+  it.each(['/403'])(
     'the nav requests nothing on the session-only route %s (1d)',
     async (path) => {
       const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME) });
@@ -508,6 +509,13 @@ describe('review round 2 (Codex L1)', () => {
       expect(nav()).toBeNull();
     },
   );
+
+  it.each(['/Onboarding', '/ResidentSetup', '/onboarding'])('%s is "Page not found" since P4-08a', async (path) => {
+    const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME) });
+    renderApp([path]);
+    await screen.findByRole('heading', { name: /page not found/i });
+    expect(calls(fetchMock)).toEqual([]);
+  });
 
   it('still shows the nav on /403 when the building is already loaded', async () => {
     const fetchMock = stubApi(persona(['resident']));
