@@ -84,7 +84,8 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-08a](./P4-08a-join-flow-and-status-screens.md) | Join flow and pending/denied screens (split from [P4-08](./P4-08-frontend-onboarding-approval-screens.md)) | B | 2 | P4-05b, P2-06c, P4-07b | done | — |
 | [P4-08b](./P4-08b-manager-pending-requests.md) | Manager pending requests (split from P4-08; badge split to P4-08d) | B | 2 | P4-08a, P4-05b, P2-06c | done | — |
 | [P4-08d](./P4-08d-pending-badge-and-onboarding-follow-ups.md) | Pending-requests nav badge and onboarding follow-ups (split from P4-08b) | B | 2 | P4-08b | todo | — |
-| [P4-08c](./P4-08c-members-administration.md) | Members administration screen (split from P4-08) | B | 2 | P4-08b, P4-06b | todo | — |
+| [P4-08c](./P4-08c-members-administration.md) | Members list, suspend, reactivate, move out (split from P4-08; roles and transfer split to P4-08e) | B | 2 | P4-08b, P4-06b | in progress | — |
+| [P4-08e](./P4-08e-member-roles-and-transfer.md) | Member roles editor and unit transfer (split from P4-08c) | B | 2 | P4-08c | todo | — |
 | [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07b, P4-08c, P4-03, P1-08 | todo | — |
 | [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04b | todo | — |
 | [P5-02a](./P5-02a-package-create-and-read.md) | Package create and read | A | 1 | P5-01, P3-03, P2-04, P4-01a | todo | — |
