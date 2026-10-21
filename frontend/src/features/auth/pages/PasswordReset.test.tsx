@@ -220,7 +220,7 @@ describe('reset password (P4-07a criteria 3–8)', () => {
   });
 
   it.each([
-    ['an unknown field', [{ loc: ['body', 'token'], msg: 'x', type: 'string_too_long' }]],
+    ['an unknown field', [{ loc: ['body', 'extra'], msg: 'x', type: 'extra_forbidden' }]],
     ['no errors', []],
     ['an unknown type on the field', [{ loc: ['body', 'new_password'], msg: 'x', type: 'password_new_rule' }]],
     [
@@ -473,5 +473,68 @@ describe('review round 1 (Codex): history entries and reentrant submits', () => 
 
     await screen.findByTestId('login-banner');
     expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Sign in' }));
+  });
+});
+
+describe('review round 2 (Codex)', () => {
+  it.each([
+    ['string_too_long (a 201-character link)', 'x'.repeat(201), [{ loc: ['body', 'token'], msg: 'x', type: 'string_too_long' }]],
+    ['string_type', TOKEN, [{ loc: ['body', 'token'], msg: 'x', type: 'string_type' }]],
+    ['missing', TOKEN, [{ loc: ['body', 'token'], msg: 'x', type: 'missing' }]],
+    [
+      'a token error with a password error',
+      TOKEN,
+      [
+        { loc: ['body', 'new_password'], msg: 'x', type: 'password_too_common' },
+        { loc: ['body', 'token'], msg: 'x', type: 'string_too_long' },
+      ],
+    ],
+  ])('shows the invalid-link screen for a 422 on the token: %s (F4)', async (_, token, errors) => {
+    const fetchMock = stubApi({ [CONFIRM]: () => invalid(errors) });
+    renderApp([`/reset-password/${token}`]);
+
+    setPassword(GOOD);
+
+    expect(await screen.findByTestId('reset-invalid')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /request a new link/i }).getAttribute('href')).toBe('/forgot-password');
+    expect(await bodyOf(fetchMock, CONFIRM)).toEqual({ token, new_password: GOOD });
+  });
+
+  it.each([
+    ['forgot', '/forgot-password', REQUEST, 'forgot-form', 'forgot-submit'],
+    ['reset', `/reset-password/${TOKEN}`, CONFIRM, 'reset-form', 'reset-submit'],
+  ])('%s: keeps the button disabled after ignoring a duplicate submit (F5)', async (page, path, key, form, submit) => {
+    const slow = deferred(() => (page === 'forgot' ? json({ detail: DETAIL }, 202) : noContent()));
+    const fetchMock = stubApi({ [key]: slow.handler });
+    renderApp([path]);
+    if (page === 'forgot') fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@example.test' } });
+    else {
+      fireEvent.change(screen.getByLabelText('New password'), { target: { value: GOOD } });
+      fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: GOOD } });
+    }
+    fireEvent.submit(screen.getByTestId(form));
+    await waitFor(() => expect(calls(fetchMock)).toEqual([key]));
+
+    fireEvent.submit(screen.getByTestId(form));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(screen.getByTestId<HTMLButtonElement>(submit).disabled).toBe(true);
+    expect(calls(fetchMock)).toEqual([key]);
+    slow.release();
+    await waitFor(() => expect(calls(fetchMock).filter((c) => c === key)).toHaveLength(1));
+  });
+
+  it.each([
+    ['forgot', '/forgot-password', REQUEST, 'forgot-submit'],
+    ['reset', `/reset-password/${TOKEN}`, CONFIRM, 'reset-submit'],
+  ])('%s: the button works again after a failure (F5 neighbour)', async (page, path, key, submit) => {
+    stubApi({ [key]: () => problem(500, 'internal_error') });
+    renderApp([path]);
+
+    if (page === 'forgot') requestLink('a@example.test');
+    else setPassword(GOOD);
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByTestId<HTMLButtonElement>(submit).disabled).toBe(false);
   });
 });
