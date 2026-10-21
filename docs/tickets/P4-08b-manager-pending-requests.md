@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-08a, P4-05b, P2-06c |
 | Replaces old | part of [P4-08](./P4-08-frontend-onboarding-approval-screens.md) (M4-T08) |
-| Status | in progress |
+| Status | done |
 
 Split from P4-08 while framing P4-08a (2026-10-21). Framed 2026-10-21, and split again: the nav pending
 badge and the follow-ups carried from P4-08a moved to [P4-08d](./P4-08d-pending-badge-and-onboarding-follow-ups.md)

@@ -32,6 +32,24 @@ P4-08a and P4-07b reviews are fixed.
 2. **Given** a decision on `/manage/residents`, **then** the badge's count is asked for again.
 3. **Given** a member without `property_management`, **then** no summary request is made.
 
+## First follow-ups (playbook step 8, from P4-08b)
+
+- Two patterns in `docs/AGENT_MISTAKES_LOG.md` reached promotion; turn each into a `CLAUDE.md` lesson (or a test) in
+  this ticket's PR, keeping `CLAUDE.md` within 150 lines:
+  - "list refresh defeated by another fetch" (3, all P4-08b): before review, list every other fetch that can
+    interleave with a list's refresh: the next page, a focus refetch, a failed refresh, an awaited `onSettled`.
+  - "focus dropped to body" (3: P2-06c, P4-07a, P4-08b): check focus after any control or row disappears in a real
+    browser, not only jsdom (which loads no CSS and doesn't move focus on `fireEvent.click`).
+
+## Carried from P4-08b
+
+- **Review round 3 F1 of PR #99 (Medium, open at merge; fix test-first):**
+  `frontend/src/features/residents/PendingRequests.tsx::PendingRequests`: after a decision whose list refresh fails
+  (500), "Show more" loads the older page, which clears the query's error without repairing the first page: the
+  "Could not refresh" warning disappears and the decided request stays listed (the server still refuses it with 409).
+  Proposed: no "Show more" while `isRefetchError` (only "Try again"). Test: decision → refresh 500 → Show more
+  absent or disabled; Try again → the decided row is gone.
+
 ## Carried from P4-08a (via P4-08b)
 
 - Review round 3 of PR #98, open at merge (fix test-first):
