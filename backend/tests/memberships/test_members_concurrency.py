@@ -13,7 +13,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.audit.models import AuditEvent
@@ -34,6 +34,7 @@ from app.memberships.schemas import (
 )
 from app.rate_limits.service import RateLimiter
 from app.tenancy.context import TenantContext
+from app.units.models import Unit
 from tests.conftest import FrozenClock
 from tests.factories import make_membership, make_user
 from tests.onboarding.test_concurrency import _run
@@ -693,3 +694,85 @@ def test_revocation_and_accept_take_turns(scratch_database_url: str, first: str)
 async def _with(sessions: Sessions, stmt: Any, invitation_id: UUID) -> Any:
     async with sessions() as db:
         return (await db.execute(stmt.where(Invitation.id == invitation_id))).one()
+
+
+@pytest.mark.parametrize("deactivation_commits", [True, False], ids=["commits", "rolls-back"])
+def test_transfer_waits_for_a_unit_deactivation(
+    scratch_database_url: str, deactivation_commits: bool
+) -> None:
+    # Criterion 4, review round 1 (Sonnet M1): as `deactivate_unit` does, the unit FOR UPDATE, then
+    # is_active. The transfer's FOR KEY SHARE read waits, then reads is_active as committed;
+    # without it the transfer read the unit active and moved the member into a deactivated unit.
+    async def body(sessions: Sessions, world: World) -> None:
+        target = world.a_resident1.membership.id
+        async with sessions() as deactivating:
+            await deactivating.execute(
+                select(Unit.id).where(Unit.id == world.a_102.id).with_for_update()
+            )
+            await deactivating.execute(
+                update(Unit).where(Unit.id == world.a_102.id).values(is_active=False)
+            )
+
+            async def run_transfer() -> str:
+                async with sessions() as db:
+                    write = _transfer(_ctx(world, world.a_manager), target, world.a_102.id)
+                    return await _outcome(write, db)
+
+            task = asyncio.create_task(run_transfer())
+            await asyncio.sleep(1.0)
+            assert not task.done(), "the transfer did not wait for the unit's deactivation"
+            if deactivation_commits:
+                await deactivating.commit()
+            else:
+                await deactivating.rollback()
+            outcome = await asyncio.wait_for(task, timeout=10)
+
+        if deactivation_commits:
+            assert outcome == "unit_inactive"
+            assert await _occupancies(sessions, target) == [(world.a_101.id, True)]
+        else:
+            assert outcome == "ok"
+            assert await _occupancies(sessions, target) == [
+                (world.a_101.id, False),
+                (world.a_102.id, True),
+            ]
+
+    _run(scratch_database_url, body)
+
+
+@pytest.mark.parametrize("write", ["deactivate", "transfer"])
+@pytest.mark.parametrize(
+    ("demotion", "expected"),
+    [(_demote, "forbidden_role"), (_suspend, "building_not_found")],
+    ids=["role-removed", "suspended"],
+)
+def test_stale_manager_cannot_move_a_member(
+    scratch_database_url: str,
+    demotion: Callable[[TenantContext, UUID], Write],
+    expected: str,
+    write: str,
+) -> None:
+    # Criterion 8's last sentence (review round 1, Sonnet: not tested): a manager demoted or
+    # suspended while their move-out or transfer waited on the building lock gets their own refusal,
+    # and nothing is written.
+    async def body(sessions: Sessions, world: World) -> None:
+        second = await _second_manager(sessions, world)
+        target = world.a_resident1.membership.id
+        move = (
+            _deactivate(_ctx(world, second), target)
+            if write == "deactivate"
+            else _transfer(_ctx(world, second), target, world.a_102.id)
+        )
+
+        outcomes = await _held_then(
+            sessions, demotion(_ctx(world, world.a_manager), second.membership.id), move
+        )
+
+        assert outcomes == ("ok", expected)
+        status = await _scalar(
+            sessions, select(BuildingMembership.status).where(BuildingMembership.id == target)
+        )
+        assert status == MembershipStatus.ACTIVE
+        assert await _occupancies(sessions, target) == [(world.a_101.id, True)]
+
+    _run(scratch_database_url, body)
