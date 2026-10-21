@@ -52,8 +52,8 @@ Carried fixes:
    (as `Members`); "Try again" removes the decided row and "Show more" comes back (PR #99 R3 F1).
 9. **The decision's outcome message** wraps any long text (`[overflow-wrap:anywhere]`): at 375 px, a 176-character
    name in "… was approved." doesn't widen the page (checked in Chromium on the stack). *(added, the "overflow at
-   375 px" promotion)* A test checks that every list row and every `role="status"` / `role="alert"` message on both
-   `/manage/residents` tabs carries the class.
+   375 px" promotion)* A test checks that every element on both `/manage/residents` tabs that can hold a user's name,
+   email or reason (each list row, each outcome message, the dialogs) carries the class or sits inside one that does.
 10. **`useMyOnboarding` never shows a previous request's details** (PR #98 R3 M1): denied with reason A → `/me` says
     pending → `/me` says denied with reason B, within 30 s: the screen shows B and never A, not even while B loads.
     *(added)* A denied screen left open while another tab resubmits and is denied again shows B once the tab is
@@ -137,7 +137,11 @@ Lessons (playbook step 8):
 - Criteria added or sharpened: 1 (exact names, the 0 and 99+ cases), 2 (every outcome), 3 (which roles, exact request
   list); added 4 (council "view as"), 5 (polling, ADR-0012), 6 (failed summary), 7 (building switch); carried items
   written as criteria 8–12 with their tests; 9 adds the overflow test (the P4-08c promotion); 13 the lessons.
-- Criteria loosened (with reason; also listed in the inbox): none.
+- Criteria loosened (with reason; also listed in the inbox): criterion 9's test, while implementing: framed as "every
+  list row and every `role="status"` / `role="alert"` message", narrowed to the elements that can hold a user's name,
+  email or reason. The others ("Loading requests…", "Could not refresh the requests.") are fixed short texts, which
+  is the scope of the pattern in `docs/AGENT_MISTAKES_LOG.md` ("every text that can hold a user's name, email or
+  reason").
 - Tenant table (ENGINEERING_PRACTICES §7): no new endpoint. The summary endpoint's rows (role 403, cross-building 404,
   unauthenticated) are in `backend/tests/onboarding/test_decisions.py` (P4-05b).
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
