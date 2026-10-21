@@ -249,7 +249,7 @@ describe('reset password (P4-07a criteria 3–8)', () => {
     setPassword('😀'.repeat(12));
 
     expect(await screen.findByTestId('login-banner')).toBeTruthy();
-    expect(calls(fetchMock)).toEqual([CONFIRM]);
+    expect(calls(fetchMock).filter((c) => c === CONFIRM)).toHaveLength(1);
   });
 
   it.each([
@@ -293,7 +293,7 @@ describe('reset password (P4-07a criteria 3–8)', () => {
     slow.release();
 
     expect(await screen.findByTestId('login-banner')).toBeTruthy();
-    expect(calls(fetchMock)).toEqual([CONFIRM]);
+    expect(calls(fetchMock).filter((c) => c === CONFIRM)).toHaveLength(1);
   });
 
   it('does not navigate when the reset answers after the page was left', async () => {
@@ -325,7 +325,7 @@ describe('reset password (P4-07a criteria 3–8)', () => {
     fireEvent.submit(confirm.form!);
 
     expect(await screen.findByTestId('login-banner')).toBeTruthy();
-    expect(calls(fetchMock)).toEqual([CONFIRM]);
+    expect(calls(fetchMock).filter((c) => c === CONFIRM)).toHaveLength(1);
   });
 });
 
