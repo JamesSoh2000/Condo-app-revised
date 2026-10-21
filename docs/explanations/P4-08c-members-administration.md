@@ -46,8 +46,8 @@ shell and reason rules are shared with P4-08b's decision dialog instead of copie
 ### D2. One status dialog; the modal shell and the reason rules shared with `DecisionDialog`
 
 - **Problem or constraint:** three new confirmations next to P4-08b's two, all modal with the same keyboard rules,
-  and two of them taking the same `Reason` type (backend `app/memberships/schemas.py` imports it from
-  `app/onboarding/schemas.py`).
+  and two of them taking the same `Reason` type (`backend/app/memberships/schemas.py` imports it from
+  `backend/app/onboarding/schemas.py`).
 - **Chosen:** `frontend/src/features/residents/Modal.tsx::Modal` (backdrop, `role="dialog"`, `aria-modal`, Escape
   unless busy, Tab kept inside) and `frontend/src/features/residents/reason.tsx::ReasonField` / `reasonError` /
   `REASON_MESSAGES`, both taken out of `DecisionDialog`; one `MemberDialog` with a `kind`.
@@ -126,12 +126,12 @@ planned.
    others none). "Suspend Robin Park" stores `{ kind, member, opener }` in `open` and clears the old message.
 2. **Form and validation.** `frontend/src/features/residents/MemberDialog.tsx::MemberDialog` focuses the reason field.
    On Confirm, `confirm` takes the `inFlight` ref first (a second click in the same tick returns), then
-   `reason.tsx::reasonError` checks what the server's `Reason` refuses: `Cc`/`Cf`/`Zl`/`Zp` characters, then 3–500
+   `frontend/src/features/residents/reason.tsx::reasonError` checks what the server's `Reason` refuses: `Cc`/`Cf`/`Zl`/`Zp` characters, then 3–500
    code points after trimming. The reason is sent as typed; the server strips it.
-3. **Hook.** `api.ts::useMemberAction`, mutation key `['b', buildingId, 'members', 'action']`.
+3. **Hook.** `frontend/src/features/residents/api.ts::useMemberAction`, mutation key `['b', buildingId, 'members', 'action']`.
 4. **API call.** `members_suspend` (`POST /api/buildings/{building_id}/members/{membership_id}/suspend`, body
    `{reason}`); `members_reactivate` has no body; `members_deactivate` takes `{reason}`.
-5. **Response handling.** Success → `onClose("<name> was suspended.")`. A refusal from `MemberDialog.tsx::refusal`
+5. **Response handling.** Success → `onClose("<name> was suspended.")`. A refusal from `frontend/src/features/residents/MemberDialog.tsx::refusal`
    (404 `member_not_found`; 409 `last_manager`, `cannot_target_self`, `invalid_transition`, `occupancy_changed`) closes
    the dialog with its message. A 422 on `reason` is placed on the field by its `type`. Anything else (429 with its
    wait, 500, network, an unknown 409, 403) stays open with "Could not suspend <name>. Try again." and the button works
@@ -139,7 +139,7 @@ planned.
    `['b', id]`. If the dialog unmounted meanwhile (`mounted` ref), nothing is set.
 6. **Cache.** `onSettled` invalidates `['b', buildingId, 'members']`: every filter combination, whatever the outcome,
    even after the component is gone. It isn't returned, so the dialog's answer doesn't wait for the refetch.
-7. **States.** `Members.tsx::close` puts focus on the message when there is one, else back on the opener, else on the
+7. **States.** `frontend/src/features/residents/Members.tsx::close` puts focus on the message when there is one, else back on the opener, else on the
    tab's `sr-only` heading. The list shows loading, "Could not load the members." / "Could not refresh the members."
    with Try again (above the old rows), "No members match.", and "Show more" only when no fetch is out and the last
    refresh didn't fail. At 375 px everything wraps (D3).
@@ -335,9 +335,9 @@ Acceptance criteria → tests:
 
 ## 8. How to change this safely
 
-- **Add an action** (P4-08e's roles or transfer): add its kind to `api.ts::MemberAction` and `useMemberAction`, its
-  copy to `MemberDialog.tsx::COPY` (or a separate dialog using `Modal`), its codes to `refusal`, and the status that
-  allows it to `Members.tsx::ACTIONS`. The criterion 9–14 tests are tables over the kinds: add rows.
+- **Add an action** (P4-08e's roles or transfer): add its kind to `frontend/src/features/residents/api.ts::MemberAction` and `useMemberAction`, its
+  copy to `frontend/src/features/residents/MemberDialog.tsx::COPY` (or a separate dialog using `Modal`), its codes to `refusal`, and the status that
+  allows it to `frontend/src/features/residents/Members.tsx::ACTIONS`. The criterion 9–14 tests are tables over the kinds: add rows.
 - **Add a filter:** add it to `MemberFilters` (the query key changes with it), `useMembers`' query, and route its control
   through `applyFilters`; the F1 tests show the pattern.
 - **Touch `Modal` or `reason.tsx`:** both dialogs depend on them; run both test files (`residents.test.tsx`,
@@ -348,14 +348,14 @@ Acceptance criteria → tests:
 **1. Why does every outcome (success or refusal) ask for the list again, from the mutation and not the dialog?**
 Success changes the row's status; a refusal (`invalid_transition`, `member_not_found`, `last_manager`) means the list
 the manager saw is out of date. Either way the server's list is the truth. The invalidation is in
-`api.ts::useMemberAction`'s `onSettled`, which runs even when the dialog or the whole page has unmounted (the
+`frontend/src/features/residents/api.ts::useMemberAction`'s `onSettled`, which runs even when the dialog or the whole page has unmounted (the
 component's `mounted` ref only stops it from setting state). If the dialog did it, an answer arriving after Back or a
 building switch would leave a stale list cached (criterion 13).
 
 **2. Why may "Show more" not run while the list's refresh is out or has failed?** A next-page fetch while a refresh is
 out would either cancel it or append to the old pages, leaving a changed member shown as before (P4-08b round 2). After
 a failed refresh, a successful next page clears the query's error without repairing the first page, so the warning
-disappears while the stale rows stay (P4-08b round 3). `Members.tsx::Members` hides the button while `isRefetchError`
+disappears while the stale rows stay (P4-08b round 3). `frontend/src/features/residents/Members.tsx::Members` hides the button while `isRefetchError`
 and disables it while `isFetching`.
 
 Quiz:
