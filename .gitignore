@@ -84,3 +84,10 @@ codex_proofs/
 
 # Intermediate of `make gen-api` (P1-07); frontend/src/api/schema.d.ts is the committed output.
 /openapi.json
+
+# === E2E (P4-09) ===
+# .auth holds the personas' session cookies (e2e/tests/auth.setup.ts).
+/e2e/.auth/
+/e2e/test-results/
+/e2e/playwright-report/
+/e2e/blob-report/
