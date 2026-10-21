@@ -70,8 +70,9 @@ const membersKey = (buildingId: string) => ['b', buildingId, 'members'] as const
 export const membersListKey = (buildingId: string, filters: MemberFilters) => [...membersKey(buildingId), 'list', filters] as const;
 
 /**
- * The building's members matching `filters`, newest first, one page at a time. Each combination is its own query, so
- * a filter change starts from its first page. Stale at once, as the pending requests (ADR-0012).
+ * The building's members matching `filters`, newest first, one page at a time. Each combination is its own query;
+ * `Members` removes a cached one before going back to it, so every filter change starts from its first page (review
+ * round 1, Codex F1). Stale at once, as the pending requests (ADR-0012).
  */
 export function useMembers(buildingId: string, filters: MemberFilters) {
   return useInfiniteQuery({
