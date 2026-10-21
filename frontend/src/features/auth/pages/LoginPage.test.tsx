@@ -263,3 +263,45 @@ describe('failed login (criteria 2, 3 and 4)', () => {
     expect(password().autocomplete).toBe('current-password');
   });
 });
+
+describe('forgot password link and reset banner (P4-07a criteria 4, 10)', () => {
+  const BANNER = 'Your password was updated. Sign in with your new password.';
+
+  it('links to forgot password', () => {
+    backend(() => noContent());
+    renderApp(['/login']);
+
+    const link = screen.getByRole('link', { name: 'Forgot password?' });
+    expect(link.getAttribute('href')).toBe('/forgot-password');
+    expect(link.getAttribute('data-testid')).toBe('login-forgot-link');
+  });
+
+  it.each(['/login', '/login?passwordUpdated=true', '/login?state=passwordUpdated&banner=1'])(
+    'never shows the banner from the URL (%s)',
+    async (entry) => {
+      const fetchMock = backend(() => noContent());
+      renderApp([entry]);
+      await sessionChecked(fetchMock);
+
+      expect(screen.queryByTestId('login-banner')).toBeNull();
+      expect(document.body.textContent).not.toContain('password was updated');
+    },
+  );
+
+  it('shows the banner from router state, then drops it from history so a reload does not show it', async () => {
+    const fetchMock = backend(() => noContent());
+    const app = renderApp([{ pathname: '/login', search: '?next=%2FPackages', state: { passwordUpdated: true } }]);
+
+    expect(screen.getByTestId('login-banner').textContent).toBe(BANNER);
+    await waitFor(() => expect(app.location().state).toBeNull());
+    expect(location()).toBe('/login?next=%2FPackages');
+    expect(screen.getByTestId('login-banner').textContent).toBe(BANNER);
+    await sessionChecked(fetchMock);
+
+    // A reload renders the entry as history now holds it.
+    const { pathname, search, state } = app.location();
+    cleanup();
+    renderApp([{ pathname, search, state }]);
+    expect(screen.queryByTestId('login-banner')).toBeNull();
+  });
+});
