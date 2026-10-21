@@ -81,8 +81,10 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-06b](./P4-06b-move-out-and-transfer.md) | Members: move-out and transfer (split from P4-06) | A | 1 | P4-06a | done | — |
 | [P4-07a](./P4-07a-password-reset-screens.md) | Password reset screens and password field (split from [P4-07](./P4-07-frontend-account-screens.md)) | B | 2 | P4-04, P2-06c | done | — |
 | [P4-07b](./P4-07b-frontend-accept-invite.md) | Accept-invitation screen (split from P4-07) | B | 2 | P4-07a, P4-02b, P2-06c | done | — |
-| [P4-08](./P4-08-frontend-onboarding-approval-screens.md) | Frontend onboarding and approval screens | B | 2 | P4-05b, P4-06b, P2-06c | todo | — |
-| [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07b, P4-08, P4-03, P1-08 | todo | — |
+| [P4-08a](./P4-08a-join-flow-and-status-screens.md) | Join flow and pending/denied screens (split from [P4-08](./P4-08-frontend-onboarding-approval-screens.md)) | B | 2 | P4-05b, P2-06c, P4-07b | done | — |
+| [P4-08b](./P4-08b-manager-pending-requests.md) | Manager pending requests (split from P4-08) | B | 2 | P4-08a, P4-05b, P2-06c | todo | — |
+| [P4-08c](./P4-08c-members-administration.md) | Members administration screen (split from P4-08) | B | 2 | P4-08b, P4-06b | todo | — |
+| [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07b, P4-08c, P4-03, P1-08 | todo | — |
 | [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04b | todo | — |
 | [P5-02a](./P5-02a-package-create-and-read.md) | Package create and read | A | 1 | P5-01, P3-03, P2-04, P4-01a | todo | — |
 | [P5-02b](./P5-02b-package-pickup-and-return.md) | Package pickup and return | A | 1 | P5-02a | todo | — |
@@ -104,9 +106,9 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 ## Critical path
 
 ```text
-P0-02 → P0-05 → P1-01 → P1-02 → P1-03 → P1-05 → P2-03 → P2-04 → P4-01a → P4-05a → P4-05b → P4-06a → P4-06b → P4-08 → P4-09 → P5-05
+P0-02 → P0-05 → P1-01 → P1-02 → P1-03 → P1-05 → P2-03 → P2-04 → P4-01a → P4-05a → P4-05b → P4-06a → P4-06b → P4-08a → P4-08b → P4-08c → P4-09 → P5-05
                          P1-02 → P2-01a → P2-01b → P2-02 ↗         P3-01a → P3-03 ↗
-                                  P2-02 → P2-06a → P2-06b → P2-06c ───────────────────────↗ (P4-08)
+                                  P2-02 → P2-06a → P2-06b → P2-06c ───────────────────────↗ (P4-08a)
 ```
 
 The data and identity chain (lane A) is the critical path. Its tickets must merge one after another, so the

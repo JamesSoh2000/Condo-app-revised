@@ -12,8 +12,6 @@ export interface PageAccess {
   roles?: readonly Role[];
   /** A feature the selected building must have enabled. */
   feature?: Feature;
-  /** For users without an active membership (onboarding): only signed in, no building. */
-  onboarding?: true;
   /** The navigation's label; a page without one is not in the navigation (P2-06c). */
   label?: string;
 }
@@ -30,8 +28,6 @@ export const PAGE_ACCESS: Record<DemoPage, PageAccess> = {
   Dashboard: { label: 'Dashboard' },
   Profile: { label: 'My profile' },
   Contacts: { label: 'Contacts' },
-  Onboarding: { onboarding: true },
-  ResidentSetup: { onboarding: true },
   Residents: { roles: ['property_management'], label: 'Residents' },
   Packages: { roles: ['resident'], feature: 'packages', label: 'My packages' },
   SecurityPackages: { roles: ['security', 'property_management'], feature: 'packages', label: 'Package log' },

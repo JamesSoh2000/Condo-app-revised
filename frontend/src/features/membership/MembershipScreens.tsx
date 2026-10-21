@@ -1,13 +1,16 @@
 import type { ReactNode } from 'react';
 
 import type { components } from '@/api/schema';
+import { relationshipLabel, unitName, useMyOnboarding } from '@/features/onboarding/api';
+import { JoinCodeForm } from '@/features/onboarding/JoinCodeForm';
 
 type Membership = components['schemas']['MeMembershipOut'];
 
 /** A message in the shell's main area (the header, with "Log out", stays above it). */
 function Notice({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="mx-auto max-w-md py-12 text-center">
+    // `overflow-wrap: anywhere`: a reason or name with no spaces (up to 500 characters) wraps at 375 px (review round 2, M2).
+    <section className="mx-auto max-w-md py-12 text-center [overflow-wrap:anywhere]">
       <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
       {children}
     </section>
@@ -15,6 +18,7 @@ function Notice({ title, children }: { title: string; children: ReactNode }) {
 }
 
 const names = (memberships: Membership[]) => memberships.map((m) => m.building.name).join(', ');
+const byName = (memberships: Membership[]) => [...memberships].sort((a, b) => a.building.name.localeCompare(b.building.name));
 
 /**
  * Why a user with no active membership can't go further. One screen, in this order: a pending request is
@@ -31,12 +35,34 @@ export function MembershipStatusScreen({ memberships }: { memberships: Membershi
   return <NoMembershipScreen />;
 }
 
+/** Each pending request with what was submitted, from the caller's own `onboarding/me` (P4-08a). */
 export function PendingScreen({ memberships }: { memberships: Membership[] }) {
   return (
     <Notice title="Waiting for approval">
-      <p>{names(memberships)}: your building’s management hasn’t approved your membership yet.</p>
-      <p className="mt-2 text-slate-600">You’ll get access as soon as they do.</p>
+      <ul className="mt-4 flex flex-col gap-3 text-left">
+        {byName(memberships).map((m) => (
+          <PendingRequest key={m.membership_id} membership={m} />
+        ))}
+      </ul>
+      <p className="mt-4 text-slate-600">You’ll get access as soon as your request is approved.</p>
     </Notice>
+  );
+}
+
+function PendingRequest({ membership }: { membership: Membership }) {
+  // While it loads or if it fails, the building and the wait still show.
+  const { data } = useMyOnboarding(membership.building.id, membership.status);
+  return (
+    <li data-testid="pending-request" className="rounded border bg-white p-4">
+      <h2 className="font-medium">{membership.building.name}</h2>
+      {data?.unit_label && (
+        <p data-testid="pending-unit">
+          Unit {unitName(data.tower, data.unit_label)}
+          {data.relationship && ` · ${relationshipLabel(data.relationship)}`}
+        </p>
+      )}
+      <p className="mt-1 text-sm text-slate-600">The building manager will review your request.</p>
+    </li>
   );
 }
 
@@ -48,30 +74,51 @@ export function SuspendedScreen({ memberships }: { memberships: Membership[] }) 
   );
 }
 
-/** P4-05 adds the manager's reason; until then the screen has none to show. */
+/**
+ * Each denial with the manager's reason, then a way to ask again. The join request needs the building's code, which
+ * no endpoint gives a denied member, so the resident enters it again (P4-08a D2).
+ */
 export function DeniedScreen({ memberships }: { memberships: Membership[] }) {
   return (
     <Notice title="Your request was not approved">
-      <p>{names(memberships)}: contact your building’s management if you think this is a mistake.</p>
+      <ul className="mt-4 flex flex-col gap-3 text-left">
+        {byName(memberships).map((m) => (
+          <DeniedRequest key={m.membership_id} membership={m} />
+        ))}
+      </ul>
+      <p className="mt-4">To ask again, enter the join code or link your building gave you.</p>
+      <JoinCodeForm submitLabel="Submit again" />
     </Notice>
   );
 }
 
-/** P4-08 adds the join flow (a code field here); for now the link from the building is the way in. */
+function DeniedRequest({ membership }: { membership: Membership }) {
+  const { data } = useMyOnboarding(membership.building.id, membership.status);
+  return (
+    <li data-testid="denied-request" className="rounded border bg-white p-4">
+      <h2 className="font-medium">{membership.building.name}</h2>
+      {data && (
+        <p data-testid="denied-reason">{data.decision_reason ? `Reason: ${data.decision_reason}` : 'No reason was given.'}</p>
+      )}
+      <p className="mt-1 text-sm text-slate-600">Contact the building’s management if you think this is a mistake.</p>
+    </li>
+  );
+}
+
 export function NoMembershipScreen() {
   return (
     <Notice title="You are not a member of a building yet">
-      <p>Open the join link your building gave you to request access.</p>
+      <p>Enter the join code or link your building gave you to request access.</p>
+      <JoinCodeForm submitLabel="Continue" />
     </Notice>
   );
 }
 
 export function BuildingPicker({ memberships, onPick }: { memberships: Membership[]; onPick: (id: string) => void }) {
-  const sorted = [...memberships].sort((a, b) => a.building.name.localeCompare(b.building.name));
   return (
     <Notice title="Choose a building">
       <ul className="mt-4 flex flex-col gap-2">
-        {sorted.map((m) => (
+        {byName(memberships).map((m) => (
           <li key={m.building.id}>
             <button
               type="button"

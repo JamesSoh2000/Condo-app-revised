@@ -40,7 +40,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
 /**
  * Renders `children` only once the tab has an active building, its `GET /api/buildings/{id}` loaded. Without
- * an active membership it explains why, and requests nothing under `/api/buildings/`.
+ * an active membership it explains why, and requests under `/api/buildings/` only the caller's own `onboarding/me`
+ * (P4-08a), which needs no active membership.
  */
 export function RequireActiveMembership({ children }: { children: ReactNode }) {
   const { data: me } = useMe();

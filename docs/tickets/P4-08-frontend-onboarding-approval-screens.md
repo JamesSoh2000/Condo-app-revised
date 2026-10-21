@@ -1,4 +1,4 @@
-# P4-08 — Frontend onboarding and approval screens
+# P4-08 — Frontend onboarding and approval screens (split)
 
 | Field | Value |
 |---|---|
@@ -6,7 +6,12 @@
 | Risk tier | 2 |
 | Depends on | P4-05, P4-06, P2-06 |
 | Replaces old | M4-T08 |
-| Status | todo |
+| Status | split into [P4-08a](./P4-08a-join-flow-and-status-screens.md), [P4-08b](./P4-08b-manager-pending-requests.md), [P4-08c](./P4-08c-members-administration.md) |
+
+Split while framing (2026-10-21): the estimate was ~1,100 non-test lines. P4-08a is the join flow and the
+pending, denied and no-membership screens (criteria 1–3 and the join half of 6 and 7); P4-08b the manager's
+pending tab, decisions and nav badge (criterion 4, the pending-list half of 6, the `Residents` half of 7);
+P4-08c the members tab (criterion 5). The carried items moved with the part they belong to.
 
 ## Goal
 
@@ -114,4 +119,4 @@ Consumes `auth_signup`, `join_*`, `onboarding_*` and `members_*`.
 - Criteria added or sharpened:
 - Criteria loosened (with reason; also listed in the inbox):
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
-- Split:
+- Split: see the status above; each part has its own Frame notes.

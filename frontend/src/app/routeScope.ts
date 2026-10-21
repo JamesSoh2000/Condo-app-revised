@@ -6,8 +6,6 @@
 export const DEMO_PAGES = [
   'Home',
   'Dashboard',
-  'Onboarding',
-  'ResidentSetup',
   'Residents',
   'Packages',
   'SecurityPackages',

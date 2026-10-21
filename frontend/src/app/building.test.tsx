@@ -75,14 +75,21 @@ async function pick(name: string) {
   fireEvent.click(await screen.findByRole('button', { name }));
 }
 
-describe('membership screens, no building calls (criterion 1)', () => {
+// Since P4-08a the pending and denied screens read the caller's own `onboarding/me`, which needs no active
+// membership; nothing else under the building, and nothing for the other screens.
+const OWN_STATUS = `GET /api/buildings/${MAPLE.id}/onboarding/me`;
+
+describe('membership screens, no operational building calls (criterion 1)', () => {
   it.each([
-    ['pending', [membership(MAPLE, { status: 'pending' })], /waiting for approval/i],
-    ['suspended', [membership(MAPLE, { status: 'suspended' })], /access is suspended/i],
-    ['denied', [membership(MAPLE, { status: 'denied' })], /not approved/i],
-    ['no membership', [], /not a member of a building/i],
-  ] as const)('shows the %s screen with Log out, and calls no building API', async (_label, memberships, heading) => {
-    const fetchMock = stubApi({ 'GET /api/auth/me': () => json(meWith(...memberships)) });
+    ['pending', [membership(MAPLE, { status: 'pending' })], /waiting for approval/i, [OWN_STATUS]],
+    ['suspended', [membership(MAPLE, { status: 'suspended' })], /access is suspended/i, []],
+    ['denied', [membership(MAPLE, { status: 'denied' })], /not approved/i, [OWN_STATUS]],
+    ['no membership', [], /not a member of a building/i, []],
+  ] as const)('shows the %s screen with Log out, and calls no operational building API', async (_label, memberships, heading, own) => {
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => json(meWith(...memberships)),
+      [OWN_STATUS]: () => json({ status: memberships[0]?.status ?? 'pending', unit_label: null, tower: null, relationship: null, decision_reason: null }),
+    });
 
     renderApp(['/Packages']);
 
@@ -90,7 +97,7 @@ describe('membership screens, no building calls (criterion 1)', () => {
     openAccountMenu();
     expect(screen.getByRole('button', { name: /log out/i })).toBeTruthy();
     await settle();
-    expect(buildingCalls(fetchMock)).toEqual([]);
+    expect(buildingCalls(fetchMock)).toEqual(own);
     expect(sessionStorage.getItem(KEY)).toBeNull();
   });
 

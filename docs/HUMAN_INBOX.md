@@ -37,6 +37,7 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | Date | Ticket | Decision | Where recorded | Reversible? |
 |---|---|---|---|---|
+| 2026-10-21 | P4-08a | A denied resident's "Submit again" asks for the join code or link again, because no endpoint gives a denied member the building's code (`MeMembershipOut`, `OnboardingMeOut`). Overturning it means a backend change (expose the code to denied members, or a resubmit endpoint by building) | PR #98 D2; ticket Frame notes | Yes |
 | 2026-10-21 | P4-07b | The invite page sends the accept with `{}` first and lets the answer pick the screen (200 accepted, 409 log in, 403 another account, 422 `missing` → new-account form), since the page can't know whether the email has an account or call `/me` while logged out. A new user sends one extra accept against the per-IP limit | PR #96 D1 | Yes |
 | 2026-10-21 | P4-07b | Every post-login navigation carries router state `{signedIn: true}`; the invite page accepts by itself only on that state, never on a URL | PR #96 D2 | Yes |
 | 2026-10-21 | P4-07b | **Session epoch in `AuthProvider`** (option A of B-7, chosen by James): code that sweeps one user's cached data itself calls `useNewSession()`, which forgets the last user seen on `/me` and rebuilds the signed-in tree (`AppRoutes` keys `RequireAuth` by the epoch). Used by the invite accept and its mismatch logout; a future join or signup flow should use it too | PR #96 D5, D6; explanation §2 | Yes |

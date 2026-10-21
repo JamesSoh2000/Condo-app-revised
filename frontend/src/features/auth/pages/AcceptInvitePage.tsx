@@ -15,15 +15,8 @@ import { loginPath } from '@/app/safeNext';
 import { Field } from '@/features/auth/components/Field';
 import { PageHeading } from '@/features/auth/components/PageHeading';
 import { PasswordField } from '@/features/auth/components/PasswordField';
-import {
-  PASSWORD_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH,
-  PASSWORD_TOO_LONG,
-  PASSWORD_TOO_SHORT,
-  codePoints,
-  rateLimitMessage,
-  serverFieldErrors,
-} from '@/features/auth/formErrors';
+import { NAME_SERVER_MESSAGES, accountSchema } from '@/features/auth/accountSchema';
+import { rateLimitMessage, serverFieldErrors } from '@/features/auth/formErrors';
 import type { SignedInState } from '@/features/auth/pages/LoginPage';
 
 type Role = components['schemas']['Role'];
@@ -35,39 +28,11 @@ const ROLE_LABELS: Record<Role, string> = {
   council: 'Council',
 };
 
-const NAME_REQUIRED = 'Enter your full name.';
-const NAME_TOO_LONG = 'Use at most 200 characters.';
-const NAME_CONTROL = "The name can't contain line breaks or other control characters.";
-
-// As app/auth/schemas.py::FullName: control characters refused before the strip, 1–200 code points after.
-// The password as on the reset page: not trimmed, and the server's common-password check comes back as a 422.
-const schema = z
-  .object({
-    full_name: z
-      .string()
-      .refine((value) => !/\p{Cc}/u.test(value), NAME_CONTROL)
-      .transform((value) => value.trim())
-      .refine((value) => value.length > 0, NAME_REQUIRED)
-      .refine((value) => codePoints(value) <= 200, NAME_TOO_LONG),
-    password: z
-      .string()
-      .refine((value) => codePoints(value) >= PASSWORD_MIN_LENGTH, PASSWORD_TOO_SHORT)
-      .refine((value) => codePoints(value) <= PASSWORD_MAX_LENGTH, PASSWORD_TOO_LONG),
-    confirm: z.string(),
-  })
-  .refine((form) => form.confirm === form.password, { message: "The passwords don't match.", path: ['confirm'] });
+const schema = accountSchema({});
 type AccountForm = z.input<typeof schema>;
 type AccountBody = z.output<typeof schema>;
 
-// The server's 422 types on `full_name`, in this page's words; the password's are formErrors' own.
-const SERVER_MESSAGES = {
-  full_name: {
-    missing: NAME_REQUIRED,
-    string_too_short: NAME_REQUIRED,
-    string_too_long: NAME_TOO_LONG,
-    control_characters: NAME_CONTROL,
-  },
-};
+const SERVER_MESSAGES = { full_name: NAME_SERVER_MESSAGES };
 
 /** Everything but the invitations' public details: what a change of user (accept, logout) must not leave behind. */
 const userData = ({ queryKey }: { queryKey: readonly unknown[] }) => queryKey[0] !== 'invitation';
