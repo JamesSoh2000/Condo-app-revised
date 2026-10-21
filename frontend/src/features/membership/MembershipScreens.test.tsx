@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { components } from '@/api/schema';
@@ -161,4 +161,35 @@ describe('parseJoinCode (17)', () => {
       expect(parseJoinCode(input)).toBeNull();
     },
   );
+});
+
+describe('review round 2 (Codex gpt-6.1-sol)', () => {
+  it('M1: a denial seen on a fresh /me shows its reason, not the cached pending details', async () => {
+    let denied = false;
+    const reason = "Unit number doesn't match our records";
+    const fetchMock = stubApi({
+      [ME]: () => json(meWith(membership(MAPLE, { status: denied ? 'denied' : 'pending' }))),
+      [status(MAPLE)]: () => json(denied ? mine({ status: 'denied', decision_reason: reason }) : mine({})),
+    });
+    const app = renderApp(['/']);
+    await screen.findByTestId('pending-unit');
+    denied = true;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'], exact: true }));
+    await waitFor(() => expect(screen.getByTestId('denied-reason').textContent).toContain(reason));
+    expect(calls(fetchMock).filter((call) => call === status(MAPLE))).toHaveLength(2);
+  });
+
+  it('M1 neighbour: a pending request seen after a denial shows the new request, not the cached denial', async () => {
+    let pendingAgain = false;
+    stubApi({
+      [ME]: () => json(meWith(membership(MAPLE, { status: pendingAgain ? 'pending' : 'denied' }))),
+      [status(MAPLE)]: () =>
+        json(pendingAgain ? mine({ unit_label: '1004', relationship: 'owner' }) : mine({ status: 'denied', decision_reason: 'No' })),
+    });
+    const app = renderApp(['/']);
+    await screen.findByTestId('denied-reason');
+    pendingAgain = true;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'], exact: true }));
+    await waitFor(() => expect(screen.getByTestId('pending-unit').textContent).toContain('1004'));
+  });
 });

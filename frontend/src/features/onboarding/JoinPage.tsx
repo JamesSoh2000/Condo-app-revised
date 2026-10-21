@@ -54,7 +54,7 @@ function useMounted(): { readonly current: boolean } {
 
 function Screen({ testId, title, children }: { testId: string; title: ReactNode; children?: ReactNode }) {
   return (
-    <main data-testid={testId} className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 py-8">
+    <main data-testid={testId} className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 py-8 [overflow-wrap:anywhere]">
       <PageHeading>{title}</PageHeading>
       {children}
     </main>

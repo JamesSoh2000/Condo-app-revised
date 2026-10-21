@@ -9,7 +9,8 @@ type Membership = components['schemas']['MeMembershipOut'];
 /** A message in the shell's main area (the header, with "Log out", stays above it). */
 function Notice({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="mx-auto max-w-md py-12 text-center">
+    // `overflow-wrap: anywhere`: a reason or name with no spaces (up to 500 characters) wraps at 375 px (review round 2, M2).
+    <section className="mx-auto max-w-md py-12 text-center [overflow-wrap:anywhere]">
       <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
       {children}
     </section>
@@ -50,7 +51,7 @@ export function PendingScreen({ memberships }: { memberships: Membership[] }) {
 
 function PendingRequest({ membership }: { membership: Membership }) {
   // While it loads or if it fails, the building and the wait still show.
-  const { data } = useMyOnboarding(membership.building.id);
+  const { data } = useMyOnboarding(membership.building.id, membership.status);
   return (
     <li data-testid="pending-request" className="rounded border bg-white p-4">
       <h2 className="font-medium">{membership.building.name}</h2>
@@ -92,7 +93,7 @@ export function DeniedScreen({ memberships }: { memberships: Membership[] }) {
 }
 
 function DeniedRequest({ membership }: { membership: Membership }) {
-  const { data } = useMyOnboarding(membership.building.id);
+  const { data } = useMyOnboarding(membership.building.id, membership.status);
   return (
     <li data-testid="denied-request" className="rounded border bg-white p-4">
       <h2 className="font-medium">{membership.building.name}</h2>

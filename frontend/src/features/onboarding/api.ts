@@ -4,6 +4,7 @@ import { api } from '@/api/client';
 import type { components } from '@/api/schema';
 
 type Relationship = components['schemas']['OccupancyRelationship'];
+type MembershipStatus = components['schemas']['MembershipStatus'];
 
 /**
  * How each relationship reads to a resident choosing one (P4-08 must-explain 3): who owns, who rents, who lives
@@ -28,11 +29,12 @@ export const unitName = (tower: string | null, label: string): string => (tower 
 /**
  * The caller's own status in a building, pending and denied included, with their latest join request. The
  * endpoint checks only the caller's own membership, not an active one (P4-05a), so it is the one building
- * request the status screens make (P4-08 must-explain 1).
+ * request the status screens make (P4-08 must-explain 1). Keyed by the status `/me` reports, so a change seen there
+ * (a denial, a new request) asks again instead of showing the previous request's details (review round 2, M1).
  */
-export function useMyOnboarding(buildingId: string) {
+export function useMyOnboarding(buildingId: string, status: MembershipStatus) {
   return useQuery({
-    queryKey: ['b', buildingId, 'onboarding', 'me'],
+    queryKey: ['b', buildingId, 'onboarding', 'me', status],
     queryFn: ({ signal }) =>
       api.get('/api/buildings/{building_id}/onboarding/me', { params: { path: { building_id: buildingId } }, signal }),
   });
