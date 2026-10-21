@@ -288,3 +288,128 @@ describe('each building its own count (criterion 7)', () => {
     expect(summaryCalls(fetchMock, BIRCH)).toBe(1);
   });
 });
+
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  const council: Role[] = ['property_management', 'council', 'resident'];
+  const approve = `POST /api/buildings/${MAPLE.id}/onboarding-requests/${ROBIN.id}/approve`;
+  const list = `GET /api/buildings/${MAPLE.id}/onboarding-requests`;
+  const viewAs = (name: 'Management' | 'Resident') => {
+    openAccountMenu();
+    fireEvent.click(screen.getByRole('radio', { name }));
+  };
+
+  it('F1: a decision asks again even while the first summary is still out (it counted before the decision)', async () => {
+    let decided = false;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let requests = 0;
+    const fetchMock = stubApi(
+      persona(['property_management'], {
+        [summary()]: async () => {
+          requests += 1;
+          const count = decided ? 0 : 1;
+          if (requests === 1) await gate;
+          return pending(count);
+        },
+        [list]: () => json({ items: decided ? [] : [ROBIN], next_cursor: null }),
+        [approve]: () => {
+          decided = true;
+          return json({ ...ROBIN, status: 'approved' });
+        },
+      }),
+    );
+    renderApp(['/manage/residents']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve Robin Park' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Approve' }));
+    await screen.findByText('No pending requests.');
+    await act(async () => {
+      release();
+      await gate;
+    });
+
+    await waitFor(() => expect(summaryCalls(fetchMock)).toBe(2));
+    await settle();
+    expect(within(nav()).getByRole('link', { name: 'Residents' }).textContent).toBe('Residents');
+  });
+
+  it('F1 neighbour: a decision while a poll is out ends with the newer count', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let decided = false;
+    let hold = false;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    stubApi(
+      persona(['property_management'], {
+        [summary()]: async () => {
+          const count = decided ? 0 : 1;
+          if (hold) {
+            hold = false;
+            await gate;
+          }
+          return pending(count);
+        },
+        [list]: () => json({ items: decided ? [] : [ROBIN], next_cursor: null }),
+        [approve]: () => {
+          decided = true;
+          return json({ ...ROBIN, status: 'approved' });
+        },
+      }),
+    );
+    renderApp(['/manage/residents']);
+    await within(await screen.findByRole('navigation', { name: 'Main' })).findByRole('link', { name: 'Residents, 1 pending' });
+    hold = true;
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve Robin Park' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Approve' }));
+    await screen.findByText('No pending requests.');
+    await act(async () => {
+      release();
+      await gate;
+    });
+    await settle();
+
+    expect(within(nav()).getByRole('link', { name: 'Residents' }).textContent).toBe('Residents');
+  });
+
+  it('F2: back to Management under 30 s asks again instead of showing the count from before', async () => {
+    let count = 3;
+    const fetchMock = stubApi(persona(council, { [summary()]: () => pending(count) }));
+    renderApp(['/']);
+    await within(await screen.findByRole('navigation', { name: 'Main' })).findByRole('link', { name: 'Residents, 3 pending' });
+
+    viewAs('Resident');
+    expect(residents()).toBeNull();
+    count = 7;
+    viewAs('Management');
+
+    await waitFor(() => expect(summaryCalls(fetchMock)).toBe(2));
+    expect(await within(nav()).findByRole('link', { name: 'Residents, 7 pending' })).toBeTruthy();
+  });
+
+  it('F2 neighbour: back to a building under 30 s asks again for its count', async () => {
+    const roles: Role[] = ['property_management'];
+    let maple = 3;
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () => json({ ...RESIDENT_ME, memberships: [membership(MAPLE, { roles }), membership(BIRCH, { roles })] }),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, roles)),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, roles)),
+      [`GET /api/buildings/${BIRCH.id}/notifications/summary`]: () => json({ unread_count: 0 }),
+      [summary()]: () => pending(maple),
+      [summary(BIRCH)]: () => pending(7),
+    });
+    sessionStorage.setItem('condo.buildingId', MAPLE.id);
+    renderApp(['/']);
+    await within(await screen.findByRole('navigation', { name: 'Main' })).findByRole('link', { name: 'Residents, 3 pending' });
+
+    openAccountMenu();
+    fireEvent.change(screen.getByLabelText(/building/i), { target: { value: BIRCH.id } });
+    await waitFor(() => expect(within(nav()).getByRole('link', { name: 'Residents, 7 pending' })).toBeTruthy());
+    maple = 5;
+    openAccountMenu();
+    fireEvent.change(screen.getByLabelText(/building/i), { target: { value: MAPLE.id } });
+
+    await waitFor(() => expect(within(nav()).getByRole('link', { name: 'Residents, 5 pending' })).toBeTruthy());
+    expect(summaryCalls(fetchMock)).toBe(2);
+  });
+});

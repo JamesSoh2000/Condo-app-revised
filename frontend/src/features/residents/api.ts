@@ -8,6 +8,7 @@ export type Decision = { kind: 'approve'; id: string } | { kind: 'deny'; id: str
 
 /** Every key of the managers' join requests starts here, so one invalidation covers the list and its pages. */
 const requestsKey = (buildingId: string) => ['b', buildingId, 'onboarding-requests'] as const;
+const summaryKey = (buildingId: string) => [...requestsKey(buildingId), 'summary'] as const;
 
 /**
  * The building's pending join requests, newest first, one page at a time (`next_cursor`). Never polled, and
@@ -30,11 +31,14 @@ export function usePendingRequests(buildingId: string) {
 /**
  * How many requests the pending list shows, for the nav's badge (P4-08d). Polled like the notification summary: every
  * 30 s in a visible tab, never in a hidden one, and again whenever the tab becomes visible (ADR-0012). Under
- * `requestsKey`, so a decision's invalidation asks for it again too.
+ * `requestsKey`, so a decision's invalidation asks for it again too. Asked again each time the badge mounts: the nav
+ * item comes back after a council member views as Management again, with a count that may be from before (review
+ * round 1, Codex F2).
  */
 export function usePendingSummary(buildingId: string) {
   return useQuery({
-    queryKey: [...requestsKey(buildingId), 'summary'],
+    queryKey: summaryKey(buildingId),
+    refetchOnMount: 'always',
     queryFn: ({ signal }) =>
       api.get('/api/buildings/{building_id}/onboarding-requests/summary', {
         params: { path: { building_id: buildingId } },
@@ -65,9 +69,13 @@ export function useDecide(buildingId: string) {
           });
     },
     // Not returned: `mutateAsync` would wait for the refetch, and a slow list would hold back the dialog's answer
-    // (review round 1, Codex F1).
+    // (review round 1, Codex F1). The summary is cancelled first: a first fetch still out has no data yet, so the
+    // invalidation would wait for it instead of asking again, and it may have counted before the decision (P4-08d
+    // review round 1, Codex F1).
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: requestsKey(buildingId) });
+      void queryClient
+        .cancelQueries({ queryKey: summaryKey(buildingId) })
+        .then(() => queryClient.invalidateQueries({ queryKey: requestsKey(buildingId) }));
     },
   });
 }
