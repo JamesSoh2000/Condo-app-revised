@@ -936,3 +936,27 @@ describe('review round 2 (Codex gpt-6.1-sol)', () => {
     await waitFor(() => expect(app.queryClient.getQueryData(['b', MAPLE.id, 'stale'])).toBeUndefined());
   });
 });
+
+describe('stack journey after round 2 (found by the implementer)', () => {
+  it('Back to the accepted invitation asks for it again and shows it is no longer valid', async () => {
+    let accepted = false;
+    stubApi({
+      [GET]: () => (accepted ? problem(404, 'invitation_invalid') : json(PUBLIC)),
+      [ACCEPT]: () => {
+        accepted = true;
+        return json(ACCEPTED);
+      },
+      [ME]: () => json(GUARD_ME),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['security'])),
+    });
+    const app = renderApp([`/invite/${TOKEN}`, '/forgot-password']);
+    act(() => app.navigate()(-1));
+    click(await screen.findByRole('button', { name: /accept invitation/i }));
+    await screen.findByRole('navigation', { name: 'Main' });
+
+    act(() => app.navigate()(`/invite/${TOKEN}`));
+
+    expect(await screen.findByTestId('invite-invalid')).toBeTruthy();
+    expect(screen.queryByTestId('invite-details')).toBeNull();
+  });
+});
