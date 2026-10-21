@@ -299,7 +299,8 @@ describe('forgot password link and reset banner (P4-07a criteria 4, 10)', () => 
     await sessionChecked(fetchMock);
 
     // A reload renders the entry as history now holds it.
-    const { pathname, search, state } = app.location();
+    const { pathname, search } = app.location();
+    const state: unknown = app.location().state;
     cleanup();
     renderApp([{ pathname, search, state }]);
     expect(screen.queryByTestId('login-banner')).toBeNull();

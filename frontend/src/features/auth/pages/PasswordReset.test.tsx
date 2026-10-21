@@ -338,7 +338,7 @@ describe('reset password (P4-07a criteria 3–8)', () => {
 });
 
 describe('password field (P4-07a criterion 9)', () => {
-  it('shows and hides the password without submitting', async () => {
+  it('shows and hides the password without submitting', () => {
     const fetchMock = stubApi({});
     renderApp([`/reset-password/${TOKEN}`]);
     const input = screen.getByLabelText<HTMLInputElement>('New password');
