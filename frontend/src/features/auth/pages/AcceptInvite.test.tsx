@@ -684,3 +684,155 @@ describe('next stays safe (criterion 11)', () => {
     },
   );
 });
+
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  const INVITEE_ME: components['schemas']['MeOut'] = {
+    ...GUARD_ME,
+    memberships: [membership(BIRCH), membership(MAPLE, { roles: ['security'] })],
+  };
+
+  it('F1: keeps the accepted building after another account logs out and the invitee logs in', async () => {
+    let account: 'other' | 'none' | 'invitee' = 'other';
+    const fetchMock = stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: () =>
+        account === 'other'
+          ? problem(403, 'invitation_email_mismatch')
+          : account === 'none'
+            ? problem(409, 'login_required')
+            : json(ACCEPTED),
+      [LOGOUT]: () => {
+        account = 'none';
+        return noContent();
+      },
+      [LOGIN]: () => {
+        account = 'invitee';
+        return noContent();
+      },
+      [ME]: () => (account === 'invitee' ? json(INVITEE_ME) : problem(401, 'unauthorized')),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['security'])),
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    // The shell had already loaded the other account's /me in this tab.
+    act(() => void app.queryClient.setQueryData(['me'], RESIDENT_ME));
+
+    click(await screen.findByTestId('invite-accept'));
+    click(await screen.findByTestId('invite-logout'));
+    click(await screen.findByTestId('invite-accept'));
+    fireEvent.click(await screen.findByTestId('invite-login-link'));
+    await waitFor(() => expect(calls(fetchMock)).toContain(ME));
+    await settle();
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'guard@example.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'DevPassword!2026' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    expect(within(nav).getByRole('link', { name: 'Package log' })).toBeTruthy();
+    await settle();
+    expect(screen.queryByRole('heading', { name: /choose a building/i })).toBeNull();
+    expect(readSelectedBuilding()).toBe(MAPLE.id);
+  });
+
+  it('F1 neighbour: a new account created while another user\'s /me is cached opens the accepted building', async () => {
+    let signedIn = false;
+    stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: async (request) => {
+        const body = (await request.clone().json()) as Record<string, unknown>;
+        if (!('full_name' in body)) return needsAccount();
+        signedIn = true;
+        return json(ACCEPTED);
+      },
+      [ME]: () => (signedIn ? json(INVITEE_ME) : problem(401, 'unauthorized')),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['security'])),
+    });
+    // A previous user's /me is still cached (their session ended on the server).
+    const app = renderApp([`/invite/${TOKEN}`]);
+    act(() => void app.queryClient.setQueryData(['me'], RESIDENT_ME));
+
+    click(await screen.findByTestId('invite-accept'));
+    await screen.findByTestId('invite-form');
+    createAccount('Nadia');
+
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    expect(within(nav).getByRole('link', { name: 'Package log' })).toBeTruthy();
+    await settle();
+    expect(readSelectedBuilding()).toBe(MAPLE.id);
+  });
+
+  it.each<[string, Handler]>([
+    ['500', () => problem(500, 'internal_error')],
+    ['network', () => Promise.reject(new TypeError('Failed to fetch'))],
+  ])('F1 neighbour: a /me failure (%s) after the accept still opens the shell on the accepted building', async (_, failing) => {
+    let mes = 0;
+    stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: () => json(ACCEPTED),
+      [ME]: (r) => (++mes === 1 ? failing(r) : json(INVITEE_ME)),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['security'])),
+    });
+    renderApp([`/invite/${TOKEN}`]);
+
+    click(await screen.findByTestId('invite-accept'));
+
+    await waitFor(() => expect(location()).toBe('/'));
+    expect(await screen.findByRole('navigation', { name: 'Main' })).toBeTruthy();
+    expect(readSelectedBuilding()).toBe(MAPLE.id);
+  });
+
+  it('F2: an abandoned accept does not evict the invitation now shown or hide its answer', async () => {
+    const slow = deferred(() => json(ACCEPTED));
+    let otherGets = 0;
+    const fetchMock = stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: slow.handler,
+      [`GET /api/invitations/${OTHER}`]: () =>
+        ++otherGets === 1 ? json(PUBLIC) : problem(429, 'rate_limited', { 'Retry-After': '600' }),
+      [`POST /api/invitations/${OTHER}/accept`]: () => problem(403, 'invitation_email_mismatch'),
+      [ME]: () => json(GUARD_ME),
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    click(await screen.findByTestId('invite-accept'));
+    await waitFor(() => expect(calls(fetchMock)).toContain(ACCEPT));
+    act(() => app.navigate()(`/invite/${OTHER}`));
+    click(await screen.findByTestId('invite-accept'));
+
+    // The second accept queues behind the first.
+    await act(async () => {
+      slow.release();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    await waitFor(() => expect(calls(fetchMock)).toContain(`POST /api/invitations/${OTHER}/accept`));
+
+    expect(await screen.findByTestId('invite-mismatch')).toBeTruthy();
+    expect(location()).toBe(`/invite/${OTHER}`);
+    expect(screen.queryByTestId('invite-load-error')).toBeNull();
+    expect(otherGets).toBe(1);
+  });
+
+  it('F2 neighbour: an abandoned accept keeps the details now shown without asking for them again', async () => {
+    const slow = deferred(() => json(ACCEPTED));
+    let otherGets = 0;
+    stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: slow.handler,
+      [`GET /api/invitations/${OTHER}`]: () => {
+        otherGets += 1;
+        return json({ ...PUBLIC, building_name: 'Birch Court' });
+      },
+      [ME]: () => json(GUARD_ME),
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    click(await screen.findByTestId('invite-accept'));
+    act(() => app.navigate()(`/invite/${OTHER}`));
+    await screen.findByTestId('invite-details');
+    app.queryClient.setQueryData(['stale'], 'user data');
+
+    slow.release();
+
+    await waitFor(() => expect(app.queryClient.getQueryData(['stale'])).toBeUndefined());
+    await settle();
+    expect(screen.getByTestId('invite-building').textContent).toBe('Birch Court');
+    expect(otherGets).toBe(1);
+  });
+});
