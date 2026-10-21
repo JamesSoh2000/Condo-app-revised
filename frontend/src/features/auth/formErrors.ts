@@ -40,16 +40,21 @@ export interface FieldError<F extends string> {
 
 /**
  * A 422 `validation_error`'s `errors[]` placed on the form's fields: each error whose `loc` is
- * `["body", <one of fields>]` and whose type has a message. Null when nothing can be placed (another status,
- * an unknown field or type, no errors), so the caller shows a form-level message instead. Never the
- * server's `msg`: the client words its own messages.
+ * `["body", <one of fields>]` and whose type has a message (the field's own in `messages`, else the password
+ * ones above). Null when nothing can be placed (another status, an unknown field or type, no errors), so the
+ * caller shows a form-level message instead. Never the server's `msg`: the client words its own messages.
  */
-export function serverFieldErrors<F extends string>(error: unknown, fields: readonly F[]): FieldError<F>[] | null {
+export function serverFieldErrors<F extends string>(
+  error: unknown,
+  fields: readonly F[],
+  messages: Partial<Record<F, Record<string, string>>> = {},
+): FieldError<F>[] | null {
   if (!(error instanceof ApiError) || error.status !== 422 || !error.errors?.length) return null;
   const placed: FieldError<F>[] = [];
   for (const { loc, type } of error.errors) {
     const field = loc.length === 2 && loc[0] === 'body' ? fields.find((name) => name === loc[1]) : undefined;
-    const message = FIELD_MESSAGES[type];
+    const own = field === undefined ? undefined : messages[field];
+    const message = own ? own[type] : FIELD_MESSAGES[type];
     if (field === undefined || message === undefined) return null;
     placed.push({ field, message });
   }

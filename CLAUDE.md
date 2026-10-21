@@ -133,8 +133,8 @@ Everything a command prints is re-read on every later turn, so don't print the s
   other way to reach the same state (another command, another response path). A fix that only covers the
   reported case gets reopened (P0-05 round 3, P0-03a round 2, 2026-10-14; P1-07 round 2, P1-08 round 1,
   2026-10-16). For state and concurrency fixes, list these ways before the first review: a second instance
-  of the action, a remount (Back/Forward), an abandoned caller, a failure instead of success, and a
-  server-driven change (a refetch, a `/me` answer) instead of the user's action (P2-06a, P2-06b; 2026-10-17).
+  of the action, Back/Forward (one route's URL change keeps the page mounted: key it by `useLocation().key`),
+  an abandoned caller, a failure, and a server-driven change (a refetch, `/me`) (P2-06a–c, P4-07a; 2026-10-20).
 - Don't claim an effect ("unbreaks main", "new revisions come out ruff-clean") until you have run the
   thing that shows it and pasted the output (fix PR #3, P0-02, 2026-10-14).
 - Prove a gate, check or health signal can fail before trusting it: make it fail once on purpose (a probe

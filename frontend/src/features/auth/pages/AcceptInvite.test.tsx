@@ -134,7 +134,7 @@ describe('new email (criterion 2)', () => {
   it('asks for an account, creates it, and lands in the shell with the role navigation', async () => {
     const fetchMock = newEmailBackend();
     writeSelectedBuilding(BIRCH.id);
-    const app = renderApp([`/invite/${TOKEN}`]);
+    const app = renderApp(['/forgot-password', `/invite/${TOKEN}`]);
     app.queryClient.setQueryData(['stale'], 'from before');
 
     click(await screen.findByRole('button', { name: /accept invitation/i }));
@@ -147,10 +147,12 @@ describe('new email (criterion 2)', () => {
     expect(within(nav).getByRole('link', { name: 'Package log' })).toBeTruthy();
     expect(within(nav).queryByRole('link', { name: 'My packages' })).toBeNull();
     expect(location()).toBe('/');
-    expect(app.location().key).toBe('default');
     expect(await bodies(fetchMock, ACCEPT)).toEqual([{}, { full_name: 'Nadia Okafor', password: GOOD }]);
     expect(app.queryClient.getQueryData(['stale'])).toBeUndefined();
     expect(readSelectedBuilding()).toBe(MAPLE.id);
+    // The invite's entry was replaced: Back skips it.
+    act(() => app.navigate()(-1));
+    await waitFor(() => expect(location()).toBe('/forgot-password'));
   });
 
   it('sends a password with spaces as typed', async () => {
@@ -229,8 +231,9 @@ describe('existing account, logged out (criterion 3)', () => {
     const app = renderApp([{ pathname: `/invite/${TOKEN}`, state: { signedIn: true } }]);
 
     expect((await screen.findByTestId('invite-error')).textContent).toBe('Could not accept the invitation. Try again.');
-    await waitFor(() => expect(app.location().state).toBeNull());
+    await waitFor(() => expect(app.location().state).not.toHaveProperty('signedIn'));
     expect(calls(fetchMock).filter((c) => c === ACCEPT)).toHaveLength(1);
+    expect(screen.getByTestId('invite-error')).toBeTruthy();
 
     const { pathname, search } = app.location();
     const state: unknown = app.location().state;
@@ -483,7 +486,7 @@ describe('form checks (criterion 8)', () => {
   it.each([
     ['an empty name', '   ', GOOD, GOOD, 'Full name', 'Enter your full name.'],
     ['a name over 200 code points', '𝒶'.repeat(201), GOOD, GOOD, 'Full name', 'Use at most 200 characters.'],
-    ['a name with a line break', 'Nadia\nOkafor', GOOD, GOOD, 'Full name', "The name can't contain line breaks or other control characters."],
+    ['a name with a tab', 'Nadia\tOkafor', GOOD, GOOD, 'Full name', "The name can't contain line breaks or other control characters."],
     ['a short password', 'Nadia', 'short', 'short', 'Password', 'Use at least 12 characters.'],
     ['a long password', 'Nadia', 'x'.repeat(129), 'x'.repeat(129), 'Password', 'Use at most 128 characters.'],
     ['a different confirmation', 'Nadia', GOOD, `${GOOD}!`, 'Confirm password', "The passwords don't match."],

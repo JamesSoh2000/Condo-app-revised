@@ -41,6 +41,12 @@ export function loginErrorMessage(error: unknown): string {
   return 'Could not sign in. Try again.';
 }
 
+/** Router state on the navigation after a login, never in the URL: the invite page accepts by itself on it (P4-07b D2). */
+export interface SignedInState {
+  signedIn?: boolean;
+}
+const SIGNED_IN: SignedInState = { signedIn: true };
+
 export function LoginPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -88,9 +94,12 @@ export function LoginPage() {
       const me = await api.get('/api/auth/me', { signal });
       if (!mounted.current) return;
       queryClient.setQueryData(['me'], me);
-      navigate(safeNext(next.current), { replace: true });
+      // After a reset, the session found can be another account's (its own sessions all ended): the banner and
+      // the form stay (P4-07a review round 3, F6).
+      if (passwordUpdated) return;
+      navigate(safeNext(next.current), { replace: true, state: SIGNED_IN });
     }).catch(() => undefined);
-  }, [navigate, queryClient]);
+  }, [navigate, queryClient, passwordUpdated]);
 
   const onSubmit = async (body: LoginForm) => {
     setFailure(null);
@@ -113,7 +122,7 @@ export function LoginPage() {
     // tab's building is chosen again from this user's memberships.
     queryClient.clear();
     clearTabChoices();
-    if (mounted.current) navigate(safeNext(next.current), { replace: true });
+    if (mounted.current) navigate(safeNext(next.current), { replace: true, state: SIGNED_IN });
   };
 
   return (
