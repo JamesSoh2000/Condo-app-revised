@@ -625,7 +625,10 @@ describe('a failed refresh and Show more (criterion 12)', () => {
     void app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'members'] });
 
     await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Show more' }).disabled).toBe(true));
-    await act(async () => release());
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
     await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Show more' }).disabled).toBe(false));
   });
 });
