@@ -90,6 +90,9 @@ describe('the count on the Residents item (criterion 1)', () => {
     });
     const badge = within(link).getByText('3');
     expect(badge.closest('[aria-hidden="true"]')).toBe(badge);
+    // Only one part is read, and it says it all: Chromium spaces the parts of a name apart (stack run).
+    const read = [...link.childNodes].filter((node) => !(node instanceof Element && node.getAttribute('aria-hidden') === 'true'));
+    expect(read.map((node) => node.textContent)).toEqual(['Residents, 3 pending']);
     expect(link.getAttribute('href')).toBe('/manage/residents');
   });
 
@@ -115,7 +118,7 @@ describe('the count on the Residents item (criterion 1)', () => {
     const link = await within(await screen.findByRole('navigation', { name: 'Main' })).findByRole('link', {
       name: 'Residents, 120 pending',
     });
-    expect(link.querySelector('[aria-hidden="true"]')?.textContent).toBe('99+');
+    expect(within(link).getByText('99+').getAttribute('aria-hidden')).toBe('true');
   });
 });
 
