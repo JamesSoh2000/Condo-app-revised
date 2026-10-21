@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, type Location } from 'react-router-dom';
 
 import { api, onUnauthenticated } from '@/api/client';
@@ -13,15 +13,23 @@ export type Me = components['schemas']['MeOut'];
 /** The router's current location, readable after the component that started a call has unmounted. */
 const CurrentLocation = createContext<{ readonly current: Location } | null>(null);
 
-/** Forgets the user `AuthProvider` last saw on `/me` (see `useForgetUser`). */
-const ForgetUser = createContext<() => void>(() => undefined);
+/** The tab's session epoch and the way to start a new one (see `useNewSession`). */
+const Session = createContext<{ epoch: number; newSession: () => void }>({ epoch: 0, newSession: () => undefined });
 
 /**
- * For a caller that has itself removed every query of the previous user (an invitation's accept): the next `/me`
- * then starts a new user without the user-change sweep, which would also drop the tab's choices the caller has
- * just made (P4-07b review round 2). Never for anyone who keeps that user's data cached.
+ * Bumped whenever the user behind the tab changes: the routes key the signed-in tree by it, so nothing mounted
+ * keeps rendering the previous user's data from its last result (removing queries doesn't reset mounted
+ * observers; P4-07b review round 3, R3-1).
  */
-export const useForgetUser = (): (() => void) => useContext(ForgetUser);
+export const useSessionEpoch = (): number => useContext(Session).epoch;
+
+/**
+ * For a caller that has itself removed every query of the previous user (an invitation's accept, its logout):
+ * the signed-in tree is rebuilt, and the next `/me` starts a new user without the user-change sweep, which would
+ * also drop the tab's choices the caller has just made (P4-07b review rounds 2 and 3). Never for anyone who keeps
+ * that user's data cached.
+ */
+export const useNewSession = (): (() => void) => useContext(Session).newSession;
 
 /** The signed-in user and their memberships (P2-02). A 401 means there is no session. */
 export function useMe() {
@@ -85,13 +93,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (lastUser.current !== undefined && next !== lastUser.current) {
         queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' });
         clearTabChoices();
+        setEpoch((n) => n + 1);
       }
       lastUser.current = next;
     });
   }, [queryClient]);
-  const forgetUser = useCallback(() => {
+  const [epoch, setEpoch] = useState(0);
+  const newSession = useCallback(() => {
     lastUser.current = undefined;
+    setEpoch((n) => n + 1);
   }, []);
+  const session = useMemo(() => ({ epoch, newSession }), [epoch, newSession]);
 
   useEffect(
     () =>
@@ -107,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <CurrentLocation.Provider value={locationRef}>
-      <ForgetUser.Provider value={forgetUser}>{children}</ForgetUser.Provider>
+      <Session.Provider value={session}>{children}</Session.Provider>
     </CurrentLocation.Provider>
   );
 }

@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { api } from '@/api/client';
 import { ApiError } from '@/api/errors';
 import type { components } from '@/api/schema';
-import { useForgetUser } from '@/app/AuthProvider';
+import { useNewSession } from '@/app/AuthProvider';
 import { runAuthCall } from '@/app/authQueue';
 import { clearTabChoices, writeSelectedBuilding } from '@/app/buildingStorage';
 import { loginPath } from '@/app/safeNext';
@@ -137,7 +137,7 @@ function AcceptInviteScreen({ token }: { token: string }) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const forgetUser = useForgetUser();
+  const newSession = useNewSession();
   // Read once and dropped from the history entry, so a reload or Back to it doesn't accept again.
   const [signedIn] = useState(() => (location.state as SignedInState | null)?.signedIn === true);
   useEffect(() => {
@@ -209,12 +209,17 @@ function AcceptInviteScreen({ token }: { token: string }) {
     // it. The invitations' details stay, so an accept that answers after Back doesn't empty the page now shown
     // (review round 1, F2).
     queryClient.removeQueries({ predicate: userData });
-    // This invitation is used now: Back to it asks again (and shows it invalid) instead of its cached details.
-    queryClient.removeQueries({ queryKey: ['invitation', token] });
-    // Nothing of the previous user is left, so the shell's next /me starts a new one: AuthProvider's user-change
-    // sweep would otherwise drop the selection below (review round 1, F1). The page asks no /me itself: one
-    // outside the auth queue could answer after a later login and overwrite it (review round 2).
-    forgetUser();
+    // This invitation is used now: an entry that opens it later asks again (and shows it invalid). Another entry
+    // of the same token still showing it keeps its details and its own answer (review round 3, R3-2).
+    const used = { queryKey: ['invitation', token], exact: true };
+    const watchers = (queryClient.getQueryCache().find(used)?.getObserversCount() ?? 0) - (mounted.current ? 1 : 0);
+    if (watchers > 0) void queryClient.invalidateQueries({ ...used, refetchType: 'none' });
+    else queryClient.removeQueries(used);
+    // Nothing of the previous user is left: the signed-in tree is rebuilt, so a shell the user went back to stops
+    // rendering their data (review round 3, R3-1), and the shell's next /me starts a new user without the
+    // user-change sweep, which would drop the selection below (review round 1, F1). The page asks no /me itself:
+    // one outside the auth queue could answer after a later login and overwrite it (review round 2).
+    newSession();
     clearTabChoices();
     // The tab opens the accepted building even when the user has others.
     writeSelectedBuilding(accepted.building_id);
@@ -237,6 +242,8 @@ function AcceptInviteScreen({ token }: { token: string }) {
       return;
     }
     queryClient.removeQueries({ predicate: userData });
+    // A shell the user went back to meanwhile is rebuilt and finds no session (review round 3, R3-1 neighbour).
+    newSession();
     clearTabChoices();
     inFlight.current = false;
     if (!mounted.current) return;
@@ -267,6 +274,7 @@ function AcceptInviteScreen({ token }: { token: string }) {
         <p className="text-sm">{rateLimitMessage(details.error) ?? 'Check your connection and try again.'}</p>
         <button
           type="button"
+          data-testid="invite-retry"
           onClick={() => void details.refetch()}
           className="mt-4 rounded bg-slate-900 px-4 py-2 font-medium text-white"
         >

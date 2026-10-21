@@ -1,6 +1,7 @@
 import { Outlet, Route, Routes } from 'react-router-dom';
 
 import { AppShell } from '@/app/AppShell';
+import { useSessionEpoch } from '@/app/AuthProvider';
 import { BuildingProvider } from '@/app/BuildingProvider';
 import { RequireActiveMembership, RequireAuth, RequirePageAccess } from '@/app/guards';
 import { PAGE_ACCESS } from '@/app/pages';
@@ -22,6 +23,8 @@ const buildingPages = DEMO_PAGES.filter((page) => !PAGE_ACCESS[page].onboarding)
  * token show the page's invalid-link screen, not "Page not found".
  */
 export function AppRoutes() {
+  // A new user in the tab rebuilds the signed-in tree (P4-07b review round 3).
+  const epoch = useSessionEpoch();
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -32,7 +35,7 @@ export function AppRoutes() {
       <Route path="/invite/*" element={<InviteInvalid />} />
       <Route
         element={
-          <RequireAuth>
+          <RequireAuth key={epoch}>
             <BuildingProvider>
               <AppShell />
             </BuildingProvider>
