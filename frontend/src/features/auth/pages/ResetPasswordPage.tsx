@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { z } from 'zod';
 
 import { api } from '@/api/client';
@@ -39,12 +39,22 @@ export interface LoginState {
 }
 
 /**
+ * One screen per history entry: React would otherwise keep this page's state when only the URL changes (another
+ * link, or Back to an entry of the same link), so an answer for the entry left behind would navigate from the
+ * new one, and its invalid-link screen or field errors would show there (review round 1, F1).
+ */
+export function ResetPasswordPage() {
+  const { token = '' } = useParams();
+  const { key } = useLocation();
+  return <ResetPasswordScreen key={key} token={token} />;
+}
+
+/**
  * Sets a new password with the emailed token (P4-04). Success logs out every session on the server, so the
  * tab forgets everything cached and goes to the login page. Every bad token is one 400, shown as one screen;
  * a refused password keeps the form, and the link stays usable.
  */
-export function ResetPasswordPage() {
-  const { token = '' } = useParams();
+function ResetPasswordScreen({ token }: { token: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [invalid, setInvalid] = useState(false);

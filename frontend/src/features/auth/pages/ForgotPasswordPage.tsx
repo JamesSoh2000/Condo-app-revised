@@ -44,12 +44,18 @@ export function ForgotPasswordPage() {
     if (sent !== null) statusRef.current?.focus();
   }, [sent]);
 
+  // A submit event while one is in flight sends nothing: the disabled button stops clicks, not a script's or an
+  // implicit submit, and each request emails a new link that replaces the last (review round 1, F2).
+  const inFlight = useRef(false);
   const onSubmit = async (body: ForgotForm) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setFailure(null);
     try {
       const { detail } = await api.post('/api/auth/password-reset/request', { body });
       setSent(detail);
     } catch (error) {
+      inFlight.current = false;
       setFailure({ message: rateLimitMessage(error) ?? 'Could not send the link. Try again.' });
     }
   };
