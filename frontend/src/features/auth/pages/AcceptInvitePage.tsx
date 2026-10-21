@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { api } from '@/api/client';
 import { ApiError } from '@/api/errors';
 import type { components } from '@/api/schema';
+import { useForgetUser } from '@/app/AuthProvider';
 import { runAuthCall } from '@/app/authQueue';
 import { clearTabChoices, writeSelectedBuilding } from '@/app/buildingStorage';
 import { loginPath } from '@/app/safeNext';
@@ -136,6 +137,7 @@ function AcceptInviteScreen({ token }: { token: string }) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const forgetUser = useForgetUser();
   // Read once and dropped from the history entry, so a reload or Back to it doesn't accept again.
   const [signedIn] = useState(() => (location.state as SignedInState | null)?.signedIn === true);
   useEffect(() => {
@@ -207,14 +209,11 @@ function AcceptInviteScreen({ token }: { token: string }) {
     // it. The invitations' details stay, so an accept that answers after Back doesn't empty the page now shown
     // (review round 1, F2).
     queryClient.removeQueries({ predicate: userData });
+    // Nothing of the previous user is left, so the shell's next /me starts a new one: AuthProvider's user-change
+    // sweep would otherwise drop the selection below (review round 1, F1). The page asks no /me itself: one
+    // outside the auth queue could answer after a later login and overwrite it (review round 2).
+    forgetUser();
     clearTabChoices();
-    // /me before the selection: AuthProvider drops the tab's choices when /me names another user than the one
-    // it last saw, which would undo the selection below (review round 1, F1). On failure the shell asks again.
-    try {
-      queryClient.setQueryData(['me'], await api.get('/api/auth/me'));
-    } catch {
-      // Nothing to do: the selection below still applies once /me answers.
-    }
     // The tab opens the accepted building even when the user has others.
     writeSelectedBuilding(accepted.building_id);
     if (mounted.current) navigate('/', { replace: true });

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, type Location } from 'react-router-dom';
 
 import { api, onUnauthenticated } from '@/api/client';
@@ -12,6 +12,16 @@ export type Me = components['schemas']['MeOut'];
 
 /** The router's current location, readable after the component that started a call has unmounted. */
 const CurrentLocation = createContext<{ readonly current: Location } | null>(null);
+
+/** Forgets the user `AuthProvider` last saw on `/me` (see `useForgetUser`). */
+const ForgetUser = createContext<() => void>(() => undefined);
+
+/**
+ * For a caller that has itself removed every query of the previous user (an invitation's accept): the next `/me`
+ * then starts a new user without the user-change sweep, which would also drop the tab's choices the caller has
+ * just made (P4-07b review round 2). Never for anyone who keeps that user's data cached.
+ */
+export const useForgetUser = (): (() => void) => useContext(ForgetUser);
 
 /** The signed-in user and their memberships (P2-02). A 401 means there is no session. */
 export function useMe() {
@@ -65,19 +75,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // `/me` answering for another user than before means another tab logged in on the shared cookie: drop
   // everything cached for the previous user, and their building selection (review round 1, Claude M1).
+  const lastUser = useRef<string | undefined>(undefined);
   useEffect(() => {
-    let userId = queryClient.getQueryData<Me>(['me'])?.user.id;
+    lastUser.current = queryClient.getQueryData<Me>(['me'])?.user.id;
     return queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== 'updated' || event.query.queryHash !== '["me"]') return;
       const next = (event.query.state.data as Me | undefined)?.user.id;
       if (next === undefined) return;
-      if (userId !== undefined && next !== userId) {
+      if (lastUser.current !== undefined && next !== lastUser.current) {
         queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'me' });
         clearTabChoices();
       }
-      userId = next;
+      lastUser.current = next;
     });
   }, [queryClient]);
+  const forgetUser = useCallback(() => {
+    lastUser.current = undefined;
+  }, []);
 
   useEffect(
     () =>
@@ -91,5 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient, navigate],
   );
 
-  return <CurrentLocation.Provider value={locationRef}>{children}</CurrentLocation.Provider>;
+  return (
+    <CurrentLocation.Provider value={locationRef}>
+      <ForgetUser.Provider value={forgetUser}>{children}</ForgetUser.Provider>
+    </CurrentLocation.Provider>
+  );
 }
