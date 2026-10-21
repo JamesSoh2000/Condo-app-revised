@@ -549,4 +549,25 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     expect(await screen.findByText('Use at most 254 characters.')).toBeTruthy();
     expect(screen.queryByTestId('join-error')).toBeNull();
   });
+
+  it('M1 neighbour: a /me that fails after the request still leads to the app', async () => {
+    await openSignedIn({ [REQUEST]: () => json(CREATED, 201), [ME]: () => problem(500, 'internal'), [MY_STATUS]: () => json(MY_PENDING) });
+    await pickUnit('1003');
+    pickRelationship(/^tenant/i);
+    sendRequest();
+    await waitFor(() => expect(location()).toBe('/'));
+  });
+
+  it('M2 neighbour: a refused sign-up lets the next submit through', async () => {
+    let answer = () => problem(429, 'rate_limited', { 'Retry-After': '5' });
+    const fetchMock = stubApi({ [LOOKUP]: () => json(BUILDING), [SIGNUP]: () => answer(), [UNITS]: units });
+    renderApp([`/join/${CODE}`]);
+    await screen.findByTestId('join-account');
+    signUp();
+    await screen.findByTestId('join-error');
+    answer = () => json(NEW_USER, 201);
+    fireEvent.submit(screen.getByTestId('join-signup-form'));
+    await screen.findByTestId('join-request');
+    expect(calls(fetchMock).filter((c) => c === SIGNUP)).toHaveLength(2);
+  });
 });
