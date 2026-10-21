@@ -273,7 +273,7 @@ None. No migration.
   longer answers 404 `unit_not_found` (mutation probe m4 made
   `test_transfer_to_another_buildings_unit_is_not_found` fail; inferred: the composite foreign key would
   then refuse the insert).
-- `FOR KEY SHARE` waits for `units/service.py::deactivate_unit`, which locks the unit `FOR UPDATE`, and
+- `FOR KEY SHARE` waits for `backend/app/units/service.py::deactivate_unit`, which locks the unit `FOR UPDATE`, and
   then reads `is_active` as committed. Without it, the transfer moves the member into a unit deactivated
   meanwhile (mutation probe m6; review round 1, M1).
 
@@ -321,16 +321,16 @@ All tests below are in `backend/tests/memberships/test_move_out_transfer.py` unl
 | Another building's unit (tenant row 7) | 404 `unit_not_found`, same body as an unknown id | `test_transfer_to_another_buildings_unit_is_not_found` |
 | A client-chosen time | 422 for `at`; helpers called without `at` | `test_bodies_refuse_a_client_time`, `test_helpers_are_called_without_at` (spy) |
 | Tenant rows 2, 3, 4, 6 | 401 / 404 / 403 / 404 | `test_unauthenticated_gets_401`, `test_other_building_and_inactive_callers_get_404`, `test_non_managers_get_403`, `test_another_buildings_member_is_not_found` |
-| Stale `now()` | 409 `occupancy_changed`, nothing written | `test_members_concurrency.py::test_stale_clock_is_occupancy_changed` |
-| Two move-outs at once (tenant row 10) | one 200, one 409, one event | `test_members_concurrency.py::test_concurrent_deactivations_give_one_winner` |
-| Two managers move each other out | one 200, one 409 `last_manager` | `test_members_concurrency.py::test_managers_acting_on_each_other_leave_one_manager[deactivate]` |
-| A move-out waits for a transfer | ends the new occupancy | `test_members_concurrency.py::test_deactivation_after_a_transfer_ends_the_new_occupancy` |
-| A unit deactivation races a transfer | the transfer waits; 409 `unit_inactive`, or proceeds after a rollback | `test_members_concurrency.py::test_transfer_waits_for_a_unit_deactivation` |
-| A manager demoted or suspended while their move waited | 403 / 404, nothing written | `test_members_concurrency.py::test_stale_manager_cannot_move_a_member` |
+| Stale `now()` | 409 `occupancy_changed`, nothing written | `backend/tests/memberships/test_members_concurrency.py::test_stale_clock_is_occupancy_changed` |
+| Two move-outs at once (tenant row 10) | one 200, one 409, one event | `backend/tests/memberships/test_members_concurrency.py::test_concurrent_deactivations_give_one_winner` |
+| Two managers move each other out | one 200, one 409 `last_manager` | `backend/tests/memberships/test_members_concurrency.py::test_managers_acting_on_each_other_leave_one_manager` (`[deactivate]`) |
+| A move-out waits for a transfer | ends the new occupancy | `backend/tests/memberships/test_members_concurrency.py::test_deactivation_after_a_transfer_ends_the_new_occupancy` |
+| A unit deactivation races a transfer | the transfer waits; 409 `unit_inactive`, or proceeds after a rollback | `backend/tests/memberships/test_members_concurrency.py::test_transfer_waits_for_a_unit_deactivation` |
+| A manager demoted or suspended while their move waited | 403 / 404, nothing written | `backend/tests/memberships/test_members_concurrency.py::test_stale_manager_cannot_move_a_member` |
 | The same, on a no-op transfer | `refuse_stale` in the no-op branch | **No test** (review round 2, L1; §7) |
 | A former manager's invitations | revoked (open and expired); accepted ones, other managers' and other buildings' untouched | `test_lost_manager_invitations_are_revoked`, `test_managers_keep_their_invitations_through_other_changes`, `test_another_buildings_invitations_of_the_same_user_are_kept` |
-| A revocation racing an accept | whichever commits first wins | `test_members_concurrency.py::test_revocation_and_accept_take_turns` |
-| The move-out reason survives a return | an accept clears `status_reason` | `tests/invitations/test_accept.py::test_accept_clears_a_deactivation_reason` |
+| A revocation racing an accept | whichever commits first wins | `backend/tests/memberships/test_members_concurrency.py::test_revocation_and_accept_take_turns` |
+| The move-out reason survives a return | an accept clears `status_reason` | `backend/tests/invitations/test_accept.py::test_accept_clears_a_deactivation_reason` |
 | An orphan join request reappears | it stays hidden; approve is 409 `membership_not_pending` | `test_orphan_join_request_stays_hidden_after_deactivation` |
 
 Acceptance criteria → tests: 1 `test_deactivate_moves_the_resident_out` (+ access and session tests);
@@ -341,7 +341,7 @@ transfer tests above; 5 `test_transfer_criterion_5_resident1_to_102`; 6 the tena
 `test_stale_clock_is_occupancy_changed`, `test_stale_manager_cannot_move_a_member`; 9 the three race
 tests; 10 `test_managers_acting_on_each_other_leave_one_manager[remove-only]`; 11 the invitation tests; 12
 `test_accept_clears_a_deactivation_reason`; 13 `test_orphan_join_request_stays_hidden_after_deactivation`;
-14 `test_members.py::test_list_refuses_bad_parameters`, `test_roles_change_audits_sorted_lists`,
+14 `backend/tests/memberships/test_members.py::test_list_refuses_bad_parameters`, `test_roles_change_audits_sorted_lists`,
 `test_invalid_transition_details`; 15 indirectly: every race test completes (no deadlock), with no
 dedicated lock-order assertion.
 
