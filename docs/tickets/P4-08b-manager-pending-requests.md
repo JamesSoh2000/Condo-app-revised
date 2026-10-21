@@ -61,10 +61,12 @@ Consumes `onboarding_list` (`GET …/onboarding-requests`, pending by default, c
    `onboarding_approve` for that row's id; on success the dialog closes, "<name> was approved." shows, and
    the list refetches. Cancel and Escape close it and send nothing; focus returns to the row's button.
 8. **Given** Deny on a row, **then** a dialog asks for the reason the resident will read: empty or under 3
-   characters after trimming shows "Give a reason of at least 3 characters" and sends nothing; the field
-   takes at most 500. On success "<name>'s request was denied." shows and the list refetches. A 422 on
-   `reason` (invisible characters, which the client doesn't check) shows the field error "Use visible
-   characters only" and keeps the dialog and its text.
+   characters after trimming shows "Give a reason of at least 3 characters." and sends nothing; over 500
+   (code points, as the server counts) "Use at most 500 characters."; a line break or an invisible
+   character (`Cc`, `Cf`, `Zl`, `Zp`, as `OnboardingDecisionIn`'s `Reason` refuses) "Write the reason on one
+   line, with visible characters only." and sends nothing. On success "<name>'s request was denied." shows
+   and the list refetches. A 422 on `reason` anyway (the browser's Unicode tables differ from Python's)
+   shows the same field messages by its `type` and keeps the dialog and its text.
 9. **Given** a 409 `membership_not_pending`, **then** the dialog closes, "This request can no longer be
    decided: the person's membership changed (for example, they accepted an invitation)." shows and the
    list refetches. A 409 `unit_inactive` on approve: "Unit <unit> is no longer active, so this request
