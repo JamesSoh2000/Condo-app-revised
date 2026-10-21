@@ -29,6 +29,7 @@ export function ForgotPasswordPage() {
   // An object, so the same message twice is still a new value and moves focus again.
   const [failure, setFailure] = useState<{ message: string } | null>(null);
   const alertRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
   const {
     register,
     handleSubmit,
@@ -38,6 +39,10 @@ export function ForgotPasswordPage() {
   useEffect(() => {
     if (failure) alertRef.current?.focus();
   }, [failure]);
+  // The form and its focused button are gone: focus the answer, not the body.
+  useEffect(() => {
+    if (sent !== null) statusRef.current?.focus();
+  }, [sent]);
 
   const onSubmit = async (body: ForgotForm) => {
     setFailure(null);
@@ -53,7 +58,13 @@ export function ForgotPasswordPage() {
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
       <PageHeading>Forgot your password?</PageHeading>
       {sent !== null ? (
-        <div role="status" data-testid="forgot-status" className="rounded border border-slate-300 bg-slate-50 p-3 text-sm">
+        <div
+          ref={statusRef}
+          role="status"
+          tabIndex={-1}
+          data-testid="forgot-status"
+          className="rounded border border-slate-300 bg-slate-50 p-3 text-sm"
+        >
           {sent}
         </div>
       ) : (

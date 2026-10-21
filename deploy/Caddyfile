@@ -13,7 +13,9 @@
 		# Browsers ignore HSTS over plain http, so it is harmless locally.
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
+		# A default (`?`): the token pages below set their own. This block is deferred (it deletes `Server`), so a
+		# plain set here would overwrite theirs.
+		?Referrer-Policy "strict-origin-when-cross-origin"
 		# camera=(self): residents photograph packages and maintenance issues from the app.
 		Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=()"
 		# frame-ancestors 'none' also stops the bundled Base44 SDK from posting API traffic to a framing

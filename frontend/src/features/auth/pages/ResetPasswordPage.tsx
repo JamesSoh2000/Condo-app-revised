@@ -101,8 +101,10 @@ export function ResetPasswordPage() {
   };
 
   if (invalid) {
+    // Its own key: otherwise React keeps the form's <main> and heading, the heading's mount effect doesn't run
+    // again, and focus falls to the body with the form's button.
     return (
-      <main data-testid="reset-invalid" className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
+      <main key="invalid" data-testid="reset-invalid" className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
         <PageHeading>This reset link is no longer valid</PageHeading>
         <p className="mb-4 text-sm">Links work once and expire. Request a new one to choose your password.</p>
         <Link to="/forgot-password" className="underline">
