@@ -67,6 +67,7 @@ export type MemberAction = { kind: 'reactivate'; id: string } | { kind: 'suspend
 
 /** Every key of the members list starts here, so one invalidation covers every filter combination and its pages. */
 const membersKey = (buildingId: string) => ['b', buildingId, 'members'] as const;
+export const membersListKey = (buildingId: string, filters: MemberFilters) => [...membersKey(buildingId), 'list', filters] as const;
 
 /**
  * The building's members matching `filters`, newest first, one page at a time. Each combination is its own query, so
@@ -74,7 +75,7 @@ const membersKey = (buildingId: string) => ['b', buildingId, 'members'] as const
  */
 export function useMembers(buildingId: string, filters: MemberFilters) {
   return useInfiniteQuery({
-    queryKey: [...membersKey(buildingId), 'list', filters],
+    queryKey: membersListKey(buildingId, filters),
     staleTime: 0,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>

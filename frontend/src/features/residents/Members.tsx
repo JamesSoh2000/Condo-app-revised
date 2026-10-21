@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 
 import { ApiError } from '@/api/errors';
@@ -5,6 +6,7 @@ import { useBuildingId } from '@/app/BuildingProvider';
 import { relationshipLabel, unitName } from '@/features/onboarding/api';
 import { MemberDialog } from '@/features/residents/MemberDialog';
 import {
+  membersListKey,
   useMembers,
   type Member,
   type MemberActionKind,
@@ -51,6 +53,7 @@ interface Open {
  */
 export function Members() {
   const buildingId = useBuildingId();
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<MemberFilters>({ role: null, status: null, search: '' });
   const [searchText, setSearchText] = useState('');
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -74,11 +77,20 @@ export function Members() {
     setOpen(null);
   };
 
+  // Each combination starts from its first page: the cached pages of an earlier visit would all be fetched again
+  // (review round 1, Codex F1). The current combination is left alone, so the same search again changes nothing.
+  const applyFilters = (change: Partial<MemberFilters>) => {
+    const next = { ...filters, ...change };
+    if (next.role === filters.role && next.status === filters.status && next.search === filters.search) return;
+    queryClient.removeQueries({ queryKey: membersListKey(buildingId, next), exact: true });
+    setFilters(next);
+  };
+
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
     if (/\p{Cc}/u.test(searchText)) return setSearchError(SEARCH_INVALID);
     setSearchError(null);
-    setFilters((current) => ({ ...current, search: searchText.trim() }));
+    applyFilters({ search: searchText.trim() });
   };
 
   // A 422 can only be the search (the selects send valid values): shown on the field, not as a list error.
@@ -155,7 +167,7 @@ export function Members() {
           <select
             id={`${id}-role`}
             value={filters.role ?? ''}
-            onChange={(event) => setFilters((current) => ({ ...current, role: (event.target.value || null) as MemberRole | null }))}
+            onChange={(event) => applyFilters({ role: (event.target.value || null) as MemberRole | null })}
             className="min-h-11 rounded border px-2"
           >
             <option value="">All roles</option>
@@ -173,7 +185,7 @@ export function Members() {
           <select
             id={`${id}-status`}
             value={filters.status ?? ''}
-            onChange={(event) => setFilters((current) => ({ ...current, status: (event.target.value || null) as MemberStatus | null }))}
+            onChange={(event) => applyFilters({ status: (event.target.value || null) as MemberStatus | null })}
             className="min-h-11 rounded border px-2"
           >
             <option value="">All statuses</option>
