@@ -556,4 +556,3 @@ describe('reset paths without a token (P4-07b criterion 13, carried F7)', () => 
     },
   );
 });
-

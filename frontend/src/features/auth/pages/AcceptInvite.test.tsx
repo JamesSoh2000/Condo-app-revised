@@ -467,7 +467,7 @@ describe('other refusals (criterion 7)', () => {
     const tries = calls(fetchMock).length;
 
     gets = 3;
-    click(screen.getByRole('button', { name: /try again/i }));
+    click(screen.getByTestId('invite-retry'));
 
     expect(await screen.findByTestId('invite-details')).toBeTruthy();
     expect(calls(fetchMock).length).toBe(tries + 1);
@@ -958,5 +958,227 @@ describe('stack journey after round 2 (found by the implementer)', () => {
 
     expect(await screen.findByTestId('invite-invalid')).toBeTruthy();
     expect(screen.queryByTestId('invite-details')).toBeNull();
+  });
+});
+
+describe('review round 3 (Codex gpt-6.1-sol; inbox B-7 option A)', () => {
+  const BIRCH_ACCEPTED = { building_id: BIRCH.id, membership_id: BIRCH.id, roles: ['resident'] };
+  const NEW_ME: components['schemas']['MeOut'] = {
+    ...RESIDENT_ME,
+    user: { ...RESIDENT_ME.user, id: '01929a4e-0000-7000-8000-00000000000b', full_name: 'New Invitee', email: 'new@example.test' },
+    memberships: [membership(BIRCH)],
+  };
+  const birchRoutes = {
+    [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['resident'])),
+    [`GET /api/buildings/${BIRCH.id}/notifications/summary`]: () => json({ unread_count: 0 }),
+  };
+
+  it('R3-1 (High): a new account accepted after the user went back to the shell stops showing the previous user', async () => {
+    const slow = deferred(() => json(BIRCH_ACCEPTED));
+    let created = false;
+    const fetchMock = stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: async (request) => {
+        const body = (await request.clone().json()) as Record<string, unknown>;
+        if (!('full_name' in body)) return needsAccount();
+        const answer = await slow.handler(request);
+        // The server creates the account and sets its cookie here; the previous user's session had expired.
+        created = true;
+        return answer;
+      },
+      [`GET /api/buildings/${MAPLE.id}/notifications`]: (request) =>
+        new Promise<Response>((_resolve, reject) => {
+          request.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+        }),
+      [ME]: () => json(created ? NEW_ME : RESIDENT_ME),
+      ...birchRoutes,
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    // The previous user's shell data is still cached in the tab.
+    act(() => {
+      app.queryClient.setQueryData(['me'], RESIDENT_ME);
+      app.queryClient.setQueryData(['b', MAPLE.id, 'building'], buildingOut(MAPLE, ['resident']));
+      app.queryClient.setQueryData(['b', MAPLE.id, 'notifications', 'summary'], { unread_count: 0 });
+      app.queryClient.setQueryData(['b', MAPLE.id, 'notifications', 'list'], {
+        pages: [
+          {
+            items: [
+              {
+                id: '01929a4e-0000-7000-8000-0000000000aa',
+                title: 'A private notification',
+                body: 'Private parcel delivery for previous resident A',
+                created_at: '2026-10-20T12:00:00Z',
+                read_at: null,
+                link: '/MyPackages',
+              },
+            ],
+            next_cursor: null,
+          },
+        ],
+        pageParams: [null],
+      });
+      writeSelectedBuilding(MAPLE.id);
+    });
+    click(await screen.findByTestId('invite-accept'));
+    await screen.findByTestId('invite-form');
+    createAccount('New Invitee');
+    await waitFor(() => expect(calls(fetchMock).filter((c) => c === ACCEPT)).toHaveLength(2));
+    act(() => app.navigate()('/'));
+    await screen.findByRole('navigation', { name: 'Main' });
+    fireEvent.click(screen.getByRole('button', { name: /notifications.*unread/i }));
+    await screen.findByText('Private parcel delivery for previous resident A');
+
+    await act(async () => {
+      slow.release();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    await settle();
+
+    expect(created).toBe(true);
+    expect(location()).toBe('/');
+    expect(screen.queryByText('Private parcel delivery for previous resident A')).toBeNull();
+    expect(document.body.textContent).not.toContain(RESIDENT_ME.user.full_name);
+    await waitFor(() => expect(app.queryClient.getQueryData(['me'])).toEqual(NEW_ME));
+    expect(readSelectedBuilding()).toBe(BIRCH.id);
+  });
+
+  it('R3-1: an abandoned one-click accept that changes the user rebuilds the shell for the new one', async () => {
+    const slow = deferred(() => json(BIRCH_ACCEPTED));
+    let accepted = false;
+    const fetchMock = stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: async (request) => {
+        const answer = await slow.handler(request);
+        accepted = true;
+        return answer;
+      },
+      [ME]: () => json(accepted ? NEW_ME : RESIDENT_ME),
+      ...birchRoutes,
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    act(() => {
+      app.queryClient.setQueryData(['me'], RESIDENT_ME);
+      writeSelectedBuilding(MAPLE.id);
+    });
+    click(await screen.findByTestId('invite-accept'));
+    await waitFor(() => expect(calls(fetchMock)).toContain(ACCEPT));
+    act(() => app.navigate()('/'));
+    await screen.findByRole('navigation', { name: 'Main' });
+    expect(document.body.textContent).toContain(RESIDENT_ME.user.full_name);
+
+    await act(async () => {
+      slow.release();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    await settle();
+
+    await waitFor(() => expect(app.queryClient.getQueryData(['me'])).toEqual(NEW_ME));
+    expect(readSelectedBuilding()).toBe(BIRCH.id);
+    expect(document.body.textContent).not.toContain(RESIDENT_ME.user.full_name);
+  });
+
+  it('R3-1 neighbour: a mismatch logout that answers after the user went back to the shell leaves the shell', async () => {
+    const slowLogout = deferred(() => noContent());
+    let signedIn = true;
+    stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: () => problem(403, 'invitation_email_mismatch'),
+      [LOGOUT]: async (request) => {
+        const answer = await slowLogout.handler(request);
+        signedIn = false;
+        return answer;
+      },
+      [ME]: () => (signedIn ? json(RESIDENT_ME) : problem(401, 'unauthorized')),
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    act(() => void app.queryClient.setQueryData(['me'], RESIDENT_ME));
+    click(await screen.findByTestId('invite-accept'));
+    click(await screen.findByTestId('invite-logout'));
+    act(() => app.navigate()('/'));
+    await screen.findByRole('navigation', { name: 'Main' });
+
+    await act(async () => {
+      slowLogout.release();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    await waitFor(() => expect(location()).toBe('/login'));
+    expect(document.body.textContent).not.toContain(RESIDENT_ME.user.full_name);
+  });
+
+  it('R3-1 neighbour: a mounted accept on the page itself still lands in the shell once, on the new user', async () => {
+    let accepted = false;
+    const fetchMock = stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: () => {
+        accepted = true;
+        return json(BIRCH_ACCEPTED);
+      },
+      [ME]: () => json(accepted ? NEW_ME : RESIDENT_ME),
+      ...birchRoutes,
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    act(() => void app.queryClient.setQueryData(['me'], RESIDENT_ME));
+
+    click(await screen.findByTestId('invite-accept'));
+
+    await screen.findByRole('navigation', { name: 'Main' });
+    await settle();
+    expect(location()).toBe('/');
+    expect(app.queryClient.getQueryData(['me'])).toEqual(NEW_ME);
+    expect(calls(fetchMock).filter((c) => c === ME)).toHaveLength(1);
+  });
+
+  it('R3-2 (Medium): an abandoned accept keeps the same token on another entry and its answer, without fetching again', async () => {
+    const slow = deferred(() => json(ACCEPTED));
+    let gets = 0;
+    let posts = 0;
+    stubApi({
+      [GET]: () => (++gets === 1 ? json(PUBLIC) : problem(429, 'rate_limited', { 'Retry-After': '600' })),
+      [ACCEPT]: (request) => (++posts === 1 ? slow.handler(request) : problem(429, 'rate_limited', { 'Retry-After': '600' })),
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    click(await screen.findByTestId('invite-accept'));
+    await waitFor(() => expect(posts).toBe(1));
+    act(() => app.navigate()(`/invite/${TOKEN}`));
+    click(await screen.findByTestId('invite-accept'));
+
+    await act(async () => {
+      slow.release();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    await waitFor(() => expect(posts).toBe(2));
+    await settle();
+
+    expect(screen.queryByTestId('invite-load-error')).toBeNull();
+    expect(screen.getByTestId('invite-error').textContent).toContain('10 minutes');
+    expect(gets).toBe(1);
+  });
+
+  it('R3-2 neighbour: an entry of the accepted token opened later asks again and shows it is no longer valid', async () => {
+    const slow = deferred(() => json(ACCEPTED));
+    let accepted = false;
+    stubApi({
+      [GET]: () => (accepted ? problem(404, 'invitation_invalid') : json(PUBLIC)),
+      [ACCEPT]: async (request) => {
+        const answer = await slow.handler(request);
+        accepted = true;
+        return answer;
+      },
+      [`GET /api/invitations/${OTHER}`]: () => json(PUBLIC),
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    click(await screen.findByTestId('invite-accept'));
+    await waitFor(() => expect(accepted).toBe(false));
+    act(() => app.navigate()(`/invite/${OTHER}`));
+    await screen.findByTestId('invite-details');
+    await act(async () => {
+      slow.release();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    act(() => app.navigate()(`/invite/${TOKEN}`));
+
+    expect(await screen.findByTestId('invite-invalid')).toBeTruthy();
   });
 });
