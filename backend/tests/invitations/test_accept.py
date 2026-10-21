@@ -727,6 +727,30 @@ async def test_active_or_suspended_membership_is_not_changed(
     assert (await _membership(db, world.a.id, member.user.id)).status == status_before
 
 
+async def test_accept_clears_a_deactivation_reason(
+    as_user: UserClientFactory, db: AsyncSession, world: World
+) -> None:
+    # P4-06b criterion 12: the move-out reason (P4-06a's `status_reason`) doesn't outlive the
+    # membership's return.
+    user = await make_user(db, email=EMAIL)
+    old = await make_membership(
+        user, world.a, status=MembershipStatus.DEACTIVATED, status_reason="Moved out"
+    )
+    invitee = await as_user(user)
+    token, _ = await _invite(db, world)
+
+    assert (await invitee.post(_accept_url(token), json={})).status_code == 200
+
+    row = (
+        await db.execute(
+            select(BuildingMembership.status, BuildingMembership.status_reason)
+            .where(BuildingMembership.id == old.id)
+            .execution_options(populate_existing=True)
+        )
+    ).one()
+    assert tuple(row) == (MembershipStatus.ACTIVE, None)
+
+
 async def test_reactivation_ends_leftover_occupancy_when_roles_lack_resident(
     as_user: UserClientFactory, db: AsyncSession, world: World
 ) -> None:

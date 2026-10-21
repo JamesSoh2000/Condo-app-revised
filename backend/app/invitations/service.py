@@ -603,6 +603,8 @@ async def _activate_membership(
     exactly the invitation's roles and unit. Never commits."""
     activated = {
         "status": MembershipStatus.ACTIVE,
+        # A move-out's reason doesn't outlive the membership's return (P4-06b).
+        "status_reason": None,
         "status_changed_at": now,
         # The manager who invited authorised the change; None for an operator's invitation (P4-03).
         "status_changed_by_user_id": invitation.created_by_user_id,

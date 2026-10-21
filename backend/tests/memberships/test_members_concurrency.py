@@ -19,13 +19,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.audit.models import AuditEvent
 from app.auth import service as auth
 from app.core.errors import DomainError
+from app.core.security import hash_token
 from app.invitations import service as invitations
 from app.invitations.models import Invitation
-from app.invitations.schemas import InvitationCreate
+from app.invitations.schemas import InvitationAccept, InvitationCreate
 from app.memberships import service
-from app.memberships.enums import MembershipStatus, Role
-from app.memberships.models import BuildingMembership, MembershipRole
-from app.memberships.schemas import MemberRolesIn, MemberSuspendIn
+from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
+from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
+from app.memberships.schemas import (
+    MemberDeactivateIn,
+    MemberRolesIn,
+    MemberSuspendIn,
+    MemberTransferIn,
+)
+from app.rate_limits.service import RateLimiter
 from app.tenancy.context import TenantContext
 from tests.conftest import FrozenClock
 from tests.factories import make_membership, make_user
@@ -36,6 +43,7 @@ type Sessions = async_sessionmaker[AsyncSession]
 type Write = Callable[[AsyncSession], Awaitable[Any]]
 
 REASON = MemberSuspendIn(reason="Unpaid fees")
+MOVED_OUT = MemberDeactivateIn(reason="Moved out")
 
 
 def _ctx(world: World, member: Member) -> TenantContext:
@@ -48,10 +56,12 @@ def _ctx(world: World, member: Member) -> TenantContext:
     )
 
 
-async def _second_manager(sessions: Sessions, world: World) -> Member:
+async def _second_manager(
+    sessions: Sessions, world: World, roles: tuple[Role, ...] = (Role.PROPERTY_MANAGEMENT,)
+) -> Member:
     async with sessions() as db:
         user = await make_user(db, full_name="second manager")
-        membership = await make_membership(user, world.a, roles=(Role.PROPERTY_MANAGEMENT,))
+        membership = await make_membership(user, world.a, roles=roles)
         await db.commit()
         return Member(user, membership)
 
@@ -68,6 +78,34 @@ def _demote(ctx: TenantContext, target: UUID) -> Write:
 def _suspend(ctx: TenantContext, target: UUID) -> Write:
     async def write(db: AsyncSession) -> Any:
         return await service.suspend_member(db, ctx, target, REASON)
+
+    return write
+
+
+def _remove_manager(ctx: TenantContext, target: UUID) -> Write:
+    async def write(db: AsyncSession) -> Any:
+        return await service.change_roles(
+            db, ctx, target, MemberRolesIn(remove=[Role.PROPERTY_MANAGEMENT])
+        )
+
+    return write
+
+
+def _deactivate(ctx: TenantContext, target: UUID) -> Write:
+    async def write(db: AsyncSession) -> Any:
+        return await service.deactivate_member(db, ctx, target, MOVED_OUT)
+
+    return write
+
+
+def _transfer(ctx: TenantContext, target: UUID, unit_id: UUID) -> Write:
+    async def write(db: AsyncSession) -> Any:
+        return await service.transfer_member(
+            db,
+            ctx,
+            target,
+            MemberTransferIn(unit_id=unit_id, relationship=OccupancyRelationship.TENANT),
+        )
 
     return write
 
@@ -126,14 +164,27 @@ async def _active_managers(sessions: Sessions, world: World) -> int:
     return count
 
 
-@pytest.mark.parametrize("action", [_demote, _suspend], ids=["demote", "suspend"])
+@pytest.mark.parametrize(
+    ("action", "second_roles"),
+    [
+        (_demote, (Role.PROPERTY_MANAGEMENT,)),
+        (_suspend, (Role.PROPERTY_MANAGEMENT,)),
+        (_deactivate, (Role.PROPERTY_MANAGEMENT,)),
+        (_remove_manager, (Role.PROPERTY_MANAGEMENT, Role.COUNCIL)),
+    ],
+    ids=["demote", "suspend", "deactivate", "remove-only"],
+)
 def test_managers_acting_on_each_other_leave_one_manager(
-    scratch_database_url: str, action: Callable[[TenantContext, UUID], Write]
+    scratch_database_url: str,
+    action: Callable[[TenantContext, UUID], Write],
+    second_roles: tuple[Role, ...],
 ) -> None:
     # Criterion 3. Without the building lock, each would count the other still active and both
-    # succeed, leaving none.
+    # succeed, leaving none. P4-06b: `deactivate` too (criterion 9), and `remove-only` (criterion
+    # 10, the open Medium of PR #93): the second, holding council too, removes the first's only
+    # role; `LastManager` from the precedence check must not turn into the stale refusal (403).
     async def body(sessions: Sessions, world: World) -> None:
-        second = await _second_manager(sessions, world)
+        second = await _second_manager(sessions, world, second_roles)
         first = world.a_manager
 
         outcomes = await _held_then(
@@ -490,3 +541,155 @@ def test_session_refresh_and_a_staff_reactivation_take_turns(
             assert await auth.resolve_session(db, token) is None
 
     _run(scratch_database_url, body)
+
+
+# P4-06b: move-out and transfer (criteria 8, 9, 11).
+
+
+async def _occupancies(sessions: Sessions, membership_id: UUID) -> list[tuple[Any, ...]]:
+    async with sessions() as db:
+        rows = await db.execute(
+            select(UnitOccupancy.unit_id, UnitOccupancy.ended_at.is_(None))
+            .where(UnitOccupancy.membership_id == membership_id)
+            .order_by(UnitOccupancy.started_at)
+        )
+        return [tuple(row) for row in rows]
+
+
+async def _events(sessions: Sessions, action: str, entity_id: UUID) -> int:
+    count: int = await _scalar(
+        sessions,
+        select(func.count()).where(AuditEvent.action == action, AuditEvent.entity_id == entity_id),
+    )
+    return count
+
+
+def test_concurrent_deactivations_give_one_winner(scratch_database_url: str) -> None:
+    # Criterion 9 (tenant row 10).
+    async def body(sessions: Sessions, world: World) -> None:
+        second = await _second_manager(sessions, world)
+        target = world.a_resident1.membership.id
+
+        outcomes = await _held_then(
+            sessions,
+            _deactivate(_ctx(world, world.a_manager), target),
+            _deactivate(_ctx(world, second), target),
+        )
+
+        assert outcomes == ("ok", "invalid_transition")
+        assert await _events(sessions, "membership.deactivated", target) == 1
+        assert await _occupancies(sessions, target) == [(world.a_101.id, False)]
+
+    _run(scratch_database_url, body)
+
+
+def test_deactivation_after_a_transfer_ends_the_new_occupancy(scratch_database_url: str) -> None:
+    # Criterion 9: the deactivation waits on the building lock, then reads the transfer's rows.
+    async def body(sessions: Sessions, world: World) -> None:
+        second = await _second_manager(sessions, world)
+        target = world.a_resident1.membership.id
+
+        outcomes = await _held_then(
+            sessions,
+            _transfer(_ctx(world, world.a_manager), target, world.a_102.id),
+            _deactivate(_ctx(world, second), target),
+        )
+
+        assert outcomes == ("ok", "ok")
+        assert await _occupancies(sessions, target) == [
+            (world.a_101.id, False),
+            (world.a_102.id, False),
+        ]
+
+    _run(scratch_database_url, body)
+
+
+@pytest.mark.parametrize("late", ["deactivate", "transfer"])
+def test_stale_clock_is_occupancy_changed(scratch_database_url: str, late: str) -> None:
+    # Criterion 8: a transaction that began before a concurrent transfer of the same member
+    # committed has an older now() than the new occupancy's start; the helper raises
+    # OccupancyTimeError, which is 409 `occupancy_changed` with nothing written.
+    async def body(sessions: Sessions, world: World) -> None:
+        second = await _second_manager(sessions, world)
+        target = world.a_resident1.membership.id
+        async with sessions() as stale:
+            # As a request's session lookup would: the transaction (and its now()) starts here.
+            await stale.execute(select(1))
+            await asyncio.sleep(0.05)
+            async with sessions() as db:
+                outcome = await _outcome(
+                    _transfer(_ctx(world, world.a_manager), target, world.a_102.id), db
+                )
+            assert outcome == "ok"
+            write = (
+                _deactivate(_ctx(world, second), target)
+                if late == "deactivate"
+                else _transfer(_ctx(world, second), target, world.a_201.id)
+            )
+            assert await _outcome(write, stale) == "occupancy_changed"
+
+        status = await _scalar(
+            sessions, select(BuildingMembership.status).where(BuildingMembership.id == target)
+        )
+        assert status == MembershipStatus.ACTIVE
+        assert await _occupancies(sessions, target) == [
+            (world.a_101.id, False),
+            (world.a_102.id, True),
+        ]
+        assert await _events(sessions, "membership.deactivated", target) == 0
+        assert await _events(sessions, "occupancy.transferred", target) == 1
+
+    _run(scratch_database_url, body)
+
+
+@pytest.mark.parametrize("first", ["revocation", "accept"])
+def test_revocation_and_accept_take_turns(scratch_database_url: str, first: str) -> None:
+    # Criterion 11: a manager's open invitation is accepted while another manager removes their
+    # manager role. Both take the building row lock (the accept FOR SHARE), so the second waits and
+    # reads what the first committed: an accept after the revocation is refused; a revocation after
+    # the accept leaves it accepted.
+    async def body(sessions: Sessions, world: World) -> None:
+        second = await _second_manager(sessions, world)
+        async with sessions() as db:
+            await invitations.create_invitation(
+                db,
+                _ctx(world, second),
+                InvitationCreate(email="guard@example.test", roles=[Role.SECURITY]),
+            )
+        token = "t" * 43
+        async with sessions() as db:
+            invitation = await db.scalar(
+                select(Invitation).where(Invitation.created_by_user_id == second.user.id)
+            )
+            assert invitation is not None
+            invitation.token_hash = hash_token(token)
+            await db.commit()
+            invitation_id = invitation.id
+        limiter = RateLimiter(sessions)
+        new_person = InvitationAccept(full_name="Gina Guard", password="correct horse battery")  # noqa: S106 (a test password)
+
+        async def accept(db: AsyncSession) -> Any:
+            return await invitations.accept_invitation(
+                db, limiter, token, new_person, session_token=None, user_agent=None, ip=None
+            )
+
+        revoke = _demote(_ctx(world, world.a_manager), second.membership.id)
+        held, waiting = (revoke, accept) if first == "revocation" else (accept, revoke)
+        outcomes = await _held_then(sessions, held, waiting)
+
+        row = await _with(
+            sessions, select(Invitation.accepted_at, Invitation.revoked_at), invitation_id
+        )
+        if first == "revocation":
+            assert outcomes == ("ok", "invitation_invalid")
+            assert (row.accepted_at, row.revoked_at is not None) == (None, True)
+        else:
+            assert outcomes == ("ok", "ok")
+            assert (row.accepted_at is not None, row.revoked_at) == (True, None)
+
+    _run(scratch_database_url, body)
+
+
+async def _with(sessions: Sessions, stmt: Any, invitation_id: UUID) -> Any:
+    async with sessions() as db:
+        return (await db.execute(stmt.where(Invitation.id == invitation_id))).one()

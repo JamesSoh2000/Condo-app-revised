@@ -195,9 +195,11 @@ async def test_list_refuses_bad_parameters(
     manager: AsyncClient, world: World, params: dict[str, str]
 ) -> None:
     r = await manager.get(_members(world.a), params=params)
-    assert r.status_code in (400, 422), r.text
     if "cursor" in params:
         assert_problem(r, 400, "invalid_cursor")
+    else:
+        # P4-06b carry: exactly 422, not "400 or 422".
+        assert r.status_code == 422, r.text
 
 
 async def test_list_never_shows_another_buildings_members(
@@ -469,6 +471,42 @@ async def test_roles_change_audits_exact_lists(
         world.a_manager.user.id,
     )
     assert event.metadata_ == {"added": ["security"], "removed": ["council"]}
+
+
+async def test_roles_change_audits_sorted_lists(
+    manager: AsyncClient, world: World, db: AsyncSession
+) -> None:
+    # P4-06b carry: several roles added and removed; each list sorted by value.
+    guard = await make_user(db)
+    membership = await make_membership(guard, world.a, roles=(Role.SECURITY, Role.COUNCIL))
+    r = await manager.post(
+        _member(world.a, membership.id, "roles"),
+        json={"add": ["resident", "property_management"], "remove": ["security", "council"]},
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["roles"] == ["property_management", "resident"]
+    [event] = await _events(db, "membership.roles_changed")
+    assert event.metadata_ == {
+        "added": ["property_management", "resident"],
+        "removed": ["council", "security"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("persona", "action", "body", "detail"),
+    [
+        ("a_suspended", "suspend", REASON, "Only an active member can be suspended."),
+        ("a_resident1", "reactivate", None, "Only a suspended member can be reactivated."),
+    ],
+)
+async def test_invalid_transition_details(
+    manager: AsyncClient, world: World, persona: str, action: str, body: Any, detail: str
+) -> None:
+    # P4-06b carry: "Only a active member…" read wrongly.
+    member: Member = getattr(world, persona)
+    r = await manager.post(_member(world.a, member.membership.id, action), json=body)
+    assert assert_problem(r, 409, "invalid_transition")["detail"] == detail
 
 
 async def test_roles_noop_writes_no_audit(

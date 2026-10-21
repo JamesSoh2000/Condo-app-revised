@@ -52,7 +52,8 @@ as before.)
    window): `occupancy_window(a_resident1, 101, t)` is true for a `t` inside the old window and false for
    `t >= ended_at`.
 3. **Deactivate refusals** (nothing written): the caller themself → 409 `cannot_target_self`; the last
-   active manager (who can log in) → 409 `last_manager`; a `pending`, `denied` or `deactivated` member →
+   active manager (who can log in) → 409 `last_manager` (reachable only in criterion 9's race: the
+   caller is an active manager and can't target themself); a `pending`, `denied` or `deactivated` member →
    409 `invalid_transition` (pending ones are denied through their join request instead); a missing,
    empty, too long or control-character reason, or an extra field → 422 (the suspend reason's rules).
 4. **Transfer.** `POST …/members/{id}/transfer` `{unit_id, relationship}` moves an `active` member who
