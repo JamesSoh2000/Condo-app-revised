@@ -340,6 +340,19 @@ describe('join page: signed in', () => {
     expect(calls(fetchMock)).not.toContain(REQUEST);
   });
 
+  it('drops a unit picked from the previous results once the new ones leave it out', async () => {
+    const { fetchMock } = await openSignedIn({});
+    await screen.findByRole('radio', { name: '1001' });
+    search('1003');
+    // Still the empty search's list for 300 ms: 1001 can be clicked, then the new results don't have it.
+    fireEvent.click(screen.getByRole('radio', { name: '1001' }));
+    await waitFor(() => expect(screen.queryByRole('radio', { name: '1001' })).toBeNull());
+    pickRelationship(/^owner/i);
+    sendRequest();
+    expect(await screen.findByText('Choose your unit.')).toBeTruthy();
+    expect(calls(fetchMock)).not.toContain(REQUEST);
+  });
+
   it('explains each relationship in plain words', async () => {
     await openSignedIn({});
     expect(description(screen.getByRole('radio', { name: /^owner/i }))).toMatch(/you own this unit/i);

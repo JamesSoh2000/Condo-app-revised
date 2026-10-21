@@ -63,12 +63,16 @@ export function JoinRequestForm({ code, mounted, onSent, onRefused }: Props) {
   // Ahead of the button's `disabled`, which a second submit in the same tick doesn't see yet.
   const inFlight = useRef(false);
 
+  const options = units.data ?? [];
+  // Only a unit the list shows counts: one clicked in the previous results while a search was on its way may not
+  // be among the new ones.
+  const chosen = options.some((unit) => unit.id === unitId) ? unitId : null;
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (inFlight.current) return;
-    const absent = { unit: unitId === null, relationship: relationship === null };
-    setMissing(absent);
-    if (unitId === null || relationship === null) return;
+    setMissing({ unit: chosen === null, relationship: relationship === null });
+    if (chosen === null || relationship === null) return;
     inFlight.current = true;
     setBusy(true);
     setFailure(null);
@@ -76,7 +80,7 @@ export function JoinRequestForm({ code, mounted, onSent, onRefused }: Props) {
     try {
       sent = await api.post('/api/join/{join_code}/requests', {
         params: { path: { join_code: code } },
-        body: { unit_id: unitId, relationship },
+        body: { unit_id: chosen, relationship },
       });
     } catch (error) {
       inFlight.current = false;
@@ -110,7 +114,6 @@ export function JoinRequestForm({ code, mounted, onSent, onRefused }: Props) {
     if (mounted.current) onSent(sent, active);
   };
 
-  const options = units.data ?? [];
   let list;
   if (units.isPending) list = <p role="status">Loading units…</p>;
   else if (units.isError && !units.data) {
@@ -127,7 +130,7 @@ export function JoinRequestForm({ code, mounted, onSent, onRefused }: Props) {
   } else {
     list = options.map((unit) => (
       <label key={unit.id} className="flex items-center gap-2 rounded border bg-white px-3 py-2">
-        <input type="radio" name="unit" checked={unitId === unit.id} onChange={() => setUnitId(unit.id)} />
+        <input type="radio" name="unit" checked={chosen === unit.id} onChange={() => setUnitId(unit.id)} />
         {unitName(unit.tower, unit.label)}
       </label>
     ));
@@ -165,7 +168,7 @@ export function JoinRequestForm({ code, mounted, onSent, onRefused }: Props) {
       <fieldset aria-describedby={missing.unit ? 'unit-error' : undefined} aria-busy={units.isFetching}>
         <legend className="mb-1 text-sm font-medium">Your unit</legend>
         <div className="flex max-h-64 flex-col gap-2 overflow-y-auto">{list}</div>
-        {missing.unit && unitId === null && (
+        {missing.unit && chosen === null && (
           <p id="unit-error" className="mt-1 text-sm text-red-700">
             Choose your unit.
           </p>
