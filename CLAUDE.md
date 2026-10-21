@@ -22,7 +22,7 @@ through `docs/HUMAN_INBOX.md` and the explanations in `docs/explanations/`.
 
 ## Commands
 
-`make help` lists the targets (`e2e` is a stub until P4-09). If port 5432 is taken, pass
+`make help` lists the targets. If port 5432 is taken, pass
 `DB_PORT=<free port>` to every target.
 
 ```bash
@@ -35,7 +35,7 @@ make test          # backend tests (real Postgres)
 make check         # ruff + format check + mypy + pytest + alembic check + frontend lint/tsc/build
 make s3-smoke      # the S3 emulator enforces presigned-POST limits, versioning and CORS
 make gen-api       # regenerate frontend/src/api/schema.d.ts from OpenAPI
-make e2e           # Playwright journeys against the compose stack (CI uses the prod-like stack)
+make e2e           # Playwright journeys (e2e/README.md); E2E_STACK=prodlike as CI runs them
 ```
 
 Run `make check` before saying a ticket is done. Paste real output as evidence. Never claim a command ran
