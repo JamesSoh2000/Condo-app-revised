@@ -23,17 +23,18 @@ export function PendingRequests() {
   const [open, setOpen] = useState<Open | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const messageRef = useRef<HTMLParagraphElement>(null);
-  // Where focus goes once the dialog has closed: its opener, or the message when the row is leaving the list.
-  const focusNext = useRef<HTMLElement | 'message' | null>(null);
+  // Where focus goes once the dialog has closed: its opener, or the message when the row is leaving the list. State,
+  // not a ref: the effect then runs after the commit that shows the message. A ref read by an effect on every render
+  // was taken by the list refetch's pending effect, while the message was still empty and hidden (Chromium).
+  const [focusTo, setFocusTo] = useState<{ target: HTMLElement | 'message' } | null>(null);
   useEffect(() => {
-    const target = focusNext.current;
-    focusNext.current = null;
-    (target === 'message' ? messageRef.current : target)?.focus();
-  });
+    if (focusTo) (focusTo.target === 'message' ? messageRef.current : focusTo.target)?.focus();
+  }, [focusTo]);
 
   const close = (outcome: Outcome | null) => {
     if (outcome) setMessage(outcome.message);
-    focusNext.current = outcome?.decided || !open?.opener.isConnected ? 'message' : (open?.opener ?? null);
+    const back = !outcome?.decided && open?.opener.isConnected ? open.opener : null;
+    setFocusTo({ target: back ?? 'message' });
     setOpen(null);
   };
 

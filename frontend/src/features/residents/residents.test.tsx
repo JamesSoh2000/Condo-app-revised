@@ -410,6 +410,11 @@ describe('deny (criteria 1, 8)', () => {
     expect(document.activeElement).toBe(reason());
     await settle();
     expect(calls(fetchMock)).not.toContain(deny(SAM.id));
+
+    // Editing the reason clears the message until the next attempt (seen in the stack screenshots).
+    type('Not on the lease');
+    expect(within(dialog).queryByText(message)).toBeNull();
+    expect(reason().getAttribute('aria-invalid')).toBe('false');
   });
 
   it('accepts exactly 500 code points (emoji count once, as Python counts them)', async () => {

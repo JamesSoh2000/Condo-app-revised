@@ -180,7 +180,10 @@ export function DecisionDialog({ kind, request, buildingId, onClose }: Props) {
               maxLength={1000}
               value={reason}
               readOnly={busy}
-              onChange={(event) => setReason(event.target.value)}
+              onChange={(event) => {
+                setReason(event.target.value);
+                setFieldError(null);
+              }}
               aria-invalid={fieldError !== null}
               aria-describedby={fieldError ? `${fieldId}-error` : undefined}
               className="w-full rounded border px-3 py-2"
