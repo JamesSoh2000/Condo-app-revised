@@ -837,3 +837,102 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     expect(otherGets).toBe(1);
   });
 });
+
+describe('review round 2 (Codex gpt-6.1-sol)', () => {
+  const INVITEE_ME: components['schemas']['MeOut'] = {
+    ...GUARD_ME,
+    memberships: [membership(BIRCH), membership(MAPLE, { roles: ['security'] })],
+  };
+  const ACCOUNT_B: components['schemas']['MeOut'] = {
+    ...RESIDENT_ME,
+    user: { ...RESIDENT_ME.user, id: '01929a4e-0000-7000-8000-00000000000b', full_name: 'Account B' },
+  };
+
+  it('F3, F4 (High): an accept that answers after the user left sends no /me of its own and does not move the page now shown', async () => {
+    const slow = deferred(() => json(ACCEPTED));
+    const fetchMock = stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: slow.handler,
+      [`GET /api/invitations/${OTHER}`]: () => json(PUBLIC),
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    click(await screen.findByTestId('invite-accept'));
+    await waitFor(() => expect(calls(fetchMock)).toContain(ACCEPT));
+    act(() => app.navigate()(`/invite/${OTHER}`));
+    await screen.findByTestId('invite-details');
+    slow.release();
+    await settle();
+
+    expect(app.location().pathname).toBe(`/invite/${OTHER}`);
+    expect(screen.getByTestId('invite-details')).toBeTruthy();
+    expect(calls(fetchMock)).not.toContain(ME);
+  });
+
+  it.each<[string, Handler]>([
+    ['500', () => problem(500, 'internal_error')],
+    ['network', () => Promise.reject(new TypeError('Failed to fetch'))],
+  ])('F1 reopened: a previous user cached and the shell\'s first /me failing (%s) still opens the accepted building', async (_, failing) => {
+    let mes = 0;
+    stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: () => json(ACCEPTED),
+      [ME]: (r) => (++mes === 1 ? failing(r) : json(INVITEE_ME)),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['security'])),
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    // The previous user's session has ended on the server, but its /me is still cached in the tab.
+    act(() => void app.queryClient.setQueryData(['me'], RESIDENT_ME));
+    click(await screen.findByTestId('invite-accept'));
+
+    // The shell's /me retries a 5xx or network error by itself.
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    expect(within(nav).getByRole('link', { name: 'Package log' })).toBeTruthy();
+    await settle();
+    expect(app.queryClient.getQueryData(['me'])).toEqual(INVITEE_ME);
+    expect(readSelectedBuilding()).toBe(MAPLE.id);
+    expect(screen.queryByRole('heading', { name: /choose a building/i })).toBeNull();
+  });
+
+  it('F2 reopened: an abandoned accept by another user keeps the invitation now shown and its answer', async () => {
+    const slow = deferred(() => json(ACCEPTED));
+    let otherGets = 0;
+    const fetchMock = stubApi({
+      [GET]: () => json(PUBLIC),
+      [ACCEPT]: slow.handler,
+      [`GET /api/invitations/${OTHER}`]: () =>
+        ++otherGets === 1 ? json(PUBLIC) : problem(429, 'rate_limited', { 'Retry-After': '600' }),
+      [`POST /api/invitations/${OTHER}/accept`]: () => problem(403, 'invitation_email_mismatch'),
+      [ME]: () => json(INVITEE_ME),
+    });
+    const app = renderApp([`/invite/${TOKEN}`]);
+    act(() => void app.queryClient.setQueryData(['me'], RESIDENT_ME));
+    click(await screen.findByTestId('invite-accept'));
+    await waitFor(() => expect(calls(fetchMock)).toContain(ACCEPT));
+    act(() => app.navigate()(`/invite/${OTHER}`));
+    click(await screen.findByTestId('invite-accept'));
+    await act(async () => {
+      slow.release();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    await waitFor(() => expect(calls(fetchMock)).toContain(`POST /api/invitations/${OTHER}/accept`));
+    await settle();
+
+    expect(screen.queryByTestId('invite-load-error')).toBeNull();
+    expect(screen.getByTestId('invite-mismatch')).toBeTruthy();
+    expect(otherGets).toBe(1);
+  });
+
+  it('neighbour: another tab logging in as someone else still drops the tab\'s cache (AuthProvider unchanged there)', async () => {
+    let user = RESIDENT_ME;
+    stubApi({ [ME]: () => json(user) });
+    const app = renderApp(['/']);
+    await screen.findByRole('navigation', { name: 'Main' });
+    app.queryClient.setQueryData(['b', MAPLE.id, 'stale'], 'A data');
+    writeSelectedBuilding(MAPLE.id);
+
+    user = ACCOUNT_B;
+    await act(() => app.queryClient.refetchQueries({ queryKey: ['me'] }));
+
+    await waitFor(() => expect(app.queryClient.getQueryData(['b', MAPLE.id, 'stale'])).toBeUndefined());
+  });
+});
