@@ -300,18 +300,26 @@ describe('filters and search (criterion 4)', () => {
   });
 
   it('shows the same message for a 422 on the search', async () => {
+    // Client-valid text, so the server's 422 is what's shown (review round 1, Codex F2: `\u0085` never left the client).
+    let refused = 0;
     stubApi(
       manager({
-        [list()]: (req) => (new URL(req.url).searchParams.has('search') ? invalid(['query', 'search'], 'control_characters') : page([ROBIN])),
+        [list()]: (req) => {
+          if (!new URL(req.url).searchParams.has('search')) return page([ROBIN]);
+          refused++;
+          return invalid(['query', 'search'], 'control_characters');
+        },
       }),
     );
     renderApp([PAGE]);
     await screen.findByRole('list', { name: 'Members' });
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search members' }), { target: { value: 'Rob\u0085in' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search members' }), { target: { value: 'Robin' } });
     press(screen.getByRole('button', { name: 'Search' }));
 
     expect(await screen.findByText('Search with visible characters only.')).toBeTruthy();
+    expect(refused).toBe(1);
+    expect(screen.getByRole('searchbox', { name: 'Search members' }).getAttribute('aria-invalid')).toBe('true');
     expect(screen.queryByText(/could not load the members/i)).toBeNull();
   });
 });
@@ -753,5 +761,130 @@ describe('a refetch under an open dialog (criterion 14)', () => {
     await waitFor(() => expect(status().textContent).toBe(message));
     expect(count(fetchMock, action('suspend', ROBIN.membership_id))).toBe(1);
     expect(document.activeElement).toBe(status());
+  });
+});
+
+describe('review round 1 (Codex gpt-6.1-sol): a filter combination starts from its first page (F1, criterion 4)', () => {
+  /** Two pages for every combination; returns the list request queries made. */
+  function twoPages() {
+    return (req: globalThis.Request) =>
+      new URL(req.url).searchParams.has('cursor') ? page([SAM]) : page([ROBIN], 'page-2');
+  }
+  const idle = (app: ReturnType<typeof renderApp>) =>
+    waitFor(() => expect(app.queryClient.isFetching({ queryKey: ['b', MAPLE.id, 'members'] })).toBe(0));
+
+  async function loadSecondPage(app: ReturnType<typeof renderApp>) {
+    await screen.findByRole('list', { name: 'Members' });
+    await idle(app);
+    press(screen.getByRole('button', { name: 'Show more' }));
+    await waitFor(() => expect(names()).toEqual(['Robin Park', 'Sam Lee']));
+  }
+
+  it.each([
+    ['the status filter', () => fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'suspended' } }), () => fireEvent.change(screen.getByLabelText('Status'), { target: { value: '' } })],
+    ['the role filter', () => fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'council' } }), () => fireEvent.change(screen.getByLabelText('Role'), { target: { value: '' } })],
+    [
+      'the search',
+      () => {
+        fireEvent.change(screen.getByRole('searchbox', { name: 'Search members' }), { target: { value: 'sam' } });
+        press(screen.getByRole('button', { name: 'Search' }));
+      },
+      () => {
+        fireEvent.change(screen.getByRole('searchbox', { name: 'Search members' }), { target: { value: '' } });
+        press(screen.getByRole('button', { name: 'Search' }));
+      },
+    ],
+  ])('back to a combination after %s: one first-page request and one page shown', async (_label, away, back) => {
+    const fetchMock = stubApi(manager({ [list()]: twoPages() }));
+    const app = renderApp([PAGE]);
+    await loadSecondPage(app);
+
+    away();
+    await waitFor(() => expect(listQueries(fetchMock)).toHaveLength(3));
+    await idle(app);
+    back();
+    await waitFor(() => expect(listQueries(fetchMock)).toHaveLength(4));
+    await idle(app);
+    await settle();
+
+    expect(listQueries(fetchMock).slice(3)).toEqual(['']);
+    expect(names()).toEqual(['Robin Park']);
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
+  });
+
+  it('submitting the same search again keeps the loaded pages and asks for nothing', async () => {
+    const fetchMock = stubApi(manager({ [list()]: twoPages() }));
+    const app = renderApp([PAGE]);
+    await loadSecondPage(app);
+
+    press(screen.getByRole('button', { name: 'Search' }));
+    await settle();
+
+    expect(listQueries(fetchMock)).toEqual(['', '?cursor=page-2']);
+    expect(names()).toEqual(['Robin Park', 'Sam Lee']);
+  });
+});
+
+describe('review round 1 (Codex gpt-6.1-sol): in-flight actions across history and buildings (criterion 13)', () => {
+  it('Back to the Pending tab while an action is in flight: nothing of it shows, and the list is asked again', async () => {
+    const gate = deferred(() => json({ ...ROBIN, status: 'suspended' }));
+    const fetchMock = stubApi(
+      manager({
+        [`GET /api/buildings/${MAPLE.id}/onboarding-requests`]: () => json({ items: [], next_cursor: null }),
+        [action('suspend', ROBIN.membership_id)]: gate.handler,
+      }),
+    );
+    const app = renderApp(['/manage/residents', PAGE]);
+    const dialog = await openDialog('Robin Park', 'suspend');
+    fireEvent.change(screen.getByLabelText('Reason (only managers see it)'), { target: { value: 'Unpaid fees' } });
+    press(confirmButton(dialog, 'suspend'));
+    await settle();
+
+    act(() => app.navigate()(-1));
+    await screen.findByText('No pending requests.');
+    gate.release();
+    await settle();
+    act(() => app.navigate()(1));
+
+    await screen.findByRole('list', { name: 'Members' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByTestId('member-message')).toBeNull();
+    await waitFor(() => expect(count(fetchMock, list())).toBe(2));
+  });
+
+  it('a building switch while an action is in flight: Birch shows nothing of it, and Maple’s list is not kept', async () => {
+    const gate = deferred(() => json({ ...ROBIN, status: 'suspended' }));
+    const me = {
+      ...RESIDENT_ME,
+      memberships: [membership(MAPLE, { roles: ['property_management'] }), membership(BIRCH, { roles: ['property_management'] })],
+    };
+    stubApi({
+      'GET /api/auth/me': () => json(me),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['property_management'])),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['property_management'])),
+      [`GET /api/buildings/${BIRCH.id}/notifications/summary`]: () => json({ unread_count: 0 }),
+      [list()]: () => page([ROBIN, SAM]),
+      [list(BIRCH)]: () => page([member(7, { full_name: 'Birch Person' })]),
+      [action('suspend', ROBIN.membership_id)]: gate.handler,
+    });
+    sessionStorage.setItem('condo.buildingId', MAPLE.id);
+    const app = renderApp([PAGE]);
+    const dialog = await openDialog('Robin Park', 'suspend');
+    fireEvent.change(screen.getByLabelText('Reason (only managers see it)'), { target: { value: 'Unpaid fees' } });
+    press(confirmButton(dialog, 'suspend'));
+    await settle();
+
+    openAccountMenu();
+    fireEvent.change(screen.getByLabelText(/building/i), { target: { value: BIRCH.id } });
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'));
+    act(() => app.navigate()(PAGE));
+    await waitFor(() => expect(names()).toEqual(['Birch Person']));
+    gate.release();
+    await settle();
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByTestId('member-message')).toBeNull();
+    expect(names()).toEqual(['Birch Person']);
+    expect(app.queryClient.getQueryState(['b', MAPLE.id, 'members', 'list', { role: null, status: null, search: '' }])).toBeUndefined();
   });
 });
