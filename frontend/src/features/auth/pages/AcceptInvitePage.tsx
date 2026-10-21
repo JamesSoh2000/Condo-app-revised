@@ -209,6 +209,8 @@ function AcceptInviteScreen({ token }: { token: string }) {
     // it. The invitations' details stay, so an accept that answers after Back doesn't empty the page now shown
     // (review round 1, F2).
     queryClient.removeQueries({ predicate: userData });
+    // This invitation is used now: Back to it asks again (and shows it invalid) instead of its cached details.
+    queryClient.removeQueries({ queryKey: ['invitation', token] });
     // Nothing of the previous user is left, so the shell's next /me starts a new one: AuthProvider's user-change
     // sweep would otherwise drop the selection below (review round 1, F1). The page asks no /me itself: one
     // outside the auth queue could answer after a later login and overwrite it (review round 2).
