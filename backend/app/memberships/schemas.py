@@ -50,3 +50,16 @@ class MemberSuspendIn(InputModel):
     """Managers see the reason in the member list; the member doesn't."""
 
     reason: Reason
+
+
+class MemberDeactivateIn(InputModel):
+    """Move-out. Managers see the reason in the member list; the member doesn't."""
+
+    reason: Reason
+
+
+class MemberTransferIn(InputModel):
+    """The member's new unit, in this building. No time: the move happens now (ADR-0016)."""
+
+    unit_id: UUID
+    relationship: OccupancyRelationship

@@ -7,7 +7,14 @@ from app.core.errors import problem_responses
 from app.core.pagination import CursorParams, Page
 from app.memberships import service
 from app.memberships.enums import MembershipStatus, Role
-from app.memberships.schemas import MemberOut, MemberRolesIn, MemberSearch, MemberSuspendIn
+from app.memberships.schemas import (
+    MemberDeactivateIn,
+    MemberOut,
+    MemberRolesIn,
+    MemberSearch,
+    MemberSuspendIn,
+    MemberTransferIn,
+)
 from app.tenancy.context import TenantContext
 from app.tenancy.deps import DbSession, require_roles
 from app.tenancy.router import building_router
@@ -67,3 +74,31 @@ async def suspend(
 async def reactivate(membership_id: UUID, ctx: Manager, db: DbSession) -> MemberOut:
     """Lift a suspension. 409 `invalid_transition` unless the member is suspended."""
     return await service.reactivate_member(db, ctx, membership_id)
+
+
+@router.post(
+    "/members/{membership_id}/deactivate",
+    name="deactivate",
+    responses=problem_responses(401, 403, 404, 409),
+)
+async def deactivate(
+    membership_id: UUID, body: MemberDeactivateIn, ctx: Manager, db: DbSession
+) -> MemberOut:
+    """Move an active or suspended member out: the membership `deactivated` and their current
+    occupancy ended now. 409 `cannot_target_self`, `invalid_transition`, `last_manager` or
+    `occupancy_changed`."""
+    return await service.deactivate_member(db, ctx, membership_id, body)
+
+
+@router.post(
+    "/members/{membership_id}/transfer",
+    name="transfer",
+    responses=problem_responses(401, 403, 404, 409),
+)
+async def transfer(
+    membership_id: UUID, body: MemberTransferIn, ctx: Manager, db: DbSession
+) -> MemberOut:
+    """Move an active resident to another unit of the building (or the same unit with a new
+    relationship), keeping their history. 404 `member_not_found` or `unit_not_found`; 409
+    `membership_not_active`, `not_a_resident`, `unit_inactive` or `occupancy_changed`."""
+    return await service.transfer_member(db, ctx, membership_id, body)

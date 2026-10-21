@@ -85,6 +85,15 @@ Consumes `auth_signup`, `join_*`, `onboarding_*` and `members_*`.
   join link or code (P2-06's scope). P2-06b left the field out because the join route and its lookup didn't
   exist; add it with the join flow. `DeniedScreen` should show the manager's reason once P4-05 returns one.
 
+## Carried from P4-06b
+
+- Backend test gap (review round 2, L1 of PR #94): add a `[noop]` case to
+  `backend/tests/memberships/test_members_concurrency.py::test_stale_manager_cannot_move_a_member` (a
+  demoted manager's same-unit, same-relationship transfer must still get 403 / 404). The code is correct
+  today (`transfer_member` calls `refuse_stale` in its no-op branch); nothing proves it.
+- The screens should handle the new 409 codes: `occupancy_changed` (reload and retry), `not_a_resident`,
+  `unit_inactive`, `cannot_target_self`, `last_manager`.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
