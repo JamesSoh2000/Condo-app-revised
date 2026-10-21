@@ -446,3 +446,107 @@ describe('join page: signed in', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: /send request/i }).disabled).toBe(false);
   });
 });
+
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  const pendingRoutes = (me: Handler) => ({ [REQUEST]: () => json(CREATED, 201), [ME]: me, [MY_STATUS]: () => json(MY_PENDING) });
+
+  it("M1: an abandoned join page's /me never replaces a newer one", async () => {
+    const old = deferred(() => json(PENDING_ME));
+    let meCalls = 0;
+    const approved = { ...PENDING_ME, memberships: [membership(MAPLE)] };
+    const { app } = await openSignedIn(
+      pendingRoutes((request) => {
+        meCalls++;
+        return meCalls === 1 ? old.handler(request) : json(approved);
+      }),
+    );
+    await pickUnit('1003');
+    pickRelationship(/^tenant/i);
+    sendRequest();
+    await waitFor(() => expect(meCalls).toBe(1));
+    act(() => app.navigate()('/'));
+    // A newer /me (a focus refetch, a manager's approval seen on the next request) answers first.
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await screen.findByRole('heading', { name: 'Home' });
+    old.release();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(app.queryClient.getQueryData(['me'])).toEqual(approved);
+    expect(screen.queryByRole('heading', { name: 'Home' })).not.toBeNull();
+  });
+
+  it("M1 neighbour: an older /me still in flight doesn't overwrite the one asked after the request", async () => {
+    const old = deferred(() => json({ ...RESIDENT_ME, memberships: [] }));
+    let meCalls = 0;
+    const { app } = await openSignedIn(
+      pendingRoutes((request) => {
+        meCalls++;
+        return meCalls === 1 ? old.handler(request) : json(PENDING_ME);
+      }),
+    );
+    const { api } = await import('@/api/client');
+    // A shell refresh started before the user left for /join, still out.
+    const stale = app.queryClient
+      .fetchQuery({ queryKey: ['me'], queryFn: ({ signal }) => api.get('/api/auth/me', { signal }), staleTime: 0 })
+      .catch(() => undefined);
+    await waitFor(() => expect(meCalls).toBe(1));
+    await pickUnit('1003');
+    pickRelationship(/^tenant/i);
+    sendRequest();
+    await screen.findByTestId('pending-request');
+    old.release();
+    await act(() => stale);
+    expect(app.queryClient.getQueryData(['me'])).toEqual(PENDING_ME);
+    expect(screen.queryByRole('heading', { name: /not a member of a building/i })).toBeNull();
+  });
+
+  it('M2: two submits before validation finishes send one sign-up', async () => {
+    const fetchMock = stubApi({ [LOOKUP]: () => json(BUILDING), [SIGNUP]: () => json(NEW_USER, 201), [UNITS]: units });
+    renderApp([`/join/${CODE}`]);
+    await screen.findByTestId('join-account');
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Robin Park' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: GOOD } });
+    fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: GOOD } });
+    const form = screen.getByTestId('join-signup-form');
+    await act(async () => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+      await Promise.resolve();
+    });
+    await screen.findByTestId('join-request');
+    expect(calls(fetchMock).filter((c) => c === SIGNUP)).toHaveLength(1);
+  });
+
+  it('M2 neighbour: a submit refused by validation lets the next one through', async () => {
+    const fetchMock = stubApi({ [LOOKUP]: () => json(BUILDING), [SIGNUP]: () => json(NEW_USER, 201), [UNITS]: units });
+    renderApp([`/join/${CODE}`]);
+    await screen.findByTestId('join-account');
+    signUp({ confirm: 'something else entirely' });
+    expect(await screen.findByText("The passwords don't match.")).toBeTruthy();
+    signUp();
+    await screen.findByTestId('join-request');
+    expect(calls(fetchMock).filter((c) => c === SIGNUP)).toHaveLength(1);
+  });
+
+  it('L1: an email over 254 characters is refused before sending', async () => {
+    const fetchMock = stubApi({ [LOOKUP]: () => json(BUILDING) });
+    renderApp([`/join/${CODE}`]);
+    await screen.findByTestId('join-account');
+    signUp({ email: `${'a'.repeat(243)}@example.test` });
+    expect(await screen.findByText('Use at most 254 characters.')).toBeTruthy();
+    expect(screen.getByLabelText('Email').getAttribute('aria-invalid')).toBe('true');
+    expect(calls(fetchMock)).toEqual([LOOKUP]);
+  });
+
+  it("L1 neighbour: the server's string_too_long on the email goes under the field", async () => {
+    stubApi({
+      [LOOKUP]: () => json(BUILDING),
+      [SIGNUP]: () => invalid([{ loc: ['body', 'email'], msg: 'x', type: 'string_too_long' }]),
+    });
+    renderApp([`/join/${CODE}`]);
+    await screen.findByTestId('join-account');
+    signUp();
+    expect(await screen.findByText('Use at most 254 characters.')).toBeTruthy();
+    expect(screen.queryByTestId('join-error')).toBeNull();
+  });
+});

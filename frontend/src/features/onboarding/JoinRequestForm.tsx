@@ -102,11 +102,21 @@ export function JoinRequestForm({ code, mounted, onSent, onRefused }: Props) {
       return;
     }
     // A fresh /me, queued like the login page's (a logout in flight answers first): the guard reads the pending
-    // membership from it, and it tells whether `/` would show the pending screen (D3).
+    // membership from it, and it tells whether `/` would show the pending screen (D3). Through the shared `['me']`
+    // query, not a side fetch: an older one still out is cancelled first, and a newer one (the shell's, after the
+    // user left) cancels this one, so the cache never goes back to an older answer (review round 1, M1).
     let active: boolean | null = null;
     try {
-      const me = await runAuthCall((signal) => api.get('/api/auth/me', { signal }));
-      queryClient.setQueryData(['me'], me);
+      const me = await runAuthCall(async (signal) => {
+        const cancel = () => void queryClient.cancelQueries({ queryKey: ['me'], exact: true });
+        signal.addEventListener('abort', cancel, { once: true });
+        await queryClient.cancelQueries({ queryKey: ['me'], exact: true });
+        return queryClient.fetchQuery({
+          queryKey: ['me'],
+          queryFn: ({ signal: querySignal }) => api.get('/api/auth/me', { signal: querySignal }),
+          staleTime: 0,
+        });
+      });
       active = me.memberships.some((m) => m.status === 'active');
     } catch {
       void queryClient.invalidateQueries({ queryKey: ['me'], exact: true });

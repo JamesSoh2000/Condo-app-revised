@@ -21,18 +21,21 @@ import { relationshipLabel, unitName } from '@/features/onboarding/api';
 import { JoinRequestForm, type JoinRequest, type Refusal } from '@/features/onboarding/JoinRequestForm';
 
 const EMAIL_INVALID = 'Enter one email address.';
+// app/core/config.py::MAX_EMAIL_ADDRESS_LENGTH; the server counts octets of an ASCII-only address (review round 1, L1).
+const EMAIL_TOO_LONG = 'Use at most 254 characters.';
 // The server's check is the authority (app/core/config.py::is_email_address); this one catches typos early.
 const schema = accountSchema({
   email: z
     .string()
     .trim()
-    .refine((value) => /^[^\s@]+@[^\s@]+$/.test(value), EMAIL_INVALID),
+    .refine((value) => /^[^\s@]+@[^\s@]+$/.test(value), EMAIL_INVALID)
+    .refine((value) => new TextEncoder().encode(value).length <= 254, EMAIL_TOO_LONG),
 });
 type SignupForm = z.input<typeof schema>;
 type SignupBody = z.output<typeof schema>;
 const SERVER_MESSAGES = {
   full_name: NAME_SERVER_MESSAGES,
-  email: { missing: EMAIL_INVALID, email_address: EMAIL_INVALID },
+  email: { missing: EMAIL_INVALID, email_address: EMAIL_INVALID, string_too_long: EMAIL_TOO_LONG },
 };
 
 type Stage = 'account' | 'request' | 'sent' | Refusal;
@@ -187,7 +190,6 @@ function SignupForm({ code, mounted, onSignedUp }: { code: string; mounted: { re
   });
 
   const signUp = async ({ full_name, email, password }: SignupBody) => {
-    inFlight.current = true;
     setBusy(true);
     setFailure(null);
     let created: boolean;
@@ -222,9 +224,14 @@ function SignupForm({ code, mounted, onSignedUp }: { code: string; mounted: { re
   };
 
   // Before react-hook-form: a duplicate it handled would end its isSubmitting while the first is out (P4-07a F5).
+  // Taken before validation, which is asynchronous: two submits in one tick would both pass it (review round 1, M2).
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!inFlight.current) void form.handleSubmit(signUp)(event);
+    if (inFlight.current) return;
+    inFlight.current = true;
+    void form.handleSubmit(signUp, () => {
+      inFlight.current = false;
+    })(event);
   };
   const { errors } = form.formState;
   const described = (field: keyof SignupForm) => ({
