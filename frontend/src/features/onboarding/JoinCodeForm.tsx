@@ -8,14 +8,19 @@ const CODE = /^[A-Z0-9-]{1,16}$/;
 const INVALID = 'Enter the join code or link your building gave you.';
 
 /**
- * The join code in what a resident typed or pasted: the code itself in any case, or a link whose path has
- * `/join/<code>`. Codes are generated in capitals, and anything outside `app/onboarding/service.py::_JOIN_CODE`
- * can't be one. Null when there is no code to use.
+ * The join code in what a resident typed or pasted: the code itself in any case, or a link whose whole path is
+ * `/join/<code>` (with or without a trailing slash; P4-08d criterion 11). Codes are generated in capitals, and anything
+ * outside `app/onboarding/service.py::_JOIN_CODE` can't be one. Null when there is no code to use.
  */
 export function parseJoinCode(input: string): string | null {
   let value = input.trim();
   if (value.includes('/')) {
-    const match = /\/join\/([^/?#]*)/i.exec(value);
+    // The link's path: its query and fragment cut, then its scheme and host (`https://host`, `//host` or a bare `host`).
+    const path = value
+      .split(/[?#]/, 1)[0]
+      .replace(/^(?:[a-z][a-z0-9+.-]*:)?\/\/[^/]*/i, '')
+      .replace(/^[^/]*/, '');
+    const match = /^\/join\/([^/]*)\/?$/i.exec(path);
     if (!match) return null;
     value = match[1];
   }

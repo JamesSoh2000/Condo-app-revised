@@ -151,11 +151,25 @@ describe('parseJoinCode (17)', () => {
     ['https://condo.example/join/MAPLE-2026', 'MAPLE-2026'],
     ['condo.example/join/maple-2026?x=1#y', 'MAPLE-2026'],
     ['/join/MAPLE-2026/', 'MAPLE-2026'],
+    ['//condo.example/join/MAPLE-2026', 'MAPLE-2026'],
   ])('reads %j as %s', (input, code) => {
     expect(parseJoinCode(input)).toBe(code);
   });
 
-  it.each(['', '   ', 'MAPLE 2026', 'MAPLE_2026', 'A'.repeat(17), 'https://condo.example/invite/abc', 'https://condo.example/join/'])(
+  it.each([
+    '',
+    '   ',
+    'MAPLE 2026',
+    'MAPLE_2026',
+    'A'.repeat(17),
+    'https://condo.example/invite/abc',
+    'https://condo.example/join/',
+    // P4-08d criterion 11 (PR #98 round 3 L1): `/join/<code>` must be the whole path.
+    'https://condo.example/join/MAPLE-2026/garbage',
+    'https://condo.example/help?next=/join/MAPLE-2026',
+    'https://condo.example/help#/join/MAPLE-2026',
+    'https://condo.example/x/join/MAPLE-2026',
+  ])(
     'refuses %j',
     (input) => {
       expect(parseJoinCode(input)).toBeNull();
@@ -191,5 +205,68 @@ describe('review round 2 (Codex gpt-6.1-sol)', () => {
     pendingAgain = true;
     await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'], exact: true }));
     await waitFor(() => expect(screen.getByTestId('pending-unit').textContent).toContain('1004'));
+  });
+});
+
+describe('P4-08d: a repeated denial shows its own reason (criterion 10; PR #98 round 3 M1)', () => {
+  let visibility: DocumentVisibilityState = 'visible';
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
+  const setVisibility = (state: DocumentVisibilityState) => {
+    visibility = state;
+    act(() => {
+      window.dispatchEvent(new Event('visibilitychange'));
+    });
+  };
+  afterEach(() => {
+    if (visibility !== 'visible') setVisibility('visible');
+  });
+
+  it('denied → pending → denied within 30 s: the second reason, never the first, not even while it loads', async () => {
+    let state: 'denied A' | 'pending' | 'denied B' = 'denied A';
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    stubApi({
+      [ME]: () => json(meWith(membership(MAPLE, { status: state === 'pending' ? 'pending' : 'denied' }))),
+      [status(MAPLE)]: async () => {
+        if (state === 'pending') return json(mine({}));
+        if (state === 'denied A') return json(mine({ status: 'denied', decision_reason: 'Reason A' }));
+        await gate;
+        return json(mine({ status: 'denied', decision_reason: 'Reason B' }));
+      },
+    });
+    const app = renderApp(['/']);
+    await waitFor(() => expect(screen.getByTestId('denied-reason').textContent).toContain('Reason A'));
+
+    state = 'pending';
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'], exact: true }));
+    await screen.findByTestId('pending-unit');
+
+    state = 'denied B';
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'], exact: true }));
+    await screen.findByTestId('denied-request');
+    expect(screen.queryByTestId('denied-reason')).toBeNull();
+
+    await act(async () => {
+      release();
+      await gate;
+    });
+    await waitFor(() => expect(screen.getByTestId('denied-reason').textContent).toContain('Reason B'));
+  });
+
+  it('a denied screen left open shows a newer denial once the tab is visible again', async () => {
+    let reason = 'Reason A';
+    stubApi({
+      [ME]: () => json(meWith(membership(MAPLE, { status: 'denied' }))),
+      [status(MAPLE)]: () => json(mine({ status: 'denied', decision_reason: reason })),
+    });
+    renderApp(['/']);
+    await waitFor(() => expect(screen.getByTestId('denied-reason').textContent).toContain('Reason A'));
+
+    // Another tab resubmits and is denied again, within 30 s.
+    setVisibility('hidden');
+    reason = 'Reason B';
+    setVisibility('visible');
+
+    await waitFor(() => expect(screen.getByTestId('denied-reason').textContent).toContain('Reason B'));
   });
 });
