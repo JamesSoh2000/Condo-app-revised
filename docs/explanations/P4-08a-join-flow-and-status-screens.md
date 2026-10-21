@@ -9,7 +9,7 @@
 > This is a snapshot: before the merge it is edited to match the PR head; once merged, write a new
 > explanation for later changes and do not update this one. Lasting decisions live in ADRs.
 > **Reality check:** re-read `git diff origin/main...HEAD` (24 paths), `JoinPage.tsx`, `JoinRequestForm.tsx`,
-> `JoinCodeForm.tsx`, `onboarding/api.ts`, `MembershipScreens.tsx`, `routes.tsx`, `pages.ts`, `accountSchema.ts`, and
+> `JoinCodeForm.tsx`, `frontend/src/features/onboarding/api.ts`, `MembershipScreens.tsx`, `routes.tsx`, `pages.ts`, `accountSchema.ts`, and
 > the assertions of the tests cited below at `3832d1b`; ran `npx vitest run` on the onboarding, membership, auth, nav
 > and building test files: 317 passed (7 files); the whole frontend suite: 560 passed (16 files). Differences from
 > the plan: see §2 "Plan versus final code".
@@ -119,12 +119,12 @@ guard and the email length check. All are in the PR below the Plan or in its rev
 
 - `frontend/src/features/onboarding/JoinPage.tsx::JoinPage` — public route `/join/:code`, keyed per history entry;
   `JoinScreen` holds the stage (`account` → `request` → `sent`, or `invalid` / `member` / `not-eligible`).
-- `JoinPage.tsx::SignupForm` — sign-up through the auth queue, then the user-change sweep.
+- `frontend/src/features/onboarding/JoinPage.tsx::SignupForm` — sign-up through the auth queue, then the user-change sweep.
 - `frontend/src/features/onboarding/JoinRequestForm.tsx::JoinRequestForm` — debounced unit search, relationship,
   submit, refusal mapping, fresh `/me`.
 - `frontend/src/features/onboarding/api.ts::useMyOnboarding` — the caller's own `onboarding/me`, used by
   `frontend/src/features/membership/MembershipScreens.tsx::PendingScreen` and `::DeniedScreen`.
-- `JoinCodeForm.tsx::parseJoinCode` / `::JoinCodeForm` — code-or-link → `/join/<CODE>`.
+- `frontend/src/features/onboarding/JoinCodeForm.tsx::parseJoinCode` / `::JoinCodeForm` — code-or-link → `/join/<CODE>`.
 
 ### Walkthrough (variant B): a fresh visitor joins as a tenant of 1003
 
@@ -175,7 +175,7 @@ None (frontend only; no API change).
 | `frontend/src/features/auth/pages/AcceptInvitePage.tsx` | uses `accountSchema` | +4/−39 |
 | `frontend/src/features/membership/MembershipScreens.tsx` | pending/denied details, code forms | +56/−9 |
 | `frontend/src/app/{routes,pages,routeScope,guards}.ts(x)` | `/join` routes; legacy pages out | +9/−17 |
-| `frontend/src/pages/{Onboarding,ResidentSetup}.jsx`, `components/PendingApprovalBlock.jsx` | deleted | −643 |
+| legacy `Onboarding.jsx`, `ResidentSetup.jsx` (pages) and `PendingApprovalBlock.jsx` (components) | deleted | −643 |
 | `frontend/base44-baseline.txt` | 327 → 316 | +1/−1 |
 
 Tests: `JoinPage.test.tsx` (+573), `MembershipScreens.test.tsx` (+195), `nav.test.tsx` and `building.test.tsx`
@@ -386,8 +386,8 @@ All rounds by Codex `gpt-6.1-sol` at high effort, the only reviewer (James's ins
 
 ## 8. How to change this safely
 
-- **A new refusal code** from the join request: add it to `JoinRequestForm.tsx::refusalFor` and a stage in
-  `JoinPage.tsx::JoinScreen`; extend "maps %s to its screen (9)".
+- **A new refusal code** from the join request: add it to `frontend/src/features/onboarding/JoinRequestForm.tsx::refusalFor` and a stage in
+  `frontend/src/features/onboarding/JoinPage.tsx::JoinScreen`; extend "maps %s to its screen (9)".
 - **Anything that changes the user** (another sign-up path): sweep like `SignupForm` (remove queries, `newSession()`,
   `clearTabChoices()`) and copy the two criterion-15 tests.
 - **Another call on the join page before sign-in:** it must not need a session (D1); the criterion-1 test's
@@ -398,7 +398,7 @@ All rounds by Codex `gpt-6.1-sol` at high effort, the only reviewer (James's ins
 ## 9. Must explain, then quiz
 
 **1. How does the pending screen get its data without operational building access?** It calls
-`GET /api/buildings/{id}/onboarding/me` (`api.ts::useMyOnboarding`). That route is on `own_router` in
+`GET /api/buildings/{id}/onboarding/me` (`frontend/src/features/onboarding/api.ts::useMyOnboarding`). That route is on `own_router` in
 `backend/app/onboarding/router.py::my_status`, which depends on `get_own_membership` (the caller's own membership in
 any status) instead of `get_tenant_context` (which requires an active one). The building id comes from the user's own
 `/me`. `building.test.tsx` asserts it is the only building request those screens make.
@@ -409,7 +409,7 @@ any status) instead of `get_tenant_context` (which requires an active one). The 
 cached `['me']`. If wrong (an expired session), the units request's 401 sends the user to login and back (criterion 14).
 
 **3. How do you explain "owner vs tenant vs household" to a non-technical resident?** By who owns, who rents, and
-who lives with them, as `api.ts::RELATIONSHIPS` words it: Owner, "You own this unit, whether you live in it or rent it
+who lives with them, as `frontend/src/features/onboarding/api.ts::RELATIONSHIPS` words it: Owner, "You own this unit, whether you live in it or rent it
 out."; Tenant, "You rent this unit from its owner."; Household member, "You live in this unit with its owner or
 tenant, for example as family or a roommate." Each is the radio's accessible description.
 
