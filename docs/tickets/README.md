@@ -80,7 +80,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-06a](./P4-06a-members-roles-suspension.md) | Members: list, roles, suspend, reactivate (split from [P4-06](./P4-06-membership-administration.md)) | A | 1 | P2-04, P4-05b | done | — |
 | [P4-06b](./P4-06b-move-out-and-transfer.md) | Members: move-out and transfer (split from P4-06) | A | 1 | P4-06a | done | — |
 | [P4-07a](./P4-07a-password-reset-screens.md) | Password reset screens and password field (split from [P4-07](./P4-07-frontend-account-screens.md)) | B | 2 | P4-04, P2-06c | done | — |
-| [P4-07b](./P4-07b-frontend-accept-invite.md) | Accept-invitation screen (split from P4-07) | B | 2 | P4-07a, P4-02b, P2-06c | todo | — |
+| [P4-07b](./P4-07b-frontend-accept-invite.md) | Accept-invitation screen (split from P4-07) | B | 2 | P4-07a, P4-02b, P2-06c | blocked (B-7) | — |
 | [P4-08](./P4-08-frontend-onboarding-approval-screens.md) | Frontend onboarding and approval screens | B | 2 | P4-05b, P4-06b, P2-06c | todo | — |
 | [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07b, P4-08, P4-03, P1-08 | todo | — |
 | [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04b | todo | — |
