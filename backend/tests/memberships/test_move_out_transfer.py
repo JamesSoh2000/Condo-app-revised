@@ -98,6 +98,13 @@ async def _audit_count(db: AsyncSession) -> int:
     return await db.scalar(select(func.count()).select_from(AuditEvent)) or 0
 
 
+async def _now(db: AsyncSession) -> datetime:
+    """The transaction's now(): the test's outer transaction began before the requests."""
+    now = await db.scalar(select(func.now()))
+    assert isinstance(now, datetime)
+    return now
+
+
 async def _in_window(db: AsyncSession, membership_id: UUID, unit: Unit, at: datetime) -> bool:
     """Would a record for `unit` stamped `at` be visible to the membership (ADR-0010)?"""
     visible = await db.scalar(
@@ -147,8 +154,7 @@ async def test_deactivate_moves_the_resident_out(
     assert await _roles(db, target) == ["resident"]
     [(unit_id, _, started_at, ended_at)] = await _occupancies(db, target)
     assert (unit_id, started_at) == (world.a_101.id, World.T2)
-    # The transaction's now(): the test's outer transaction began before the request.
-    assert ended_at == await db.scalar(select(func.now()))
+    assert ended_at == await _now(db)
     # Criterion 2: a record for 101 stamped inside the old window is still theirs, one stamped
     # from the move-out on is not.
     assert await _in_window(db, target, world.a_101, World.T2 + timedelta(days=1))
@@ -280,7 +286,7 @@ async def test_transfer_moves_the_resident(
         "201",
         "owner",
     )
-    now = await db.scalar(select(func.now()))
+    now = await _now(db)
     history = await _occupancies(db, target)
     # Earlier rows unchanged; the current one ended at the instant the new one starts.
     assert history[0] == history_before[0]
@@ -308,7 +314,7 @@ async def test_transfer_criterion_5_resident1_to_102(
     target = world.a_resident1.membership.id
     r = await manager.post(_member(world.a, target, "transfer"), json=_to(world.a_102))
     assert r.status_code == 200, r.text
-    now = await db.scalar(select(func.now()))
+    now = await _now(db)
     assert await _occupancies(db, target) == [
         (world.a_101.id, TENANT, World.T2, now),
         (world.a_102.id, TENANT, now, None),
@@ -321,7 +327,7 @@ async def test_transfer_assigns_a_unit_to_a_resident_without_one(
     membership = await make_membership(await make_user(db), world.a)
     r = await manager.post(_member(world.a, membership.id, "transfer"), json=_to(world.a_101))
     assert r.status_code == 200, r.text
-    now = await db.scalar(select(func.now()))
+    now = await _now(db)
     assert await _occupancies(db, membership.id) == [(world.a_101.id, TENANT, now, None)]
     [event] = await _events(db, "occupancy.transferred")
     assert event.metadata_ == {"from_unit_id": None, "to_unit_id": str(world.a_101.id)}
@@ -334,7 +340,7 @@ async def test_transfer_same_unit_new_relationship(
     r = await manager.post(_member(world.a, target, "transfer"), json=_to(world.a_101, "owner"))
     assert r.status_code == 200, r.text
     assert r.json()["relationship"] == "owner"
-    now = await db.scalar(select(func.now()))
+    now = await _now(db)
     assert await _occupancies(db, target) == [
         (world.a_101.id, TENANT, World.T2, now),
         (world.a_101.id, OccupancyRelationship.OWNER, now, None),
@@ -594,7 +600,7 @@ async def test_lost_manager_invitations_are_revoked(
     assert not await _revoked(db, accepted.id)
     assert not await _revoked(db, by_first.id)
     events = await _events(db, "invitation.revoked")
-    assert sorted(e.entity_id for e in events) == sorted([open_one.id, expired.id])
+    assert sorted(str(e.entity_id) for e in events) == sorted([str(open_one.id), str(expired.id)])
     for event in events:
         assert (event.entity_type, event.actor_user_id, event.building_id) == (
             "invitation",

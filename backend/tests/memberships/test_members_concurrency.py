@@ -85,7 +85,7 @@ def _suspend(ctx: TenantContext, target: UUID) -> Write:
 def _remove_manager(ctx: TenantContext, target: UUID) -> Write:
     async def write(db: AsyncSession) -> Any:
         return await service.change_roles(
-            db, ctx, target, MemberRolesIn(remove=[Role.PROPERTY_MANAGEMENT])
+            db, ctx, target, MemberRolesIn(add=[], remove=[Role.PROPERTY_MANAGEMENT])
         )
 
     return write
