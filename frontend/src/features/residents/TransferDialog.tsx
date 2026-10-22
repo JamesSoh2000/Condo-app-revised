@@ -9,6 +9,7 @@ import { Modal } from '@/features/residents/Modal';
 
 // `SearchText` (backend app/units/schemas.py) refuses control characters.
 const SEARCH_INVALID = 'Search with visible characters only.';
+const CONTROL = /\p{Cc}/u;
 const UNIT_GONE = 'That unit is no longer available. Choose another.';
 
 /** The refusals that end this dialog: the shared ones, and `not_a_resident`. */
@@ -46,9 +47,11 @@ export function TransferDialog({ member, self, buildingId, onClose }: Props) {
   const inFlight = useRef(false);
   const mounted = useRef(true);
   const [search, setSearch] = useState('');
-  const invalidSearch = /\p{Cc}/u.test(search);
-  const term = useDebounced(search.trim(), DEBOUNCE_MS);
-  const units = useUnitOptions(buildingId, term, !/\p{Cc}/u.test(term));
+  // Checked before trimming, which would drop a leading or trailing tab (review round 1, Codex F3).
+  const invalidSearch = CONTROL.test(search);
+  const typed = useDebounced(search, DEBOUNCE_MS);
+  const term = typed.trim();
+  const units = useUnitOptions(buildingId, term, !invalidSearch && !CONTROL.test(typed));
   const [unitId, setUnitId] = useState<string | null>(null);
   const [relationship, setRelationship] = useState<Relationship | null>(member.relationship);
   const [missing, setMissing] = useState({ unit: false, relationship: false });
@@ -101,18 +104,19 @@ export function TransferDialog({ member, self, buildingId, onClose }: Props) {
     onClose(`${member.full_name} now lives in ${where}${as}.`);
   };
 
+  // A failed refresh shows above the units it kept, as the members list's (review round 1, Codex F1).
+  const unitsError = units.isError && (
+    <p role="alert" className="text-sm text-red-700">
+      {rateLimitMessage(units.error) ?? (units.data ? 'Could not refresh the units.' : 'Could not load the units.')}{' '}
+      <button type="button" className="underline" onClick={() => void units.refetch()}>
+        Try again
+      </button>
+    </p>
+  );
   let list;
   if (units.isPending) list = <p role="status">Loading units…</p>;
-  else if (units.isError && !units.data) {
-    list = (
-      <p role="alert" className="text-sm text-red-700">
-        {rateLimitMessage(units.error) ?? 'Could not load the units.'}{' '}
-        <button type="button" className="underline" onClick={() => void units.refetch()}>
-          Try again
-        </button>
-      </p>
-    );
-  } else if (options.length === 0) {
+  else if (units.isError && !units.data) list = null;
+  else if (options.length === 0) {
     list = <p className="text-sm">{term ? `No active unit starts with “${term}”.` : 'This building has no active units.'}</p>;
   } else {
     list = options.map((unit) => (
@@ -167,6 +171,7 @@ export function TransferDialog({ member, self, buildingId, onClose }: Props) {
       </div>
       <fieldset className="mt-3" aria-describedby={missing.unit && chosen === null ? `${id}-unit-error` : undefined} aria-busy={units.isFetching}>
         <legend className="mb-1 text-sm font-medium">New unit</legend>
+        {unitsError}
         <div className="flex max-h-48 flex-col gap-2 overflow-y-auto">{list}</div>
         {missing.unit && chosen === null && (
           <p id={`${id}-unit-error`} className="mt-1 text-sm text-red-700">

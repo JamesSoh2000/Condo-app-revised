@@ -215,6 +215,9 @@ export function useTransfer(buildingId: string) {
 export function useUnitOptions(buildingId: string, search: string, enabled: boolean) {
   return useQuery({
     queryKey: ['b', buildingId, 'units', { active: true, search }],
+    // Stale at once, as the members list: a reopened dialog or an earlier search asks again, so a unit deactivated or
+    // added meanwhile isn't served from the 30 s cache (review round 1, Codex F2; the CLAUDE.md lesson).
+    staleTime: 0,
     enabled,
     queryFn: ({ signal }) =>
       api.get('/api/buildings/{building_id}/units', {
