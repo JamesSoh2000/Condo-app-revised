@@ -85,7 +85,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-08b](./P4-08b-manager-pending-requests.md) | Manager pending requests (split from P4-08; badge split to P4-08d) | B | 2 | P4-08a, P4-05b, P2-06c | done | — |
 | [P4-08d](./P4-08d-pending-badge-and-onboarding-follow-ups.md) | Pending-requests nav badge and onboarding follow-ups (split from P4-08b) | B | 2 | P4-08b | done | — |
 | [P4-08f](./P4-08f-account-menu-and-notifications-follow-ups.md) | Account menu and notifications panel follow-ups (from P4-08d) | B | 2 | P4-08d | done | — |
-| [P4-08h](./P4-08h-header-panels-at-phone-width.md) | Header panels at phone width (from P4-08f) | B | 2 | P4-08f | todo | — |
+| [P4-08h](./P4-08h-header-panels-at-phone-width.md) | Header panels at phone width (from P4-08f) | B | 2 | P4-08f | in progress | — |
 | [P4-08c](./P4-08c-members-administration.md) | Members list, suspend, reactivate, move out (split from P4-08; roles and transfer split to P4-08e) | B | 2 | P4-08b, P4-06b | done | — |
 | [P4-08e](./P4-08e-member-roles-and-transfer.md) | Member roles editor and unit transfer (split from P4-08c) | B | 2 | P4-08c | done | — |
 | [P4-08g](./P4-08g-staff-invitations-screen.md) | Staff invitations screen (from P4-09; resend, revoke and residents split to P4-08i) | B | 2 | P4-02a, P4-08b, P4-09 | done | — |
