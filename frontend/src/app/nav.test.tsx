@@ -772,7 +772,7 @@ describe('review round 1 (Codex gpt-6.1-sol): criterion 3 coverage', () => {
     const routes = councilWith(() => (status === 200 ? json(buildingOut(MAPLE, ['council', 'resident'])) : problem(401, 'not_authenticated')));
     const me = routes['GET /api/auth/me'];
     // A real 401 means the session is gone, so /me answers 401 too.
-    stubApi({ ...routes, 'GET /api/auth/me': (request) => (status === 200 ? me(request) : problem(401, 'not_authenticated')) });
+    stubApi({ ...routes, 'GET /api/auth/me': () => (status === 200 ? me() : problem(401, 'not_authenticated')) });
     const app = renderApp(['/']);
     await findNavItems();
     openAccountMenu();
