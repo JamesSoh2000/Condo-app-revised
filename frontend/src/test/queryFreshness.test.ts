@@ -71,6 +71,11 @@ function isBuildingQuery(options: string | null): boolean {
 
 const isFresh = (options: string | null) => options !== null && FRESH.some((rule) => rule.test(options));
 
+/** Each query call in `source`, with whether it reads as a building query and declares a freshness option. */
+export function inspect(file: string, source: string): { id: string; building: boolean; fresh: boolean }[] {
+  return queryCalls(file, source).map((call) => ({ id: call.id, building: isBuildingQuery(call.options), fresh: isFresh(call.options) }));
+}
+
 function inventory(): Call[] {
   return ROOTS.flatMap((root) => sourceFiles(join(SRC, root))).flatMap((file) => queryCalls(file, readFileSync(file, 'utf8')));
 }
@@ -116,5 +121,43 @@ describe('building queries declare how they stay fresh on remount (P4-08f criter
     expect(isBuildingQuery(other.options)).toBe(false);
     expect(isFresh('{ staleTime: 0_000 }')).toBe(false);
     expect(isFresh('{ staleTime: 30_000 }')).toBe(false);
+  });
+
+  // Review round 1 (Codex gpt-6.1-sol) F1: generic calls were not listed, and a freshness option anywhere in the
+  // options' text counted, even inside `queryFn`'s returned object.
+  const one = (source: string) => inspect(join(SRC, 'features/x/api.ts'), source);
+  it.each(['useQuery<Row[]>', 'useInfiniteQuery<Page, Error>', 'useQuery<Map<string, Row>>'])(
+    'R1-F1: lists a generic call (%s) as a building query without freshness',
+    (hook) => {
+      expect(one(`function useRows() { return ${hook}({ queryKey: ['b', id, 'rows'], queryFn }); }`)).toEqual([
+        { id: 'features/x/api.ts::useRows', building: true, fresh: false },
+      ]);
+    },
+  );
+
+  it.each([
+    ['inside queryFn’s returned object', "queryFn: async () => ({ staleTime: 0, rows: [] }), staleTime: 30_000"],
+    ['inside a nested object', "meta: { gcTime: 0 }, queryFn"],
+    ['in a comment', "// staleTime: 0 would be wrong here\n queryFn"],
+    ['spread from elsewhere', "...freshOptions, queryFn"],
+  ])('R1-F1: a freshness option only counts at the options’ top level (not %s)', (_label, rest) => {
+    expect(one(`function useRows() { return useQuery({ queryKey: ['b', id, 'rows'], ${rest} }); }`)).toEqual([
+      { id: 'features/x/api.ts::useRows', building: true, fresh: false },
+    ]);
+  });
+
+  it('R1-F1 neighbours: top-level options count, and a key read only from the top level', () => {
+    expect(one("function useA() { return useQuery({ queryFn: () => ({ queryKey: ['me'] }), queryKey: key(id), refetchOnMount: 'always' }); }")).toEqual([
+      { id: 'features/x/api.ts::useA', building: true, fresh: true },
+    ]);
+    expect(one("const useB = () => useInfiniteQuery({ queryKey: ['b', id], gcTime: 0 });")).toEqual([
+      { id: 'features/x/api.ts::useB', building: true, fresh: true },
+    ]);
+    expect(one("function useC() { return useQuery({ queryKey: ['me'], queryFn }); }")).toEqual([
+      { id: 'features/x/api.ts::useC', building: false, fresh: false },
+    ]);
+    expect(one("function useD() { return useQuery({ staleTime: 0x0, queryKey: ['b'] }); }")).toEqual([
+      { id: 'features/x/api.ts::useD', building: true, fresh: false },
+    ]);
   });
 });

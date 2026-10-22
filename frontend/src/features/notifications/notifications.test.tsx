@@ -1159,6 +1159,22 @@ describe('P4-08f: Load more never discards a refresh (criteria 6 and 7)', () => 
     await waitFor(() => expect(loadMore().disabled).toBe(false));
   });
 
+  it('criterion 6 (review round 1, Codex): disabled during a refetch the tab becoming visible starts', async () => {
+    const server = heldServer();
+    stubApi(server.routes);
+    renderApp(['/']);
+    await within(await openPanel()).findByText(server.items[0].title);
+
+    server.hold();
+    setVisibility('hidden');
+    setVisibility('visible');
+
+    await waitFor(() => expect(server.state.refreshes).toHaveLength(1));
+    expect(loadMore().disabled).toBe(true);
+    await server.release();
+    await waitFor(() => expect(loadMore().disabled).toBe(false));
+  });
+
   it('criterion 6: a mark-read while Load more is loading ends with the server’s list (it read)', async () => {
     const server = heldServer();
     stubApi(server.routes);

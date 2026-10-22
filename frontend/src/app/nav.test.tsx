@@ -741,3 +741,48 @@ describe('P4-08f: account menu follow-ups (criteria 1–4)', () => {
     expect(expanded()).toBe('false');
   });
 });
+
+describe('review round 1 (Codex gpt-6.1-sol): criterion 3 coverage', () => {
+  const councilWith = (building: () => Response) => {
+    const me: Me = { ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: ['council', 'resident'] })] };
+    return { 'GET /api/auth/me': () => json(me), [`GET /api/buildings/${MAPLE.id}`]: building };
+  };
+
+  it('a building refetch that succeeds after a 404 brings "View as" back (no Choose again)', async () => {
+    let status = 200;
+    stubApi(councilWith(() => (status === 200 ? json(buildingOut(MAPLE, ['council', 'resident'])) : problem(404, 'building_not_found'))));
+    const app = renderApp(['/']);
+    await findNavItems();
+
+    status = 404;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await screen.findByRole('button', { name: /choose again/i });
+    openAccountMenu();
+    expect(screen.queryAllByRole('radio')).toEqual([]);
+
+    status = 200;
+    await act(() => app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await findNavItems();
+    openAccountMenu();
+    expect(screen.getByRole('radio', { name: 'Management' })).toBeTruthy();
+  });
+
+  it('a building 401 leaves no "View as" anywhere (the session is gone)', async () => {
+    let status = 200;
+    const routes = councilWith(() => (status === 200 ? json(buildingOut(MAPLE, ['council', 'resident'])) : problem(401, 'not_authenticated')));
+    const me = routes['GET /api/auth/me'];
+    // A real 401 means the session is gone, so /me answers 401 too.
+    stubApi({ ...routes, 'GET /api/auth/me': (request) => (status === 200 ? me(request) : problem(401, 'not_authenticated')) });
+    const app = renderApp(['/']);
+    await findNavItems();
+    openAccountMenu();
+    expect(screen.getByRole('radio', { name: 'Management' })).toBeTruthy();
+
+    status = 401;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+
+    await waitFor(() => expect(location()).toMatch(/^\/login/));
+    expect(screen.queryAllByRole('radio')).toEqual([]);
+    expect(nav()).toBeNull();
+  });
+});
