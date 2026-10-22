@@ -57,6 +57,14 @@ developer can build a slice independently, using the recipe.
 
 `e2e/tests/j4-packages.spec.ts`, `docs/SLICE_RECIPE.md`.
 
+## First follow-ups (playbook step 8, from the P4 recap, PR #113)
+
+- Pattern "recap facts not checked against their source" reached 2 (P3 recap PR #83, P4 recap PR #113: counts taken
+  by regex, a demo written but not run, items listed as open that later tickets closed). Promote it before this
+  phase's recap: add a step to `.claude/commands/milestone-recap.md` to run the demo script on the stack, and to take
+  each count and status from its source (each PR's "Independent review", the log's "Caught by" column, the
+  later tickets that close an explanation's §7 item), not a summary.
+
 ## Acceptance criteria
 
 1. **Given** `make e2e`, **then** J1–J4 and J7 pass locally and in CI.
