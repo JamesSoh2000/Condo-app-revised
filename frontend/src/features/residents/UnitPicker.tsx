@@ -116,7 +116,7 @@ export function UnitPicker({ picker, legend, busy, missing, searchRef }: PickerP
           </p>
         )}
       </div>
-      <fieldset aria-describedby={showMissing ? `${id}-unit-error` : undefined} aria-busy={units.isFetching}>
+      <fieldset aria-invalid={showMissing} aria-describedby={showMissing ? `${id}-unit-error` : undefined} aria-busy={units.isFetching}>
         <legend className="mb-1 text-sm font-medium">{legend}</legend>
         {unitsError}
         <div className="flex max-h-48 flex-col gap-2 overflow-y-auto">{list}</div>
@@ -144,7 +144,7 @@ export function RelationshipField({ value, onChange, busy, missing, firstRef }: 
   const id = useId();
   const showMissing = missing && value === null;
   return (
-    <fieldset aria-describedby={showMissing ? `${id}-error` : undefined}>
+    <fieldset aria-invalid={showMissing} aria-describedby={showMissing ? `${id}-error` : undefined}>
       <legend className="mb-1 text-sm font-medium">How they relate to the unit</legend>
       <div className="flex flex-col gap-2">
         {RELATIONSHIPS.map((option, index) => (

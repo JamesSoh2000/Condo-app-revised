@@ -632,3 +632,87 @@ describe('labels (criterion 12)', () => {
     expect(pendingList()).toBeTruthy();
   });
 });
+
+// Review round 1 (Codex gpt-6-astra, medium) F1: a create started before a row's dialog opened moved focus to the tab's
+// message behind the open modal when it answered, leaving the modal without keyboard focus.
+describe('review round 1 (Codex gpt-6-astra): no dialog over a create that is out (F1, criteria 3, 12)', () => {
+  const NEW = invitation(9, { email: 'new@example.test' });
+  const startCreate = () => {
+    fireEvent.change(emailField(), { target: { value: 'new@example.test' } });
+    fireEvent.click(role('Security'));
+    submit();
+  };
+
+  it.each([
+    ['succeeds', () => json(NEW, 201), () => expect(message()?.textContent).toBe('Invitation sent to new@example.test.')],
+    ['is refused', () => problem(409, 'invitation_pending'), () => expect(screen.getByRole('alert').textContent).toMatch(/already has a pending/)],
+    ['fails', () => problem(500, 'internal_error'), () => expect(screen.getByRole('alert').textContent).toBe('Could not send the invitation. Try again.')],
+  ] as const)('F1: the row buttons are disabled while it is out, and usable again once it %s', async (_label, answer, outcome) => {
+    const gate = deferred(answer);
+    stubApi(manager({ [create()]: gate.handler }));
+    renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Pending invitations' });
+    startCreate();
+    await settle();
+
+    expect(rowButton('Revoke').disabled).toBe(true);
+    expect(rowButton('Resend', 'boss@example.test').disabled).toBe(true);
+    fireEvent.click(rowButton('Revoke'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    gate.release();
+    await waitFor(outcome);
+    await waitFor(() => expect(rowButton('Revoke').disabled).toBe(false));
+    await open('Revoke');
+    expect(dialog().contains(document.activeElement)).toBe(true);
+  });
+
+  it('F1 neighbour: a server-placed email error keeps focus on the email, and the rows work again', async () => {
+    const gate = deferred(() =>
+      json({ type: 'about:blank', title: 'Invalid', status: 422, code: 'validation_error', errors: [{ loc: ['body', 'email'], type: 'email_address', msg: 'x' }] }, 422),
+    );
+    stubApi(manager({ [create()]: gate.handler }));
+    renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Pending invitations' });
+    startCreate();
+    await settle();
+    expect(rowButton('Revoke').disabled).toBe(true);
+
+    gate.release();
+    await waitFor(() => expect(document.activeElement).toBe(emailField()));
+    expect(rowButton('Revoke').disabled).toBe(false);
+  });
+
+  it('F1 neighbour: another building’s create doesn’t disable this building’s rows', async () => {
+    stubApi(manager());
+    const app = renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Pending invitations' });
+    act(() => {
+      void app.queryClient
+        .getMutationCache()
+        .build(app.queryClient, { mutationKey: ['b', BIRCH.id, 'invitations', 'create'], mutationFn: () => new Promise(() => {}) })
+        .execute(undefined);
+    });
+    await settle();
+
+    expect(rowButton('Revoke').disabled).toBe(false);
+  });
+});
+
+// Review round 1 (Codex gpt-6-astra, medium) F2: the missing unit and relationship showed their messages but their
+// groups weren't marked invalid (criterion 12).
+describe('review round 1 (Codex gpt-6-astra): missing choices are marked invalid (F2, criterion 12)', () => {
+  it('both groups are aria-invalid after Send, and each stops being so once chosen', async () => {
+    await residentForm();
+    expect(unitGroup().getAttribute('aria-invalid')).toBe('false');
+    submit();
+    await settle();
+
+    expect(unitGroup().getAttribute('aria-invalid')).toBe('true');
+    expect(relationshipGroup().getAttribute('aria-invalid')).toBe('true');
+    fireEvent.click(within(unitGroup()).getByRole('radio', { name: 'A-1203' }));
+    expect(unitGroup().getAttribute('aria-invalid')).toBe('false');
+    fireEvent.click(within(relationshipGroup()).getByRole('radio', { name: 'Owner' }));
+    expect(relationshipGroup().getAttribute('aria-invalid')).toBe('false');
+  });
+});

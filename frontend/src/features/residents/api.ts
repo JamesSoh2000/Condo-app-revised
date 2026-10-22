@@ -1,4 +1,4 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useIsMutating, useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 
 import { api } from '@/api/client';
 import type { components } from '@/api/schema';
@@ -245,6 +245,7 @@ export interface InvitationAction {
 
 /** Every key of the building's invitations starts here, so one invalidation covers both lists and their pages. */
 const invitationsKey = (buildingId: string) => ['b', buildingId, 'invitations'] as const;
+const inviteKey = (buildingId: string) => [...invitationsKey(buildingId), 'create'] as const;
 export const invitationsListKey = (buildingId: string, status: ListedStatus) => [...invitationsKey(buildingId), status] as const;
 
 /**
@@ -273,12 +274,15 @@ export function useInvite(buildingId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
-    mutationKey: [...invitationsKey(buildingId), 'create'],
+    mutationKey: inviteKey(buildingId),
     mutationFn: (body: InvitationCreate) =>
       api.post('/api/buildings/{building_id}/invitations', { params: { path: { building_id: buildingId } }, body }),
     onSettled: () => refresh(queryClient, { queryKey: invitationsKey(buildingId) }),
   });
 }
+
+/** A create is out in this building: its answer moves focus, so no dialog opens over it (review round 1, Codex F1). */
+export const useInviting = (buildingId: string) => useIsMutating({ mutationKey: inviteKey(buildingId) }) > 0;
 
 /**
  * Resend (a new link and 7-day expiry; the invitation, not null) or revoke (null) one invitation (P4-08i). Both lists

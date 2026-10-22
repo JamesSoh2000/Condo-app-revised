@@ -5,7 +5,7 @@ import { useBuilding, useBuildingId } from '@/app/BuildingProvider';
 import { rateLimitMessage } from '@/features/auth/formErrors';
 import { InvitationDialog, roleNames } from '@/features/residents/InvitationDialog';
 import { InviteForm } from '@/features/residents/InviteForm';
-import { invitationsListKey, useInvitations, type Invitation, type InvitationAction, type ListedStatus } from '@/features/residents/api';
+import { invitationsListKey, useInvitations, useInviting, type Invitation, type InvitationAction, type ListedStatus } from '@/features/residents/api';
 
 const SHOWN: Record<ListedStatus, string> = { pending: 'Pending', expired: 'Expired' };
 
@@ -27,6 +27,7 @@ export function Invitations() {
   const id = useId();
   const [status, setStatus] = useState<ListedStatus>('pending');
   const invitations = useInvitations(buildingId, status);
+  const inviting = useInviting(buildingId);
   const [open, setOpen] = useState<Open | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const messageRef = useRef<HTMLParagraphElement>(null);
@@ -87,12 +88,13 @@ export function Invitations() {
                   <button
                     key={kind}
                     type="button"
+                    disabled={inviting}
                     aria-label={`${kind === 'resend' ? 'Resend' : 'Revoke'} the invitation to ${invitation.email}`}
                     onClick={(event) => {
                       setMessage(null);
                       setOpen({ kind, invitation, opener: event.currentTarget });
                     }}
-                    className="min-h-11 rounded border px-3 py-2 text-sm"
+                    className="min-h-11 rounded border px-3 py-2 text-sm disabled:opacity-50"
                   >
                     {kind === 'resend' ? 'Resend' : 'Revoke'}
                   </button>
