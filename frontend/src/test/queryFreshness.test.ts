@@ -172,6 +172,27 @@ describe('building queries declare how they stay fresh on remount (P4-08f criter
     ]);
   });
 
+  // Review round 2 (Codex gpt-6.1-sol) F1: a member that isn't a plain property was skipped, so one written after
+  // `staleTime: 0` that replaces it at runtime (a computed method) still read as fresh.
+  it.each([
+    ['a computed method', "staleTime: 0, [optionName]() { return 30_000; }"],
+    ['a method of that name', "staleTime: 0, staleTime() { return 30_000; }"],
+    ['a getter of that name', "staleTime: 0, get staleTime() { return 30_000; }"],
+    ['a shorthand of that name', "staleTime: 0, staleTime"],
+    ['a computed property', "staleTime: 0, ['stale' + 'Time']: 30_000"],
+  ])('R2-F1: a later member that can replace the option makes it not fresh (%s)', (_label, rest) => {
+    expect(one(`function useRows() { return useQuery({ queryKey: ['b', id, 'rows'], ${rest} }); }`)).toEqual([
+      { id: 'features/x/api.ts::useRows', building: true, fresh: false },
+    ]);
+  });
+
+  it('R2-F1 neighbours: other plain methods and shorthands leave a fresh option fresh; a later literal wins', () => {
+    expect(one("function useA() { return useQuery({ queryKey: ['b'], queryFn() { return x; }, select, staleTime: 0 }); }")[0].fresh).toBe(true);
+    expect(one("function useB() { return useQuery({ queryKey: ['b'], staleTime: 30_000, staleTime: 0 }); }")[0].fresh).toBe(true);
+    expect(one("function useC() { return useQuery({ queryKey: ['b'], staleTime: 0, staleTime: 30_000 }); }")[0].fresh).toBe(false);
+    expect(one("function useD() { return useQuery({ queryKey: ['me'], get queryKey() { return ['b']; } }); }")[0].building).toBe(true);
+  });
+
   it('R1-F1 neighbours: top-level options count, and a key read only from the top level', () => {
     expect(one("function useA() { return useQuery({ queryFn: () => ({ queryKey: ['me'] }), queryKey: key(id), refetchOnMount: 'always' }); }")).toEqual([
       { id: 'features/x/api.ts::useA', building: true, fresh: true },
