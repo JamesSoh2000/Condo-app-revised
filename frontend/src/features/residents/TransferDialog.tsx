@@ -2,15 +2,11 @@ import { useEffect, useId, useRef, useState } from 'react';
 
 import { ApiError } from '@/api/errors';
 import { rateLimitMessage } from '@/features/auth/formErrors';
-import { DEBOUNCE_MS, RELATIONSHIPS, relationshipLabel, unitName, useDebounced } from '@/features/onboarding/api';
+import { relationshipLabel, unitName } from '@/features/onboarding/api';
 import { memberRefusal } from '@/features/residents/MemberDialog';
-import { useTransfer, useUnitOptions, type Member, type Relationship } from '@/features/residents/api';
+import { useTransfer, type Member, type Relationship } from '@/features/residents/api';
 import { Modal } from '@/features/residents/Modal';
-
-// `SearchText` (backend app/units/schemas.py) refuses control characters.
-const SEARCH_INVALID = 'Search with visible characters only.';
-const CONTROL = /\p{Cc}/u;
-const UNIT_GONE = 'That unit is no longer available. Choose another.';
+import { RelationshipField, UNIT_GONE, UnitPicker, unitGone, useUnitPicker } from '@/features/residents/UnitPicker';
 
 /** The refusals that end this dialog: the shared ones, and `not_a_resident`. */
 function refusal(error: unknown, member: Member): string | null {
@@ -18,11 +14,6 @@ function refusal(error: unknown, member: Member): string | null {
   if (shared || !(error instanceof ApiError)) return shared;
   return error.status === 409 && error.code === 'not_a_resident' ? `${member.full_name} is no longer a resident, so this wasn’t done.` : null;
 }
-
-/** The unit itself went (another building's, deleted, deactivated): another can be picked (criterion 9). */
-const unitGone = (error: unknown) =>
-  error instanceof ApiError &&
-  ((error.status === 404 && error.code === 'unit_not_found') || (error.status === 409 && error.code === 'unit_inactive'));
 
 interface Props {
   member: Member;
@@ -34,9 +25,8 @@ interface Props {
 }
 
 /**
- * Move a resident to another unit of the building (P4-08e): a unit searched as you type among the active ones (the
- * join form's pattern) and the relationship, starting on the current one. One request per Transfer, as
- * `MemberDialog`.
+ * Move a resident to another unit of the building (P4-08e): a unit searched as you type among the active ones
+ * (`UnitPicker`) and the relationship, starting on the current one. One request per Transfer, as `MemberDialog`.
  */
 export function TransferDialog({ member, self, buildingId, onClose }: Props) {
   const transfer = useTransfer(buildingId);
@@ -46,13 +36,8 @@ export function TransferDialog({ member, self, buildingId, onClose }: Props) {
   const alertRef = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
-  const [search, setSearch] = useState('');
-  // Checked before trimming, which would drop a leading or trailing tab (review round 1, Codex F3).
-  const invalidSearch = CONTROL.test(search);
-  const typed = useDebounced(search, DEBOUNCE_MS);
-  const term = typed.trim();
-  const units = useUnitOptions(buildingId, term, !invalidSearch && !CONTROL.test(typed));
-  const [unitId, setUnitId] = useState<string | null>(null);
+  const picker = useUnitPicker(buildingId);
+  const { chosen } = picker;
   const [relationship, setRelationship] = useState<Relationship | null>(member.relationship);
   const [missing, setMissing] = useState({ unit: false, relationship: false });
   const [failure, setFailure] = useState<{ message: string } | null>(null);
@@ -68,10 +53,6 @@ export function TransferDialog({ member, self, buildingId, onClose }: Props) {
   useEffect(() => {
     if (failure) alertRef.current?.focus();
   }, [failure]);
-
-  const options = units.data?.items ?? [];
-  // Only a unit the list shows counts: one picked in an earlier list may not be in this one (criterion 8).
-  const chosen = options.some((unit) => unit.id === unitId) ? unitId : null;
 
   const confirm = async () => {
     if (inFlight.current) return;
@@ -91,9 +72,9 @@ export function TransferDialog({ member, self, buildingId, onClose }: Props) {
       setBusy(false);
       const ended = refusal(error, member);
       if (ended) return onClose(ended);
+      // The unit itself went: another can be picked (criterion 9).
       if (unitGone(error)) {
-        setUnitId(null);
-        void units.refetch();
+        picker.unitGone();
         return setFailure({ message: UNIT_GONE });
       }
       return setFailure({ message: rateLimitMessage(error) ?? `Could not transfer ${member.full_name}. Try again.` });
@@ -103,29 +84,6 @@ export function TransferDialog({ member, self, buildingId, onClose }: Props) {
     const as = moved.relationship ? ` as ${relationshipLabel(moved.relationship).toLowerCase()}` : '';
     onClose(`${member.full_name} now lives in ${where}${as}.`);
   };
-
-  // A failed refresh shows above the units it kept, as the members list's (review round 1, Codex F1).
-  const unitsError = units.isError && (
-    <p role="alert" className="text-sm text-red-700">
-      {rateLimitMessage(units.error) ?? (units.data ? 'Could not refresh the units.' : 'Could not load the units.')}{' '}
-      <button type="button" className="underline" onClick={() => void units.refetch()}>
-        Try again
-      </button>
-    </p>
-  );
-  let list;
-  if (units.isPending) list = <p role="status">Loading units…</p>;
-  else if (units.isError && !units.data) list = null;
-  else if (options.length === 0) {
-    list = <p className="text-sm">{term ? `No active unit starts with “${term}”.` : 'This building has no active units.'}</p>;
-  } else {
-    list = options.map((unit) => (
-      <label key={unit.id} className="flex min-h-11 items-center gap-2 rounded border bg-white px-3 py-2">
-        <input type="radio" name={`${id}-unit`} checked={chosen === unit.id} disabled={busy} onChange={() => setUnitId(unit.id)} />
-        {unitName(unit.tower, unit.label)}
-      </label>
-    ));
-  }
 
   const current = member.unit_label === null ? 'no unit' : `unit ${unitName(member.tower, member.unit_label)}`;
   return (
@@ -141,66 +99,10 @@ export function TransferDialog({ member, self, buildingId, onClose }: Props) {
           {failure.message}
         </div>
       )}
-      <div className="mt-3 flex flex-col gap-1">
-        <label htmlFor={`${id}-search`} className="text-sm font-medium">
-          Unit number
-        </label>
-        <input
-          ref={searchRef}
-          id={`${id}-search`}
-          type="search"
-          autoComplete="off"
-          // `SearchText`: at most 20 characters.
-          maxLength={20}
-          value={search}
-          readOnly={busy}
-          onChange={(event) => {
-            // As the join form: typing starts a new choice (criterion 8).
-            setSearch(event.target.value);
-            setUnitId(null);
-          }}
-          aria-invalid={invalidSearch}
-          aria-describedby={invalidSearch ? `${id}-search-error` : undefined}
-          className="w-full min-w-0 rounded border px-3 py-2"
-        />
-        {invalidSearch && (
-          <p id={`${id}-search-error`} className="text-sm text-red-700">
-            {SEARCH_INVALID}
-          </p>
-        )}
+      <div className="mt-3 flex flex-col gap-3">
+        <UnitPicker picker={picker} legend="New unit" busy={busy} missing={missing.unit} searchRef={searchRef} />
+        <RelationshipField value={relationship} onChange={setRelationship} busy={busy} missing={missing.relationship} />
       </div>
-      <fieldset className="mt-3" aria-describedby={missing.unit && chosen === null ? `${id}-unit-error` : undefined} aria-busy={units.isFetching}>
-        <legend className="mb-1 text-sm font-medium">New unit</legend>
-        {unitsError}
-        <div className="flex max-h-48 flex-col gap-2 overflow-y-auto">{list}</div>
-        {missing.unit && chosen === null && (
-          <p id={`${id}-unit-error`} className="mt-1 text-sm text-red-700">
-            Choose a unit.
-          </p>
-        )}
-      </fieldset>
-      <fieldset className="mt-3" aria-describedby={missing.relationship && relationship === null ? `${id}-relationship-error` : undefined}>
-        <legend className="mb-1 text-sm font-medium">How they relate to the unit</legend>
-        <div className="flex flex-col gap-2">
-          {RELATIONSHIPS.map((option) => (
-            <label key={option.value} className="flex min-h-11 items-center gap-2 rounded border bg-white px-3 py-2">
-              <input
-                type="radio"
-                name={`${id}-relationship`}
-                checked={relationship === option.value}
-                disabled={busy}
-                onChange={() => setRelationship(option.value)}
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>
-        {missing.relationship && relationship === null && (
-          <p id={`${id}-relationship-error`} className="mt-1 text-sm text-red-700">
-            Choose how they relate to the unit.
-          </p>
-        )}
-      </fieldset>
       <div className="mt-4 flex flex-wrap justify-end gap-2">
         <button type="button" disabled={busy} onClick={() => onClose(null)} className="rounded border px-4 py-2 disabled:opacity-50">
           Cancel

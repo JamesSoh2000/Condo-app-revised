@@ -2,10 +2,11 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 
 import { ApiError } from '@/api/errors';
 import { rateLimitMessage, serverFieldErrors } from '@/features/auth/formErrors';
-import { ROLE_LABELS, useInvite, type MemberRole } from '@/features/residents/api';
+import { ROLE_LABELS, useInvite, type MemberRole, type Relationship } from '@/features/residents/api';
+import { RelationshipField, UNIT_GONE, UnitPicker, unitGone, useUnitPicker } from '@/features/residents/UnitPicker';
 
-/** The staff roles, in `Role`'s order; a resident is invited with a unit (P4-08i). */
-const STAFF_ROLES = (Object.keys(ROLE_LABELS) as MemberRole[]).filter((role) => role !== 'resident');
+/** In `Role`'s order, Resident first; a resident is invited with a unit (P4-08i). */
+const ROLES = Object.keys(ROLE_LABELS) as MemberRole[];
 // The join form's checks and words (P4-08a). The server's check is the authority
 // (app/core/config.py::is_email_address), counting octets of an ASCII-only address; this one catches typos early.
 const EMAIL_INVALID = 'Enter one email address.';
@@ -37,9 +38,9 @@ interface Props {
 }
 
 /**
- * Invite staff by email (P4-08g): the email and at least one of Security, Property manager and Council. The checks
- * show from the first Send and follow what is typed after it. One request per Send, as the residents dialogs; a
- * refusal keeps what was typed.
+ * Invite people by email (P4-08g, P4-08i): the email and at least one role; with Resident, a unit and how they relate
+ * to it, both required (P4-08i D2). The checks show from the first Send and follow what is typed after it. One
+ * request per Send, as the residents dialogs; a refusal keeps what was typed.
  */
 export function InviteForm({ buildingId, onStart, onSent }: Props) {
   const invite = useInvite(buildingId);
@@ -52,6 +53,11 @@ export function InviteForm({ buildingId, onStart, onSent }: Props) {
   const mounted = useRef(true);
   const [email, setEmail] = useState('');
   const [roles, setRoles] = useState<ReadonlySet<MemberRole>>(new Set());
+  const resident = roles.has('resident');
+  const picker = useUnitPicker(buildingId, resident);
+  const [relationship, setRelationship] = useState<Relationship | null>(null);
+  const unitSearch = useRef<HTMLInputElement>(null);
+  const firstRelationship = useRef<HTMLInputElement>(null);
   const [checked, setChecked] = useState(false);
   // The server's word on the email, until it is edited.
   const [serverEmail, setServerEmail] = useState<string | null>(null);
@@ -81,6 +87,8 @@ export function InviteForm({ buildingId, onStart, onSent }: Props) {
     // The server's word too: the same address would be refused again (review round 2, Codex F1).
     if (emailProblem(address) || serverEmail) return emailRef.current?.focus();
     if (roles.size === 0) return firstRole.current?.focus();
+    if (resident && picker.chosen === null) return unitSearch.current?.focus();
+    if (resident && relationship === null) return firstRelationship.current?.focus();
     inFlight.current = true;
     setBusy(true);
     onStart();
@@ -88,7 +96,8 @@ export function InviteForm({ buildingId, onStart, onSent }: Props) {
     form.current?.focus();
     let sent;
     try {
-      sent = await invite.mutateAsync({ email: address, roles: STAFF_ROLES.filter((role) => roles.has(role)) });
+      const unit = resident && picker.chosen && relationship ? { unit_id: picker.chosen, relationship } : {};
+      sent = await invite.mutateAsync({ email: address, roles: ROLES.filter((role) => roles.has(role)), ...unit });
     } catch (error) {
       inFlight.current = false;
       if (!mounted.current) return;
@@ -98,6 +107,10 @@ export function InviteForm({ buildingId, onStart, onSent }: Props) {
         setServerEmail(placed[0].message);
         return emailRef.current?.focus();
       }
+      if (unitGone(error)) {
+        picker.unitGone();
+        return setFailure({ message: UNIT_GONE });
+      }
       return setFailure({ message: refusal(error, address) });
     }
     inFlight.current = false;
@@ -105,6 +118,8 @@ export function InviteForm({ buildingId, onStart, onSent }: Props) {
     setBusy(false);
     setEmail('');
     setRoles(new Set());
+    picker.clear();
+    setRelationship(null);
     setChecked(false);
     onSent(sent.email);
   };
@@ -119,7 +134,7 @@ export function InviteForm({ buildingId, onStart, onSent }: Props) {
   return (
     <form ref={form} tabIndex={-1} noValidate onSubmit={(event) => void submit(event)} aria-labelledby={`${id}-title`} className="flex flex-col gap-3 rounded border bg-white p-3 [overflow-wrap:anywhere]">
       <h2 id={`${id}-title`} className="text-lg font-semibold">
-        Invite staff
+        Invite people
       </h2>
       {failure && (
         <div ref={alertRef} role="alert" tabIndex={-1} className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
@@ -154,7 +169,7 @@ export function InviteForm({ buildingId, onStart, onSent }: Props) {
       <fieldset aria-describedby={rolesError ? `${id}-roles-error` : undefined}>
         <legend className="mb-1 text-sm font-medium">Roles</legend>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          {STAFF_ROLES.map((role, index) => (
+          {ROLES.map((role, index) => (
             <label key={role} className="flex min-h-11 items-center gap-2 rounded border px-3 py-2">
               <input ref={index === 0 ? firstRole : undefined} type="checkbox" checked={roles.has(role)} disabled={busy} onChange={() => toggle(role)} />
               {ROLE_LABELS[role]}
@@ -167,6 +182,12 @@ export function InviteForm({ buildingId, onStart, onSent }: Props) {
           </p>
         )}
       </fieldset>
+      {resident && (
+        <>
+          <UnitPicker picker={picker} legend="Unit" busy={busy} missing={checked} searchRef={unitSearch} />
+          <RelationshipField value={relationship} onChange={setRelationship} busy={busy} missing={checked} firstRef={firstRelationship} />
+        </>
+      )}
       <button type="submit" disabled={busy} className="min-h-11 self-start rounded bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-50">
         Send invitation
       </button>

@@ -267,13 +267,15 @@ describe('fresh list (criterion 3)', () => {
 });
 
 describe('invite form checks (criterion 4)', () => {
-  it('offers the three staff roles, no Resident', async () => {
+  // P4-08g's "no Resident" was until P4-08i, which adds it first (P4-08i criterion 10).
+  it('offers the three staff roles, after Resident', async () => {
     stubApi(manager());
     renderApp([PAGE]);
     await screen.findByRole('list', { name: 'Pending invitations' });
 
     const group = screen.getByRole('group', { name: 'Roles' });
     expect(within(group).getAllByRole('checkbox').map((box) => box.closest('label')?.textContent)).toEqual([
+      'Resident',
       'Security',
       'Property manager',
       'Council',
