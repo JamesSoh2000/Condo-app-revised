@@ -267,8 +267,12 @@ export function useInvite(buildingId: string) {
     mutationKey: [...invitationsKey(buildingId), 'create'],
     mutationFn: (body: InvitationCreate) =>
       api.post('/api/buildings/{building_id}/invitations', { params: { path: { building_id: buildingId } }, body }),
+    // Cancelled first, as `useDecide`'s summary: a first load still out has no data, so the invalidation would wait
+    // for it instead of asking again, and it read the list before the create (review round 1, Codex F1).
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: invitationsKey(buildingId) });
+      void queryClient
+        .cancelQueries({ queryKey: invitationsKey(buildingId) })
+        .then(() => queryClient.invalidateQueries({ queryKey: invitationsKey(buildingId) }));
     },
   });
 }

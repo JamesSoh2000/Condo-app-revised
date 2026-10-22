@@ -567,3 +567,87 @@ describe('labels (criterion 10)', () => {
     expect(group.getAttribute('aria-describedby')).toBeNull();
   });
 });
+
+// Review round 1 (Codex gpt-6.1-sol) F1: a list fetch already out when the create settled was reused by the
+// invalidation, so its answer, read before the create, was shown as the refreshed list.
+describe('review round 1 (Codex gpt-6.1-sol): a list fetch out during a create (criteria 3, 5)', () => {
+  const NEW = invitation(9, { email: 'new@example.test' });
+
+  it('F1: the first load still out when the create succeeds is asked again, and the new row shows', async () => {
+    const gate = deferred(() => page([]));
+    let gets = 0;
+    const fetchMock = stubApi(
+      manager({
+        [list()]: (request) => (++gets === 1 ? gate.handler(request) : page([NEW])),
+        [create()]: () => json(NEW, 201),
+      }),
+    );
+    const app = renderApp([PAGE]);
+    await screen.findByText('Loading invitations…');
+
+    fill('new@example.test', 'Security');
+    submit();
+    await waitFor(() => expect(message()?.textContent).toBe('Invitation sent to new@example.test.'));
+    gate.release();
+
+    await waitFor(() => expect(emails()).toEqual(['new@example.test']));
+    await waitFor(() => expect(app.queryClient.getQueryState(['b', MAPLE.id, 'invitations', 'pending'])?.fetchStatus).toBe('idle'));
+    expect(screen.queryByText('No pending invitations.')).toBeNull();
+    expect(count(fetchMock, list())).toBe(2);
+  });
+
+  it('F1 neighbour: a refresh still out when the create is refused invitation_pending is asked again', async () => {
+    let answer: Handler = () => page([GUARD]);
+    stubApi(manager({ [list()]: (request) => answer(request), [create()]: () => problem(409, 'invitation_pending') }));
+    const app = renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Pending invitations' });
+
+    const gate = deferred(() => page([GUARD]));
+    answer = gate.handler;
+    act(() => void app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'invitations'] }));
+    await settle();
+    answer = () => page([NEW, GUARD]);
+    fill('new@example.test', 'Security');
+    submit();
+    await screen.findByRole('alert');
+    gate.release();
+
+    await waitFor(() => expect(emails()).toEqual(['new@example.test', 'guard@example.test']));
+  });
+
+  it('F1 neighbour: a next page still out when the create succeeds; the list is asked again from its first page', async () => {
+    const second = deferred(() => page([BOSS]));
+    let first = page([GUARD], 'c1');
+    stubApi(
+      manager({
+        [list()]: (request) => (new URL(request.url).searchParams.get('cursor') === null ? first.clone() : second.handler(request)),
+        [create()]: () => {
+          first = page([NEW, GUARD], 'c1');
+          return json(NEW, 201);
+        },
+      }),
+    );
+    renderApp([PAGE]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    await settle();
+
+    fill('new@example.test', 'Security');
+    submit();
+    await waitFor(() => expect(message()?.textContent).toBe('Invitation sent to new@example.test.'));
+    second.release();
+
+    await waitFor(() => expect(emails()).toEqual(['new@example.test', 'guard@example.test']));
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeTruthy();
+  });
+});
+
+describe('expiry date in the building’s time zone (criterion 2; review round 1, Codex gap)', () => {
+  it('a time past midnight UTC shows the building’s own date', async () => {
+    stubApi(manager({ [list()]: () => page([invitation(3, { expires_at: '2026-10-30T02:30:00Z' })]) }));
+    renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Pending invitations' });
+
+    // 22:30 on Oct 29 in America/Toronto (the fixtures' building).
+    expect(rows()[0].textContent).toContain('Expires Oct 29, 2026');
+  });
+});
