@@ -26,7 +26,7 @@ async function requestToJoin(page: Page, fullName: string, email: string) {
   await expect(page.getByTestId('pending-request')).toContainText('Maple Tower');
 }
 
-/** Opens the manager's pending requests and decides the request from `fullName`; returns the manager's page. */
+/** Opens the manager's pending requests in the manager's own context and decides the request from `fullName`. */
 async function decide(newContext: NewContext, fullName: string, decision: 'Approve' | 'Deny', reason?: string) {
   const context = await newContext({ storageState: storageStatePath('mapleManager') });
   const page = await context.newPage();
