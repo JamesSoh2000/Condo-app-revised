@@ -61,7 +61,7 @@ Managers change a member's roles and move a resident to another unit from the me
    shows and the list is asked for again.
 5. **Roles refusals that end the dialog** (the list is asked for again each time; focus goes to the
    message): 409 `no_roles_left` → "A member must keep at least one role, so this wasn't done."; 409
-   `resident_has_unit` → "<name> lives in a unit: move them out or transfer them before removing Resident.";
+   `resident_has_unit` → "<name> lives in a unit, so Resident can't be removed while they do.";
    409 `membership_not_active` → "<name> is no longer active, so this wasn't done. Check the list and try
    again."; 404 `member_not_found` → "This member is no longer in this building."; `last_manager` as
    criterion 1.
@@ -132,7 +132,9 @@ page guard (a non-manager gets `/403` and no request), and row 10 as criteria 10
   dialog, unit search, each documented code), 10–11 (double-click, Cancel, Escape, generic failures), 12
   (abandoned caller, building switch, denial), 13 (server-driven change under an open dialog), 14–15 (the
   P4-08d follow-ups). The cases the ticket missed: 8's stale unit pick and 13.
-- Criteria loosened (with reason; also listed in the inbox): none.
+- Criteria loosened (with reason; also listed in the inbox): none. Criterion 5's `resident_has_unit` message was
+  reworded during implementation (same trigger and outcome): "transfer them" was wrong advice, since a transfer keeps
+  a unit and only a move-out ends it.
 - Decisions taken (with basis):
   - **No split (playbook step 1.4).** Costing: hooks for the two actions and the units search ~50, the roles
     dialog with its checks and codes ~100, the transfer dialog with search, states and codes ~150, the
