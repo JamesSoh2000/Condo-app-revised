@@ -93,7 +93,7 @@ Model `Package`, enum `PackageStatus`, `visible_packages(ctx)`, `assert_transiti
    the hook is the one registered by importing `app.main` alone (fresh interpreter), it grants exactly the
    personas of criterion 4 for a photo of P0–P2, and it refuses a `package_photo` file whose `attached_type`
    isn't `package` or whose package doesn't name it as `photo_file_id`. One download through
-   `GET /api/buildings/{id}/files/{file_id}/download` returns 200 to a viewer of the package and the same 404
+   `GET /api/buildings/{id}/files/{file_id}/download-url` returns 200 to a viewer of the package and the same 404
    as a random id to a non-viewer.
 7. **(added: tenant row 3)** `multi` sees, with its A membership (resident of A-201), only A-201 packages
    received during its occupancy, and with its B membership (security) every B package and no A package. Every
