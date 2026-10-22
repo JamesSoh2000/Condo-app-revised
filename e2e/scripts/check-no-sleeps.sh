@@ -3,7 +3,7 @@
 # Fails on any hard sleep under tests/ and helpers/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if grep -rnE 'waitForTimeout\(|\.waitFor\(\s*[0-9]|setTimeout\(' tests helpers; then
+if grep -rnE 'waitForTimeout\s*\(|\.waitFor\s*\(\s*[0-9]|setTimeout\s*\(' tests helpers; then
   echo "check-no-sleeps: hard sleeps found above; wait with a locator, expect(...) or expect.poll instead" >&2
   exit 1
 fi

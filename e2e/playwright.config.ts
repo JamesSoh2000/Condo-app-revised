@@ -22,7 +22,8 @@ export default defineConfig({
   reporter: CI ? [['list'], ['html', { open: 'never' }], ['github']] : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
-    trace: CI ? 'on-first-retry' : 'retain-on-failure',
+    // Every failed attempt keeps its trace, the first one too when its retry fails differently (review round 1, F3).
+    trace: 'retain-on-failure',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

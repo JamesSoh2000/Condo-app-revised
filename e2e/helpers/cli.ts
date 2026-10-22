@@ -23,3 +23,19 @@ export async function runCli(args: string[]): Promise<string> {
   );
   return stdout;
 }
+
+/**
+ * Empties the rate-limit windows (`rate_limits`) in the stack's database. A retried test repeats its signups,
+ * invitation lookups and logins from the same IP; this gives the retry the budget the first attempt had, with the
+ * limits themselves unchanged (P4-09 review round 1, F2).
+ */
+export async function resetRateLimits(): Promise<void> {
+  await run(
+    'docker',
+    [
+      'compose', '-f', COMPOSE_FILE, 'exec', '-T', 'db', 'sh', '-c',
+      'psql -q -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" -c "DELETE FROM rate_limits"',
+    ],
+    { cwd: ROOT, timeout: 60_000 },
+  );
+}

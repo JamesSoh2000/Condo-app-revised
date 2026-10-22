@@ -49,13 +49,18 @@ parallel and a retry needs no reset. The shared seeded managers (Maple's and Bir
 `tests/auth.setup.ts`, and their cookies are reused from `.auth/`.
 
 The rate limits keep their production values, and every request comes from one IP, so a run has a budget. The
-reset empties the windows, which is why `make e2e` resets every time:
+reset empties the windows, which is why `make e2e` resets every time; before a retry, `helpers/test.ts` empties
+them too, so a retried test gets the budget its first attempt had. Every spec imports `test` from there. Measured
+in `rate_limits` after one run of both projects:
 
-| Limit | Per run (both projects) | Allowed |
+| Limit | Per run | Allowed |
 |---|---|---|
+| Invitation lookups and accepts per IP | 14 (J1, J2) | 20 per 10 minutes |
 | Signups per IP | 6 (J3 ×2, J7 reset ×1, per project) | 10 per hour |
-| Logins per email | 4 for `resident5@example.test` (J7 Web Lock); 1 for each manager | 8 per 15 minutes |
 | Logins per IP | 10 | 30 per 10 minutes |
+| Logins per email | 4 for `resident5@example.test` (J7 Web Lock); 1 for each manager; 2 for each J7 reset account | 8 per 15 minutes |
+| Join lookups, unit searches, join requests | 4 each | 20, 120 per 10 minutes; 10 per user per hour |
+| Password-reset requests and confirms | 2 each | 30 per IP, 8 per email |
 
 So run `make e2e` again rather than repeating `npx playwright test` on the same database, log a shared persona in
 with `storageState`, not in each test, and count a new journey's signups and logins against this table.

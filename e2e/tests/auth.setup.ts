@@ -1,4 +1,4 @@
-import { test as setup } from '@playwright/test';
+import { test as setup } from '../helpers/test';
 
 import { apiLogin, PERSONAS, type Persona, storageStatePath } from '../helpers/auth';
 

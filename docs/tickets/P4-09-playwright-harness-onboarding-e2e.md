@@ -92,8 +92,10 @@ phase gates in [ROADMAP.md](../ROADMAP.md).
     run without a reset in between and without colliding; manager and Birch personas log in once per run
     (`storageState`), so a run stays under the login rate limits (carried from P2-05), which keep their
     production values.
-12. **Failure artifacts:** in CI, `retries: 1`; trace on first retry and on failure, video and screenshot on
-    failure, uploaded as an artifact with the HTML report whenever the job fails. Locally, `retries: 0`.
+12. **Failure artifacts:** in CI, `retries: 1`; a trace, video and screenshot for every failed attempt (the
+    first attempt's too, when its retry fails differently or passes: review round 1, F3), uploaded as an artifact
+    with the HTML report whenever the job fails. Locally, `retries: 0`. A retry starts with empty rate-limit
+    windows (review round 1, F2).
 13. **`make e2e-reset`** refuses unless the stack's API reports `APP_ENV=dev`; otherwise it stops the API and
     worker, drops and recreates the `public` schema, migrates, seeds and restarts them. It works with either
     stack (`E2E_STACK=dev|prodlike`).

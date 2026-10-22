@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../helpers/test';
 
 import { apiPost, buildingId, NEW_PASSWORD, storageStatePath, uniqueEmail } from '../helpers/auth';
 import { extractLink, waitForEmail } from '../helpers/mailpit';

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { expect, type Browser, type Page, test } from '@playwright/test';
+import { expect, type Browser, type Page, test } from '../helpers/test';
 
 import { buildingId, NEW_PASSWORD, storageStatePath, uniqueEmail } from '../helpers/auth';
 import { waitForEmail } from '../helpers/mailpit';

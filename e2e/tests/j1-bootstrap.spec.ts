@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../helpers/test';
 
 import { NEW_PASSWORD, uniqueEmail } from '../helpers/auth';
 import { runCli } from '../helpers/cli';

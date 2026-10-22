@@ -1,4 +1,4 @@
-import { expect, type Request, test } from '@playwright/test';
+import { expect, type Request, test } from '../helpers/test';
 
 import { apiLogin, apiSignup, NEW_PASSWORD, SEED_PASSWORD, uniqueEmail } from '../helpers/auth';
 import { extractLink, waitForEmail } from '../helpers/mailpit';
