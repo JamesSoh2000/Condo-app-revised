@@ -71,6 +71,7 @@ def create_app() -> FastAPI:
     from app.memberships import router as memberships
     from app.notifications import router as notifications
     from app.onboarding import router as onboarding
+    from app.packages import router as packages
     from app.routers import health, version
     from app.units import router as units
 
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(notifications.router)
     app.include_router(onboarding.own_router)
     app.include_router(onboarding.router)
+    app.include_router(packages.router)
     app.include_router(units.router)
     return app
 
