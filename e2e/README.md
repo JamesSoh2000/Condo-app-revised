@@ -34,7 +34,10 @@ Once the stack is up and reset, you can run the suite on its own from `e2e/`:
 
 ```bash
 npx playwright test                          # the dev stack's defaults
-E2E_BASE_URL=http://localhost:8080 E2E_COMPOSE_FILE=compose.prodlike.yml E2E_API_SERVICE=api npx playwright test
+# the prod-like stack: its compose file needs the image tag `make prodlike` started (this commit's SHA, plus
+# "-dirty" if the tree had uncommitted changes then)
+API_IMAGE_TAG=$(git rev-parse HEAD) E2E_BASE_URL=http://localhost:8080 E2E_COMPOSE_FILE=compose.prodlike.yml \
+  E2E_API_SERVICE=api npx playwright test
 ```
 
 | Variable | Default | What |
