@@ -16,6 +16,9 @@ from app.middleware.request_logging import RequestLoggingMiddleware
 # them all anyway; tests/test_app_imports.py checks the app alone).
 from app.models import registry as _registry  # noqa: F401
 
+# The domains' file `can_view` hooks register on import (app/files/purposes.py).
+from app.packages import photos as _package_photos  # noqa: F401
+
 configure_logging()
 logger = logging.getLogger("app.lifecycle")
 

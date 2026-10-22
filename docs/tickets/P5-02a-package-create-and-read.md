@@ -108,6 +108,16 @@ From PR #76. The first ticket that calls `notify` (P4-05 or P5-02a, whichever la
   can't encode (lone surrogates), with a test. Today asyncpg raises `DBAPIError` instead of the documented
   `ValueError` (found after P3-03's last review round; unfixed).
 
+## Carried from P5-01 (do while framing)
+
+From PR #109 (explanation `docs/explanations/P5-01-package-schema-state-machine.md` §7):
+- Attach the photo in `POST /packages` with `claim_file(db, ctx, photo_file_id, FilePurpose.PACKAGE_PHOTO,
+  PACKAGE_ATTACHED_TYPE, package.id)` before the single commit, and set `photo_file_id` on the package: the
+  photo hook (`app/packages/photos.py`) grants only when both agree.
+- Read packages only through `visible_packages(ctx)` (list, get, summary).
+- `Package` has no ORM relationships: flush the package after the rows it names exist (they already do in
+  a request), or add relationships if a use case inserts both in one flush.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

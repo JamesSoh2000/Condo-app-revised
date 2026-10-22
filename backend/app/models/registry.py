@@ -13,6 +13,7 @@ import app.jobs.models
 import app.memberships.models
 import app.notifications.models
 import app.onboarding.models
+import app.packages.models
 import app.rate_limits.models
 import app.units.models
 import app.users.models

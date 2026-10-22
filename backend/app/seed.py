@@ -9,7 +9,9 @@ Like the other building blocks, `seed()` flushes but never commits: the CLI comm
 the end (CLAUDE.md rule 5). The README lists the seeded accounts and the dev password.
 """
 
+import hashlib
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -30,6 +32,8 @@ from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
 from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
 from app.memberships.occupancy import start_occupancy, transfer_occupancy
 from app.models.base import Base
+from app.packages.enums import PackageStatus
+from app.packages.models import Package
 from app.units.models import Unit
 from app.users.models import User
 
@@ -120,6 +124,70 @@ MEMBERS = (
 )
 
 
+@dataclass(frozen=True)
+class SeedPackage:
+    key: str  # its idempotency key: how a re-run finds it
+    unit: str
+    carrier: str
+    description: str
+    # Received this many hours before the first run. 0 puts a unit-addressed package at the seed's
+    # `now()`, inside its occupants' windows (they start then too); older ones name a recipient.
+    hours_ago: int
+    recipient: str | None = None  # email of a Maple member
+    status: PackageStatus = PackageStatus.RECEIVED
+    done_hours_ago: int = 0  # when it was picked up or returned
+    picked_up_by_name: str | None = None  # instead of the recipient
+    return_reason: str | None = None
+    tracking_last4: str | None = None
+
+
+RECEIVED, PICKED_UP, RETURNED = (
+    PackageStatus.RECEIVED,
+    PackageStatus.PICKED_UP,
+    PackageStatus.RETURNED,
+)
+_R1, _R2, _R3 = "resident1@example.test", "resident2@example.test", "resident3@example.test"
+_R4, _R5, _R6 = "resident4@example.test", "resident5@example.test", "resident6@example.test"
+_MULTI = "multi@example.test"
+PACKAGES = (
+    SeedPackage("seed-package-01", "101", "Amazon", "Small box", 2, _R1, tracking_last4="4821"),
+    SeedPackage("seed-package-02", "101", "Canada Post", "Padded envelope", 0),
+    SeedPackage("seed-package-03", "102", "UPS", "Large box", 5, _R2, tracking_last4="1Z93"),
+    SeedPackage("seed-package-04", "102", "FedEx", "Flowers", 26, _R3),
+    SeedPackage("seed-package-05", "102", "DHL", "Document envelope", 0),
+    SeedPackage("seed-package-06", "304", "Purolator", "Box", 50, _R4, tracking_last4="7730"),
+    SeedPackage("seed-package-07", "304", "Amazon", "Two boxes", 0),
+    SeedPackage("seed-package-08", "503", "UPS", "Box", 3, _R5),
+    SeedPackage("seed-package-09", "201", "Amazon", "Small box", 8, _MULTI),
+    SeedPackage("seed-package-10", "404", "FedEx", "Box, no occupant on file", 0),
+    SeedPackage("seed-package-11", "101", "UPS", "Box", 72, _R1, PICKED_UP, 70),
+    SeedPackage("seed-package-12", "102", "Amazon", "Box", 30, _R3, PICKED_UP, 28, "Jordan Patel"),
+    SeedPackage("seed-package-13", "503", "Canada Post", "Parcel", 120, _R5, PICKED_UP, 100),
+    SeedPackage(
+        "seed-package-14",
+        "304",
+        "FedEx",
+        "Box",
+        240,
+        _R6,
+        RETURNED,
+        24,
+        return_reason="Unclaimed after 7 days",
+    ),
+    SeedPackage(
+        "seed-package-15",
+        "201",
+        "DHL",
+        "Parcel",
+        96,
+        _MULTI,
+        RETURNED,
+        90,
+        return_reason="Refused by the resident",
+    ),
+)
+
+
 # Public (README): every seeded user's password in dev and test. Staging uses SEED_PASSWORD instead.
 DEV_SEED_PASSWORD = "DevPassword!2026"  # noqa: S105
 
@@ -172,6 +240,7 @@ async def seed(
     if reset:
         await _truncate_domain_tables(db)
     buildings = {spec.slug: await _building(db, spec) for spec in BUILDINGS}
+    memberships: dict[tuple[str, str], BuildingMembership] = {}
     units = {
         (spec.slug, label): unit
         for spec in BUILDINGS
@@ -188,9 +257,11 @@ async def seed(
         if current is None or not verify_password(password, current) or needs_rehash(current):
             user.password_hash = password_hash
         membership = await _membership(db, building, user, member)
+        memberships[member.building, member.email] = membership
         if member.unit is not None and member.relationship is not None:
             unit = units[member.building, member.unit]
             await _occupancy(db, membership, unit, member.relationship)
+    await _packages(db, buildings["maple"], units, memberships)
     await db.flush()
 
 
@@ -309,3 +380,51 @@ async def _occupancy(
             new_unit_id=unit.id,
             relationship=relationship,
         )
+
+
+async def _packages(
+    db: AsyncSession,
+    building: Building,
+    units: dict[tuple[str, str], Unit],
+    memberships: dict[tuple[str, str], BuildingMembership],
+) -> None:
+    """Create the Maple packages that are missing. One found by its key is left as it is: its times
+    are relative to the run that created it, so there is no fixed value to set back."""
+    await db.flush()  # the memberships' roles, before packages name them
+    now = (await db.execute(select(func.now()))).scalar_one()
+    desk = memberships["maple", "security@example.test"]
+    for spec in PACKAGES:
+        found = await db.scalar(
+            select(Package.id).where(
+                Package.building_id == building.id, Package.idempotency_key == spec.key
+            )
+        )
+        if found is not None:
+            continue
+        recipient = memberships["maple", spec.recipient] if spec.recipient else None
+        package = Package(
+            building_id=building.id,
+            unit_id=units["maple", spec.unit].id,
+            recipient_membership_id=recipient.id if recipient else None,
+            carrier=spec.carrier,
+            description=spec.description,
+            tracking_last4=spec.tracking_last4,
+            status=spec.status,
+            received_at=now - timedelta(hours=spec.hours_ago),
+            received_by_membership_id=desk.id,
+            idempotency_key=spec.key,
+            # Seeded rows have no create request; the key's hash stands in for one.
+            request_hash=hashlib.sha256(spec.key.encode()).hexdigest(),
+        )
+        done = now - timedelta(hours=spec.done_hours_ago)
+        if spec.status is PICKED_UP:
+            package.picked_up_at = done
+            package.handed_out_by_membership_id = desk.id
+            if spec.picked_up_by_name:
+                package.picked_up_by_name = spec.picked_up_by_name
+            else:
+                package.picked_up_by_membership_id = recipient.id if recipient else None
+        elif spec.status is RETURNED:
+            package.returned_at = done
+            package.return_reason = spec.return_reason
+        db.add(package)
