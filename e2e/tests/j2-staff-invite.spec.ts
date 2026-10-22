@@ -1,24 +1,24 @@
 import { expect, test } from '../helpers/test';
 
-import { apiPost, buildingId, NEW_PASSWORD, storageStatePath, uniqueEmail } from '../helpers/auth';
+import { NEW_PASSWORD, storageStatePath, uniqueEmail } from '../helpers/auth';
 import { extractLink, waitForEmail } from '../helpers/mailpit';
 
 test('J2: a manager invites security, who accepts by email and lands on security home', async ({
   newContext,
   page,
-  baseURL,
 }) => {
   const securityEmail = uniqueEmail('j2-security');
 
-  // No screen creates invitations yet (P4-09 Frame notes): the manager's session calls the API the way the SPA
-  // would, with the manager's cookies and the SPA's CSRF headers.
+  // The manager invites through the Invitations tab (P4-08g criterion 12).
   const manager = await newContext({ storageState: storageStatePath('mapleManager') });
-  const maple = await buildingId(manager.request, 'maple');
-  const created = await apiPost(manager.request, baseURL!, `/api/buildings/${maple}/invitations`, {
-    email: securityEmail,
-    roles: ['security'],
-  });
-  expect(created.status()).toBe(201);
+  const managerPage = await manager.newPage();
+  await managerPage.goto('/manage/residents?tab=invitations');
+  await managerPage.getByLabel('Email').fill(securityEmail);
+  await managerPage.getByRole('group', { name: 'Roles' }).getByRole('checkbox', { name: 'Security' }).check();
+  await managerPage.getByRole('button', { name: 'Send invitation' }).click();
+  await expect(managerPage.getByRole('status').filter({ hasText: `Invitation sent to ${securityEmail}.` })).toBeFocused();
+  const row = managerPage.getByRole('list', { name: 'Pending invitations' }).getByRole('listitem').filter({ hasText: securityEmail });
+  await expect(row).toContainText('Security');
   await manager.close();
 
   const email = await waitForEmail(securityEmail, "You're invited to join Maple Tower");

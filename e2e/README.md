@@ -8,11 +8,9 @@ cover the rest.
 | Spec | Journey |
 |---|---|
 | `tests/j1-bootstrap.spec.ts` | J1: `bootstrap-building` (CLI) → invitation email → the first manager sets a password → home; the link is single-use |
-| `tests/j2-staff-invite.spec.ts` | J2: the manager invites security → email → accept → security's home; the account menu opens with Enter and Space |
+| `tests/j2-staff-invite.spec.ts` | J2: the manager invites security on the Invitations tab → email → accept → security's home; the account menu opens with Enter and Space |
 | `tests/j3-onboarding.spec.ts` | J3: join link → signup → unit → pending → the manager approves → email, notification, home; Birch can't see the resident. Plus the deny path |
 | `tests/j7-password-reset.spec.ts` | J7: forgot → email → reset → another device is signed out. Plus the `condo.auth` Web Lock across two pages (a seeded resident) |
-
-J2 creates the invitation through the API as the manager: no screen creates invitations yet (P4-09 Frame notes).
 
 ## Run
 

@@ -222,8 +222,8 @@ describe('pending list (criterion 2)', () => {
   });
 
   it('Show more is disabled while a refresh is out, and hidden after a failed refresh', async () => {
-    let first: () => Response | Promise<Response> = () => page([GUARD], 'c1');
-    stubApi(manager({ [list()]: () => first() }));
+    let first: Handler = () => page([GUARD], 'c1');
+    stubApi(manager({ [list()]: (request) => first(request) }));
     const app = renderApp([PAGE]);
     await screen.findByRole('button', { name: 'Show more' });
 
