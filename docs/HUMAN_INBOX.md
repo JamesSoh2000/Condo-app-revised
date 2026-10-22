@@ -15,6 +15,7 @@ The next `/build-next` unblocks the ticket and moves the item to "Resolved".
 
 | # | Date | Ticket | What's needed | Options (agent's recommendation first) | Blocks |
 |---|---|---|---|---|---|
+| B-8 | 2026-10-21 | [P4-09](./tickets/P4-09-playwright-harness-onboarding-e2e.md) (PR #102) | **GitHub Actions won't start any job**: every job of every run since ~23:21Z (PR #102: run 39696467612 ×3 attempts, run 39697898765; this PR too) is refused with "The job was not started because recent account payments have failed or your spending limit needs to be increased". A payment/billing fix is human-only (stop rule 1), and no PR can merge without the required checks. PR #102's state: the suite is built and passes locally (14/14 on the dev and prod-like stacks; 5 consecutive runs); Codex `gpt-6.1-sol` (high) round 1 said BLOCK with 4 findings, 3 fixed in 747f542 and F1 (make `E2E journeys` required) planned for just before the merge | **A (recommended):** fix billing or raise the Actions spending limit (Settings → Billing and plans), then re-run `/build-ticket P4-09`: it resumes on PR #102 with CI, the broken-selector probe (criterion 2), review round 2, the explanation and the merge. **B:** make the repository public (Actions minutes are free for public repos), then as A. **C:** keep P4-09 blocked and pause the run (`Run state: paused`) until billing is sorted | P4-09 and every merge, including this PR; P5-05 depends on P4-09 |
 
 ## Prerequisites coming up
 
