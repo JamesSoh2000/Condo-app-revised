@@ -213,7 +213,7 @@ async def test_record_times_are_timestamptz(db: AsyncSession):
                     " AND column_name IN ('received_at', 'picked_up_at', 'returned_at')"
                 )
             )
-        ).tuples()
+        ).all()
     )
 
     assert types == dict.fromkeys(
@@ -254,7 +254,7 @@ async def test_idempotency_columns_are_required(db: AsyncSession):
                     " AND column_name IN ('idempotency_key', 'request_hash')"
                 )
             )
-        ).tuples()
+        ).all()
     )
 
     assert nullable == {"idempotency_key": "NO", "request_hash": "NO"}
