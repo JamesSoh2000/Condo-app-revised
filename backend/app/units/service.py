@@ -22,10 +22,20 @@ from app.audit.service import record_audit
 from app.buildings.models import Building
 from app.core.errors import Conflict, NotFound
 from app.core.pagination import CursorParams, Page, paginate
-from app.memberships.models import UnitOccupancy
+from app.memberships.enums import MembershipStatus
+from app.memberships.models import BuildingMembership, UnitOccupancy
 from app.tenancy.context import TenantContext
 from app.units.models import Unit
-from app.units.schemas import MAX_FLOOR, MIN_FLOOR, UnitCreate, UnitOption, UnitOut, UnitUpdate
+from app.units.schemas import (
+    MAX_FLOOR,
+    MIN_FLOOR,
+    OccupantOut,
+    UnitCreate,
+    UnitOption,
+    UnitOut,
+    UnitUpdate,
+)
+from app.users.models import User
 
 MAX_OPTIONS = 50
 MAX_IMPORT_ROWS = 5000
@@ -229,6 +239,32 @@ async def _set_active(db: AsyncSession, ctx: TenantContext, unit_id: UUID, *, ac
     action = actions.UNIT_ACTIVATED if active else actions.UNIT_DEACTIVATED
     await _audit(db, ctx, action, unit_id, None)
     await db.commit()
+
+
+async def list_occupants(db: AsyncSession, ctx: TenantContext, unit_id: UUID) -> list[OccupantOut]:
+    """The unit's current occupants with an active membership, earliest start first: who the desk
+    may name as a package's recipient (P5-02a; the P1-03 carry leaves out suspended members)."""
+    await _get_unit(db, ctx.building_id, unit_id)
+    rows = await db.execute(
+        select(BuildingMembership.id, User.full_name, UnitOccupancy.relationship)
+        .join(
+            UnitOccupancy,
+            (UnitOccupancy.membership_id == BuildingMembership.id)
+            & (UnitOccupancy.building_id == BuildingMembership.building_id),
+        )
+        .join(User, User.id == BuildingMembership.user_id)
+        .where(
+            UnitOccupancy.building_id == ctx.building_id,
+            UnitOccupancy.unit_id == unit_id,
+            UnitOccupancy.ended_at.is_(None),
+            BuildingMembership.status == MembershipStatus.ACTIVE,
+        )
+        .order_by(UnitOccupancy.started_at, UnitOccupancy.membership_id)
+    )
+    return [
+        OccupantOut(membership_id=row.id, full_name=row.full_name, relationship=row.relationship)
+        for row in rows
+    ]
 
 
 async def search_unit_options(

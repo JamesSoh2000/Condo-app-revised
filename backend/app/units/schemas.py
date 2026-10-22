@@ -7,6 +7,7 @@ from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
 from app.core.schemas import APIModel, InputModel
+from app.memberships.enums import OccupancyRelationship
 
 MIN_FLOOR, MAX_FLOOR = -20, 300
 
@@ -90,3 +91,11 @@ class UnitOption(APIModel):
     id: UUID
     tower: str | None
     label: str
+
+
+class OccupantOut(APIModel):
+    """A current occupant, for the desk's recipient and pickup forms (P5-02a)."""
+
+    membership_id: UUID
+    full_name: str
+    relationship: OccupancyRelationship
