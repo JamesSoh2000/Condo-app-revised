@@ -78,6 +78,12 @@ conditional `UPDATE … RETURNING`, never `PATCH status`. Notices and maintenanc
 2. Why does `SELECT` then `UPDATE` have a race that `UPDATE … WHERE status='received' RETURNING` does not?
 3. After zero rows come back, why re-read the package, and how does the re-read decide between 404 and 409?
 
+## Carried from P5-01 (do while framing)
+
+From PR #109: the state checks accept an empty `picked_up_by_name` or `return_reason` (`''` is NOT NULL).
+Refuse blank values in the request schemas (`min_length`, stripped), with a test. Use
+`app.packages.state.assert_transition` and the same from-states in the conditional UPDATE.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
