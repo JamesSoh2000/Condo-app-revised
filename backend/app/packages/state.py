@@ -2,7 +2,7 @@
 
 The table's check constraints keep each row consistent with its status; these rules say which moves
 between statuses are legal. Action services (P5-02b) check them, then write with a conditional
-`UPDATE … WHERE status IN (…)` (CLAUDE.md rule 7), so a concurrent change can't slip between the two.
+`UPDATE … WHERE status IN (…)` (CLAUDE.md rule 7), so a concurrent change can't slip in between.
 """
 
 from collections.abc import Mapping

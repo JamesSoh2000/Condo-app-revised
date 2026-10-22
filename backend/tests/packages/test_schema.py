@@ -75,9 +75,7 @@ async def test_a_reference_to_another_building_is_rejected(
 
     await assert_integrity_error(
         db,
-        make_package(
-            db, world.a_101, world.a_security.membership, received_at=T, **overrides
-        ),
+        make_package(db, world.a_101, world.a_security.membership, received_at=T, **overrides),
         constraint=f"fk_packages_building_id_{column}",
     )
 
@@ -136,37 +134,79 @@ def _invalid_rows() -> list[Any]:
     rows: list[tuple[str, str, dict[str, Any], str]] = [
         # The ticket's own example.
         ("picked_up without picked_up_at", "picked_up", {"picked_up_at": None}, "picked_up_state"),
-        ("picked_up without handed_out_by", "picked_up", {"handed_out_by_membership_id": None},
-         "picked_up_state"),
-        ("picked_up without a pickup person", "picked_up",
-         {"picked_up_by_membership_id": None, "picked_up_by_name": None}, "picked_up_state"),
+        (
+            "picked_up without handed_out_by",
+            "picked_up",
+            {"handed_out_by_membership_id": None},
+            "picked_up_state",
+        ),
+        (
+            "picked_up without a pickup person",
+            "picked_up",
+            {"picked_up_by_membership_id": None, "picked_up_by_name": None},
+            "picked_up_state",
+        ),
         ("picked_up with returned_at", "picked_up", {"returned_at": a_time}, "picked_up_state"),
         ("picked_up with return_reason", "picked_up", {"return_reason": "x"}, "picked_up_state"),
         ("received with picked_up_at", "received", {"picked_up_at": a_time}, "received_state"),
         ("received with returned_at", "received", {"returned_at": a_time}, "received_state"),
-        ("received with picked_up_by_name", "received", {"picked_up_by_name": "x"},
-         "received_state"),
-        ("received with picked_up_by", "received", {"picked_up_by_membership_id": member},
-         "received_state"),
-        ("received with handed_out_by", "received", {"handed_out_by_membership_id": "a_security"},
-         "received_state"),
+        (
+            "received with picked_up_by_name",
+            "received",
+            {"picked_up_by_name": "x"},
+            "received_state",
+        ),
+        (
+            "received with picked_up_by",
+            "received",
+            {"picked_up_by_membership_id": member},
+            "received_state",
+        ),
+        (
+            "received with handed_out_by",
+            "received",
+            {"handed_out_by_membership_id": "a_security"},
+            "received_state",
+        ),
         ("received with return_reason", "received", {"return_reason": "x"}, "received_state"),
         ("returned without returned_at", "returned", {"returned_at": None}, "returned_state"),
         ("returned without return_reason", "returned", {"return_reason": None}, "returned_state"),
         ("returned with picked_up_at", "returned", {"picked_up_at": a_time}, "returned_state"),
-        ("returned with picked_up_by_name", "returned", {"picked_up_by_name": "x"},
-         "returned_state"),
-        ("returned with picked_up_by", "returned", {"picked_up_by_membership_id": member},
-         "returned_state"),
-        ("returned with handed_out_by", "returned", {"handed_out_by_membership_id": "a_security"},
-         "returned_state"),
-        ("picked up before it was received", "picked_up", {"picked_up_at": T - timedelta(seconds=1)},
-         "picked_up_after_received"),
-        ("returned before it was received", "returned", {"returned_at": T - timedelta(seconds=1)},
-         "returned_after_received"),
+        (
+            "returned with picked_up_by_name",
+            "returned",
+            {"picked_up_by_name": "x"},
+            "returned_state",
+        ),
+        (
+            "returned with picked_up_by",
+            "returned",
+            {"picked_up_by_membership_id": member},
+            "returned_state",
+        ),
+        (
+            "returned with handed_out_by",
+            "returned",
+            {"handed_out_by_membership_id": "a_security"},
+            "returned_state",
+        ),
+        (
+            "picked up before it was received",
+            "picked_up",
+            {"picked_up_at": T - timedelta(seconds=1)},
+            "picked_up_after_received",
+        ),
+        (
+            "returned before it was received",
+            "returned",
+            {"returned_at": T - timedelta(seconds=1)},
+            "returned_after_received",
+        ),
     ]
-    return [pytest.param(state, overrides, constraint, id=name) for name, state, overrides,
-            constraint in rows]
+    return [
+        pytest.param(state, overrides, constraint, id=name)
+        for name, state, overrides, constraint in rows
+    ]
 
 
 @pytest.mark.parametrize(("state", "overrides", "constraint"), _invalid_rows())
@@ -175,7 +215,9 @@ async def test_state_checks_reject_a_row_that_breaks_its_state(
 ):
     # Persona names stand for their membership ids (the world isn't built at collection time).
     resolved = {
-        key: getattr(world, value).membership.id if key.endswith("membership_id") and value else value
+        key: getattr(world, value).membership.id
+        if key.endswith("membership_id") and value
+        else value
         for key, value in overrides.items()
     }
     base = {"received": {}, "picked_up": picked_up(world), "returned": returned()}[state]
@@ -204,7 +246,7 @@ async def test_status_outside_the_enum_is_rejected(db: AsyncSession, world: Worl
 
 
 async def test_record_times_are_timestamptz(db: AsyncSession):
-    types = dict(
+    types: dict[str, str] = dict(
         (
             await db.execute(
                 text(
@@ -234,9 +276,7 @@ async def test_idempotency_key_is_unique_per_building(db: AsyncSession, world: W
     )
 
 
-async def test_the_same_idempotency_key_in_two_buildings_is_allowed(
-    db: AsyncSession, world: World
-):
+async def test_the_same_idempotency_key_in_two_buildings_is_allowed(db: AsyncSession, world: World):
     await make_package(db, world.a_101, world.a_security.membership, idempotency_key="k-1")
     await make_package(db, world.b_101, world.b_manager.membership, idempotency_key="k-1")
 
@@ -245,7 +285,7 @@ async def test_the_same_idempotency_key_in_two_buildings_is_allowed(
 
 
 async def test_idempotency_columns_are_required(db: AsyncSession):
-    nullable = dict(
+    nullable: dict[str, str] = dict(
         (
             await db.execute(
                 text(

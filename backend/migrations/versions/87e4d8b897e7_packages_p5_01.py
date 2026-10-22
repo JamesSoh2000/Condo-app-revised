@@ -70,19 +70,26 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint(
-            "status <> 'picked_up' OR (picked_up_at IS NOT NULL AND handed_out_by_membership_id IS NOT NULL AND (picked_up_by_membership_id IS NOT NULL OR picked_up_by_name IS NOT NULL) AND returned_at IS NULL AND return_reason IS NULL)",
+            "status <> 'picked_up' OR (picked_up_at IS NOT NULL"
+            " AND handed_out_by_membership_id IS NOT NULL"
+            " AND (picked_up_by_membership_id IS NOT NULL OR picked_up_by_name IS NOT NULL)"
+            " AND returned_at IS NULL AND return_reason IS NULL)",
             name=op.f("ck_packages_picked_up_state"),
         ),
         sa.CheckConstraint(
-            "status <> 'received' OR (picked_up_at IS NULL AND picked_up_by_name IS NULL AND picked_up_by_membership_id IS NULL AND handed_out_by_membership_id IS NULL AND returned_at IS NULL AND return_reason IS NULL)",
+            "status <> 'received' OR (picked_up_at IS NULL AND picked_up_by_name IS NULL"
+            " AND picked_up_by_membership_id IS NULL AND handed_out_by_membership_id IS NULL"
+            " AND returned_at IS NULL AND return_reason IS NULL)",
             name=op.f("ck_packages_received_state"),
         ),
         sa.CheckConstraint(
-            "status <> 'returned' OR (returned_at IS NOT NULL AND return_reason IS NOT NULL AND picked_up_at IS NULL AND picked_up_by_name IS NULL AND picked_up_by_membership_id IS NULL AND handed_out_by_membership_id IS NULL)",
+            "status <> 'returned' OR (returned_at IS NOT NULL AND return_reason IS NOT NULL"
+            " AND picked_up_at IS NULL AND picked_up_by_name IS NULL"
+            " AND picked_up_by_membership_id IS NULL AND handed_out_by_membership_id IS NULL)",
             name=op.f("ck_packages_returned_state"),
         ),
-        # Hand-edited: autogenerate rendered the enum check twice (once named just "package_status");
-        # the column's Enum has create_constraint=False so it doesn't add a third.
+        # Hand-edited: autogenerate rendered the enum check twice (once named just
+        # "package_status"); the column's Enum has create_constraint=False, so no third one.
         sa.CheckConstraint(
             "status IN ('received', 'picked_up', 'returned')",
             name=op.f("ck_packages_package_status"),

@@ -48,7 +48,7 @@ async def packages(db: AsyncSession, world: World) -> Packages:
     )
 
 
-async def seen(db: AsyncSession, query: Select[tuple[Package]]) -> set[uuid.UUID]:
+async def seen(db: AsyncSession, query: Select[Package]) -> set[uuid.UUID]:
     return {package.id for package in await db.scalars(query)}
 
 
@@ -191,8 +191,8 @@ async def test_visibility_unchanged_in_toronto_time(
 async def test_an_hour_before_a_move_stays_on_its_side_in_toronto_time(
     db: AsyncSession, world: World
 ):
-    # P1-03 review round 5, L2: a naive record time is read in the session's zone, 4 hours behind UTC
-    # in July here, so a record an hour before a move would land 3 hours after it.
+    # P1-03 review round 5, L2: a naive record time is read in the session's zone, 4 hours behind
+    # UTC in July here, so a record an hour before a move would land 3 hours after it.
     security = world.a_security.membership
     formers_last_hour = await make_package(
         db, world.a_101, security, received_at=World.T1 - timedelta(hours=1)
@@ -237,7 +237,7 @@ async def test_the_query_composes_with_an_alias_and_an_occupancy_join(
 
     # The visible set as a subquery behind an alias.
     as_alias = aliased(Package, visible_packages(ctx).subquery())
-    # Outer-joined to unit_occupancies, whose columns could shadow the record's in a careless clause.
+    # Outer-joined to unit_occupancies, whose columns could shadow the record's in a careless one.
     visible = visible_packages(ctx).subquery()
     joined = (
         select(visible.c.id)
@@ -246,7 +246,9 @@ async def test_the_query_composes_with_an_alias_and_an_occupancy_join(
     )
     # Correlated from an outer query over an aliased packages table.
     outer = aliased(Package)
-    correlated = select(outer.id).where(visible_packages(ctx).where(Package.id == outer.id).exists())
+    correlated = select(outer.id).where(
+        visible_packages(ctx).where(Package.id == outer.id).exists()
+    )
     # Narrowed further, as list endpoints will.
     narrowed = visible_packages(ctx).where(Package.status == PackageStatus.RECEIVED)
 

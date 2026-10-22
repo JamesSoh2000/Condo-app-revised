@@ -17,7 +17,7 @@ LEGAL = {(RECEIVED, PICKED_UP), (RECEIVED, RETURNED)}
 
 
 def test_allowed_is_received_to_picked_up_or_returned():
-    assert ALLOWED == {RECEIVED: frozenset({PICKED_UP, RETURNED})}
+    assert {RECEIVED: frozenset({PICKED_UP, RETURNED})} == ALLOWED
 
 
 @pytest.mark.parametrize(("from_", "to"), sorted(LEGAL))

@@ -1,4 +1,5 @@
-"""Who may see which package: `visible_packages(ctx)`, the one place that rule lives (CLAUDE.md rule 3).
+"""Who may see which package: `visible_packages(ctx)`, the one place that rule lives (CLAUDE.md
+rule 3).
 
 Endpoints, counts and the photo hook build on this query (narrow it with `.where`, wrap it in a
 subquery, test `.exists()`), never on their own filter.
@@ -11,11 +12,11 @@ from app.memberships.occupancy import occupancy_window_clause
 from app.packages.models import Package
 from app.tenancy.context import TenantContext
 
-# Not `STAFF_ROLES`: council is staff for other purposes but sees no packages (aggregates only, later).
+# Not `STAFF_ROLES`: council is staff elsewhere but sees no packages (aggregates only, later).
 _SEE_ALL = (Role.SECURITY, Role.PROPERTY_MANAGEMENT)
 
 
-def visible_packages(ctx: TenantContext) -> Select[tuple[Package]]:
+def visible_packages(ctx: TenantContext) -> Select[Package]:
     """The packages of `ctx.building_id` the caller may see; a multi-role caller gets the union.
 
     - security, property management: every package of the building

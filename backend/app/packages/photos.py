@@ -1,6 +1,7 @@
 """Who may download a package photo: whoever may see its package (ADR-0007, P5-01).
 
-Importing this module registers the hook; `app.main` imports it, so the server has it from the start.
+Importing this module registers the hook; `app.main` imports it, so the server has it from the
+start.
 """
 
 from sqlalchemy import select

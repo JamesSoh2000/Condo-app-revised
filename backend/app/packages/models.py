@@ -20,7 +20,7 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.types import database_enum
 from app.packages.enums import PackageStatus
 
-# `attached_type` of a package's photo (`app.files.service.claim_file`); `app.packages.photos` reads it.
+# The `attached_type` of a package's photo (`app.files.service.claim_file`, `app.packages.photos`).
 PACKAGE_ATTACHED_TYPE = "package"
 
 _PICKUP_COLUMNS = (

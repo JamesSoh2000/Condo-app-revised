@@ -78,7 +78,9 @@ async def test_the_photo_follows_the_packages_visibility(
     }
     ctx = persona_ctx(world, persona)
 
-    granted = {name for name, photo in photos.items() if await can_view_package_photo(ctx, photo, db)}
+    granted = {
+        name for name, photo in photos.items() if await can_view_package_photo(ctx, photo, db)
+    }
 
     # b_* personas see building B's package in EXPECTED; none of these A photos.
     assert granted == EXPECTED[persona] - {"pb"}
@@ -96,7 +98,9 @@ async def test_a_photo_attached_to_another_record_type_is_refused(db: AsyncSessi
 
 async def test_a_photo_its_package_doesnt_show_is_refused(db: AsyncSession, world: World):
     photo = await photographed(db, world, "101", AFTER_RESIDENT1_MOVED_IN)
-    await db.execute(update(Package).where(Package.photo_file_id == photo.id).values(photo_file_id=None))
+    await db.execute(
+        update(Package).where(Package.photo_file_id == photo.id).values(photo_file_id=None)
+    )
 
     assert not await can_view_package_photo(persona_ctx(world, "a_security"), photo, db)
     assert not await can_view_package_photo(persona_ctx(world, "a_resident1"), photo, db)
@@ -127,7 +131,9 @@ async def test_download_url_follows_the_package(as_user, db: AsyncSession, world
 
     granted = await viewer.get(url.format(photo.id))
     hidden = await assert_not_visible(other, "GET", url.format(photo.id), code="file_not_found")
-    missing = await assert_not_visible(other, "GET", url.format(uuid.uuid4()), code="file_not_found")
+    missing = await assert_not_visible(
+        other, "GET", url.format(uuid.uuid4()), code="file_not_found"
+    )
 
     assert granted.status_code == 200, granted.text
     assert without_request_id(hidden) == without_request_id(missing)

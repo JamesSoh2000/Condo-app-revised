@@ -73,6 +73,8 @@ EXPECTED_ROW_COUNTS = {
     "password_reset_tokens": 0,
     # P4-05a: its pending resident has no join request.
     "onboarding_requests": 0,
+    # P5-01: nor logs a package (tests make their own).
+    "packages": 0,
 }
 
 

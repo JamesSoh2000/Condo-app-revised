@@ -20,9 +20,9 @@ pytestmark = pytest.mark.anyio
 async def _maple_packages(db: AsyncSession) -> list[Package]:
     return list(
         await db.scalars(
-            select(Package).join(Building, Building.id == Package.building_id).where(
-                Building.slug == "maple"
-            )
+            select(Package)
+            .join(Building, Building.id == Package.building_id)
+            .where(Building.slug == "maple")
         )
     )
 

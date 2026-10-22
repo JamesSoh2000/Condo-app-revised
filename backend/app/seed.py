@@ -141,7 +141,11 @@ class SeedPackage:
     tracking_last4: str | None = None
 
 
-RECEIVED, PICKED_UP, RETURNED = PackageStatus.RECEIVED, PackageStatus.PICKED_UP, PackageStatus.RETURNED
+RECEIVED, PICKED_UP, RETURNED = (
+    PackageStatus.RECEIVED,
+    PackageStatus.PICKED_UP,
+    PackageStatus.RETURNED,
+)
 _R1, _R2, _R3 = "resident1@example.test", "resident2@example.test", "resident3@example.test"
 _R4, _R5, _R6 = "resident4@example.test", "resident5@example.test", "resident6@example.test"
 _MULTI = "multi@example.test"
@@ -157,16 +161,28 @@ PACKAGES = (
     SeedPackage("seed-package-09", "201", "Amazon", "Small box", 8, _MULTI),
     SeedPackage("seed-package-10", "404", "FedEx", "Box, no occupant on file", 0),
     SeedPackage("seed-package-11", "101", "UPS", "Box", 72, _R1, PICKED_UP, 70),
-    SeedPackage(
-        "seed-package-12", "102", "Amazon", "Box", 30, _R3, PICKED_UP, 28, "Jordan Patel"
-    ),
+    SeedPackage("seed-package-12", "102", "Amazon", "Box", 30, _R3, PICKED_UP, 28, "Jordan Patel"),
     SeedPackage("seed-package-13", "503", "Canada Post", "Parcel", 120, _R5, PICKED_UP, 100),
     SeedPackage(
-        "seed-package-14", "304", "FedEx", "Box", 240, _R6, RETURNED, 24,
+        "seed-package-14",
+        "304",
+        "FedEx",
+        "Box",
+        240,
+        _R6,
+        RETURNED,
+        24,
         return_reason="Unclaimed after 7 days",
     ),
     SeedPackage(
-        "seed-package-15", "201", "DHL", "Parcel", 96, _MULTI, RETURNED, 90,
+        "seed-package-15",
+        "201",
+        "DHL",
+        "Parcel",
+        96,
+        _MULTI,
+        RETURNED,
+        90,
         return_reason="Refused by the resident",
     ),
 )
