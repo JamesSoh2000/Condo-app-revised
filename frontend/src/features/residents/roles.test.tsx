@@ -750,3 +750,25 @@ describe('review round 1 (Codex gpt-6.1-sol): unit search (criterion 8)', () => 
     expect(unitQueries(fetchMock)).toEqual(['?active=true']);
   });
 });
+
+// P4-08i review round 1 (Codex gpt-6-astra) F2's neighbour: the transfer shares `UnitPicker` and `RelationshipField`.
+describe('P4-08i review round 1: the transfer marks a missing choice invalid (F2 neighbour)', () => {
+  it('the unit and relationship groups are aria-invalid while their message shows, and not once chosen', async () => {
+    stubApi(manager({ [list]: () => page([{ ...ROBIN, unit_id: null, unit_label: null, tower: null, relationship: null }]) }));
+    renderApp([PAGE]);
+    const dialog = await openTransfer('Robin Park');
+    await within(dialog).findByRole('radio', { name: 'A-1203' });
+    const unitGroup = within(dialog).getByRole('group', { name: 'New unit' });
+    const relationshipGroup = within(dialog).getByRole('group', { name: 'How they relate to the unit' });
+    expect(unitGroup.getAttribute('aria-invalid')).toBe('false');
+
+    press(transferButton(dialog));
+
+    expect(unitGroup.getAttribute('aria-invalid')).toBe('true');
+    expect(relationshipGroup.getAttribute('aria-invalid')).toBe('true');
+    fireEvent.click(within(unitGroup).getByRole('radio', { name: 'A-1203' }));
+    fireEvent.click(within(relationshipGroup).getByRole('radio', { name: 'Owner' }));
+    expect(unitGroup.getAttribute('aria-invalid')).toBe('false');
+    expect(relationshipGroup.getAttribute('aria-invalid')).toBe('false');
+  });
+});

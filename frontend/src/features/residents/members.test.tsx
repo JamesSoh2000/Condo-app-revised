@@ -888,3 +888,42 @@ describe('review round 1 (Codex gpt-6.1-sol): in-flight actions across history a
     expect(app.queryClient.getQueryState(['b', MAPLE.id, 'members', 'list', { role: null, status: null, search: '' }])).toBeUndefined();
   });
 });
+
+// P4-08i criterion 1 (the refresh helper's neighbour, PR #110 R1 F1's pattern): an invalidation alone reuses a first
+// load still out, which read the list before the action.
+describe('P4-08i: a members first load still out when an action settles (criterion 1)', () => {
+  it('is cancelled and asked again, so the list shows the member as changed', async () => {
+    const gate = deferred(() => json({ ...SAM, status: 'active', status_reason: null }));
+    const stale = deferred(() => page([ROBIN, SAM]));
+    let reactivated = false;
+    let gets = 0;
+    const fetchMock = stubApi(
+      manager({
+        [list()]: (request) => {
+          gets += 1;
+          if (gets === 2) return stale.handler(request);
+          return page(reactivated ? [ROBIN, { ...SAM, status: 'active', status_reason: null }] : [ROBIN, SAM]);
+        },
+        [action('reactivate', SAM.membership_id)]: (request) => {
+          reactivated = true;
+          return gate.handler(request);
+        },
+      }),
+    );
+    const app = renderApp([PAGE]);
+    const dialog = await openDialog('Sam Lee', 'reactivate');
+    press(confirmButton(dialog, 'reactivate'));
+    await settle();
+
+    // A first load (no data) still out when the action settles.
+    act(() => void app.queryClient.resetQueries({ queryKey: ['b', MAPLE.id, 'members'] }));
+    await settle();
+    gate.release();
+    await waitFor(() => expect(count(fetchMock, list())).toBe(3));
+    stale.release();
+    await settle();
+
+    await waitFor(() => expect(within(row('Sam Lee')).queryByRole('button', { name: 'Reactivate Sam Lee' })).toBeNull());
+    expect(status().textContent).toBe('Sam Lee was reactivated.');
+  });
+});

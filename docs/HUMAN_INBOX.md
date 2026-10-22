@@ -37,6 +37,11 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | Date | Ticket | Decision | Where recorded | Reversible? |
 |---|---|---|---|---|
+| 2026-10-22 | P4-08i | Expired invitations are listed behind a "Show" select (Pending, Expired) on the Invitations tab, each row with Resend and Revoke; accepted and revoked ones are not listed; the select isn't in the URL | PR #112 D1; ticket Frame notes | Yes |
+| 2026-10-22 | P4-08i | Ticking Resident in the invite form makes a unit and a relationship required: a resident without a unit (which the API allows) can't be invited from the UI | PR #112 D2 | Yes |
+| 2026-10-22 | P4-08i | Every residents mutation refreshes through `frontend/src/features/residents/api.ts::refresh` (cancel, then invalidate, not awaited); new fitness test `refresh.test.ts` parses `api.ts` and fails on any other `invalidateQueries`/`cancelQueries`/`refetchQueries`/`resetQueries` or a mutation whose `onSettled` doesn't call it. `useDecide` now cancels the whole requests key, not only the summary | PR #112 D3 | Yes |
+| 2026-10-22 | P4-08i | While an invitation create is out, the rows' Resend and Revoke are disabled, so no dialog opens under a focus move (review round 1 F1) | PR #112 D4 | Yes |
+| 2026-10-22 | P4-08i | Run-specific (your instruction): Codex `gpt-6-astra` at medium effort as the sole Tier 2 reviewer, a fresh session each round, no Claude reviewer; 2 rounds, both `MERGE` (one Medium and one Low fixed) | PR #112 "Independent review" | — |
 | 2026-10-22 | P4-08g | Split while framing: resend, revoke, expired invitations and inviting a resident to a unit moved to the new [P4-08i](./tickets/P4-08i-invitation-resend-revoke-and-residents.md) (estimate ~470 with them). P4-08g lists only pending invitations and invites staff roles only | ticket Frame notes; PR #110 D1 | Yes |
 | 2026-10-22 | P4-08h | Header panels may cover the nav at phone width (a tap outside closes, then a link can be followed); below 640 px both panels span the header instead of hanging under their button | ticket Frame notes; PR #111 D1, D2 | Yes |
 | 2026-10-22 | P4-08g | The invite form is inline on a new "Invitations" tab of `/manage/residents`, not a dialog or its own page | PR #110 D2 | Yes |

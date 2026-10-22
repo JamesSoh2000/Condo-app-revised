@@ -89,7 +89,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-08c](./P4-08c-members-administration.md) | Members list, suspend, reactivate, move out (split from P4-08; roles and transfer split to P4-08e) | B | 2 | P4-08b, P4-06b | done | — |
 | [P4-08e](./P4-08e-member-roles-and-transfer.md) | Member roles editor and unit transfer (split from P4-08c) | B | 2 | P4-08c | done | — |
 | [P4-08g](./P4-08g-staff-invitations-screen.md) | Staff invitations screen (from P4-09; resend, revoke and residents split to P4-08i) | B | 2 | P4-02a, P4-08b, P4-09 | done | — |
-| [P4-08i](./P4-08i-invitation-resend-revoke-and-residents.md) | Invitation resend, revoke and pre-approved residents (split from P4-08g) | B | 2 | P4-08g | todo | — |
+| [P4-08i](./P4-08i-invitation-resend-revoke-and-residents.md) | Invitation resend, revoke and pre-approved residents (split from P4-08g) | B | 2 | P4-08g | done | — |
 | [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07b, P4-08c, P4-03, P1-08 | done | — |
 | [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04b | done | — |
 | [P5-02a](./P5-02a-package-create-and-read.md) | Package create and read | A | 1 | P5-01, P3-03, P2-04, P4-01a | todo | — |

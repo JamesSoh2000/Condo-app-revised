@@ -1,9 +1,19 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useIsMutating, useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 
 import { api } from '@/api/client';
 import type { components } from '@/api/schema';
 
 export type JoinRequest = components['schemas']['OnboardingRequestManagerOut'];
+
+/**
+ * Ask for `filters`' queries again after a mutation, whatever its outcome; every residents mutation refreshes through
+ * here (P4-08i criterion 1, `refresh.test.ts`). Cancelled first: a first load still out has no data, so an
+ * invalidation alone would wait for it instead of asking again, and it read before the mutation (P4-08d R1, PR #110
+ * R1 F1). Not returned: `mutateAsync` would wait for the refetch (P4-08b R1, Codex F1).
+ */
+function refresh(queryClient: QueryClient, filters: { queryKey: QueryKey; exact?: boolean }): void {
+  void queryClient.cancelQueries(filters).then(() => queryClient.invalidateQueries(filters));
+}
 export type Decision = { kind: 'approve'; id: string } | { kind: 'deny'; id: string; reason: string };
 
 /** Every key of the managers' join requests starts here, so one invalidation covers the list and its pages. */
@@ -68,15 +78,8 @@ export function useDecide(buildingId: string) {
             body: { reason: decision.reason },
           });
     },
-    // Not returned: `mutateAsync` would wait for the refetch, and a slow list would hold back the dialog's answer
-    // (review round 1, Codex F1). The summary is cancelled first: a first fetch still out has no data yet, so the
-    // invalidation would wait for it instead of asking again, and it may have counted before the decision (P4-08d
-    // review round 1, Codex F1).
-    onSettled: () => {
-      void queryClient
-        .cancelQueries({ queryKey: summaryKey(buildingId) })
-        .then(() => queryClient.invalidateQueries({ queryKey: requestsKey(buildingId) }));
-    },
+    // The summary and the list: a first fetch of either may have counted before the decision.
+    onSettled: () => refresh(queryClient, { queryKey: requestsKey(buildingId) }),
   });
 }
 
@@ -149,10 +152,7 @@ export function useMemberAction(buildingId: string) {
         ? api.post('/api/buildings/{building_id}/members/{membership_id}/suspend', { params: { path }, body })
         : api.post('/api/buildings/{building_id}/members/{membership_id}/deactivate', { params: { path }, body });
     },
-    // Not returned, so `mutateAsync` doesn't wait for the refetch (P4-08b round 1, Codex F1).
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: membersKey(buildingId) });
-    },
+    onSettled: () => refresh(queryClient, { queryKey: membersKey(buildingId) }),
   });
 }
 
@@ -184,8 +184,8 @@ function useMemberChange<T extends { self: boolean }>(buildingId: string, kind: 
     mutationKey: [...membersKey(buildingId), kind],
     mutationFn,
     onSettled: (_data, _error, variables) => {
-      void queryClient.invalidateQueries({ queryKey: membersKey(buildingId) });
-      if (variables.self) void queryClient.invalidateQueries({ queryKey: ['me'], exact: true });
+      refresh(queryClient, { queryKey: membersKey(buildingId) });
+      if (variables.self) refresh(queryClient, { queryKey: ['me'], exact: true });
     },
   });
 }
@@ -229,26 +229,37 @@ export function useUnitOptions(buildingId: string, search: string, enabled: bool
 }
 
 export type Invitation = components['schemas']['InvitationOut'];
+/** The invitations the tab lists: those resend and revoke can act on (P4-08i D1). */
+export type ListedStatus = 'pending' | 'expired';
 export interface InvitationCreate {
   email: string;
   roles: MemberRole[];
+  /** A pre-approved resident's unit and how they relate to it: both or neither. */
+  unit_id?: string;
+  relationship?: Relationship;
+}
+export interface InvitationAction {
+  kind: 'resend' | 'revoke';
+  id: string;
 }
 
-/** Every key of the building's invitations starts here, so a create's invalidation covers the list and its pages. */
+/** Every key of the building's invitations starts here, so one invalidation covers both lists and their pages. */
 const invitationsKey = (buildingId: string) => ['b', buildingId, 'invitations'] as const;
+const inviteKey = (buildingId: string) => [...invitationsKey(buildingId), 'create'] as const;
+export const invitationsListKey = (buildingId: string, status: ListedStatus) => [...invitationsKey(buildingId), status] as const;
 
 /**
- * The building's pending invitations, newest first, one page at a time (P4-08g). Stale at once, as the pending
- * requests: coming back to the tab or the window asks again (ADR-0012).
+ * The building's invitations of `status`, newest first, one page at a time (P4-08g, P4-08i). Stale at once, as the
+ * pending requests: coming back to the tab or the window asks again (ADR-0012).
  */
-export function useInvitations(buildingId: string) {
+export function useInvitations(buildingId: string, status: ListedStatus) {
   return useInfiniteQuery({
-    queryKey: [...invitationsKey(buildingId), 'pending'],
+    queryKey: invitationsListKey(buildingId, status),
     staleTime: 0,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       api.get('/api/buildings/{building_id}/invitations', {
-        params: { path: { building_id: buildingId }, query: { status: 'pending', ...(pageParam !== null && { cursor: pageParam }) } },
+        params: { path: { building_id: buildingId }, query: { status, ...(pageParam !== null && { cursor: pageParam }) } },
         signal,
       }),
     getNextPageParam: (page) => page.next_cursor,
@@ -256,23 +267,38 @@ export function useInvitations(buildingId: string) {
 }
 
 /**
- * Invite one email with staff roles. The list is asked for again after every outcome, from here, as
- * `useMemberAction`: a 409 `invitation_pending` means one is listed now, and the answer may come after the page is
- * gone. Not returned, so `mutateAsync` doesn't wait for the refetch (P4-08b round 1, Codex F1).
+ * Invite one email. The list is asked for again after every outcome, from here, as `useMemberAction`: a 409
+ * `invitation_pending` means one is listed now, and the answer may come after the page is gone.
  */
 export function useInvite(buildingId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
-    mutationKey: [...invitationsKey(buildingId), 'create'],
+    mutationKey: inviteKey(buildingId),
     mutationFn: (body: InvitationCreate) =>
       api.post('/api/buildings/{building_id}/invitations', { params: { path: { building_id: buildingId } }, body }),
-    // Cancelled first, as `useDecide`'s summary: a first load still out has no data, so the invalidation would wait
-    // for it instead of asking again, and it read the list before the create (review round 1, Codex F1).
-    onSettled: () => {
-      void queryClient
-        .cancelQueries({ queryKey: invitationsKey(buildingId) })
-        .then(() => queryClient.invalidateQueries({ queryKey: invitationsKey(buildingId) }));
+    onSettled: () => refresh(queryClient, { queryKey: invitationsKey(buildingId) }),
+  });
+}
+
+/** A create is out in this building: its answer moves focus, so no dialog opens over it (review round 1, Codex F1). */
+export const useInviting = (buildingId: string) => useIsMutating({ mutationKey: inviteKey(buildingId) }) > 0;
+
+/**
+ * Resend (a new link and 7-day expiry; the invitation, not null) or revoke (null) one invitation (P4-08i). Both lists
+ * are asked for again after every outcome: a resent expired one moves to Pending.
+ */
+export function useInvitationAction(buildingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
+    mutationKey: [...invitationsKey(buildingId), 'action'],
+    mutationFn: async ({ kind, id }: InvitationAction): Promise<Invitation | null> => {
+      const params = { path: { building_id: buildingId, invitation_id: id } };
+      if (kind === 'resend') return api.post('/api/buildings/{building_id}/invitations/{invitation_id}/resend', { params });
+      await api.post('/api/buildings/{building_id}/invitations/{invitation_id}/revoke', { params });
+      return null;
     },
+    onSettled: () => refresh(queryClient, { queryKey: invitationsKey(buildingId) }),
   });
 }
