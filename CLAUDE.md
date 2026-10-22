@@ -37,8 +37,7 @@ make gen-api       # regenerate frontend/src/api/schema.d.ts from OpenAPI
 make e2e           # Playwright journeys (e2e/README.md); E2E_STACK=prodlike as CI runs them
 ```
 
-Run `make check` before saying a ticket is done. Paste real output as evidence. Never claim a command ran
-if it didn't.
+Run `make check` before calling a ticket done. Paste real output as evidence. Never claim a command ran if it didn't.
 
 ## Non-negotiable rules
 
@@ -90,8 +89,7 @@ if it didn't.
    The docs describe targets; the code is the truth. Check `docs/HUMAN_INBOX.md`: stop if `paused`.
 2. Frame, then plan, without waiting for approval: sharpen the criteria (never loosen one silently), write the plan
    into the PR. Decide open questions with the playbook's **decision rules** and record each one in the PR when you
-   make it (alternatives, tradeoffs, basis); lasting decisions get an ADR and a line in the inbox's "Decisions to
-   audit".
+   make it (alternatives, tradeoffs, basis); lasting decisions get an ADR and an inbox "Decisions to audit" line.
 3. On a **stop rule** (human-only resource, contradicts an ADR/scope/rule above, needs a weaker gate, review not
    converging, unnamed outward-facing action): set the ticket `blocked`, write it in the inbox, move on. Never guess
    past one.
@@ -148,3 +146,5 @@ Everything a command prints is re-read on every later turn, so don't print the s
 - Check focus and accessible names in Chromium, not only jsdom (no CSS or click focus; P2-06c, P4-07a, P4-08b/d).
 - A query whose component can unmount and come back while its data changes elsewhere needs `refetchOnMount: 'always'`
   or `gcTime: 0`, or the 30 s `staleTime` serves the old answer (PR #98 R3 M1, P4-08d R1 F2; 2026-10-21).
+- Check code with a parser (TypeScript's, Python's `ast`), not a regex: generics, multi-line calls, comments, nested
+  objects and aliased imports escape text matching (P4-09 F4, PR #108 R1-F1 and R3-F1; 2026-10-22).

@@ -2,18 +2,20 @@ import { useRef, type KeyboardEvent } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
 import { useBuildingId } from '@/app/BuildingProvider';
+import { Invitations } from '@/features/residents/Invitations';
 import { Members } from '@/features/residents/Members';
 import { PendingRequests } from '@/features/residents/PendingRequests';
 
 const TABS = [
   { id: 'pending', label: 'Pending requests' },
   { id: 'members', label: 'Members' },
+  { id: 'invitations', label: 'Invitations' },
 ] as const;
 type Tab = (typeof TABS)[number]['id'];
 
 /**
- * `/manage/residents` (P4-08b), for property management: the join requests to decide, and the members (P4-08c).
- * The tab is in the URL (`?tab=members`), so Back and Forward switch it. The panel is keyed by history entry and
+ * `/manage/residents` (P4-08b), for property management: the join requests to decide, the members (P4-08c) and the
+ * invitations (P4-08g). The tab is in the URL (`?tab=members`), so Back and Forward switch it. The panel is keyed by history entry and
  * building, so nothing of one entry's panel (an open dialog, a message) shows on another; the tablist is not,
  * so a tab keeps focus when the URL changes.
  */
@@ -21,7 +23,7 @@ export function ResidentsPage() {
   const [params, setParams] = useSearchParams();
   const { key } = useLocation();
   const buildingId = useBuildingId();
-  const tab: Tab = params.get('tab') === 'members' ? 'members' : 'pending';
+  const tab: Tab = TABS.find((t) => t.id === params.get('tab'))?.id ?? 'pending';
   const tabs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
 
   const select = (next: Tab) => {
@@ -62,7 +64,9 @@ export function ResidentsPage() {
         ))}
       </div>
       <div key={`${buildingId}:${key}`} role="tabpanel" id="residents-panel" aria-labelledby={`residents-tab-${tab}`} className="mt-4">
-        {tab === 'pending' ? <PendingRequests /> : <Members />}
+        {tab === 'pending' && <PendingRequests />}
+        {tab === 'members' && <Members />}
+        {tab === 'invitations' && <Invitations />}
       </div>
     </section>
   );

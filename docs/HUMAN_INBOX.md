@@ -37,6 +37,10 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | Date | Ticket | Decision | Where recorded | Reversible? |
 |---|---|---|---|---|
+| 2026-10-22 | P4-08g | Split while framing: resend, revoke, expired invitations and inviting a resident to a unit moved to the new [P4-08i](./tickets/P4-08i-invitation-resend-revoke-and-residents.md) (estimate ~470 with them). P4-08g lists only pending invitations and invites staff roles only | ticket Frame notes; PR #110 D1 | Yes |
+| 2026-10-22 | P4-08g | The invite form is inline on a new "Invitations" tab of `/manage/residents`, not a dialog or its own page | PR #110 D2 | Yes |
+| 2026-10-22 | P4-08g | `CLAUDE.md`: new lesson "check code with a parser, not a regex"; to stay at 150 lines two sentences were reworded to fit one line ("before calling a ticket done", "an inbox \"Decisions to audit\" line"), no content dropped | PR #110 smaller decisions | Yes |
+| 2026-10-22 | P4-08g | Run-specific (your instruction): Codex `gpt-6.1-sol` at high effort as the sole Tier 2 reviewer, a fresh session each round, no Claude reviewer; 3 rounds, all `MERGE` (one Medium and one Low fixed) | PR #110 "Independent review" | — |
 | 2026-10-22 | P5-01 | `packages` state checks go beyond the ticket's three: each status's columns are exclusive to it (a `received` row has no pickup/return columns, a pickup needs a pickup person, a return a reason), and pickup/return times can't precede `received_at` | PR #109 D1; ticket Frame notes | Yes (drop a check) |
 | 2026-10-22 | P5-01 | The package photo hook also requires `attached_type = 'package'` and the package's own `photo_file_id = file.id`, not only a visible package with `id = attached_id`; it is registered by `app/main.py` importing `app.packages.photos` | PR #109 D3 | Yes |
 | 2026-10-22 | P5-01 | `idempotency_key` and `request_hash` NOT NULL; seeded packages are found by key and never reset (their times are relative to the first seed run) | PR #109 decisions table | Yes |

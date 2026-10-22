@@ -8,11 +8,9 @@ cover the rest.
 | Spec | Journey |
 |---|---|
 | `tests/j1-bootstrap.spec.ts` | J1: `bootstrap-building` (CLI) → invitation email → the first manager sets a password → home; the link is single-use |
-| `tests/j2-staff-invite.spec.ts` | J2: the manager invites security → email → accept → security's home; the account menu opens with Enter and Space |
+| `tests/j2-staff-invite.spec.ts` | J2: the manager invites security on the Invitations tab → email → accept → security's home; the account menu opens with Enter and Space |
 | `tests/j3-onboarding.spec.ts` | J3: join link → signup → unit → pending → the manager approves → email, notification, home; Birch can't see the resident. Plus the deny path |
 | `tests/j7-password-reset.spec.ts` | J7: forgot → email → reset → another device is signed out. Plus the `condo.auth` Web Lock across two pages (a seeded resident) |
-
-J2 creates the invitation through the API as the manager: no screen creates invitations yet (P4-09 Frame notes).
 
 ## Run
 
@@ -54,7 +52,8 @@ parallel and a retry needs no reset. The shared seeded managers (Maple's and Bir
 The rate limits keep their production values, and every request comes from one IP, so a run has a budget. The
 reset empties the windows, which is why `make e2e` resets every time; before a retry, `helpers/test.ts` empties
 them too, so a retried test gets the budget its first attempt had. Every spec imports `test` from there. Measured
-in `rate_limits` after one run of both projects:
+in `rate_limits` after one run of both projects (re-measured in P4-08g: unchanged, since creating an invitation
+has no limit):
 
 | Limit | Per run | Allowed |
 |---|---|---|
