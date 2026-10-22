@@ -90,8 +90,9 @@ async def test_notify_writes_rows_and_email_jobs_that_commit_together(
 
     jobs = await email_jobs(db)
     assert [(j.payload["to"], j.payload["template"], j.dedupe_key) for j in jobs] == [
-        (r1.email, "notification", f"package.arrived:{entity_id}:{r1.id}"),
-        (r2.email, "notification", f"package.arrived:{entity_id}:{r2.id}"),
+        # The kind's own template since P5-02a (it was the generic `notification`).
+        (r1.email, "package_arrived", f"package.arrived:{entity_id}:{r1.id}"),
+        (r2.email, "package_arrived", f"package.arrived:{entity_id}:{r2.id}"),
     ]
     assert jobs[0].payload["context"] == {
         "title": "A package arrived",
