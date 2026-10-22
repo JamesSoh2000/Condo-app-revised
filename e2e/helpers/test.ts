@@ -2,7 +2,7 @@ import { type BrowserContext, type BrowserContextOptions, type Page, test as bas
 
 import { resetRateLimits } from './cli';
 
-export { expect, type Page, type Request } from '@playwright/test';
+export { expect, type Locator, type Page, type Request } from '@playwright/test';
 
 /** The `newContext` fixture's type, for helpers that take it. */
 export type NewContext = (options?: BrowserContextOptions) => Promise<BrowserContext>;

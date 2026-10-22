@@ -11,6 +11,7 @@ cover the rest.
 | `tests/j2-staff-invite.spec.ts` | J2: the manager invites security on the Invitations tab → email → accept → security's home; the account menu opens with Enter and Space |
 | `tests/j3-onboarding.spec.ts` | J3: join link → signup → unit → pending → the manager approves → email, notification, home; Birch can't see the resident. Plus the deny path |
 | `tests/j7-password-reset.spec.ts` | J7: forgot → email → reset → another device is signed out. Plus the `condo.auth` Web Lock across two pages (a seeded resident) |
+| `tests/header-panels.spec.ts` | Not a journey: the header's bell panel and account menu at 320–412 px stay inside the viewport and across the header, and from 640 px hang under their buttons; a tap below an open panel closes it (P4-08h). Maple's manager from `.auth/`, so no login of its own |
 
 ## Run
 
