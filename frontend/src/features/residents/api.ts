@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/api/client';
 import type { components } from '@/api/schema';
@@ -83,6 +83,13 @@ export function useDecide(buildingId: string) {
 export type Member = components['schemas']['MemberOut'];
 export type MemberRole = components['schemas']['Role'];
 export type MemberStatus = components['schemas']['MembershipStatus'];
+/** In `Role`'s declaration order: the roles dialog's checkboxes and its request follow it. */
+export const ROLE_LABELS: Record<MemberRole, string> = {
+  resident: 'Resident',
+  security: 'Security',
+  property_management: 'Property manager',
+  council: 'Council',
+};
 export interface MemberFilters {
   role: MemberRole | null;
   status: MemberStatus | null;
@@ -146,5 +153,74 @@ export function useMemberAction(buildingId: string) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: membersKey(buildingId) });
     },
+  });
+}
+
+export type Relationship = components['schemas']['OccupancyRelationship'];
+export interface RolesChange {
+  id: string;
+  add: MemberRole[];
+  remove: MemberRole[];
+  /** The member is the caller: `/me` is asked for again (criterion 6). */
+  self: boolean;
+}
+export interface Transfer {
+  id: string;
+  unit_id: string;
+  relationship: Relationship;
+  self: boolean;
+}
+
+/**
+ * After a roles change or a transfer, whatever the outcome: the list, and `/me` when the member is the caller (their
+ * roles or unit there; `BuildingProvider` then asks for the building, which the nav and the guards read). From the
+ * mutation, as `useMemberAction`: the answer may come after the dialog or the page is gone. A failure too: a lost
+ * answer may follow a committed change.
+ */
+function useMemberChange<T extends { self: boolean }>(buildingId: string, kind: string, mutationFn: (variables: T) => Promise<Member>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
+    mutationKey: [...membersKey(buildingId), kind],
+    mutationFn,
+    onSettled: (_data, _error, variables) => {
+      void queryClient.invalidateQueries({ queryKey: membersKey(buildingId) });
+      if (variables.self) void queryClient.invalidateQueries({ queryKey: ['me'], exact: true });
+    },
+  });
+}
+
+export function useRolesChange(buildingId: string) {
+  return useMemberChange(buildingId, 'roles', ({ id, add, remove }: RolesChange) =>
+    api.post('/api/buildings/{building_id}/members/{membership_id}/roles', {
+      params: { path: { building_id: buildingId, membership_id: id } },
+      body: { add, remove },
+    }),
+  );
+}
+
+export function useTransfer(buildingId: string) {
+  return useMemberChange(buildingId, 'transfer', ({ id, unit_id, relationship }: Transfer) =>
+    api.post('/api/buildings/{building_id}/members/{membership_id}/transfer', {
+      params: { path: { building_id: buildingId, membership_id: id } },
+      body: { unit_id, relationship },
+    }),
+  );
+}
+
+/**
+ * The first page of the building's active units whose label starts with `search` (empty: any), for the transfer.
+ * The previous answer stays shown while the next one loads, as the join form's. Not asked while `enabled` is false.
+ */
+export function useUnitOptions(buildingId: string, search: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['b', buildingId, 'units', { active: true, search }],
+    enabled,
+    queryFn: ({ signal }) =>
+      api.get('/api/buildings/{building_id}/units', {
+        params: { path: { building_id: buildingId }, query: { active: true, ...(search && { search }) } },
+        signal,
+      }),
+    placeholderData: keepPreviousData,
   });
 }

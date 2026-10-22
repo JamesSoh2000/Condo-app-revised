@@ -22,8 +22,7 @@ through `docs/HUMAN_INBOX.md` and the explanations in `docs/explanations/`.
 
 ## Commands
 
-`make help` lists the targets. If port 5432 is taken, pass
-`DB_PORT=<free port>` to every target.
+`make help` lists the targets. If port 5432 is taken, pass `DB_PORT=<free port>` to every target.
 
 ```bash
 make up            # compose: api, worker, db, mailpit, s3 emulator (dev: --reload, Vite proxy)
@@ -138,13 +137,14 @@ Everything a command prints is re-read on every later turn, so don't print the s
   shows it and pasted the output (fix PR #3, P0-02, 2026-10-14).
 - Prove a gate, check or health signal can fail before trusting it: make it fail once on purpose (a probe PR, a
   mutation, a failing init script) and paste that output too. Four checks passed vacuously in P0 (P0-03a fence,
-  P0-03b route check, P0-04a LocalStack health, P0-05 ORM test; 2026-10-15).
+  P0-03b route check, P0-04a LocalStack health, P0-05 ORM test; 2026-10-15). Commit before mutation probes:
+  `scripts/mutation-probe.sh` refuses a dirty tree, restores and re-runs the baseline (P1-03, P1-05; 2026-10-16).
 - Write in the PR only what is already on the branch. Until the bookkeeping commit exists, say "will be added to the
   inbox / <ticket> in step 6", not "listed in" (P1-04, P1-05, P1-07; 2026-10-16).
-- Commit before mutation probes: `scripts/mutation-probe.sh` refuses a dirty tree, restores and re-runs the baseline
-  (P1-03, P1-05; 2026-10-16).
 - Don't write from a value read before a slow `await` (argon2, a lock wait): re-check it after the lock, with a fresh
   clock, in the writing statement. Expiry must be final (P4-02b ×4; 2026-10-20).
 - Validate caller input by what Postgres accepts, not Python: lone surrogates, NUL, NaN and byte lengths fail at
   flush as `DBAPIError`, not the documented `ValueError` (P3-02 ×2, P3-03; 2026-10-18).
-- Check focus after anything disappears in Chromium, not only jsdom (no CSS, no click focus; P2-06c, P4-07a, P4-08b).
+- Check focus and accessible names in Chromium, not only jsdom (no CSS or click focus; P2-06c, P4-07a, P4-08b/d).
+- A query whose component can unmount and come back while its data changes elsewhere needs `refetchOnMount: 'always'`
+  or `gcTime: 0`, or the 30 s `staleTime` serves the old answer (PR #98 R3 M1, P4-08d R1 F2; 2026-10-21).

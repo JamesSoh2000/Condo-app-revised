@@ -2,10 +2,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 
 import { ApiError } from '@/api/errors';
+import { useMe } from '@/app/AuthProvider';
 import { useBuildingId } from '@/app/BuildingProvider';
 import { relationshipLabel, unitName } from '@/features/onboarding/api';
 import { MemberDialog } from '@/features/residents/MemberDialog';
+import { RolesDialog } from '@/features/residents/RolesDialog';
+import { TransferDialog } from '@/features/residents/TransferDialog';
 import {
+  ROLE_LABELS,
   membersListKey,
   useMembers,
   type Member,
@@ -15,12 +19,6 @@ import {
   type MemberStatus,
 } from '@/features/residents/api';
 
-const ROLES: Record<MemberRole, string> = {
-  resident: 'Resident',
-  security: 'Security',
-  property_management: 'Property manager',
-  council: 'Council',
-};
 const STATUSES: Record<MemberStatus, string> = {
   active: 'Active',
   pending: 'Pending',
@@ -36,12 +34,32 @@ const ACTIONS: Record<MemberStatus, MemberActionKind[]> = {
   denied: [],
   deactivated: [],
 };
-const ACTION_LABELS: Record<MemberActionKind, string> = { suspend: 'Suspend', reactivate: 'Reactivate', deactivate: 'Move out' };
+// The roles editor and the transfer (P4-08e) come first on an active row: they change it without ending anything.
+type Kind = MemberActionKind | 'roles' | 'transfer';
+const LABELS: Record<Kind, { text: string; name: (member: string) => string }> = {
+  roles: { text: 'Change roles', name: (member) => `Change roles of ${member}` },
+  transfer: { text: 'Transfer unit', name: (member) => `Transfer ${member} to another unit` },
+  suspend: { text: 'Suspend', name: (member) => `Suspend ${member}` },
+  reactivate: { text: 'Reactivate', name: (member) => `Reactivate ${member}` },
+  deactivate: { text: 'Move out', name: (member) => `Move out ${member}` },
+};
+/** The row's buttons: its status's actions, after the roles editor and, for a resident, the transfer. */
+const kinds = (member: Member): Kind[] =>
+  member.status === 'active'
+    ? ['roles', ...(member.roles.includes('resident') ? (['transfer'] as const) : []), ...ACTIONS.active]
+    : ACTIONS[member.status];
+const BUTTON_STYLES: Record<Kind, string> = {
+  roles: 'border border-slate-400',
+  transfer: 'border border-slate-400',
+  reactivate: 'bg-slate-900 text-white',
+  suspend: 'border border-red-700 text-red-700',
+  deactivate: 'border border-red-700 text-red-700',
+};
 // `MemberSearch` (backend app/memberships/schemas.py) refuses control characters.
 const SEARCH_INVALID = 'Search with visible characters only.';
 
 interface Open {
-  kind: MemberActionKind;
+  kind: Kind;
   member: Member;
   opener: HTMLButtonElement;
 }
@@ -54,6 +72,7 @@ interface Open {
 export function Members() {
   const buildingId = useBuildingId();
   const queryClient = useQueryClient();
+  const myId = useMe().data?.user.id;
   const [filters, setFilters] = useState<MemberFilters>({ role: null, status: null, search: '' });
   const [searchText, setSearchText] = useState('');
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -121,7 +140,7 @@ export function Members() {
               <h3 className="font-medium">{member.full_name}</h3>
               <p className="text-sm text-slate-700">{member.email}</p>
               <p className="text-sm text-slate-700">
-                {STATUSES[member.status]} · {member.roles.map((role) => ROLES[role]).join(', ') || 'No roles'}
+                {STATUSES[member.status]} · {member.roles.map((role) => ROLE_LABELS[role]).join(', ') || 'No roles'}
               </p>
               {member.unit_label !== null && (
                 <p className="text-sm text-slate-700">
@@ -130,20 +149,20 @@ export function Members() {
                 </p>
               )}
               {member.status_reason && <p className="text-sm text-slate-700">Reason: {member.status_reason}</p>}
-              {ACTIONS[member.status].length > 0 && (
+              {kinds(member).length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {ACTIONS[member.status].map((kind) => (
+                  {kinds(member).map((kind) => (
                     <button
                       key={kind}
                       type="button"
-                      aria-label={`${ACTION_LABELS[kind]} ${member.full_name}`}
+                      aria-label={LABELS[kind].name(member.full_name)}
                       onClick={(event) => {
                         setMessage(null);
                         setOpen({ kind, member, opener: event.currentTarget });
                       }}
-                      className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${kind === 'reactivate' ? 'bg-slate-900 text-white' : 'border border-red-700 text-red-700'}`}
+                      className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${BUTTON_STYLES[kind]}`}
                     >
-                      {ACTION_LABELS[kind]}
+                      {LABELS[kind].text}
                     </button>
                   ))}
                 </div>
@@ -171,7 +190,7 @@ export function Members() {
             className="min-h-11 rounded border px-2"
           >
             <option value="">All roles</option>
-            {Object.entries(ROLES).map(([value, label]) => (
+            {Object.entries(ROLE_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -250,7 +269,13 @@ export function Members() {
           Show more
         </button>
       )}
-      {open && <MemberDialog kind={open.kind} member={open.member} buildingId={buildingId} onClose={close} />}
+      {open && dialog(open, open.member.user_id === myId, buildingId, close)}
     </div>
   );
+}
+
+function dialog({ kind, member }: Open, self: boolean, buildingId: string, onClose: (message: string | null) => void) {
+  if (kind === 'roles') return <RolesDialog member={member} self={self} buildingId={buildingId} onClose={onClose} />;
+  if (kind === 'transfer') return <TransferDialog member={member} self={self} buildingId={buildingId} onClose={onClose} />;
+  return <MemberDialog kind={kind} member={member} buildingId={buildingId} onClose={onClose} />;
 }

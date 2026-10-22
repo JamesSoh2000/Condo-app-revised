@@ -135,9 +135,11 @@ const checkbox = (dialog: HTMLElement, label: string) => within(dialog).getByRol
 const save = (dialog: HTMLElement) => within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Save' });
 const transferButton = (dialog: HTMLElement) => within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Transfer' });
 
-/** Types a unit search and waits for its (debounced) list to show `label`. */
+/** Types a unit search, waits past its debounce for the list, and picks `label` from it. */
 async function pickUnit(dialog: HTMLElement, search: string, label: string) {
   fireEvent.change(within(dialog).getByLabelText('Unit number'), { target: { value: search } });
+  await settle(350);
+  await waitFor(() => expect(within(dialog).getByRole('group', { name: 'New unit' }).getAttribute('aria-busy')).toBe('false'));
   const radio = await within(dialog).findByRole<HTMLInputElement>('radio', { name: label });
   fireEvent.click(radio);
   return radio;
@@ -253,7 +255,7 @@ describe('roles refusals that end the dialog (criteria 1, 5)', () => {
     await waitFor(() => expect(count(fetchMock, ME)).toBe(2));
     await settle();
     expect(screen.getByRole('link', { name: /Residents/ })).toBeTruthy();
-    expect(screen.getByTestId('location').textContent).toBe('/manage/residents');
+    expect(screen.getByTestId('location').textContent).toBe(PAGE);
   });
 });
 
@@ -395,7 +397,7 @@ describe('unit search states (criterion 8)', () => {
     const dialog = await openTransfer('Robin Park');
     fireEvent.click(await within(dialog).findByRole('radio', { name: 'A-1204' }));
     fireEvent.change(within(dialog).getByLabelText('Unit number'), { target: { value: '9' } });
-    await within(dialog).findByRole('radio', { name: 'B-905' });
+    await waitFor(() => expect(within(dialog).queryByRole('radio', { name: 'A-1204' })).toBeNull());
     fireEvent.change(within(dialog).getByLabelText('Unit number'), { target: { value: '' } });
     const back = await within(dialog).findByRole<HTMLInputElement>('radio', { name: 'A-1204' });
     expect(back.checked).toBe(false);
@@ -464,7 +466,8 @@ describe('transfer refusals (criteria 1, 9)', () => {
     expect(document.activeElement).toBe(alert);
     expect(radio.checked).toBe(false);
     await waitFor(() => expect(unitQueries(fetchMock)).toEqual(['?active=true', '?active=true']));
-    expect(count(fetchMock, list)).toBe(1);
+    // Every outcome asks for the list again, from the mutation (criterion 12).
+    await waitFor(() => expect(count(fetchMock, list)).toBe(2));
   });
 
   it.each([
