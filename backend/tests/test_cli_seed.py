@@ -22,6 +22,7 @@ from app.core.security import hash_password, needs_rehash, verify_password
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
 from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
 from app.memberships.occupancy import end_occupancy
+from app.packages.models import Package
 from app.seed import DEV_SEED_PASSWORD, SeedRefusedError, check_seed_allowed, seed
 from app.units.models import Unit
 from app.users.models import User
@@ -35,6 +36,7 @@ DOMAIN_TABLES = (
     BuildingMembership,
     MembershipRole,
     UnitOccupancy,
+    Package,
 )
 
 pytestmark = pytest.mark.anyio
@@ -54,6 +56,7 @@ async def _ids(db: AsyncSession) -> dict[str, set[object]]:
         "users": set(await db.scalars(select(User.id))),
         "memberships": set(await db.scalars(select(BuildingMembership.id))),
         "occupancies": set(await db.scalars(select(UnitOccupancy.id))),
+        "packages": set(await db.scalars(select(Package.id))),
     }
 
 
