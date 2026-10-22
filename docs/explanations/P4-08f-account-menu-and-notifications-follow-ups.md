@@ -46,7 +46,7 @@ and needs a written reason for each exemption. Two of the three review rounds ti
   building (Low 2).
 - **Chosen:** the menu stores `` `${key} ${buildingId}` `` at open; it is open only while that matches the current
   value. When it no longer matches, the stored value is cleared **during render**, so a later Back can't match it
-  again. The bell does the same with the key alone (it is keyed by building already: `AppShell.tsx::LoadedBuildingBell`).
+  again. The bell does the same with the key alone (it is keyed by building already: `frontend/src/app/AppShell.tsx::LoadedBuildingBell`).
 - **Alternatives rejected:** only an effect that clears the state, with `open = openAt !== null`: one render would show
   the old panel at the new location. Keying the whole menu by location: it remounts the button and loses focus on
   every navigation.
@@ -135,10 +135,10 @@ was reworked in review (D5), which the plan didn't foresee.
 
 ### Walkthrough (variant B): mark a notification read, then "Load more"
 
-1. The user opens the bell (`NotificationBell.tsx::NotificationBell`); the panel mounts and `useNotifications` asks for
+1. The user opens the bell (`frontend/src/features/notifications/NotificationBell.tsx::NotificationBell`); the panel mounts and `useNotifications` asks for
    the first page (key `['b', id, 'notifications', 'list']`, `staleTime: 0`).
-2. They click an unread notification. `NotificationPanel.tsx::NotificationPanel`'s `onOpen` calls `markRead.mutate(id)`.
-3. `api.ts::useMarkRead` posts `/notifications/{id}/read`; its `onSettled` invalidates `['b', id, 'notifications']`,
+2. They click an unread notification. `frontend/src/features/notifications/NotificationPanel.tsx::NotificationPanel`'s `onOpen` calls `markRead.mutate(id)`.
+3. `frontend/src/features/notifications/api.ts::useMarkRead` posts `/notifications/{id}/read`; its `onSettled` invalidates `['b', id, 'notifications']`,
    so the summary and the list refetch.
 4. While that refetch is out, `list.isFetching` is true and "Load more" is disabled. If it were clicked anyway, it calls
    `fetchNextPage({ cancelRefetch: false })`, which does not cancel the running refresh (React Query's default is to
@@ -314,7 +314,7 @@ Acceptance criteria → tests: 1–5 and 6–8 as in the table above; 9: `queryF
 
 ## 7. Not verified, accepted risks and follow-ups
 
-- **R3-F1 (Medium, open at merge):** `queryFreshness.test.ts::inspect` matches hooks by their identifier name only. An
+- **R3-F1 (Medium, open at merge):** `frontend/src/test/queryFreshness.test.ts::inspect` matches hooks by their identifier name only. An
   aliased named import, a namespace call or a wrapper hook escapes it. No call in `src/app` or `src/features` uses those
   forms today (checked by the round 3 reviewer). Fix: resolve the file's imports from `@tanstack/react-query`, test-first
   with Codex's two cases. Tracked: PR follow-ups; added to a ticket's follow-ups in the bookkeeping commit.
@@ -358,7 +358,7 @@ The ticket has no "Must explain" questions.
    as unread.
 3. It returns `{ building: true, fresh: false }`: a spread makes the members unreadable (the spread could set
    `staleTime` after, or before, the literal), so it fails closed, and the call needs a reason in `EXEMPT` or a rewrite.
-4. The guard's main test fails, naming `features/notifications/api.ts::useNotificationSummary` (the PR's mutation
+4. The guard's main test fails, naming `frontend/src/features/notifications/api.ts::useNotificationSummary` (the PR's mutation
    probe), and criterion 8's test fails: after Back from a page outside the shell, the bell shows the old count from the
    30 s cache.
 5. While walking the file, record `ImportDeclaration`s from `@tanstack/react-query`: map each named import's local name
