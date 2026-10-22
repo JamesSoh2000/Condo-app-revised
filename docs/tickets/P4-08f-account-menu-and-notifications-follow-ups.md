@@ -34,6 +34,14 @@ The account menu's four open Lows and the notifications panel's paging race are 
     verified: write the test first. Also check the failed-refresh case (PR #99 round 3 F1).
 - Out: anything else in the menu or the panel.
 
+## First follow-ups (playbook step 8, from P4-08e)
+
+- Pattern "cached answer reused on remount" reached 3 (PR #98 R3 M1, P4-08d R1 F2, P4-08e R1 F2), the third in the PR that
+  added its `CLAUDE.md` lesson: the lesson alone didn't stop it. Add a test that enforces it (the playbook prefers one),
+  for example a frontend test that lists the building queries a remountable component mounts and fails on any served
+  from cache without `refetchOnMount: 'always'`, `gcTime: 0` or `staleTime: 0`, or record in the ticket why none can be
+  written.
+
 ## Acceptance criteria (to sharpen when framing)
 
 1. Each Low above has a failing test first, then passes.

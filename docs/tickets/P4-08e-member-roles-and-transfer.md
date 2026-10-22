@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-08c |
 | Replaces old | part of [P4-08](./P4-08-frontend-onboarding-approval-screens.md) (M4-T08) |
-| Status | in progress |
+| Status | done |
 
 Split from [P4-08c](./P4-08c-members-administration.md) while framing it (2026-10-21): with these two actions
 its estimate was ~585 non-test lines. Not framed yet: frame it when it is picked.
@@ -156,3 +156,10 @@ page guard (a non-manager gets `/403` and no request), and row 10 as criteria 10
   - **Lessons in `CLAUDE.md`, not a fitness test (ticket follow-up allows either):** neither pattern is
     detectable statically without false positives.
 - Split: none.
+
+## Follow-ups (from PR #107)
+
+- Pattern "cached answer reused on remount" reached 3 (R1 F2: the transfer's units served from the 30 s cache), in the
+  same PR that added its `CLAUDE.md` lesson: first follow-up of [P4-08f](./P4-08f-account-menu-and-notifications-follow-ups.md).
+- Accepted: the unit search shows only the first page; a self change reaches the nav after two requests (`/me`, then the
+  building); 496 non-test lines. See [the explanation](../explanations/P4-08e-member-roles-and-transfer.md) §7.
