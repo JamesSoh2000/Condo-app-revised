@@ -62,15 +62,17 @@ function owner(node: ts.Node): string {
   return '<module>';
 }
 
-/** The options object's own properties by name; null when they can't all be read (a spread, a computed name). */
-function topLevel(options: ts.ObjectLiteralExpression): Map<string, ts.Expression> | null {
-  const properties = new Map<string, ts.Expression>();
+/**
+ * The options object's own members by name, the last one winning as at runtime. A shorthand or a method maps to its
+ * name, which is never a freshness literal, so one written after `staleTime: 0` replaces it (review round 2, Codex
+ * R2-F1). Null when a member's name can't be read (a spread, a computed name) or it is an accessor.
+ */
+function topLevel(options: ts.ObjectLiteralExpression): Map<string, ts.Node> | null {
+  const properties = new Map<string, ts.Node>();
   for (const property of options.properties) {
-    if (ts.isPropertyAssignment(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) {
-      properties.set(property.name.text, property.initializer);
-    } else if (!ts.isShorthandPropertyAssignment(property) && !ts.isMethodDeclaration(property)) {
-      return null;
-    }
+    const plain = ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property) || ts.isMethodDeclaration(property);
+    if (!plain || !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) return null;
+    properties.set(property.name.text, ts.isPropertyAssignment(property) ? property.initializer : property.name);
   }
   return properties;
 }
