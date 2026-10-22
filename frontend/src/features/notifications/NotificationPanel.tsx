@@ -38,7 +38,8 @@ export function NotificationPanel({ id, unread, markRead, markAllRead }: Props) 
     <section
       id={id}
       aria-label="Notifications"
-      className="absolute right-0 z-10 mt-2 flex max-h-[28rem] w-80 flex-col gap-2 overflow-y-auto rounded border bg-white p-3 shadow"
+      // As the account menu: across the header below 640 px, under the bell from there up (P4-08h).
+      className="absolute left-4 right-4 z-10 mt-2 flex max-h-[28rem] flex-col gap-2 overflow-y-auto rounded border bg-white p-3 shadow sm:left-auto sm:right-0 sm:w-80"
     >
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Notifications</h2>
@@ -81,7 +82,7 @@ export function NotificationPanel({ id, unread, markRead, markAllRead }: Props) 
                 type="button"
                 disabled={busy}
                 onClick={() => onOpen(notification)}
-                className={`w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100 ${notification.read_at === null ? 'font-medium' : 'text-slate-600'}`}
+                className={`w-full rounded px-2 py-1 text-left text-sm [overflow-wrap:anywhere] hover:bg-slate-100 ${notification.read_at === null ? 'font-medium' : 'text-slate-600'}`}
               >
                 {notification.read_at === null && (
                   <>

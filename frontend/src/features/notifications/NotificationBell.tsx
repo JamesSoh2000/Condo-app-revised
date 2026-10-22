@@ -44,7 +44,8 @@ export function NotificationBell() {
   };
 
   return (
-    <div ref={root} className="relative" onKeyDown={onKeyDown}>
+    // Not positioned below 640 px, so the panel is placed against the header (P4-08h).
+    <div ref={root} className="sm:relative" onKeyDown={onKeyDown}>
       <button
         ref={button}
         type="button"

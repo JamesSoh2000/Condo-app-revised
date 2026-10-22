@@ -43,7 +43,9 @@ export function AccountMenu({ onLogout, loggingOut }: { onLogout: () => void; lo
   };
 
   return (
-    <div ref={root} className="relative" onKeyDown={onKeyDown}>
+    // Not positioned below 640 px, so the panel is placed against the header: it spans it, inside the viewport,
+    // whatever the buttons' widths. From 640 px up it hangs under the button (P4-08h).
+    <div ref={root} className="sm:relative" onKeyDown={onKeyDown}>
       <button
         ref={button}
         type="button"
@@ -57,8 +59,8 @@ export function AccountMenu({ onLogout, loggingOut }: { onLogout: () => void; lo
         <span aria-hidden> ▾</span>
       </button>
       {open && (
-        <div id={panelId} className="absolute right-0 z-10 mt-2 flex w-64 flex-col gap-3 rounded border bg-white p-3 shadow">
-          <p className="text-sm text-slate-600">Signed in as {me?.user.email}</p>
+        <div id={panelId} className="absolute left-4 right-4 z-10 mt-2 flex flex-col gap-3 rounded border bg-white p-3 shadow sm:left-auto sm:right-0 sm:w-64">
+          <p className="text-sm text-slate-600 [overflow-wrap:anywhere]">Signed in as {me?.user.email}</p>
           {buildingId !== null && (
             <BuildingChoices
               onSwitch={() => {
