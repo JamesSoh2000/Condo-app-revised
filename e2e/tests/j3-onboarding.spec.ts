@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { expect, type Browser, type Page, test } from '../helpers/test';
+import { expect, type NewContext, type Page, test } from '../helpers/test';
 
 import { buildingId, NEW_PASSWORD, storageStatePath, uniqueEmail } from '../helpers/auth';
 import { waitForEmail } from '../helpers/mailpit';
@@ -27,8 +27,8 @@ async function requestToJoin(page: Page, fullName: string, email: string) {
 }
 
 /** Opens the manager's pending requests and decides the request from `fullName`; returns the manager's page. */
-async function decide(browser: Browser, fullName: string, decision: 'Approve' | 'Deny', reason?: string) {
-  const context = await browser.newContext({ storageState: storageStatePath('mapleManager') });
+async function decide(newContext: NewContext, fullName: string, decision: 'Approve' | 'Deny', reason?: string) {
+  const context = await newContext({ storageState: storageStatePath('mapleManager') });
   const page = await context.newPage();
   await page.goto('/manage/residents');
   // Journeys run in parallel: the list may hold other journeys' requests, so the row is found by this one's name.
@@ -46,13 +46,13 @@ function newName(label: string) {
 
 test('J3: a resident joins with the link, is approved, is notified and reaches home; Birch cannot see them', async ({
   page,
-  browser,
+  newContext,
 }) => {
   const fullName = newName('Ari Approved');
   const email = uniqueEmail('j3-approved');
   await requestToJoin(page, fullName, email);
 
-  await decide(browser, fullName, 'Approve');
+  await decide(newContext, fullName, 'Approve');
 
   await waitForEmail(email, 'Your join request was approved');
   await page.reload();
@@ -64,7 +64,7 @@ test('J3: a resident joins with the link, is approved, is notified and reaches h
 
   // Tenancy (ADR-0004): Birch's manager can't open Maple's members (404, not 403), and Birch's own list doesn't
   // include the new resident.
-  const birch = await browser.newContext({ storageState: storageStatePath('birchManager') });
+  const birch = await newContext({ storageState: storageStatePath('birchManager') });
   const residentMaple = await buildingId(page.request, 'maple');
   const crossBuilding = await birch.request.get(`/api/buildings/${residentMaple}/members`, { params: { search: email } });
   expect(crossBuilding.status()).toBe(404);
@@ -75,13 +75,13 @@ test('J3: a resident joins with the link, is approved, is notified and reaches h
   await birch.close();
 });
 
-test('J3 deny: a declined resident is told by email and sees the reason', async ({ page, browser }) => {
+test('J3 deny: a declined resident is told by email and sees the reason', async ({ page, newContext }) => {
   const fullName = newName('Dana Declined');
   const email = uniqueEmail('j3-denied');
   const reason = 'We could not match you to unit 402.';
   await requestToJoin(page, fullName, email);
 
-  await decide(browser, fullName, 'Deny', reason);
+  await decide(newContext, fullName, 'Deny', reason);
 
   await waitForEmail(email, 'Your join request was declined');
   await page.reload();

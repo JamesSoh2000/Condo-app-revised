@@ -4,7 +4,7 @@ import { apiPost, buildingId, NEW_PASSWORD, storageStatePath, uniqueEmail } from
 import { extractLink, waitForEmail } from '../helpers/mailpit';
 
 test('J2: a manager invites security, who accepts by email and lands on security home', async ({
-  browser,
+  newContext,
   page,
   baseURL,
 }) => {
@@ -12,7 +12,7 @@ test('J2: a manager invites security, who accepts by email and lands on security
 
   // No screen creates invitations yet (P4-09 Frame notes): the manager's session calls the API the way the SPA
   // would, with the manager's cookies and the SPA's CSRF headers.
-  const manager = await browser.newContext({ storageState: storageStatePath('mapleManager') });
+  const manager = await newContext({ storageState: storageStatePath('mapleManager') });
   const maple = await buildingId(manager.request, 'maple');
   const created = await apiPost(manager.request, baseURL!, `/api/buildings/${maple}/invitations`, {
     email: securityEmail,

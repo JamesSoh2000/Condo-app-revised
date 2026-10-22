@@ -12,15 +12,15 @@ const NO_BUILDING = 'You are not a member of a building yet';
  */
 const WEB_LOCK_USER = 'resident5@example.test';
 
-test('J7: a password reset by email signs out another logged-in context', async ({ page, browser, baseURL }) => {
+test('J7: a password reset by email signs out another logged-in context', async ({ page, newContext, baseURL }) => {
   const email = uniqueEmail('j7-reset');
   // The journey's own account, so its new password affects no other journey.
-  const signup = await browser.newContext();
+  const signup = await newContext();
   await apiSignup(signup.request, baseURL!, email, 'Rowan Reset');
   await signup.close();
 
   // A second device, signed in.
-  const other = await browser.newContext();
+  const other = await newContext();
   await apiLogin(other.request, baseURL!, email, NEW_PASSWORD);
   const otherPage = await other.newPage();
   await otherPage.goto('/');
@@ -54,11 +54,11 @@ test('J7: a password reset by email signs out another logged-in context', async 
 });
 
 test('J7 Web Lock: a slow logout in one page and a login in another stay ordered, and the login wins', async ({
-  browser,
+  newContext,
   baseURL,
 }) => {
   // Two pages of one context share the cookie jar and the `condo.auth` Web Lock (P2-06c D4).
-  const context = await browser.newContext();
+  const context = await newContext();
   const pageB = await context.newPage();
   // Opened before the session exists: a signed-in visit to /login would leave it.
   await pageB.goto('/login');

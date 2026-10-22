@@ -87,6 +87,9 @@ with `storageState`, not in each test, and count a new journey's signups and log
   database or the CLI's output. The email is what the user gets.
 - Make the journey's own data (`uniqueEmail('label')`, a random slug). Find rows by that data, never by
   position: other journeys run at the same time.
+- Import `test` and `expect` from `helpers/test.ts`, not `@playwright/test`. Open a second user's or device's
+  context with its `newContext` fixture, not `browser.newContext`: that keeps the context's video when the test
+  fails, as the `page` fixture's is kept, and closes it at the end.
 - An API call made "as the SPA" goes through `apiPost` (the CSRF headers) on a context's `request`, which
   shares the context's cookies.
 - Operator commands go through `runCli([...])` (`docker compose exec <api> python -m app.cli …`).
