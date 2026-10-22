@@ -580,7 +580,7 @@ describe('header account menu (criterion 4)', () => {
     await findNavItems();
 
     fireEvent.click(button());
-    fireEvent.mouseDown(screen.getByRole('main'));
+    fireEvent.pointerDown(screen.getByRole('main'));
     expect(button().getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(button());
@@ -627,5 +627,162 @@ describe('header account menu (criterion 4)', () => {
     openAccountMenu();
 
     expect(screen.getByRole('button', { name: /log out/i })).toBeTruthy();
+  });
+});
+
+describe('P4-08f: account menu follow-ups (criteria 1–4)', () => {
+  const button = () => screen.getByRole('button', { name: /account menu/i });
+  const expanded = () => button().getAttribute('aria-expanded');
+
+  it('criterion 1: Back to where it was opened, and Forward then Back, leave it closed', async () => {
+    stubApi(persona(['resident']));
+    const app = renderApp(['/']);
+    await findNavItems();
+
+    openAccountMenu();
+    fireEvent.click(within(nav()!).getByRole('link', { name: 'My packages' }));
+    await waitFor(() => expect(location()).toBe('/Packages'));
+    expect(expanded()).toBe('false');
+
+    act(() => app.navigate()(-1));
+    await waitFor(() => expect(location()).toBe('/'));
+    expect(expanded()).toBe('false');
+    expect(screen.queryByRole('button', { name: /log out/i })).toBeNull();
+
+    act(() => app.navigate()(1));
+    await waitFor(() => expect(location()).toBe('/Packages'));
+    act(() => app.navigate()(-1));
+    await waitFor(() => expect(location()).toBe('/'));
+    expect(expanded()).toBe('false');
+  });
+
+  it('criterion 2: closes when a /me refresh moves the tab to another building, at the same location', async () => {
+    let me: Me = { ...RESIDENT_ME, memberships: [membership(MAPLE), membership(BIRCH)] };
+    stubApi({
+      'GET /api/auth/me': () => json(me),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['resident'])),
+    });
+    sessionStorage.setItem(BUILDING_KEY, MAPLE.id);
+    const app = renderApp(['/']);
+    await findNavItems();
+    openAccountMenu();
+    expect(expanded()).toBe('true');
+
+    me = { ...RESIDENT_ME, memberships: [membership(MAPLE, { status: 'suspended' }), membership(BIRCH)] };
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+
+    await waitFor(() => expect(sessionStorage.getItem(BUILDING_KEY)).toBe(BIRCH.id));
+    expect(location()).toBe('/');
+    expect(expanded()).toBe('false');
+    expect(screen.queryByRole('button', { name: /log out/i })).toBeNull();
+  });
+
+  it('criterion 3: offers no "View as" while the building is denied, and offers it again once it answers', async () => {
+    let status = 200;
+    const me: Me = { ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: ['council', 'resident'] })] };
+    stubApi({
+      'GET /api/auth/me': () => json(me),
+      [`GET /api/buildings/${MAPLE.id}`]: () =>
+        status === 200 ? json(buildingOut(MAPLE, ['council', 'resident'])) : problem(404, 'building_not_found'),
+    });
+    const app = renderApp(['/']);
+    await findNavItems();
+    openAccountMenu();
+    expect(screen.getByRole('radio', { name: 'Management' })).toBeTruthy();
+
+    status = 404;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    const chooseAgain = await screen.findByRole('button', { name: /choose again/i });
+    expect(nav()).toBeNull();
+    openAccountMenu();
+    expect(screen.getByRole('button', { name: /log out/i })).toBeTruthy();
+    expect(screen.queryAllByRole('radio')).toEqual([]);
+
+    status = 200;
+    fireEvent.click(chooseAgain);
+    await findNavItems();
+    openAccountMenu();
+    expect(screen.getByRole('radio', { name: 'Management' })).toBeTruthy();
+  });
+
+  it('criterion 3: a building_not_found from another of its requests hides "View as" too', async () => {
+    const me: Me = { ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: ['council', 'resident'] })] };
+    let summary = 200;
+    stubApi({
+      'GET /api/auth/me': () => json(me),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['council', 'resident'])),
+      [`GET /api/buildings/${MAPLE.id}/notifications/summary`]: () =>
+        summary === 200 ? json({ unread_count: 0 }) : problem(404, 'building_not_found'),
+    });
+    const app = renderApp(['/']);
+    await findNavItems();
+    openAccountMenu();
+    expect(screen.getByRole('radio', { name: 'Management' })).toBeTruthy();
+
+    summary = 404;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'notifications'] }));
+
+    await waitFor(() => expect(nav()).toBeNull());
+    openAccountMenu();
+    expect(screen.queryAllByRole('radio')).toEqual([]);
+  });
+
+  it('criterion 4: a touch outside (pointerdown, no mousedown) closes it; one inside does not', async () => {
+    stubApi(persona(['resident']));
+    renderApp(['/']);
+    await findNavItems();
+
+    openAccountMenu();
+    const panel = document.getElementById(button().getAttribute('aria-controls')!)!;
+    fireEvent.pointerDown(within(panel).getByRole('button', { name: /log out/i }), { pointerType: 'touch' });
+    expect(expanded()).toBe('true');
+
+    fireEvent.pointerDown(screen.getByRole('main'), { pointerType: 'touch' });
+    expect(expanded()).toBe('false');
+  });
+});
+
+describe('review round 1 (Codex gpt-6.1-sol): criterion 3 coverage', () => {
+  const councilWith = (building: () => Response) => {
+    const me: Me = { ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: ['council', 'resident'] })] };
+    return { 'GET /api/auth/me': () => json(me), [`GET /api/buildings/${MAPLE.id}`]: building };
+  };
+
+  it('a building refetch that succeeds after a 404 brings "View as" back (no Choose again)', async () => {
+    let status = 200;
+    stubApi(councilWith(() => (status === 200 ? json(buildingOut(MAPLE, ['council', 'resident'])) : problem(404, 'building_not_found'))));
+    const app = renderApp(['/']);
+    await findNavItems();
+
+    status = 404;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await screen.findByRole('button', { name: /choose again/i });
+    openAccountMenu();
+    expect(screen.queryAllByRole('radio')).toEqual([]);
+
+    status = 200;
+    await act(() => app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+    await findNavItems();
+    openAccountMenu();
+    expect(screen.getByRole('radio', { name: 'Management' })).toBeTruthy();
+  });
+
+  it('a building 401 leaves no "View as" anywhere (the session is gone)', async () => {
+    let status = 200;
+    const routes = councilWith(() => (status === 200 ? json(buildingOut(MAPLE, ['council', 'resident'])) : problem(401, 'not_authenticated')));
+    const me = routes['GET /api/auth/me'];
+    // A real 401 means the session is gone, so /me answers 401 too.
+    stubApi({ ...routes, 'GET /api/auth/me': () => (status === 200 ? me() : problem(401, 'not_authenticated')) });
+    const app = renderApp(['/']);
+    await findNavItems();
+    openAccountMenu();
+    expect(screen.getByRole('radio', { name: 'Management' })).toBeTruthy();
+
+    status = 401;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
+
+    await waitFor(() => expect(location()).toMatch(/^\/login/));
+    expect(screen.queryAllByRole('radio')).toEqual([]);
+    expect(nav()).toBeNull();
   });
 });

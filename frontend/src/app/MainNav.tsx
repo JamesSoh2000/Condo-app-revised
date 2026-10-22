@@ -11,12 +11,14 @@ type Building = components['schemas']['BuildingOut'];
 /**
  * True if the member may use council "view as" in the selected building: both `/me` and the building's
  * answer say they hold `council` there. Either source dropping it is enough, so a `/me` refetch that removes
- * the role takes the toggle away before the building is asked again (review round 1, F1).
+ * the role takes the toggle away before the building is asked again (review round 1, F1). Never while the building
+ * is denied: its cached roles no longer count, as the nav it switches is hidden then (P4-08f criterion 3).
  */
 export function useCanViewAs(building: Building | undefined): boolean {
   const { buildingId, active } = useBuildingContext();
+  const denied = useBuildingDenied();
   const membership = active.find((m) => m.building.id === buildingId);
-  return !!building && building.my_roles.includes('council') && !!membership?.roles.includes('council');
+  return !denied && !!building && building.my_roles.includes('council') && !!membership?.roles.includes('council');
 }
 
 /** The view the navigation applies: the tab's choice for a council member, none for anyone else. */

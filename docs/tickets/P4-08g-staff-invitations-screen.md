@@ -26,6 +26,17 @@ revokes pending invitations.
     re-measure the rate-limit budget in `e2e/README.md`.
 - Out: bulk invitations; CSV import of people.
 
+## First follow-ups (playbook step 8, from P4-08f)
+
+- **PR #108 round 3 R3-F1 (Medium, open at merge; fix test-first):** `frontend/src/test/queryFreshness.test.ts::inspect`
+  matches React Query hooks by their identifier name only. `import { useQuery as useBuildingQuery }` or
+  `RQ.useInfiniteQuery({...})` with a building key and no freshness option gives `inspect() → []`, so the guard passes.
+  Proposed: record the file's imports from `@tanstack/react-query` (named aliases, namespace imports) and match those.
+- Pattern "regex for a code pattern" reached 2 (P4-09 F4 no-sleep lint, PR #108 R1-F1 freshness guard): a check over
+  code written as text matching missed forms the language allows. Promote it: a `CLAUDE.md` lesson ("check code with a
+  parser, not a regex: generics, multi-line calls, comments, nested objects"), or a test, keeping `CLAUDE.md` within
+  150 lines.
+
 ## Acceptance criteria
 
 To be written when framed. Start from P4-02a's API criteria and the residents screens' (P4-08b, P4-08c) mobile

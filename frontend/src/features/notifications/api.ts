@@ -10,12 +10,15 @@ const notificationsKey = (buildingId: string) => ['b', buildingId, 'notification
  * The unread count for the badge. Polled every 30 s while the tab is visible, never in a hidden tab, and asked
  * again whenever the tab becomes visible again, even if the last answer is under 30 s old (ADR-0012; review
  * round 1, Codex F2: the client's default staleTime skipped it after a short hide). React Query v5 calls a
- * visible tab "focused": it listens to `visibilitychange`, not the window's `focus` event.
+ * visible tab "focused": it listens to `visibilitychange`, not the window's `focus` event. Asked again each time the
+ * bell mounts, as the pending badge: a count changed elsewhere while it was gone isn't served from the 30 s cache
+ * (P4-08f criterion 8).
  */
 export function useNotificationSummary() {
   const buildingId = useBuildingId();
   return useQuery({
     queryKey: [...notificationsKey(buildingId), 'summary'],
+    refetchOnMount: 'always',
     queryFn: ({ signal }) =>
       api.get('/api/buildings/{building_id}/notifications/summary', {
         params: { path: { building_id: buildingId } },

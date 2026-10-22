@@ -9,27 +9,31 @@ import { useCanViewAs } from '@/app/MainNav';
 /**
  * The header's account menu (P2-06c): a disclosure, so a button that shows a panel (WAI-ARIA disclosure
  * pattern), not an ARIA `menu`, which can't hold the `<select>` and radio buttons it contains. Escape and a
- * click outside close it; Escape returns focus to the button. It is open only at the location it was opened
- * at, so following a link (or Back) closes it (review round 2, Claude L4).
+ * click or tap outside close it; Escape returns focus to the button. It is open only at the location and building
+ * it was opened at, so following a link or a `/me`-driven building change closes it (review round 2, Claude L4), and
+ * it is forgotten then, so Back to that location doesn't show it again (P4-08f criteria 1, 2).
  */
 export function AccountMenu({ onLogout, loggingOut }: { onLogout: () => void; loggingOut: boolean }) {
   const { data: me } = useMe();
   const { buildingId } = useBuildingContext();
   const { key } = useLocation();
+  const at = `${key} ${buildingId ?? ''}`;
   const [openAt, setOpenAt] = useState<string | null>(null);
-  const open = openAt === key;
-  const setOpen = (value: boolean) => setOpenAt(value ? key : null);
+  if (openAt !== null && openAt !== at) setOpenAt(null);
+  const open = openAt === at;
+  const setOpen = (value: boolean) => setOpenAt(value ? at : null);
   const panelId = useId();
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    const onPointer = (event: MouseEvent) => {
+    // `pointerdown`, not `mousedown`: iOS Safari may send no mouse event for a tap on empty space (P4-08f criterion 4).
+    const onPointer = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) setOpenAt(null);
     };
-    document.addEventListener('mousedown', onPointer);
-    return () => document.removeEventListener('mousedown', onPointer);
+    document.addEventListener('pointerdown', onPointer);
+    return () => document.removeEventListener('pointerdown', onPointer);
   }, [open]);
 
   const onKeyDown = (event: React.KeyboardEvent) => {
