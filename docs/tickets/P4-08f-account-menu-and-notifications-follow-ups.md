@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-08d |
 | Replaces old | — |
-| Status | in progress |
+| Status | done |
 
 Created by [P4-08d](./P4-08d-pending-badge-and-onboarding-follow-ups.md) (PR #101) for follow-ups it left out of scope.
 Framed 2026-10-22.
@@ -101,3 +101,12 @@ Fitness test (first follow-up from P4-08e):
     by. Fail-closed: a key it can't read as non-building counts as a building query (autonomous).
 - Estimate: ~60 non-test lines (menu ~15, bell ~10, `useCanViewAs` ~2, panel ~20, summary ~2, comments). No split.
 - Split: none.
+
+## Follow-ups (at merge, PR #108)
+
+- **R3-F1 (Medium, open):** `frontend/src/test/queryFreshness.test.ts::inspect` finds query hooks by identifier name only,
+  so an aliased import (`useQuery as q`) or a namespace call (`RQ.useQuery`) escapes it. Moved to
+  [P4-08g](./P4-08g-staff-invitations-screen.md) "First follow-ups".
+- The bell's panel is cut off at phone width and both header panels cover the nav links (seen on the stack, Pixel 7):
+  new stub [P4-08h](./P4-08h-header-panels-at-phone-width.md).
+- iOS Safari's tap behaviour (Low 4) was checked only with Chromium touch emulation.
