@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 
 import { api } from '@/api/client';
 import type { components } from '@/api/schema';
@@ -22,6 +23,18 @@ export const RELATIONSHIPS: readonly { value: Relationship; label: string; help:
 
 export const relationshipLabel = (value: Relationship): string =>
   RELATIONSHIPS.find((option) => option.value === value)?.label ?? value;
+
+/** How long a unit search waits after the last keystroke (the join form, the members' transfer). */
+export const DEBOUNCE_MS = 300;
+
+export function useDebounced<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
 
 /** A unit as residents read it: `A-1203` in a building with towers, `1203` otherwise. */
 export const unitName = (tower: string | null, label: string): string => (tower ? `${tower}-${label}` : label);

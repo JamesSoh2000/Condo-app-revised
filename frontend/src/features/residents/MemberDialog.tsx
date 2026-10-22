@@ -13,20 +13,34 @@ const COPY: Record<MemberActionKind, { title: string; confirm: string; verb: str
   deactivate: { title: 'Move this member out?', confirm: 'Move out', verb: 'move out', done: 'was moved out.' },
 };
 
-/** The refusals that end the dialog: the member can't be changed as shown, so the page says why. */
-function refusal(error: unknown, kind: MemberActionKind, member: Member): string | null {
+/**
+ * The refusals every member dialog ends with (P4-08c, P4-08e): the member can't be changed as shown, so the page
+ * says why. Null for any other error.
+ */
+export function memberRefusal(error: unknown, member: Member): string | null {
   if (!(error instanceof ApiError)) return null;
   if (error.status === 404 && error.code === 'member_not_found') return 'This member is no longer in this building.';
   if (error.status !== 409) return null;
   switch (error.code) {
     case 'last_manager':
       return 'The building must keep at least one active property manager, so this wasn’t done.';
+    case 'membership_not_active':
+      return `${member.full_name} is no longer active, so this wasn’t done. Check the list and try again.`;
+    case 'occupancy_changed':
+      return `${member.full_name}’s unit changed at the same time, so this wasn’t done. Check the list and try again.`;
+  }
+  return null;
+}
+
+/** The refusals that end this dialog: the shared ones, and those of the status actions. */
+function refusal(error: unknown, kind: MemberActionKind, member: Member): string | null {
+  const shared = memberRefusal(error, member);
+  if (shared || !(error instanceof ApiError) || error.status !== 409) return shared;
+  switch (error.code) {
     case 'cannot_target_self':
       return kind === 'deactivate' ? 'You can’t move yourself out.' : 'You can’t suspend yourself.';
     case 'invalid_transition':
       return `${member.full_name}’s status changed in the meantime, so this wasn’t done. Check the list and try again.`;
-    case 'occupancy_changed':
-      return `${member.full_name}’s unit changed at the same time, so this wasn’t done. Check the list and try again.`;
   }
   return null;
 }

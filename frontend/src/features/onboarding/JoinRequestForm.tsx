@@ -6,23 +6,12 @@ import { ApiError } from '@/api/errors';
 import type { components } from '@/api/schema';
 import { runAuthCall } from '@/app/authQueue';
 import { rateLimitMessage } from '@/features/auth/formErrors';
-import { RELATIONSHIPS, unitName } from '@/features/onboarding/api';
+import { DEBOUNCE_MS, RELATIONSHIPS, unitName, useDebounced } from '@/features/onboarding/api';
 
 type Relationship = components['schemas']['OccupancyRelationship'];
 export type JoinRequest = components['schemas']['OnboardingRequestOut'];
 /** Where a refused request leads: the page shows a screen for each. */
 export type Refusal = 'invalid' | 'member' | 'not-eligible';
-
-const DEBOUNCE_MS = 300;
-
-function useDebounced<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
-}
 
 function refusalFor(error: unknown): Refusal | null {
   if (!(error instanceof ApiError)) return null;

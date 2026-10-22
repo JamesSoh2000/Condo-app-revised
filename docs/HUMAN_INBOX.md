@@ -37,6 +37,7 @@ To overturn one, write a superseding ADR or a ticket; agents build it like any o
 
 | Date | Ticket | Decision | Where recorded | Reversible? |
 |---|---|---|---|---|
+| 2026-10-22 | P4-08e | `CLAUDE.md` lessons: added "cached answer reused on remount" and widened the Chromium lesson to accessible names; to stay at 150 lines the mutation-probe lesson was folded word for word into "prove a gate can fail" and the `make help` sentence joined onto one line | PR #107; ticket criteria 14–15 | Yes |
 | 2026-10-21 | P4-09 | **Loosened:** J2's "manager invites security" step calls `invitations_create` through the manager's browser session instead of a screen (none exists). Follow-up [P4-08g](./tickets/P4-08g-staff-invitations-screen.md) builds the screen and moves the step to the UI | ticket Frame notes; PR #102 D1 | Yes |
 | 2026-10-21 | P4-09 | `E2E journeys` is a required status check on `main` (added during review round 2, before the merge, so the merge itself was gated). Every PR now builds the prod-like stack and runs 14 browser tests (~2 min). Open PRs need a rebase to get the job | GitHub branch protection; PR #102 R2-1 | yes |
 | 2026-10-21 | P4-09 | E2E keeps production rate limits: personas log in once per run, journeys make their own users, the reset and a pre-retry `DELETE FROM rate_limits` empty the windows; the per-run budget is a table in `e2e/README.md` (signups 6 of 10 per hour is the tightest) | PR #102 D4, round 1 F2 | Yes |

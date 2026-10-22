@@ -10,7 +10,7 @@ interface Props {
 }
 
 /**
- * The shell of the residents dialogs (P4-08b, P4-08c): a modal `role="dialog"` over a backdrop. Escape closes (not
+ * The shell of the residents dialogs (P4-08b, P4-08c, P4-08e): a modal `role="dialog"` over a backdrop. Escape closes (not
  * while busy) and Tab stays inside; the dialog element itself is focusable, so a dialog can hold focus while its
  * buttons are disabled.
  */
@@ -22,7 +22,7 @@ export function Modal({ labelledBy, busy, onEscape, dialogRef, children }: Props
       return;
     }
     if (event.key !== 'Tab') return;
-    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('textarea, button:not(:disabled)') ?? []);
+    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input:not(:disabled), textarea, button:not(:disabled)') ?? []);
     const [first, last] = [focusable[0], focusable[focusable.length - 1]];
     if (!first) return event.preventDefault();
     // From the dialog itself or its alert (focused on purpose, not tabbable controls) too (P4-08b round 1, Codex F2).

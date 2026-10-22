@@ -331,7 +331,7 @@ describe('actions by status (criterion 5)', () => {
     await screen.findByRole('list', { name: 'Members' });
 
     const buttons = (name: string) => within(row(name)).queryAllByRole('button').map((button) => button.getAttribute('aria-label'));
-    expect(buttons('Robin Park')).toEqual(['Suspend Robin Park', 'Move out Robin Park']);
+    expect(buttons('Robin Park')).toEqual(['Change roles of Robin Park', 'Transfer Robin Park to another unit', 'Suspend Robin Park', 'Move out Robin Park']);
     expect(buttons('Sam Lee')).toEqual(['Reactivate Sam Lee', 'Move out Sam Lee']);
     expect(buttons('Pat Gone')).toEqual([]);
     expect(buttons('Nia New')).toEqual([]);
