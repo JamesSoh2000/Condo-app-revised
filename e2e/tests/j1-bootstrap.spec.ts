@@ -27,7 +27,7 @@ test('J1: an operator bootstraps a building and its first manager sets a passwor
 
   await page.goto(link);
   await expect(page.getByRole('heading', { name: `Join ${name}` })).toBeVisible();
-  await page.getByRole('button', { name: 'Accept invitation (probe: broken selector)' }).click();
+  await page.getByRole('button', { name: 'Accept invitation' }).click();
   // A new email: the invitation asks for an account first.
   await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible();
   await page.getByLabel('Full name').fill('Jordan E2E');
