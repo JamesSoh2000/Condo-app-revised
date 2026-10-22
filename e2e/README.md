@@ -52,7 +52,8 @@ parallel and a retry needs no reset. The shared seeded managers (Maple's and Bir
 The rate limits keep their production values, and every request comes from one IP, so a run has a budget. The
 reset empties the windows, which is why `make e2e` resets every time; before a retry, `helpers/test.ts` empties
 them too, so a retried test gets the budget its first attempt had. Every spec imports `test` from there. Measured
-in `rate_limits` after one run of both projects:
+in `rate_limits` after one run of both projects (re-measured in P4-08g: unchanged, since creating an invitation
+has no limit):
 
 | Limit | Per run | Allowed |
 |---|---|---|
