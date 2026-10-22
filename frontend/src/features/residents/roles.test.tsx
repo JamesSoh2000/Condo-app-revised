@@ -694,3 +694,59 @@ describe('a refetch under an open dialog (criterion 13)', () => {
     await waitFor(() => expect(status().textContent).toBe('This member is no longer in this building.'));
   });
 });
+
+describe('review round 1 (Codex gpt-6.1-sol): unit search (criterion 8)', () => {
+  it.each([
+    ['a 429', () => problem(429, 'rate_limited', { 'Retry-After': '30' }), 'Too many requests. Try again in 30 seconds.'],
+    ['a 500', () => problem(500, 'internal_error'), 'Could not refresh the units.'],
+  ])('F1: %s on a refetch shows with Try again above the cached units', async (_label, answer, message) => {
+    let fail = false;
+    stubApi(manager({ [units]: () => (fail ? answer() : json({ items: [U1, U2], next_cursor: null })) }));
+    const app = renderApp([PAGE]);
+
+    const dialog = await openTransfer('Robin Park');
+    await within(dialog).findByRole('radio', { name: 'A-1203' });
+    fail = true;
+    await act(() => app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'units'] }));
+
+    const alert = await within(dialog).findByRole('alert');
+    expect(alert.textContent).toContain(message);
+    expect(within(dialog).getByRole('radio', { name: 'A-1203' })).toBeTruthy();
+    fail = false;
+    press(within(alert).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(within(dialog).queryByRole('alert')).toBeNull());
+  });
+
+  it('F2: reopening the dialog asks for the units again, and so does going back to an earlier search', async () => {
+    const fetchMock = stubApi(manager());
+    renderApp([PAGE]);
+
+    let dialog = await openTransfer('Robin Park');
+    await within(dialog).findByRole('radio', { name: 'A-1203' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    dialog = await openTransfer('Robin Park');
+    await waitFor(() => expect(unitQueries(fetchMock)).toEqual(['?active=true', '?active=true']));
+
+    fireEvent.change(within(dialog).getByLabelText('Unit number'), { target: { value: '9' } });
+    await waitFor(() => expect(unitQueries(fetchMock)).toHaveLength(3));
+    fireEvent.change(within(dialog).getByLabelText('Unit number'), { target: { value: '' } });
+    await waitFor(() => expect(unitQueries(fetchMock)).toEqual(['?active=true', '?active=true', '?active=true&search=9', '?active=true']));
+  });
+
+  it.each([
+    ['a trailing tab', '12\t'],
+    ['a leading tab', '\t12'],
+    ['a NUL inside', '1\u00002'],
+  ])('F3: %s says so and sends nothing, though trimming would remove it', async (_label, value) => {
+    const fetchMock = stubApi(manager());
+    renderApp([PAGE]);
+
+    const dialog = await openTransfer('Robin Park');
+    await within(dialog).findByRole('radio', { name: 'A-1203' });
+    fireEvent.change(within(dialog).getByLabelText('Unit number'), { target: { value } });
+    await settle(400);
+
+    expect(within(dialog).getByText('Search with visible characters only.')).toBeTruthy();
+    expect(unitQueries(fetchMock)).toEqual(['?active=true']);
+  });
+});
