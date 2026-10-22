@@ -1023,3 +1023,175 @@ describe('review round 4 (Codex gpt-6-astra): denials from mutations, whenever t
     expect(screen.queryByRole('button', { name: /^notifications/i })).toBeNull();
   });
 });
+
+describe('P4-08f: the bell closes for good and asks again on mount (criteria 4, 5, 8)', () => {
+  it('criterion 4: a touch outside (pointerdown, no mousedown) closes the panel; one inside does not', async () => {
+    const server = notificationServer(MAPLE, [notification()]);
+    stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME), ...server.routes });
+    renderApp(['/']);
+    const region = await openPanel();
+
+    fireEvent.pointerDown(within(region).getByRole('heading', { name: 'Notifications' }), { pointerType: 'touch' });
+    expect(panel()).toBeTruthy();
+
+    fireEvent.pointerDown(screen.getByRole('main'), { pointerType: 'touch' });
+    expect(screen.queryByRole('region', { name: /notifications/i })).toBeNull();
+  });
+
+  it('criterion 5: Back to where the panel was opened leaves it closed', async () => {
+    const server = notificationServer(MAPLE, [notification()]);
+    stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME), ...server.routes });
+    const app = renderApp(['/']);
+    await openPanel();
+
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'My packages' }));
+    await waitFor(() => expect(location()).toBe('/Packages'));
+    act(() => app.navigate()(-1));
+    await waitFor(() => expect(location()).toBe('/'));
+
+    expect(screen.queryByRole('region', { name: /notifications/i })).toBeNull();
+    expect((await bell()).getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('criterion 8: a count changed while the bell was gone is asked for again when it comes back', async () => {
+    const server = notificationServer(MAPLE, [notification()]);
+    const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME), ...server.routes });
+    const app = renderApp(['/']);
+    await bell('Notifications, 1 unread');
+
+    // The catch-all route is outside the shell: Back remounts the bell with the same query cache, within 30 s.
+    act(() => app.navigate()('/not-an-app-page'));
+    await screen.findByRole('heading', { name: /not found/i });
+    server.state.items = server.state.items.map((item) => ({ ...item, read_at: '2026-10-18T12:05:00Z' }));
+    const before = summaryCalls(fetchMock).length;
+    act(() => app.navigate()(-1));
+
+    expect(await bell('Notifications, 0 unread')).toBeTruthy();
+    expect(summaryCalls(fetchMock).length).toBe(before + 1);
+  });
+});
+
+describe('P4-08f: Load more never discards a refresh (criteria 6 and 7)', () => {
+  const unread = (title: string) =>
+    within(panel()).getByRole('button', { name: new RegExp(title) }).textContent?.includes('Unread');
+  const loadMore = () => within(panel()).getByRole<HTMLButtonElement>('button', { name: /load more/i });
+
+  /** 30 notifications without links (a click stays on the page); the first page's refreshes can be held. */
+  function heldServer() {
+    const items = Array.from({ length: 30 }, () => notification({ link: null }));
+    const server = notificationServer(MAPLE, items);
+    const list = server.routes[`GET ${base(MAPLE)}`];
+    const state = { hold: false, fail: false, holdMore: false, refreshes: [] as Request[] };
+    let release = () => {};
+    let gate = Promise.resolve();
+    let releaseMore = () => {};
+    const moreGate = new Promise<void>((resolve) => (releaseMore = resolve));
+    const routes: Record<string, Handler> = {
+      'GET /api/auth/me': () => json(RESIDENT_ME),
+      ...server.routes,
+      [`GET ${base(MAPLE)}`]: async (request) => {
+        if (new URL(request.url).searchParams.has('cursor')) {
+          if (state.holdMore) await moreGate;
+          return list(request);
+        }
+        if (state.fail) return problem(500, 'internal_error');
+        if (state.hold) {
+          state.refreshes.push(request);
+          await gate;
+        }
+        return list(request);
+      },
+    };
+    return {
+      items,
+      state,
+      routes,
+      hold: () => {
+        state.hold = true;
+        gate = new Promise<void>((resolve) => (release = resolve));
+      },
+      release: () =>
+        act(async () => {
+          release();
+          await gate;
+        }),
+      releaseMore: () =>
+        act(async () => {
+          releaseMore();
+          await moreGate;
+        }),
+    };
+  }
+
+  it('criterion 6: after a mark-read, Load more waits for the refresh, which then shows it read', async () => {
+    const server = heldServer();
+    stubApi(server.routes);
+    const app = renderApp(['/']);
+    await within(await openPanel()).findByText(server.items[0].title);
+
+    server.hold();
+    fireEvent.click(within(panel()).getByRole('button', { name: new RegExp(server.items[0].title) }));
+    await waitFor(() => expect(server.state.refreshes).toHaveLength(1));
+
+    expect(loadMore().disabled).toBe(true);
+    fireEvent.click(loadMore());
+    await server.release();
+
+    await waitFor(() => expect(unread(server.items[0].title)).toBe(false));
+    expect(server.state.refreshes.some((request) => request.signal.aborted)).toBe(false);
+    expect(app.queryClient.getQueryState(['b', MAPLE.id, 'notifications', 'list'])?.isInvalidated).toBe(false);
+    fireEvent.click(loadMore());
+    expect(await within(panel()).findByText(server.items[29].title)).toBeTruthy();
+    expect(unread(server.items[0].title)).toBe(false);
+  });
+
+  it('criterion 6: Load more is disabled during any list refetch (a focus refetch too)', async () => {
+    const server = heldServer();
+    stubApi(server.routes);
+    const app = renderApp(['/']);
+    await within(await openPanel()).findByText(server.items[0].title);
+
+    server.hold();
+    void app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'notifications', 'list'] });
+
+    await waitFor(() => expect(loadMore().disabled).toBe(true));
+    await server.release();
+    await waitFor(() => expect(loadMore().disabled).toBe(false));
+  });
+
+  it('criterion 6: a mark-read while Load more is loading ends with the server’s list (it read)', async () => {
+    const server = heldServer();
+    stubApi(server.routes);
+    renderApp(['/']);
+    await within(await openPanel()).findByText(server.items[0].title);
+
+    server.state.holdMore = true;
+    fireEvent.click(loadMore());
+    fireEvent.click(within(panel()).getByRole('button', { name: new RegExp(server.items[0].title) }));
+    await server.releaseMore();
+
+    await waitFor(() => expect(unread(server.items[0].title)).toBe(false));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 25)));
+    expect(unread(server.items[0].title)).toBe(false);
+  });
+
+  it('criterion 7: a failed refresh offers only Try again, which shows it read and brings Load more back', async () => {
+    const server = heldServer();
+    stubApi(server.routes);
+    renderApp(['/']);
+    await within(await openPanel()).findByText(server.items[0].title);
+
+    server.state.fail = true;
+    fireEvent.click(within(panel()).getByRole('button', { name: new RegExp(server.items[0].title) }));
+
+    const alert = await within(panel()).findByText(/could not refresh notifications/i);
+    expect(within(panel()).queryByRole('button', { name: /load more/i })).toBeNull();
+
+    server.state.fail = false;
+    fireEvent.click(within(alert.closest('[role="alert"]') as HTMLElement).getByRole('button', { name: 'Try again' }));
+
+    await waitFor(() => expect(unread(server.items[0].title)).toBe(false));
+    expect(within(panel()).queryByText(/could not refresh notifications/i)).toBeNull();
+    expect(loadMore()).toBeTruthy();
+  });
+});
