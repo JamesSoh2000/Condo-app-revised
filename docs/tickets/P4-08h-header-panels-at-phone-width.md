@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-08f |
 | Replaces old | — |
-| Status | in progress |
+| Status | done |
 
 Created by [P4-08f](./P4-08f-account-menu-and-notifications-follow-ups.md) (PR #108) from its stack run.
 
@@ -85,3 +85,9 @@ Cases the stub missed: 320 px (the smallest phone width in use); the 640 px brea
   - **Long text wraps with `[overflow-wrap:anywhere]`** (convention: `MembershipScreens.tsx`, P4-08a R2 M2).
 - Estimate: ~15 non-test lines (two panels' classes, two wrappers, the header, two wrap classes). No split.
 - Split: none.
+
+## Follow-ups (from PR #111)
+
+- None needing action. Accepted and recorded in [the explanation](../explanations/P4-08h-header-panels-at-phone-width.md)
+  §7: iOS Safari unchecked (Chromium only); no test between 412 and 640 px; a nav link under an open panel takes two
+  taps (D1).
