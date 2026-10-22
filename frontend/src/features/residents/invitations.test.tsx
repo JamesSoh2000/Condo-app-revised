@@ -651,3 +651,74 @@ describe('expiry date in the building’s time zone (criterion 2; review round 1
     expect(rows()[0].textContent).toContain('Expires Oct 29, 2026');
   });
 });
+
+// Review round 2 (Codex gpt-6.1-sol) F1: after the server placed an error on the email (a 65-character local part
+// passes the client's shape check), Send posted the same address again while the error still showed.
+describe('review round 2 (Codex gpt-6.1-sol): a server-placed email error (criteria 4, 6)', () => {
+  const refusedEmail = () =>
+    json({ type: 'about:blank', title: 'Invalid', status: 422, code: 'validation_error', errors: [{ loc: ['body', 'email'], type: 'email_address', msg: 'x' }] }, 422);
+  const LONG_LOCAL = `${'a'.repeat(65)}@example.test`;
+
+  it('F1: Send again sends nothing while it shows, and focus goes to the email', async () => {
+    const fetchMock = stubApi(manager({ [create()]: refusedEmail }));
+    renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Pending invitations' });
+    fill(LONG_LOCAL, 'Security');
+    submit();
+    await waitFor(() => expect(emailField().getAttribute('aria-invalid')).toBe('true'));
+
+    submit();
+    await settle();
+
+    expect(count(fetchMock, create())).toBe(1);
+    expect(document.activeElement).toBe(emailField());
+    expect(screen.getByText('Enter one email address.')).toBeTruthy();
+  });
+
+  it('F1 neighbours: a roles change keeps it; editing the email clears it and Send works again', async () => {
+    const recorded = recording((body) => ((body as { email: string }).email === LONG_LOCAL ? refusedEmail() : created(body)));
+    stubApi(manager({ [create()]: recorded.handler }));
+    renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Pending invitations' });
+    fill(LONG_LOCAL, 'Security');
+    submit();
+    await waitFor(() => expect(emailField().getAttribute('aria-invalid')).toBe('true'));
+
+    fireEvent.click(role('Council'));
+    submit();
+    await settle();
+    expect(recorded.bodies).toHaveLength(1);
+
+    fireEvent.change(emailField(), { target: { value: 'new@example.test' } });
+    expect(emailField().getAttribute('aria-invalid')).toBe('false');
+    submit();
+    await waitFor(() => expect(message()?.textContent).toBe('Invitation sent to new@example.test.'));
+    expect(recorded.bodies).toHaveLength(2);
+  });
+});
+
+describe('tab keys and Forward (criterion 1; review round 2, Codex gap)', () => {
+  it('Home goes to the first tab from Invitations, and Forward comes back to it', async () => {
+    stubApi({ ...manager(), [`GET /api/buildings/${MAPLE.id}/onboarding-requests`]: () => json({ items: [], next_cursor: null }) });
+    const app = renderApp(['/manage/residents', PAGE]);
+    const invitations = await screen.findByRole('tab', { name: 'Invitations' });
+    await waitFor(() => expect(invitations.getAttribute('aria-selected')).toBe('true'));
+
+    invitations.focus();
+    fireEvent.keyDown(invitations, { key: 'Home' });
+    const pending = screen.getByRole('tab', { name: 'Pending requests' });
+    await waitFor(() => expect(pending.getAttribute('aria-selected')).toBe('true'));
+    expect(document.activeElement).toBe(pending);
+
+    act(() => app.navigate()(-1));
+    await waitFor(() => expect(invitations.getAttribute('aria-selected')).toBe('true'));
+    act(() => app.navigate()(1));
+    await waitFor(() => expect(pending.getAttribute('aria-selected')).toBe('true'));
+    act(() => app.navigate()(-1));
+    act(() => app.navigate()(-1));
+    await waitFor(() => expect(pending.getAttribute('aria-selected')).toBe('true'));
+    act(() => app.navigate()(1));
+    await waitFor(() => expect(invitations.getAttribute('aria-selected')).toBe('true'));
+    await screen.findByRole('list', { name: 'Pending invitations' });
+  });
+});

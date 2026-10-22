@@ -78,7 +78,8 @@ export function InviteForm({ buildingId, onStart, onSent }: Props) {
     setChecked(true);
     setFailure(null);
     const address = email.trim();
-    if (emailProblem(address)) return emailRef.current?.focus();
+    // The server's word too: the same address would be refused again (review round 2, Codex F1).
+    if (emailProblem(address) || serverEmail) return emailRef.current?.focus();
     if (roles.size === 0) return firstRole.current?.focus();
     inFlight.current = true;
     setBusy(true);
