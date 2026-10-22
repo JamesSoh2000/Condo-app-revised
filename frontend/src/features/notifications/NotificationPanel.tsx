@@ -54,6 +54,14 @@ export function NotificationPanel({ id, unread, markRead, markAllRead }: Props) 
           Mark all read
         </button>
       </div>
+      {list.isRefetchError && items.length > 0 && (
+        <p role="alert" className="text-sm text-red-800">
+          Could not refresh notifications.{' '}
+          <button type="button" className="underline" onClick={() => void list.refetch()}>
+            Try again
+          </button>
+        </p>
+      )}
       {(markRead.isError || markAllRead.isError) && (
         <p role="alert" className="text-sm text-red-800">
           Could not mark notifications read. Try again.
@@ -91,12 +99,15 @@ export function NotificationPanel({ id, unread, markRead, markAllRead }: Props) 
           ))}
         </ul>
       )}
-      {list.hasNextPage && (
+      {list.hasNextPage && !list.isRefetchError && (
+        // As PendingRequests (PR #99 round 2 F1, round 3 F1): not while any fetch is out, since a next page would cancel
+        // a refresh after a mark-read and append to the old pages, and not after a failed refresh, since it would clear
+        // the error and keep the old first page (P4-08f criteria 6, 7). Try again first.
         <button
           type="button"
           className="rounded border px-2 py-1 text-sm disabled:opacity-50"
-          disabled={list.isFetchingNextPage}
-          onClick={() => void list.fetchNextPage()}
+          disabled={list.isFetching}
+          onClick={() => void list.fetchNextPage({ cancelRefetch: false })}
         >
           Load more
         </button>

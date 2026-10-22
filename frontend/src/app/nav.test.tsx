@@ -580,7 +580,7 @@ describe('header account menu (criterion 4)', () => {
     await findNavItems();
 
     fireEvent.click(button());
-    fireEvent.mouseDown(screen.getByRole('main'));
+    fireEvent.pointerDown(screen.getByRole('main'));
     expect(button().getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(button());

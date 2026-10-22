@@ -7,8 +7,9 @@ import { NotificationPanel } from '@/features/notifications/NotificationPanel';
 /**
  * The header's bell (P3-05): a disclosure button, like the account menu, that shows the notification panel.
  * Its name carries the unread count, and a polite live region says it again when it changes. Escape and a
- * click outside close the panel; Escape returns focus to the bell. It is open only at the location it was
- * opened at, so following a notification's link closes it. Rendered only for a loaded building, keyed by it.
+ * click or tap outside close the panel; Escape returns focus to the bell. It is open only at the location it was
+ * opened at, so following a notification's link closes it, and forgotten then, so Back doesn't show it again
+ * (P4-08f criterion 5). Rendered only for a loaded building, keyed by it.
  */
 export function NotificationBell() {
   const summary = useNotificationSummary();
@@ -20,6 +21,7 @@ export function NotificationBell() {
   const markAllRead = useMarkAllRead();
   const { key } = useLocation();
   const [openAt, setOpenAt] = useState<string | null>(null);
+  if (openAt !== null && openAt !== key) setOpenAt(null);
   const open = openAt === key;
   const panelId = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -27,11 +29,12 @@ export function NotificationBell() {
 
   useEffect(() => {
     if (!open) return;
-    const onPointer = (event: MouseEvent) => {
+    // `pointerdown`, as the account menu: iOS Safari may send no mouse event for a tap (P4-08f criterion 4).
+    const onPointer = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) setOpenAt(null);
     };
-    document.addEventListener('mousedown', onPointer);
-    return () => document.removeEventListener('mousedown', onPointer);
+    document.addEventListener('pointerdown', onPointer);
+    return () => document.removeEventListener('pointerdown', onPointer);
   }, [open]);
 
   const onKeyDown = (event: React.KeyboardEvent) => {

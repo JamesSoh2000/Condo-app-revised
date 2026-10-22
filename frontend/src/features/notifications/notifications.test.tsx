@@ -363,7 +363,7 @@ describe('screen readers and the keyboard (criterion 6)', () => {
 
     renderApp(['/']);
     await openPanel();
-    fireEvent.mouseDown(screen.getByRole('main'));
+    fireEvent.pointerDown(screen.getByRole('main'));
     expect(screen.queryByRole('region', { name: /notifications/i })).toBeNull();
   });
 });
