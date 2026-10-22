@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-07b, P4-08c, P4-03, P1-08 (the split parts of P4-07 and P4-08, as in the index) |
 | Replaces old | M15-T02 (partial), M7-T06 (onboarding part) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
