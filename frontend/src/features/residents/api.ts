@@ -227,3 +227,48 @@ export function useUnitOptions(buildingId: string, search: string, enabled: bool
     placeholderData: keepPreviousData,
   });
 }
+
+export type Invitation = components['schemas']['InvitationOut'];
+export interface InvitationCreate {
+  email: string;
+  roles: MemberRole[];
+}
+
+/** Every key of the building's invitations starts here, so a create's invalidation covers the list and its pages. */
+const invitationsKey = (buildingId: string) => ['b', buildingId, 'invitations'] as const;
+
+/**
+ * The building's pending invitations, newest first, one page at a time (P4-08g). Stale at once, as the pending
+ * requests: coming back to the tab or the window asks again (ADR-0012).
+ */
+export function useInvitations(buildingId: string) {
+  return useInfiniteQuery({
+    queryKey: [...invitationsKey(buildingId), 'pending'],
+    staleTime: 0,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      api.get('/api/buildings/{building_id}/invitations', {
+        params: { path: { building_id: buildingId }, query: { status: 'pending', ...(pageParam !== null && { cursor: pageParam }) } },
+        signal,
+      }),
+    getNextPageParam: (page) => page.next_cursor,
+  });
+}
+
+/**
+ * Invite one email with staff roles. The list is asked for again after every outcome, from here, as
+ * `useMemberAction`: a 409 `invitation_pending` means one is listed now, and the answer may come after the page is
+ * gone. Not returned, so `mutateAsync` doesn't wait for the refetch (P4-08b round 1, Codex F1).
+ */
+export function useInvite(buildingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
+    mutationKey: [...invitationsKey(buildingId), 'create'],
+    mutationFn: (body: InvitationCreate) =>
+      api.post('/api/buildings/{building_id}/invitations', { params: { path: { building_id: buildingId } }, body }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: invitationsKey(buildingId) });
+    },
+  });
+}
