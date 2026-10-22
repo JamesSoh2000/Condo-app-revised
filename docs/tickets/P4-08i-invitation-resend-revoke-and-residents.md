@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-08g |
 | Replaces old | — |
-| Status | in progress |
+| Status | done |
 
 Split from [P4-08g](./P4-08g-staff-invitations-screen.md) while framing it (2026-10-22): with these its estimate was
 ~470 non-test lines. Framed 2026-10-22.
@@ -154,3 +154,14 @@ unit deactivated between the search and Send (criterion 11); a members first loa
 - Estimate (from P4-08c's `MemberDialog` ~165 and P4-08e's transfer search): helper and hooks ~45, the
   confirmation dialog ~110, the list's select, row buttons and dialog wiring ~60, the unit search moved into a
   shared component (net ~+25), the form's Resident, unit and relationship ~70: ~310. No split.
+
+## Follow-ups (from PR #112)
+
+- Accepted: focus after resend, revoke, a refusal and Cancel, and the 375 px layout, were checked once in Chromium
+  by a scratch spec on the stack, not a committed test. After leaving the page, the lists are invalidated, not
+  refetched until shown again. See [the explanation](../explanations/P4-08i-invitation-resend-revoke-and-residents.md) §7.
+- Not offered (D2): inviting a resident without a unit from the UI. The "Show" select isn't kept in the URL (D1).
+- `refresh.test.ts` guards `features/residents/api.ts` only; invalidations in `app/` and `features/notifications/`
+  are unchecked.
+- Seen once, not investigated: `roles.test.tsx` "building_not_found on transfer marks the building denied" failed in
+  one full local run (1461 ms) and passed in every rerun.
