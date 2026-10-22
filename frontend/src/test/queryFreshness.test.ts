@@ -87,13 +87,44 @@ function classify(options: ts.Expression | undefined): Omit<Call, 'id'> {
   return { building, fresh };
 }
 
+/**
+ * The file's names for the library's query hooks: each renamed import (`useQuery as useRows` → `useQuery`), and each
+ * namespace import (`* as RQ`). Read from the imports, so a call through either is listed (P4-08g criterion 13).
+ */
+function libraryNames(tree: ts.SourceFile): { aliases: Map<string, string>; namespaces: Set<string> } {
+  const aliases = new Map<string, string>();
+  const namespaces = new Set<string>();
+  for (const statement of tree.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (statement.moduleSpecifier.text !== '@tanstack/react-query') continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) aliases.set(element.name.text, (element.propertyName ?? element.name).text);
+    }
+  }
+  return { aliases, namespaces };
+}
+
 /** Each query hook call in `source`, by `<path under src>::<enclosing function>`. */
 export function inspect(file: string, source: string): Call[] {
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const { aliases, namespaces } = libraryNames(tree);
+  // The library's name for the hook called, if it is a query hook. A hook's own name counts without an import too
+  // (fail-closed, as before).
+  const hook = (callee: ts.Expression): string | undefined => {
+    let name: string | undefined;
+    if (ts.isIdentifier(callee)) name = aliases.get(callee.text) ?? callee.text;
+    else if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) && namespaces.has(callee.expression.text)) {
+      name = callee.name.text;
+    }
+    return name !== undefined && QUERY_HOOK.test(name) ? name : undefined;
+  };
   const calls: Call[] = [];
   const visit = (node: ts.Node) => {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && QUERY_HOOK.test(node.expression.text)) {
-      const options = node.expression.text === 'useQueries' ? undefined : node.arguments[0];
+    const name = ts.isCallExpression(node) ? hook(node.expression) : undefined;
+    if (ts.isCallExpression(node) && name !== undefined) {
+      const options = name === 'useQueries' ? undefined : node.arguments[0];
       calls.push({ id: `${relative(SRC, file)}::${owner(node)}`, ...classify(options) });
     }
     ts.forEachChild(node, visit);
@@ -193,6 +224,36 @@ describe('building queries declare how they stay fresh on remount (P4-08f criter
     expect(one("function useB() { return useQuery({ queryKey: ['b'], staleTime: 30_000, staleTime: 0 }); }")[0].fresh).toBe(true);
     expect(one("function useC() { return useQuery({ queryKey: ['b'], staleTime: 0, staleTime: 30_000 }); }")[0].fresh).toBe(false);
     expect(one("function useD() { return useQuery({ queryKey: ['me'], get queryKey() { return ['b']; } }); }")[0].building).toBe(true);
+  });
+
+  // P4-08g criterion 13 (PR #108 round 3, R3-F1): calls were matched by their own name only, so one through a renamed
+  // or namespace import from `@tanstack/react-query` was not listed and the guard passed it.
+  const RQ = "import * as RQ from '@tanstack/react-query';\n";
+  it.each([
+    ['a renamed import', "import { useQuery as useRows } from '@tanstack/react-query';\n", 'useRows'],
+    ['a renamed import not named like a hook', "import { keepPreviousData, useInfiniteQuery as q } from '@tanstack/react-query';\n", 'q'],
+    ['a namespace import', RQ, 'RQ.useInfiniteQuery'],
+    ['a namespace import’s useSuspenseQuery', RQ, 'RQ.useSuspenseQuery'],
+  ])('R3-F1: lists a call through %s as a building query without freshness', (_label, imports, callee) => {
+    expect(one(`${imports}function useA() { return ${callee}({ queryKey: ['b', id], queryFn }); }`)).toEqual([
+      { id: 'features/x/api.ts::useA', building: true, fresh: false },
+    ]);
+  });
+
+  it('R3-F1 neighbours: classified as before; other imports and namespace members are not query hooks', () => {
+    expect(one(`${RQ}function useA() { return RQ.useQuery({ queryKey: ['b', id], staleTime: 0 }); }`)).toEqual([
+      { id: 'features/x/api.ts::useA', building: true, fresh: true },
+    ]);
+    expect(one(`${RQ}function useB() { return RQ.useQuery({ queryKey: ['me'], queryFn }); }`)[0].building).toBe(false);
+    expect(one(`${RQ}function useC() { return RQ.useQueries({ queries }); }`)).toEqual([
+      { id: 'features/x/api.ts::useC', building: true, fresh: false },
+    ]);
+    expect(one(`${RQ}function useD() { return RQ.useMutation({ mutationKey: ['b', id] }); }`)).toEqual([]);
+    expect(one("import { useQueryClient as qc } from '@tanstack/react-query';\nfunction useE() { return qc(); }")).toEqual([]);
+    expect(one("import { useQuery as useRows } from './elsewhere';\nfunction useF() { return useRows({ queryKey: ['b'] }); }")).toEqual([]);
+    expect(one("import * as Other from './elsewhere';\nfunction useG() { return Other.useQuery({ queryKey: ['b'] }); }")).toEqual([]);
+    // Fail-closed, as before: a hook's name with no import from the library is still listed.
+    expect(one("function useH() { return useQuery({ queryKey: ['b'] }); }")).toHaveLength(1);
   });
 
   it('R1-F1 neighbours: top-level options count, and a key read only from the top level', () => {
