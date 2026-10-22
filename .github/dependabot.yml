@@ -36,6 +36,16 @@ updates:
       - dependency-name: framer-motion
         update-types: ["version-update:semver-major"]
 
+  # The E2E suite's own package (P4-09): Playwright and its types.
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      e2e-minor-and-patch:
+        update-types: [minor, patch]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

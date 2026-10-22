@@ -21,8 +21,8 @@ BACKEND := cd backend &&
 FRONTEND := cd frontend &&
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps migrate revision seed cli test lint fmt typecheck check gen-api e2e psql s3-smoke db-guard \
-	prodlike prodlike-smoke prodlike-down
+.PHONY: help up down logs ps migrate revision seed cli test lint fmt typecheck check gen-api e2e e2e-reset psql s3-smoke \
+	db-guard prodlike prodlike-smoke prodlike-down
 
 help: ## List the targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -93,9 +93,6 @@ gen-api: ## Regenerate frontend/src/api/schema.d.ts from the backend's OpenAPI (
 	$(BACKEND) uv run python -m app.export_openapi > ../openapi.json
 	$(FRONTEND) npm run --silent gen:api
 
-e2e: ## Playwright journeys (stub until P4-09; fails so a stub never counts as a pass)
-	@echo "make e2e: no Playwright suite yet; P4-09 adds it"; exit 1
-
 s3-smoke: ## Check that the S3 emulator enforces the upload policy, versioning and CORS (needs `make up`)
 	uv run --python 3.14 scripts/s3-smoke.py
 
@@ -107,7 +104,7 @@ psql: ## psql shell on the dev database
 # working tree has uncommitted changes, so /api/version doesn't pass them off as the commit.
 PRODLIKE := $(COMPOSE) -f compose.prodlike.yml
 GIT_SHA ?= $(shell git rev-parse HEAD)
-prodlike prodlike-smoke prodlike-down: export API_IMAGE_TAG ?= $(GIT_SHA)$(if $(shell git status --porcelain),-dirty)
+prodlike prodlike-smoke prodlike-down e2e e2e-reset: export API_IMAGE_TAG ?= $(GIT_SHA)$(if $(shell git status --porcelain),-dirty)
 
 prodlike: ## Build the image and SPA, migrate, start the prod-like stack on :8080 (run `make down` first)
 	docker build -t condo-api:$(API_IMAGE_TAG) --build-arg GIT_SHA=$(GIT_SHA) \
@@ -128,3 +125,40 @@ prodlike-smoke: ## Smoke-test the prod-like stack (scripts/smoke.sh) and check i
 
 prodlike-down: ## Stop the prod-like stack (its database volume is kept)
 	$(PRODLIKE) down
+
+# E2E journeys (P4-09, e2e/README.md): one suite, two stacks. E2E_STACK=dev (the default) runs on `make up` and
+# the Vite dev server on :5173, which Playwright starts unless one already runs; E2E_STACK=prodlike runs on
+# `make prodlike` (:8080), as CI does. The helpers get the stack's compose file and API service from here.
+E2E_STACK ?= dev
+ifeq ($(E2E_STACK),prodlike)
+E2E_COMPOSE_FILE := compose.prodlike.yml
+E2E_API_SERVICE := api
+E2E_BASE_URL ?= http://localhost:8080
+else ifeq ($(E2E_STACK),dev)
+E2E_COMPOSE_FILE := docker-compose.yml
+E2E_API_SERVICE := app
+E2E_BASE_URL ?= http://localhost:5173
+else
+$(error E2E_STACK must be dev or prodlike, not "$(E2E_STACK)")
+endif
+E2E_COMPOSE := $(COMPOSE) -f $(E2E_COMPOSE_FILE)
+
+# The API and worker are stopped first: their pooled connections cache the old schema's type OIDs.
+e2e-reset: ## Drop and recreate the e2e stack's schema, migrate and seed; refused unless its API has APP_ENV=dev
+	@$(E2E_COMPOSE) exec -T $(E2E_API_SERVICE) python -c \
+	  "import sys; from app.core.config import settings; sys.exit(settings.app_env != 'dev')" || { \
+	  echo "e2e-reset: refused: the $(E2E_STACK) stack's API must be running, with APP_ENV=dev"; exit 1; }
+	$(E2E_COMPOSE) stop $(E2E_API_SERVICE) worker
+	$(E2E_COMPOSE) exec -T db sh -c \
+	  'psql -q -v ON_ERROR_STOP=1 -U postgres -d "$$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
+	$(E2E_COMPOSE) run --rm --no-deps $(E2E_API_SERVICE) alembic upgrade head
+	$(E2E_COMPOSE) run --rm --no-deps $(E2E_API_SERVICE) python -m app.cli seed
+	$(E2E_COMPOSE) up -d --wait $(E2E_API_SERVICE) worker
+
+e2e: ## Playwright journeys: start the stack, reset it, run (E2E_STACK=dev|prodlike; args="--ui" passes options)
+	@$(MAKE) --no-print-directory $(if $(filter prodlike,$(E2E_STACK)),prodlike,up)
+	@$(MAKE) --no-print-directory e2e-reset
+	$(if $(filter dev,$(E2E_STACK)),test -d frontend/node_modules || ($(FRONTEND) npm ci --no-audit --no-fund))
+	cd e2e && npm ci --no-audit --no-fund && npx playwright install $(if $(CI),--with-deps) chromium
+	cd e2e && E2E_BASE_URL=$(E2E_BASE_URL) E2E_COMPOSE_FILE=$(E2E_COMPOSE_FILE) \
+	  E2E_API_SERVICE=$(E2E_API_SERVICE) npx playwright test $(args)
