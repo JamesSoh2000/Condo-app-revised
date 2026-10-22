@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P4-02a, P4-08b, P4-09 |
 | Replaces old | — |
-| Status | in progress |
+| Status | done |
 
 Created by [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) (PR #102): no screen creates invitations, so J2's
 invite step goes through the API (P4-09 Frame notes, PR #102 D1). Framed 2026-10-22; resend, revoke and the
@@ -140,3 +140,12 @@ Cases the ticket missed: a colleague's invitation for the same email sent after 
   - **The email trimmed client-side (convention: the join form, P4-08a):** the server refuses a padded address
     rather than changing it.
 - Split: P4-08i (resend, revoke, the pre-approved resident).
+
+## Follow-ups (from PR #110)
+
+- Resend, revoke, expired invitations and the pre-approved resident: [P4-08i](./P4-08i-invitation-resend-revoke-and-residents.md),
+  whose first follow-up is the pattern below.
+- Pattern "list refresh defeated by another fetch" reached 5 (R1 F1), after its `CLAUDE.md` lesson: promote it to code
+  in P4-08i.
+- Accepted: focus and the 375 px layout were checked once in Chromium by a scratch script, not a committed test; the
+  freshness guard doesn't follow `require`, default imports or re-exports. See [the explanation](../explanations/P4-08g-staff-invitations-screen.md) §7.
