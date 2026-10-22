@@ -10,7 +10,7 @@ import { NotificationBell } from '@/features/notifications/NotificationBell';
 
 /**
  * The signed-in frame: header with the notification bell (P3-05) and the account menu, the navigation
- * (P2-06c), then the page.
+ * (P2-06c), then the page. Below 640 px the header is what their panels are placed against (P4-08h).
  */
 export function AppShell() {
   const { logout, pending, error } = useLogout();
@@ -18,7 +18,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="flex items-center justify-between gap-4 border-b bg-white px-4 py-3">
+      <header className="relative flex items-center justify-between gap-4 border-b bg-white px-4 py-3">
         <Link to="/" className="font-semibold">
           Condo Management
         </Link>
