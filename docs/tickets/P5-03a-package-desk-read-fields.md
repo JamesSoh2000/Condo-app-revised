@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P5-02a, P5-02b |
 | Replaces old | — (split from P5-03) |
-| Status | in progress |
+| Status | done |
 
 Split from the original P5-03 (Security packages page) while framing: the page, its form, its list and its
 two dialogs measure about 850 non-test lines, and the list needs API fields that `PackageOut` lacks (the

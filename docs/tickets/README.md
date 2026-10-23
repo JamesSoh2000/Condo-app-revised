@@ -94,7 +94,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04b | done | — |
 | [P5-02a](./P5-02a-package-create-and-read.md) | Package create and read | A | 1 | P5-01, P3-03, P2-04, P4-01a | done | — |
 | [P5-02b](./P5-02b-package-pickup-and-return.md) | Package pickup and return | A | 1 | P5-02a | done | — |
-| [P5-03a](./P5-03a-package-desk-read-fields.md) | Package desk read fields (split from P5-03) | A | 1 | P5-02a, P5-02b | in progress | — |
+| [P5-03a](./P5-03a-package-desk-read-fields.md) | Package desk read fields (split from P5-03) | A | 1 | P5-02a, P5-02b | done | — |
 | [P5-03b](./P5-03b-package-desk-page-and-waiting-list.md) | Package desk page and waiting list (split from P5-03) | B | 2 | P5-03a, P3-06 | todo | — |
 | [P5-03c](./P5-03c-log-package-panel.md) | Log package panel (split from P5-03) | B | 2 | P5-03b | todo | — |
 | [P5-03d](./P5-03d-package-pickup-and-return-dialogs.md) | Package pickup and return dialogs (split from P5-03) | B | 2 | P5-03b | todo | — |
