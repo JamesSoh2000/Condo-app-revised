@@ -81,8 +81,9 @@ async def _emails(db: AsyncSession, package_id: uuid.UUID) -> list[Job]:
 _TIMES = ("received_at", "picked_up_at", "returned_at")
 
 
-def _out(package: Package) -> dict[str, Any]:
-    """What the API returns for `package`, with its times as datetimes (compare with `_parsed`)."""
+def _out(package: Package, unit: Unit, recipient_name: str | None = None) -> dict[str, Any]:
+    """What the API returns to the desk for `package`, with its times as datetimes (compare with
+    `_parsed`). `unit` is the package's unit, `recipient_name` its recipient's (P5-03a)."""
     return {
         "id": str(package.id),
         "unit_id": str(package.unit_id),
@@ -100,6 +101,9 @@ def _out(package: Package) -> dict[str, Any]:
         "received_by_membership_id": str(package.received_by_membership_id),
         "picked_up_at": package.picked_up_at,
         "returned_at": package.returned_at,
+        "unit_tower": unit.tower,
+        "unit_label": unit.label,
+        "recipient_name": recipient_name,
     }
 
 
@@ -165,7 +169,7 @@ async def test_staff_log_a_package_and_get_it_back(
             }
         )
     )
-    assert _parsed(body) == _out(package)
+    assert _parsed(body) == _out(package, world.a_101, "a resident1")
     # The P5-01 carry: the photo is claimed for this package, so the photo hook grants it.
     file = await db.scalar(
         select(File).where(File.id == photo.id).execution_options(populate_existing=True)
@@ -673,7 +677,7 @@ async def test_who_may_see_a_unit_package_gets_it(
     response = await client.get(f"{_base(world)}/{package.id}")
 
     assert response.status_code == 200, response.text
-    assert _parsed(response.json()) == _out(package)
+    assert _parsed(response.json()) == _out(package, world.a_101)
 
 
 async def test_a_named_recipient_sees_their_package_at_another_unit(
@@ -788,7 +792,7 @@ async def test_staff_list_the_buildings_packages_newest_first(
     response = await client.get(_base(world))
 
     assert _ids(response) == [str(third.id), str(second.id), str(first.id)]
-    assert _parsed(response.json()["items"][0]) == _out(third)
+    assert _parsed(response.json()["items"][0]) == _out(third, world.a_201)
     assert response.json()["next_cursor"] is None
 
 
