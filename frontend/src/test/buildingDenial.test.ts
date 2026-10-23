@@ -34,8 +34,11 @@ const EXEMPT: Record<string, string> = {
 interface Fn {
   id: string;
   name: string;
-  /** Its module, as in `DENIAL`. */
-  module: string;
+  /**
+   * How calls name it: `<module>::<name>` for a module-level function, as in `DENIAL`; a nested one's key is its own
+   * (`…@<position>`), since a call by name reaches the module's, not it (review round 2, Codex F2).
+   */
+  key: string;
   /** It calls `useBuilding` with `passive: true`, or with an argument it can't read. */
   passive: boolean;
   /** The hooks it calls, as `<module>::<exported name>`, each resolved through the file's imports. */
@@ -142,8 +145,15 @@ export function inspect(file: string, source: string): Fn[] {
       const key = names.get(callee.text) ?? `${module}::${callee.text}`;
       return { key, name: key.slice(key.lastIndexOf('::') + 2) };
     }
-    if (!ts.isPropertyAccessExpression(callee)) return undefined;
-    const member = callee.name.text;
+    // `x.member` or `x['member']`; a computed `x[name]` may be any hook, so it counts as `useBuilding` (fail-closed:
+    // it can only add a passive reader; review round 2, Codex F1).
+    let member: string;
+    if (ts.isPropertyAccessExpression(callee)) member = callee.name.text;
+    else if (ts.isElementAccessExpression(callee)) {
+      const at = callee.argumentExpression;
+      if (!ts.isStringLiteral(at) && !ts.isNoSubstitutionTemplateLiteral(at)) return { key: '<computed>::useBuilding', name: 'useBuilding' };
+      member = at.text;
+    } else return undefined;
     const from = ts.isIdentifier(callee.expression) ? namespaces.get(callee.expression.text) : undefined;
     if (from !== undefined) return { key: `${from}::${member}`, name: member };
     return member === 'useBuilding' ? { key: `<member>::${member}`, name: member } : undefined;
@@ -154,7 +164,8 @@ export function inspect(file: string, source: string): Fn[] {
     if (ts.isCallExpression(node) && hook !== undefined && /^use[A-Z]/.test(hook.name)) {
       const at = owner(node);
       const name = at ? functionName(at) : '<module>';
-      const fn = fns.get(at) ?? { id: `${relative(SRC, file).split(sep).join('/')}::${name}`, name, module, passive: false, calls: new Set<string>() };
+      const key = at && owner(at) ? `${module}::${name}@${at.getStart()}` : `${module}::${name}`;
+      const fn = fns.get(at) ?? { id: `${relative(SRC, file).split(sep).join('/')}::${name}`, name, key, passive: false, calls: new Set<string>() };
       fn.calls.add(hook.key);
       if (hook.name === 'useBuilding' && isPassive(node)) fn.passive = true;
       fns.set(at, fn);
@@ -167,16 +178,15 @@ export function inspect(file: string, source: string): Fn[] {
 
 /**
  * The passive readers that read no denial, given every function. A hook reads it if it calls the denial or another
- * hook that does, found to a fixed point, each known by its module and name.
+ * hook that does, found to a fixed point, each known by its `key`.
  */
 export function unguarded(fns: Fn[]): string[] {
   const aware = new Set([DENIAL]);
   for (let grew = true; grew; ) {
     grew = false;
     for (const fn of fns) {
-      const key = `${fn.module}::${fn.name}`;
-      if (/^use[A-Z]/.test(fn.name) && !aware.has(key) && [...fn.calls].some((hook) => aware.has(hook))) {
-        aware.add(key);
+      if (/^use[A-Z]/.test(fn.name) && !aware.has(fn.key) && [...fn.calls].some((hook) => aware.has(hook))) {
+        aware.add(fn.key);
         grew = true;
       }
     }
@@ -292,6 +302,27 @@ describe('the inspector', () => {
     expect(run("import { useBuilding } from '@/app/BuildingProvider';\nimport { useBuildingDenied } from './fake';\nfunction A() { useBuilding({ passive: true }); useBuildingDenied(); }")).toEqual([
       'features/x/X.tsx::A',
     ]);
+  });
+
+  // Review round 2, Codex F1 and F2: an element-access call escaped, and a nested hook made a module-level hook of
+  // the same name count as reading the denial.
+  it('R2-F1: an element-access call is read like a property access; a computed one counts as `useBuilding` (fail-closed)', () => {
+    expect(run(`${NS}function A() { Building['useBuilding']({ passive: true }); }`)).toEqual(['features/x/X.tsx::A']);
+    expect(run(`${NS}function A() { Building['useBuilding']({ passive: true }); Building['useBuildingDenied'](); }`)).toEqual([]);
+    expect(run(`${NS}function A() { Building[name]({ passive: true }); Building.useBuildingDenied(); }`)).toEqual([]);
+    // With no argument it reads like `useBuilding()`, the active reader the rule leaves alone.
+    expect(run(`${NS}function A() { Building[name](); }`)).toEqual([]);
+    expect(run('function A() { hooks[`useBuilding`]({ passive: true }); }')).toEqual(['features/x/X.tsx::A']);
+  });
+
+  it('R2-F2: a nested hook is its own, so it never makes a module-level hook of its name read the denial', () => {
+    const NESTED = `${IMPORT}function useCan() { return true; }\nexport function A() { useBuilding({ passive: true }); useCan(); }\n`;
+    expect(run(`${NESTED}export function G() { function useCan() { return !useBuildingDenied(); } return useCan(); }`)).toEqual([
+      'features/x/X.tsx::A',
+    ]);
+    expect(run(`${NESTED}export function G() { const useCan = () => !useBuildingDenied(); return useCan(); }`)).toEqual(['features/x/X.tsx::A']);
+    // A module-level hook still counts, however it is declared.
+    expect(run(`${IMPORT}const useCan = memo(() => !useBuildingDenied());\nfunction A() { useBuilding({ passive: true }); useCan(); }`)).toEqual([]);
   });
 
   it('a denial read in another component does not cover this one', () => {
