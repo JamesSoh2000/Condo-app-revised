@@ -132,7 +132,7 @@ export function PickupDialog({ item, onClose }: { item: Package; onClose: (messa
             }}
             aria-invalid={error?.field === 'name'}
             aria-describedby={error?.field === 'name' ? `${id}-name-error` : undefined}
-            className="w-full min-w-0 rounded border px-3 py-2"
+            className="min-h-11 w-full min-w-0 rounded border px-3 py-2"
           />
           {message('name')}
         </div>
