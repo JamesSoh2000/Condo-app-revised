@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { ApiError } from '@/api/errors';
 import { useBuildingId } from '@/app/BuildingProvider';
@@ -33,6 +33,8 @@ export function PickupDialog({ item, onClose }: { item: Package; onClose: (messa
   const [refused, setRefused] = useState<string[]>([]);
   const [error, setError] = useState<{ field: 'choice' | 'name'; message: string } | null>(null);
   const id = useId();
+  // The dialog itself, not a choice: the choices load later, and nothing should be chosen for the desk (D2) (R1 F1).
+  useEffect(() => root.current?.focus(), [root]);
 
   const choices: Choice[] = [];
   // Staff always get the recipient's name (P5-03a); the fallback only keeps the type honest.
@@ -106,7 +108,7 @@ export function PickupDialog({ item, onClose }: { item: Package; onClose: (messa
         {occupants.isError && (
           <p className="text-sm text-red-700">
             {rateLimitMessage(occupants.error) ?? 'Could not load who lives in the unit.'}{' '}
-            <button type="button" className="underline" onClick={() => void occupants.refetch()}>
+            <button type="button" disabled={busy} className="min-h-11 underline disabled:opacity-50" onClick={() => void occupants.refetch()}>
               Try again
             </button>
           </p>

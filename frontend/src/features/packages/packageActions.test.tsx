@@ -509,6 +509,48 @@ describe('one request per confirmation, and focus (criterion 7)', () => {
     expect(count(fetchMock, PICKUP) + count(fetchMock, RETURN)).toBe(0);
   });
 
+  it.each(['Hand out', 'Return'] as const)('%s puts focus inside the dialog on open, and Escape from there closes it (R1 F1)', async (name) => {
+    desk();
+    renderApp([PAGE]);
+    await open(name);
+
+    expect(dialog().contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(rowButton(name));
+  });
+
+  it('focus stays inside the dialog after invalid_pickup_member removes the chosen person (R1 F1 neighbour)', async () => {
+    desk({ [PICKUP]: () => problem(422, 'invalid_pickup_member') });
+    renderApp([PAGE]);
+    await open('Hand out');
+    await waitFor(() => choose('Sam Lee'));
+    inDialog().getByRole('radio', { name: 'Sam Lee' }).focus();
+
+    confirm('Hand out');
+
+    await inDialog().findByText('That person can’t collect this package now. Choose someone else or type a name.');
+    expect(dialog().contains(document.activeElement)).toBe(true);
+  });
+
+  it('the occupants Try again is disabled while the pickup is out (R1 F3)', async () => {
+    const gate = deferred(() => json(pkg({ status: 'picked_up' })));
+    desk({ [OCCUPANTS]: () => problem(500, 'internal_error'), [PICKUP]: gate.handler });
+    renderApp([PAGE]);
+    await open('Hand out');
+    const retry = await inDialog().findByRole<HTMLButtonElement>('button', { name: 'Try again' });
+    choose('Someone else');
+    typeName('Jo Courier');
+
+    confirm('Hand out');
+    await settle();
+
+    expect(retry.disabled).toBe(true);
+    gate.release();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
   it('a new dialog starts empty after a cancelled one', async () => {
     desk();
     renderApp([PAGE]);

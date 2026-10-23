@@ -125,7 +125,7 @@ export function WaitingList() {
             Refresh
           </button>
         </div>
-        <p ref={messageRef} role="status" tabIndex={-1} data-testid={message ? 'package-message' : undefined} className="text-sm font-medium empty:hidden">
+        <p ref={messageRef} role="status" tabIndex={-1} data-testid={message ? 'package-message' : undefined} className="text-sm font-medium empty:hidden [overflow-wrap:anywhere]">
           {message}
         </p>
         {body}
