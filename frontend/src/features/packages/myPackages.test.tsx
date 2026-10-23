@@ -114,8 +114,8 @@ const location = () => screen.getByTestId('location').textContent;
 const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 25)));
 const waitingList = () => screen.findByRole('list', { name: 'Waiting for you' });
 const historyList = () => screen.findByRole('list', { name: 'Package history' });
-const navLink = (name: string | RegExp) =>
-  within(screen.getByRole('navigation', { name: 'Main' })).findByRole('link', { name });
+const navLink = async (name: string | RegExp) =>
+  within(await screen.findByRole('navigation', { name: 'Main' })).findByRole('link', { name });
 const listCalls = (fetchMock: ReturnType<typeof stubApi>, asked: string) =>
   fetchMock.mock.calls.filter(([request]) => new URL(request.url).pathname === BASE && statuses(request) === asked);
 const summaryCalls = (fetchMock: ReturnType<typeof stubApi>) => calls(fetchMock).filter((call) => call === `GET ${BASE}/summary`);
@@ -369,7 +369,7 @@ describe('the detail dialog (criterion 6)', () => {
     fireEvent.keyDown(dialog, { key: 'Escape' });
     await waitFor(() => expect(location()).toBe('/packages'));
     expect(screen.queryByRole('dialog')).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(within(screen.getAllByRole('listitem')[1]).getByRole('link')));
+    await waitFor(() => expect(document.activeElement).toBe(within(screen.getByRole('list', { name: 'Waiting for you' })).getAllByRole('link')[1]));
   });
 
   it('opens a history package with how it ended', async () => {

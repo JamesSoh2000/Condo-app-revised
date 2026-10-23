@@ -1045,7 +1045,7 @@ describe('P4-08f: the bell closes for good and asks again on mount (criteria 4, 
     await openPanel();
 
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'My packages' }));
-    await waitFor(() => expect(location()).toBe('/Packages'));
+    await waitFor(() => expect(location()).toBe('/packages'));
     act(() => app.navigate()(-1));
     await waitFor(() => expect(location()).toBe('/'));
 

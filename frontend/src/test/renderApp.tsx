@@ -77,6 +77,9 @@ const DEFAULT_ROUTES: Record<string, Handler> = {
   [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['resident'])),
   // The header's bell asks once the building is loaded (P3-05).
   [`GET /api/buildings/${MAPLE.id}/notifications/summary`]: () => json({ unread_count: 0 }),
+  // A resident's nav asks for the waiting packages count (P5-04).
+  [`GET /api/buildings/${MAPLE.id}/packages/summary`]: () => json({ waiting: 0 }),
+  [`GET /api/buildings/${BIRCH.id}/packages/summary`]: () => json({ waiting: 0 }),
   // A property manager's nav asks for the pending count (P4-08d).
   [`GET /api/buildings/${MAPLE.id}/onboarding-requests/summary`]: () => json({ pending_onboarding_count: 0 }),
   [`GET /api/buildings/${BIRCH.id}/onboarding-requests/summary`]: () => json({ pending_onboarding_count: 0 }),

@@ -53,10 +53,14 @@ const findInMain = async (text: string) => within(await screen.findByRole('main'
 const buildingCalls = (fetchMock: ReturnType<typeof stubApi>) =>
   calls(fetchMock).filter((call) => call.includes('/api/buildings'));
 const meWith = (...memberships: Me['memberships']): Me => ({ ...RESIDENT_ME, memberships });
-/** The building request the guards make, then the bell's summary request once it loaded (P3-05). */
-const loadCalls = (building: { id: string }) => [
+/**
+ * The building request the guards make, then the bell's summary request once it loaded (P3-05), and for a resident
+ * the nav's waiting packages count (P5-04).
+ */
+const loadCalls = (building: { id: string }, { resident = true } = {}) => [
   `GET /api/buildings/${building.id}`,
   `GET /api/buildings/${building.id}/notifications/summary`,
+  ...(resident ? [`GET /api/buildings/${building.id}/packages/summary`] : []),
 ];
 
 /** Resident in Maple (packages, notices, maintenance), security in Birch (packages only). */
@@ -91,7 +95,7 @@ describe('membership screens, no operational building calls (criterion 1)', () =
       [OWN_STATUS]: () => json({ status: memberships[0]?.status ?? 'pending', unit_label: null, tower: null, relationship: null, decision_reason: null }),
     });
 
-    renderApp(['/Packages']);
+    renderApp(['/Maintenance']);
 
     expect(await screen.findByRole('heading', { name: heading })).toBeTruthy();
     openAccountMenu();
@@ -244,7 +248,8 @@ describe('one building per tab (criterion 2)', () => {
       renderApp(['/']);
       expect(await findInMain(name)).toBeTruthy();
       expect(screen.queryByRole('heading', { name: /choose a building/i })).toBeNull();
-      await waitFor(() => expect(buildingCalls(fetchMock)).toEqual(loadCalls({ id })));
+      // Resident in Maple, security in Birch.
+      await waitFor(() => expect(buildingCalls(fetchMock)).toEqual(loadCalls({ id }, { resident: id === MAPLE.id })));
       cleanup();
     }
   });
@@ -401,7 +406,7 @@ describe('lost access mid-session (criterion 8; tenant rows 2 and 3)', () => {
       [`GET /api/buildings/${MAPLE.id}`]: () => problem(404, 'building_not_found'),
     });
 
-    renderApp(['/Packages']);
+    renderApp(['/Maintenance']);
 
     expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
     expect(screen.queryByText(/being migrated/i)).toBeNull();
@@ -425,9 +430,9 @@ describe('lost access mid-session (criterion 8; tenant rows 2 and 3)', () => {
       },
     });
 
-    renderApp(['/Packages']);
+    renderApp(['/Maintenance']);
 
-    await waitFor(() => expect(location()).toBe('/login?next=%2FPackages'));
+    await waitFor(() => expect(location()).toBe('/login?next=%2FMaintenance'));
     expect(sessionStorage.getItem(KEY)).toBeNull();
   });
 
@@ -449,6 +454,7 @@ describe('lost access mid-session (criterion 8; tenant rows 2 and 3)', () => {
   });
 });
 
+// These open /Maintenance as an unmigrated resident page; they used /Packages until P5-04 migrated it.
 describe('lost access after the building loaded (review round 1, Claude H1 and Codex High)', () => {
   /** Signed in on `path` with Maple loaded; `answer` then decides every later building request. */
   /** `meLater` answers /me from then on (a lost session makes /me 401 too: the login page checks it). */
@@ -466,7 +472,7 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
   }
 
   it('hides the page when a background refetch answers 404', async () => {
-    await loadedThen('/Packages', () => problem(404, 'building_not_found'));
+    await loadedThen('/Maintenance', () => problem(404, 'building_not_found'));
 
     expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
     expect(screen.queryByText(/being migrated/i)).toBeNull();
@@ -483,7 +489,7 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
       [`GET /api/buildings/${MAPLE.id}`]: () =>
         answer === 'ok' ? json(buildingOut(MAPLE, ['resident'])) : problem(404, 'building_not_found'),
     });
-    const app = renderApp(['/Packages']);
+    const app = renderApp(['/Maintenance']);
     if (loadedFirst) {
       await screen.findByText(/being migrated/i);
       answer = 'gone';
@@ -507,7 +513,7 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
   });
 
   it('keeps showing the page when a background refetch fails with a server error', async () => {
-    const { app } = await loadedThen('/Packages', () => problem(500, 'internal_error'));
+    const { app } = await loadedThen('/Maintenance', () => problem(500, 'internal_error'));
     // The refetch really failed (after its retries), with the old data kept.
     await waitFor(() => expect(app.queryClient.getQueryState(['b', MAPLE.id, 'building'])?.status).toBe('error'));
     await settle();
@@ -518,7 +524,7 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
 
   it('goes to the login page when a background refetch answers 401', async () => {
     const lost = () => problem(401, 'not_authenticated');
-    await loadedThen('/Packages', lost, lost);
+    await loadedThen('/Maintenance', lost, lost);
 
     await waitFor(() => expect(location()).toMatch(/^\/login/));
     expect(screen.queryByText(/being migrated/i)).toBeNull();
@@ -527,7 +533,7 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
   it('shows the status screen when a /me refetch says the membership is no longer active', async () => {
     let me: Me = RESIDENT_ME;
     const fetchMock = stubApi({ 'GET /api/auth/me': () => json(me) });
-    const app = renderApp(['/Packages']);
+    const app = renderApp(['/Maintenance']);
     await screen.findByText(/being migrated/i);
     const before = buildingCalls(fetchMock).length;
 
@@ -770,7 +776,7 @@ describe('regression tests carried from P2-06b review round 3 (P2-06c criterion 
     // No AuthProvider: its 401 redirect would hide what BuildingLoaded renders by itself.
     render(
       <QueryClientProvider client={createQueryClient({ retryDelay: 0 })}>
-        <MemoryRouter initialEntries={['/Packages']}>
+        <MemoryRouter initialEntries={['/Maintenance']}>
           <AppRoutes />
         </MemoryRouter>
       </QueryClientProvider>,

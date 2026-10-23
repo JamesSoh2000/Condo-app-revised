@@ -99,12 +99,12 @@ describe('home and placeholders (criterion 1)', () => {
   });
 
   // P2-06b guards pages by role: /ManagementNotices is opened as a security user (a resident gets /403).
-  // /SecurityPackages was here until P5-03b migrated it.
+  // /SecurityPackages was here until P5-03b migrated it, /Packages until P5-04 (its own test:
+  // features/packages/myPackages.test.tsx); /maintenance keeps the case-insensitive match covered.
   it.each([
-    ['/Packages', 'resident'],
-    ['/packages', 'resident'],
     ['/ManagementNotices', 'security'],
     ['/Maintenance', 'resident'],
+    ['/maintenance', 'resident'],
     ['/Dashboard', 'resident'],
     ['/Contacts', 'resident'],
   ] as const)(

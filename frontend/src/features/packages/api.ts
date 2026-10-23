@@ -116,3 +116,64 @@ export function usePackageAction(buildingId: string) {
     },
   });
 }
+
+/** The resident page's two lists (P5-04): waiting at the desk, and picked up or returned. */
+export type MyList = 'waiting' | 'history';
+const MY_STATUSES: Record<MyList, components['schemas']['PackageStatus'][]> = {
+  waiting: ['received'],
+  history: ['picked_up', 'returned'],
+};
+export const myPackagesKey = (buildingId: string) => [...packagesKey(buildingId), 'mine'] as const;
+
+/**
+ * One of the caller's lists, newest first, one page at a time. `visible_packages` on the server decides what is
+ * the caller's. Stale at once, so asked on every mount and on focus; lists don't poll (ADR-0012), and the page asks
+ * them again when the polled summary changes (P5-04 criterion 9).
+ */
+export function useMyPackages(buildingId: string, list: MyList) {
+  return useInfiniteQuery({
+    queryKey: [...myPackagesKey(buildingId), list],
+    staleTime: 0,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      api.get('/api/buildings/{building_id}/packages', {
+        params: {
+          path: { building_id: buildingId },
+          query: { status: MY_STATUSES[list], ...(pageParam !== null && { cursor: pageParam }) },
+        },
+        signal,
+      }),
+    getNextPageParam: (page) => page.next_cursor,
+  });
+}
+
+/** One package, for the detail dialog; asked each time the dialog opens. Not asked for an id that isn't a UUID. */
+export function usePackage(buildingId: string, packageId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...packagesKey(buildingId), 'one', packageId],
+    staleTime: 0,
+    enabled,
+    queryFn: ({ signal }) =>
+      api.get('/api/buildings/{building_id}/packages/{package_id}', {
+        params: { path: { building_id: buildingId, package_id: packageId } },
+        signal,
+      }),
+  });
+}
+
+/**
+ * The caller's waiting count for the nav badge, polled as the bell's unread count (`useNotificationSummary`,
+ * ADR-0012): every 30 s while the tab is visible, never in a hidden tab, again whenever it becomes visible and on
+ * each mount. Under the packages key, so the desk's mutations ask it again too.
+ */
+export function usePackageSummary(buildingId: string) {
+  return useQuery({
+    queryKey: [...packagesKey(buildingId), 'summary'],
+    refetchOnMount: 'always',
+    queryFn: ({ signal }) =>
+      api.get('/api/buildings/{building_id}/packages/summary', { params: { path: { building_id: buildingId } }, signal }),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: 'always',
+  });
+}
