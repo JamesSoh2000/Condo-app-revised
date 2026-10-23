@@ -22,11 +22,19 @@ export function Modal({ labelledBy, busy, onEscape, dialogRef, children }: Props
       return;
     }
     if (event.key !== 'Tab') return;
-    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input:not(:disabled), textarea, button:not(:disabled)') ?? []);
+    const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input:not(:disabled), textarea, button:not(:disabled)') ?? []);
+    // A radio group is one tab stop, as the browser tabs: its checked radio, else its first (P5-03d R2 F1).
+    const stop = (element: HTMLElement): HTMLElement => {
+      if (!(element instanceof HTMLInputElement) || element.type !== 'radio' || !element.name) return element;
+      const group = controls.filter((other): other is HTMLInputElement => other instanceof HTMLInputElement && other.type === 'radio' && other.name === element.name);
+      return group.find((radio) => radio.checked) ?? group[0];
+    };
+    const focusable = controls.filter((element) => stop(element) === element);
     const [first, last] = [focusable[0], focusable[focusable.length - 1]];
     if (!first) return event.preventDefault();
     // From the dialog itself or its alert (focused on purpose, not tabbable controls) too (P4-08b round 1, Codex F2).
-    const index = focusable.indexOf(document.activeElement as HTMLElement);
+    const active = document.activeElement;
+    const index = active instanceof HTMLElement && controls.includes(active) ? focusable.indexOf(stop(active)) : -1;
     if (event.shiftKey ? index <= 0 : index === -1 || index === focusable.length - 1) {
       event.preventDefault();
       (event.shiftKey ? last : first).focus();

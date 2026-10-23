@@ -1,19 +1,29 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { useBuilding, useBuildingId } from '@/app/BuildingProvider';
 import { rateLimitMessage } from '@/features/auth/formErrors';
 import { PrivateImage } from '@/features/files/PrivateImage';
 import { unitName } from '@/features/onboarding/api';
 import { CARRIERS, useWaitingPackages, type Package } from '@/features/packages/api';
+import { PickupDialog } from '@/features/packages/PickupDialog';
+import { ReturnDialog } from '@/features/packages/ReturnDialog';
 import { packageAge, useNow } from '@/features/packages/time';
 import { UnitPicker, useUnitPicker } from '@/features/residents/UnitPicker';
 
 const THUMBNAIL = 'h-20 w-20 shrink-0 rounded object-cover';
 
+interface Open {
+  kind: 'pickup' | 'return';
+  item: Package;
+  opener: HTMLButtonElement;
+}
+
 /**
  * The desk's "Waiting" list (P5-03b): the received packages, searched by unit (the residents `UnitPicker`, D1) and
  * filtered by carrier (D2), each with its photo, unit, recipient, carrier and age. Times are the building's, not the
- * device's. Asked again on mount, focus and Refresh, never polled (D3).
+ * device's. Asked again on mount, focus and Refresh, never polled (D3). Each row hands its package out or sends it
+ * back (P5-03d); the dialog keeps the package it was opened with, so a refresh that drops the row leaves it as it
+ * was, and the server's answer says what happened (criterion 8).
  */
 export function WaitingList() {
   const buildingId = useBuildingId();
@@ -25,6 +35,28 @@ export function WaitingList() {
   const waiting = useWaitingPackages(buildingId, filters);
   const now = useNow();
   const id = useId();
+  const [open, setOpen] = useState<Open | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const messageRef = useRef<HTMLParagraphElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Where focus goes once the dialog has closed: the message (the row is leaving), or back to the opener, or to the
+  // heading if a refresh took the opener's row (the empty message is hidden: R2 F2). State, so the effect runs after
+  // the commit that shows the message (as the residents' PendingRequests).
+  const [focusTo, setFocusTo] = useState<{ target: HTMLElement | 'message' } | null>(null);
+  useEffect(() => {
+    if (focusTo) (focusTo.target === 'message' ? messageRef.current : focusTo.target)?.focus();
+  }, [focusTo]);
+
+  const close = (outcome: string | null) => {
+    if (outcome) setMessage(outcome);
+    const back = open?.opener.isConnected ? open.opener : headingRef.current;
+    setFocusTo({ target: outcome || !back ? 'message' : back });
+    setOpen(null);
+  };
+  const act = (kind: Open['kind'], item: Package, opener: HTMLButtonElement) => {
+    setMessage(null);
+    setOpen({ kind, item, opener });
+  };
 
   const time = building && new Intl.DateTimeFormat(building.locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: building.timezone });
   const items = waiting.data?.pages.flatMap((page) => page.items) ?? [];
@@ -49,7 +81,7 @@ export function WaitingList() {
       waiting.data && (
         <ul aria-label="Waiting packages" className="flex flex-col gap-3">
           {items.map((item) => (
-            <Row key={item.id} item={item} now={now} time={time} />
+            <Row key={item.id} item={item} now={now} time={time} onAction={act} />
           ))}
         </ul>
       )
@@ -85,7 +117,9 @@ export function WaitingList() {
       </div>
       <div className="flex min-w-0 flex-col gap-4">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Waiting</h2>
+          <h2 ref={headingRef} tabIndex={-1} className="text-lg font-semibold">
+            Waiting
+          </h2>
           <button
             type="button"
             disabled={waiting.isFetching}
@@ -95,6 +129,9 @@ export function WaitingList() {
             Refresh
           </button>
         </div>
+        <p ref={messageRef} role="status" tabIndex={-1} data-testid={message ? 'package-message' : undefined} className="text-sm font-medium empty:hidden [overflow-wrap:anywhere]">
+          {message}
+        </p>
         {body}
         {list}
         {waiting.isFetchNextPageError && (
@@ -114,11 +151,20 @@ export function WaitingList() {
           </button>
         )}
       </div>
+      {open?.kind === 'pickup' && <PickupDialog item={open.item} onClose={close} />}
+      {open?.kind === 'return' && <ReturnDialog item={open.item} onClose={close} />}
     </div>
   );
 }
 
-function Row({ item, now, time }: { item: Package; now: number; time: Intl.DateTimeFormat | undefined }) {
+interface RowProps {
+  item: Package;
+  now: number;
+  time: Intl.DateTimeFormat | undefined;
+  onAction: (kind: Open['kind'], item: Package, opener: HTMLButtonElement) => void;
+}
+
+function Row({ item, now, time, onAction }: RowProps) {
   const unit = unitName(item.unit_tower, item.unit_label);
   return (
     <li className="flex gap-3 rounded border bg-white p-3 [overflow-wrap:anywhere]">
@@ -138,6 +184,22 @@ function Row({ item, now, time }: { item: Package; now: number; time: Intl.DateT
         <p className="text-sm text-slate-700">
           {packageAge(item.received_at, now)} · <time dateTime={item.received_at}>{time?.format(new Date(item.received_at))}</time>
         </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(['pickup', 'return'] as const).map((kind) => {
+            const label = kind === 'pickup' ? 'Hand out' : 'Return';
+            return (
+              <button
+                key={kind}
+                type="button"
+                aria-label={`${label} the ${item.carrier} package for unit ${unit}`}
+                onClick={(event) => onAction(kind, item, event.currentTarget)}
+                className={`min-h-11 rounded px-4 text-sm font-medium ${kind === 'pickup' ? 'bg-slate-900 text-white' : 'border'}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </li>
   );
