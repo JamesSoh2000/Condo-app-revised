@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P5-03b |
 | Replaces old | M7-T03 (logging part) |
-| Status | in progress |
+| Status | done |
 
 Split from the original P5-03 (Security packages page) while framing P5-03a. The page and the "Waiting"
 list are [P5-03b](./P5-03b-package-desk-page-and-waiting-list.md).

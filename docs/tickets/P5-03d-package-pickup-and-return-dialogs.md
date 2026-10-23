@@ -58,6 +58,17 @@ the package is no longer `received` (another desk got there first): refresh the 
 `PackageOut` doesn't return who collected a package or the return reason; if the page shows them, add them
 to `PackageOut` here (staff-only fields need care: residents read `PackageOut` too).
 
+## Carried from P5-03c
+
+- The P3-05 fitness test (every component under `src/app` or `src/features` that reads
+  `useBuilding({ passive: true })` also calls `useBuildingDenied()`) is still open; P5-03b and P5-03c did not pick
+  it up. As worded it fails on `app/AccountMenu.tsx::BuildingChoices`, so it needs either that component changed
+  or an exemption with a reason.
+- A dialog that submits while a `FileUpload` is inside it passes `disabled` while the request is out (PR #118 R1
+  F1); `onStatusChange` tells the form an upload is still running.
+- The `CLAUDE.md` lesson on 375 px widths applies to the dialogs: measure with the longest names and reasons the
+  API allows (120-character pickup name, 300-character return reason).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

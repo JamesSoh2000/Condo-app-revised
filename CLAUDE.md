@@ -148,3 +148,6 @@ Everything a command prints is re-read on every later turn, so don't print the s
   or `gcTime: 0`, or the 30 s `staleTime` serves the old answer (PR #98 R3 M1, P4-08d R1 F2; 2026-10-21).
 - Check code with a parser (TypeScript's, Python's `ast`), not a regex: generics, multi-line calls, comments, nested
   objects and aliased imports escape text matching (P4-09 F4, PR #108 R1-F1 and R3-F1; 2026-10-22).
+- Measure every new control, fieldset and message in Chromium at 375 px with the longest values the API allows
+  (`max_length`, a 255-character file name), not realistic text: a `<fieldset>` and unbroken words grow past the
+  viewport (P4-08a, P4-08c, P5-03b R1 F1, P5-03c R1 F3; 2026-10-23).
