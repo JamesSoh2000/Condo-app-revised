@@ -197,8 +197,8 @@ in a fresh subagent.
 - Decisions taken (with basis: ticket / ADR / default / autonomous):
   - The two projects run J4 at once against one seeded building, so each takes its own unit and resident
     or their badges and notifications interleave: `chromium` uses unit 101 (`resident1`), as the ticket
-    says; `mobile` uses unit 304 (`resident4`). The desk checks use units no journey reads (503 and units
-    they create). Basis: autonomous, following `e2e/README.md` ("a journey makes its own users… so the two
+    says; `mobile` uses unit 304 (`resident4`). The desk checks use only units they create, which no journey
+    reads (the first wording also named unit 503, which they don't use; review round 2, L2). Basis: autonomous, following `e2e/README.md` ("a journey makes its own users… so the two
     projects can run in parallel").
   - The seeded desk and resident accounts log in once per run in `auth.setup.ts` (the login limits, README).
   - P5-03d D2 (pickup occupants inserted above "Someone else" when they load) stays an accepted Low risk:
