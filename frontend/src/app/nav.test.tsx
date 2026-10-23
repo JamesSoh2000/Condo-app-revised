@@ -67,6 +67,13 @@ function persona(roles: Role[], features?: components['schemas']['Feature'][]): 
 }
 
 const RESIDENT_ITEMS = ['Dashboard', 'My profile', 'Contacts', 'My packages', 'Maintenance requests'];
+/** The resident's "My packages" item asks for its waiting count when it shows (P5-04); nothing else in the nav asks. */
+const PACKAGES_SUMMARY = `GET /api/buildings/${MAPLE.id}/packages/summary`;
+/** The requests made since `before`, other than that count. */
+const otherCallsSince = (fetchMock: ReturnType<typeof stubApi>, before: string[]) =>
+  calls(fetchMock)
+    .slice(before.length)
+    .filter((call) => call !== PACKAGES_SUMMARY);
 const COMMON_ITEMS = ['Dashboard', 'My profile', 'Contacts'];
 
 describe('navigation from the page table (criterion 1)', () => {
@@ -81,7 +88,7 @@ describe('navigation from the page table (criterion 1)', () => {
       '/Dashboard',
       '/Profile',
       '/Contacts',
-      '/Packages',
+      '/packages',
       '/Maintenance',
     ]);
     for (const staffItem of ['Residents', 'Package log', 'Daily notices', 'Maintenance']) {
@@ -92,11 +99,12 @@ describe('navigation from the page table (criterion 1)', () => {
   it('marks the current page with aria-current, also for a differently cased URL', async () => {
     stubApi(persona(['resident']));
 
-    renderApp(['/packages']);
+    // /packages until P5-04 migrated it: any unmigrated page.
+    renderApp(['/maintenance']);
 
     await screen.findByText(/being migrated/i);
     const current = within(nav()!).getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page');
-    expect(current.map((link) => link.textContent)).toEqual(['My packages']);
+    expect(current.map((link) => link.textContent)).toEqual(['Maintenance requests']);
   });
 
   it.each([
@@ -195,15 +203,16 @@ describe('navigation from the page table (criterion 1)', () => {
   it('makes no request of its own: the building is requested once, by the guards (1d)', async () => {
     const fetchMock = stubApi(persona(['resident']));
 
-    renderApp(['/Packages']);
+    renderApp(['/Maintenance']);
     await findNavItems();
     await settle();
 
-    // The bell's summary is the only other request (P3-05); the nav adds none.
+    // The bell's summary is the only other request (P3-05); the nav adds only its "My packages" count (P5-04).
     expect(calls(fetchMock)).toEqual([
       'GET /api/auth/me',
       `GET /api/buildings/${MAPLE.id}`,
       `GET /api/buildings/${MAPLE.id}/notifications/summary`,
+      PACKAGES_SUMMARY,
     ]);
   });
 });
@@ -248,7 +257,8 @@ describe('council "view as" (criterion 3)', () => {
     viewAs('Resident');
     await settle();
 
-    expect(calls(fetchMock)).toEqual(before);
+    // Only the resident view's "My packages" count, asked as its item shows (P5-04).
+    expect(otherCallsSince(fetchMock, before)).toEqual([]);
   });
 
   it('never shows a council-only member an item their roles do not allow (3c)', async () => {
@@ -269,9 +279,10 @@ describe('council "view as" (criterion 3)', () => {
     const app = renderApp(['/']);
     await findNavItems();
 
-    act(() => app.navigate()('/Packages'));
+    // /Packages until P5-04 migrated it: any unmigrated resident page.
+    act(() => app.navigate()('/Maintenance'));
     expect(await screen.findByText(/being migrated/i)).toBeTruthy();
-    expect(location()).toBe('/Packages');
+    expect(location()).toBe('/Maintenance');
 
     openAccountMenu();
     viewAs('Resident');
@@ -371,7 +382,8 @@ describe('review round 1 (Claude F1–F3, Codex M1 and L1)', () => {
     await findNavItems();
     openAccountMenu();
     expect(screen.getAllByRole('radio')).toHaveLength(2);
-    const buildingsBefore = calls(fetchMock).filter((c) => c.startsWith('GET /api/buildings/')).length;
+    // The building itself: the resident nav's "My packages" count is another request under it (P5-04).
+    const buildingsBefore = calls(fetchMock).filter((c) => c === `GET /api/buildings/${MAPLE.id}`).length;
 
     roles = ['resident'];
     await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
@@ -383,7 +395,7 @@ describe('review round 1 (Claude F1–F3, Codex M1 and L1)', () => {
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
     // The building is asked again, so the nav's (and the guards') roles catch up with /me.
     await waitFor(() =>
-      expect(calls(fetchMock).filter((c) => c.startsWith('GET /api/buildings/')).length).toBe(buildingsBefore + 1),
+      expect(calls(fetchMock).filter((c) => c === `GET /api/buildings/${MAPLE.id}`).length).toBe(buildingsBefore + 1),
     );
     await waitFor(() => expect(navItems()).toEqual(RESIDENT_ITEMS));
   });
@@ -417,7 +429,8 @@ describe('review round 1 (Claude F1–F3, Codex M1 and L1)', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Resident' }));
     await settle();
 
-    expect(calls(fetchMock)).toEqual(before);
+    // Only the resident view's "My packages" count (P5-04); not the building.
+    expect(otherCallsSince(fetchMock, before)).toEqual([]);
   });
 
   // F3: closing the panel unmounted the focused <select>.
@@ -544,7 +557,7 @@ describe('header account menu (criterion 4)', () => {
     expect(button().getAttribute('aria-expanded')).toBe('true');
     fireEvent.click(within(nav()!).getByRole('link', { name: 'My packages' }));
 
-    await waitFor(() => expect(location()).toBe('/Packages'));
+    await waitFor(() => expect(location()).toBe('/packages'));
     expect(button().getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByRole('button', { name: /log out/i })).toBeNull();
   });
@@ -641,7 +654,7 @@ describe('P4-08f: account menu follow-ups (criteria 1–4)', () => {
 
     openAccountMenu();
     fireEvent.click(within(nav()!).getByRole('link', { name: 'My packages' }));
-    await waitFor(() => expect(location()).toBe('/Packages'));
+    await waitFor(() => expect(location()).toBe('/packages'));
     expect(expanded()).toBe('false');
 
     act(() => app.navigate()(-1));
@@ -650,7 +663,7 @@ describe('P4-08f: account menu follow-ups (criteria 1–4)', () => {
     expect(screen.queryByRole('button', { name: /log out/i })).toBeNull();
 
     act(() => app.navigate()(1));
-    await waitFor(() => expect(location()).toBe('/Packages'));
+    await waitFor(() => expect(location()).toBe('/packages'));
     act(() => app.navigate()(-1));
     await waitFor(() => expect(location()).toBe('/'));
     expect(expanded()).toBe('false');

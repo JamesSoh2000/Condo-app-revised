@@ -25,3 +25,8 @@ export function useNow(intervalMs = MINUTE): number {
   }, [intervalMs]);
   return now;
 }
+
+/** A date and time in the building's timezone and locale (P5-04 criterion 4), not the device's; undefined until the building loads. */
+export function buildingTime(building: { locale: string; timezone: string } | undefined): Intl.DateTimeFormat | undefined {
+  return building && new Intl.DateTimeFormat(building.locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: building.timezone });
+}

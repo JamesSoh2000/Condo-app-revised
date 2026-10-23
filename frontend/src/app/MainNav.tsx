@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom';
 
 import { useBuilding, useBuildingContext, useBuildingDenied } from '@/app/BuildingProvider';
-import { navPages, PAGE_ACCESS, pagePath } from '@/app/pages';
+import { navPages, PAGE_ACCESS, pagePath, type Page } from '@/app/pages';
 import type { components } from '@/api/schema';
 import type { ViewAs } from '@/app/buildingStorage';
+import { PackagesNavLabel } from '@/features/packages/PackagesNavLabel';
 import { ResidentsNavLabel } from '@/features/residents/PendingBadge';
 
 type Building = components['schemas']['BuildingOut'];
@@ -36,6 +37,14 @@ export function MainNav() {
   return buildingId === null ? null : <BuildingNav />;
 }
 
+/** A page's nav label; the pages with a count show it (P4-08d, P5-04). */
+function NavLabel({ page }: { page: Page }) {
+  const label = PAGE_ACCESS[page].label!;
+  if (page === 'Residents') return <ResidentsNavLabel label={label} />;
+  if (page === 'Packages') return <PackagesNavLabel label={label} />;
+  return <>{label}</>;
+}
+
 function BuildingNav() {
   // Passive: on a page without a building guard (/403, onboarding) nothing loads the building, and the nav
   // must not be the one to (review round 2). It shows once the guards' answer is cached.
@@ -57,7 +66,7 @@ function BuildingNav() {
                 isActive ? 'font-semibold text-slate-900 underline' : 'text-slate-700 hover:underline'
               }
             >
-              {page === 'Residents' ? <ResidentsNavLabel label={PAGE_ACCESS[page].label!} /> : PAGE_ACCESS[page].label}
+              <NavLabel page={page} />
             </NavLink>
           </li>
         ))}

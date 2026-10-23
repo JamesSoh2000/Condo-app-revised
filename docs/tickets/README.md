@@ -98,7 +98,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P5-03b](./P5-03b-package-desk-page-and-waiting-list.md) | Package desk page and waiting list (split from P5-03) | B | 2 | P5-03a, P3-06 | done | — |
 | [P5-03c](./P5-03c-log-package-panel.md) | Log package panel (split from P5-03) | B | 2 | P5-03b | done | — |
 | [P5-03d](./P5-03d-package-pickup-and-return-dialogs.md) | Package pickup and return dialogs (split from P5-03) | B | 2 | P5-03b | done | — |
-| [P5-04](./P5-04-resident-packages-page.md) | Resident packages page | B | 2 | P5-02a, P3-05 | todo | — |
+| [P5-04](./P5-04-resident-packages-page.md) | Resident packages page | B | 2 | P5-02a, P3-05 | done | — |
 | [P5-05](./P5-05-packages-e2e-and-slice-gate.md) | Packages E2E and reference-slice gate | B | 1 | P5-03c, P5-03d, P5-04, P4-09, P1-08 | todo | — |
 
 ### Milestone D — deployment (after week 8)

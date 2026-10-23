@@ -173,6 +173,8 @@ describe('only for property managers (criterion 3)', () => {
       'GET /api/auth/me',
       `GET /api/buildings/${MAPLE.id}`,
       `GET /api/buildings/${MAPLE.id}/notifications/summary`,
+      // A resident's "My packages" item asks for its own count (P5-04), not the pending one.
+      ...((roles as readonly string[]).includes('resident') ? [`GET /api/buildings/${MAPLE.id}/packages/summary`] : []),
     ]);
   });
 });

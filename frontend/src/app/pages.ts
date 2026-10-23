@@ -34,7 +34,7 @@ export const PAGE_ACCESS: Record<Page, PageAccess> = {
   Profile: { label: 'My profile' },
   Contacts: { label: 'Contacts' },
   Residents: { roles: ['property_management'], label: 'Residents', path: '/manage/residents' },
-  Packages: { roles: ['resident'], feature: 'packages', label: 'My packages' },
+  Packages: { roles: ['resident'], feature: 'packages', label: 'My packages', path: '/packages' },
   SecurityPackages: {
     roles: ['security', 'property_management'],
     feature: 'packages',

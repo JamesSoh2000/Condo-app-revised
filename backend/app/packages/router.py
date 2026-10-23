@@ -55,12 +55,18 @@ async def create(
     return created.package
 
 
+# Before `list` below, which shadows the builtin in this module (P5-04: History asks for two).
+Statuses = Annotated[
+    list[PackageStatus] | None, Query(description="Repeat it to list several statuses.")
+]
+
+
 @router.get("/packages", dependencies=[_FEATURE], responses=problem_responses(400, 401, 403, 404))
 async def list(
     ctx: Ctx,
     db: DbSession,
     params: Annotated[CursorParams, Depends()],
-    status: PackageStatus | None = None,
+    status: Statuses = None,
     unit_id: UUID | None = None,
     carrier: Annotated[Carrier | None, Query(description="The carrier, any case.")] = None,
 ) -> Page[PackageOut]:

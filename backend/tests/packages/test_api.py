@@ -18,6 +18,7 @@ from app.buildings.models import Building, BuildingFeature
 from app.email.templates import render_email
 from app.files.models import File
 from app.jobs.models import Job
+from app.memberships.models import BuildingMembership
 from app.notifications.models import Notification
 from app.packages import service
 from app.packages.enums import PackageStatus
@@ -820,6 +821,50 @@ async def test_the_list_filters_by_status_and_unit(
             _base(world), params={"status": "received", "unit_id": str(world.a_101.id)}
         )
     ) == [str(waiting_101.id)]
+
+
+async def _returned(db: AsyncSession, unit: Unit, received_by: BuildingMembership) -> Package:
+    return await make_package(
+        db,
+        unit,
+        received_by,
+        status=PackageStatus.RETURNED,
+        returned_at=datetime.now(UTC) + timedelta(seconds=1),
+        return_reason="Damaged",
+    )
+
+
+async def test_the_list_filters_by_several_statuses(
+    db: AsyncSession, as_user: Any, world: World
+) -> None:
+    """P5-04 criterion 10: the resident page's History is `?status=picked_up&status=returned`."""
+    await make_package(db, world.a_101, world.a_security.membership)
+    collected_101 = await _picked_up(db, world.a_101, world)
+    returned_101 = await _returned(db, world.a_101, world.a_security.membership)
+    # Another unit's, not resident1's; and building B's.
+    returned_102 = await _returned(db, world.a_102, world.a_security.membership)
+    await _returned(db, world.b_101, world.b_manager.membership)
+    history = [("status", "picked_up"), ("status", "returned")]
+    staff = await as_user(world.a_security.user)
+    resident = await as_user(world.a_resident1.user)
+
+    assert _ids(await staff.get(_base(world), params=history)) == [
+        str(returned_102.id),
+        str(returned_101.id),
+        str(collected_101.id),
+    ]
+    assert _ids(await resident.get(_base(world), params=history)) == [
+        str(returned_101.id),
+        str(collected_101.id),
+    ]
+    assert _ids(await resident.get(_base(world), params={"status": "returned"})) == [
+        str(returned_101.id)
+    ]
+    assert_problem(
+        await resident.get(_base(world), params=[("status", "returned"), ("status", "lost")]),
+        422,
+        "validation_error",
+    )
 
 
 async def test_a_unit_of_another_building_lists_nothing(

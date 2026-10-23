@@ -4053,7 +4053,8 @@ export interface operations {
     packages_list: {
         parameters: {
             query?: {
-                status?: components["schemas"]["PackageStatus"] | null;
+                /** @description Repeat it to list several statuses. */
+                status?: components["schemas"]["PackageStatus"][] | null;
                 unit_id?: string | null;
                 /** @description The carrier, any case. */
                 carrier?: string | null;

@@ -117,6 +117,23 @@ in a fresh subagent.
 2. Which part of this slice would you change first if the building had 50 packages per minute? Why?
 3. What would you add to the recipe after building the next slice?
 
+## Carried from P5-04
+
+- **Step 8 promotion (next after P5-03d's overflow check, above):** the pattern "a list read before the change it is compared with" now
+  appears twice (P5-04 R1 F1, R2 F1 in `docs/AGENT_MISTAKES_LOG.md`). Turn it into a fitness test or a `CLAUDE.md`
+  lesson: when a view refreshes data on a signal (a polled count, a mutation), list the reads that can start before
+  the signal's first value and those already in flight at a change, and cancel before invalidating.
+- J4's resident half can use `/packages`, the "My packages, N waiting" nav name, and `/packages/<id>` from the
+  `package.arrived` notification (criterion 2's bell link). The badge polls every 30 s, so a journey waiting for it
+  needs up to ~30 s or a page reload.
+- Coverage gaps from P5-04 review round 3 (no defect found): a pickup time's own conversion and a non-English building
+  locale (P5-04 AC4); the lists' loading messages and Load more succeeding after a failure (AC8).
+- Accepted in P5-04: a member who is a resident and also security or property management sees every package of the
+  building on `/packages` and in its badge (`visible_packages` grants the union). Decide whether the slice gate
+  accepts that, or whether the page should narrow to the caller's own packages (a server-side `mine` filter).
+- The seed has no package photos, so P5-04's stack run showed "No photo" boxes only; a journey that logs a package
+  with a photo would cover the resident's `PrivateImage` alt text in a browser.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
