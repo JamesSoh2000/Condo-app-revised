@@ -9,6 +9,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { components } from '@/api/schema';
+import { CARRIERS } from '@/features/packages/api';
 import {
   BIRCH,
   MAPLE,
@@ -528,9 +529,11 @@ describe('keyboard and layout (criteria 1 and 3)', () => {
     chooseCarrier('Other');
     await inForm().findByRole('option', { name: 'Robin Park' });
 
-    const order = Array.from(form().querySelectorAll<HTMLElement>('input:not([type="file"]), select, button'))
-      .map((element) => element.getAttribute('aria-label') ?? element.labels?.[0]?.textContent ?? element.textContent)
-      .filter((name) => name !== 'A-101' && name !== '102' && !['Amazon', 'Canada Post', 'DHL', 'FedEx', 'Purolator', 'UPS'].includes(name ?? ''));
+    const controls = form().querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('input:not([type="file"]), select, button');
+    const skipped = ['A-101', '102', ...CARRIERS];
+    const order = Array.from(controls)
+      .map((element) => element.labels?.[0]?.textContent ?? element.textContent)
+      .filter((name) => !skipped.includes(name ?? ''));
     expect(order).toEqual(['Unit', 'Recipient', 'Other', 'Other carrier', 'Description (optional)', 'Last 4 of tracking (optional)', 'Choose photo', 'Log package']);
   });
 });
