@@ -24,7 +24,12 @@ from tests.helpers.tenancy import assert_cross_building_404, assert_problem
 from tests.packages.conftest import make_package
 from tests.world import World
 
-pytestmark = pytest.mark.anyio
+pytestmark = [
+    pytest.mark.anyio,
+    # The lookups' result API must be current SQLAlchemy (explanation reality pass: `Result.tuples()`
+    # is deprecated in 2.1).
+    pytest.mark.filterwarnings("error::sqlalchemy.exc.SADeprecationWarning"),
+]
 
 FIELDS = ("unit_tower", "unit_label", "recipient_name")
 
