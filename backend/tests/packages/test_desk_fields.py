@@ -5,12 +5,11 @@ tenant rows these touch are here too (ENGINEERING_PRACTICES §7); the rest are i
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 from httpx import AsyncClient, Response
-from sqlalchemy import event, update
+from sqlalchemy import event, func, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from app.memberships.enums import MembershipStatus
@@ -277,7 +276,8 @@ async def test_the_carrier_filter_combines_with_status_and_unit(
         world.a_security.membership,
         carrier="DHL",
         status=PackageStatus.RETURNED,
-        returned_at=datetime.now(UTC),
+        # The database's clock, as `received_at`'s default: the host's can lag it (P5-05 R2 M1).
+        returned_at=func.now(),
         return_reason="Refused",
     )
     client = await as_user(world.a_security.user)
