@@ -62,9 +62,11 @@ test('J4: the desk logs a package with a photo; the resident is told in-app and 
   const handOut = desk.getByRole('button', { name: `Hand out the ${carrier} package for unit ${unit}` });
   await expect(handOut).toBeVisible();
 
-  // The resident's badge rises by one, and the bell lists the notification.
+  // The resident's badge rises by one, the package is in "Waiting for you", and the bell lists the notification.
   await residentPage.reload();
   await expect(myPackagesLink(residentPage)).toHaveAccessibleName(badgeName(before + 1));
+  const waitingCard = residentPage.getByRole('list', { name: 'Waiting for you' }).getByRole('link', { name: new RegExp(`^Details: ${carrier} package, arrived`) });
+  await expect(waitingCard).toBeVisible();
   await residentPage.getByRole('button', { name: /^Notifications/ }).click();
   const notification = residentPage.getByRole('button', { name: new RegExp(`${carrier} delivered a package for unit ${unit}`) });
   await expect(notification).toBeVisible();
@@ -100,6 +102,8 @@ test('J4: the desk logs a package with a photo; the resident is told in-app and 
   // The resident's badge falls back, and the package is in their history as picked up.
   await residentPage.goto('/packages');
   await expect(myPackagesLink(residentPage)).toHaveAccessibleName(badgeName(before));
+  // Out of "Waiting for you" (review round 1, Codex: AC6 had no assertion for it), into History.
+  await expect(residentPage.getByRole('link', { name: new RegExp(`^Details: ${carrier} package, arrived`) })).toHaveCount(0);
   await expect(residentPage.getByRole('list', { name: 'Package history' }).getByRole('link', { name: new RegExp(`^Details: ${carrier} package, picked up`) })).toBeVisible();
   await residentPage.goto(`/packages/${pkg.id}`);
   // The status, and when: "Status Picked up", then "Picked up <time>".
