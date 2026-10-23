@@ -817,6 +817,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/buildings/{building_id}/packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List
+         * @description The packages you may see in this building, newest first.
+         */
+        get: operations["packages_list"];
+        put?: never;
+        /**
+         * Create
+         * @description Log a package and notify its recipient, or the unit's current occupants.
+         *
+         *     A retry with the same `Idempotency-Key` and body answers 201 with the same package and
+         *     `Idempotent-Replayed: true`, writing nothing; the key with another body is 409
+         *     `idempotency_key_reused`.
+         */
+        post: operations["packages_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/packages/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description How many of the packages you may see are waiting at the desk (for badges).
+         */
+        get: operations["packages_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/packages/{package_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get
+         * @description One package you may see; anyone else's is a 404.
+         */
+        get: operations["packages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/buildings/{building_id}/units": {
         parameters: {
             query?: never;
@@ -895,6 +963,26 @@ export interface paths {
          * @description Activate a deactivated unit.
          */
         post: operations["units_activate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/units/{unit_id}/occupants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Occupants
+         * @description Who currently lives in the unit with an active membership, earliest start first.
+         */
+        get: operations["units_occupants"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1297,6 +1385,20 @@ export interface components {
          */
         OccupancyRelationship: "owner" | "tenant" | "household";
         /**
+         * OccupantOut
+         * @description A current occupant, for the desk's recipient and pickup forms (P5-02a).
+         */
+        OccupantOut: {
+            /**
+             * Membership Id
+             * Format: uuid
+             */
+            membership_id: string;
+            /** Full Name */
+            full_name: string;
+            relationship: components["schemas"]["OccupancyRelationship"];
+        };
+        /**
          * OnboardingDecisionIn
          * @description A denial's reason, which the resident sees (`/onboarding/me`, the notification and email).
          */
@@ -1397,6 +1499,73 @@ export interface components {
             /** Pending Onboarding Count */
             pending_onboarding_count: number;
         };
+        /** PackageCreate */
+        PackageCreate: {
+            /**
+             * Unit Id
+             * Format: uuid
+             */
+            unit_id: string;
+            /** Recipient Membership Id */
+            recipient_membership_id?: string | null;
+            /** Carrier */
+            carrier: string;
+            /** Description */
+            description?: string | null;
+            /** Tracking Last4 */
+            tracking_last4?: string | null;
+            /** Photo File Id */
+            photo_file_id?: string | null;
+        };
+        /** PackageOut */
+        PackageOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Unit Id
+             * Format: uuid
+             */
+            unit_id: string;
+            /** Recipient Membership Id */
+            recipient_membership_id: string | null;
+            /** Carrier */
+            carrier: string;
+            /** Description */
+            description: string | null;
+            /** Tracking Last4 */
+            tracking_last4: string | null;
+            /** Photo File Id */
+            photo_file_id: string | null;
+            status: components["schemas"]["PackageStatus"];
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /**
+             * Received By Membership Id
+             * Format: uuid
+             */
+            received_by_membership_id: string;
+            /** Picked Up At */
+            picked_up_at: string | null;
+            /** Returned At */
+            returned_at: string | null;
+        };
+        /**
+         * PackageStatus
+         * @description Where a package is (`packages.status`); `app.packages.state` says how it may move.
+         * @enum {string}
+         */
+        PackageStatus: "received" | "picked_up" | "returned";
+        /** PackageSummary */
+        PackageSummary: {
+            /** Waiting */
+            waiting: number;
+        };
         /** Page[InvitationOut] */
         Page_InvitationOut_: {
             /** Items */
@@ -1422,6 +1591,13 @@ export interface components {
         Page_OnboardingRequestManagerOut_: {
             /** Items */
             items: components["schemas"]["OnboardingRequestManagerOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[PackageOut] */
+        Page_PackageOut_: {
+            /** Items */
+            items: components["schemas"]["PackageOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -3804,6 +3980,278 @@ export interface operations {
             };
         };
     };
+    packages_list: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["PackageStatus"] | null;
+                unit_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_PackageOut_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    packages_create: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 8-80 visible ASCII characters; repeat it to retry the same request. */
+                "idempotency-key"?: string | null;
+            };
+            path: {
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackageOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    packages_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackageSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    packages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                package_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackageOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     units_list: {
         parameters: {
             query?: {
@@ -4135,6 +4583,65 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    units_occupants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                unit_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OccupantOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

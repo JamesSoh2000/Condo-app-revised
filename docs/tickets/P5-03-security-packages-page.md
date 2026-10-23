@@ -90,6 +90,15 @@ Consumes `units_list`, `units_occupants`, `packages_create`, `packages_list`, `p
   every component reading `useBuilding({ passive: true })` also calls `useBuildingDenied()`. P3-06 did not pick
   it up.
 
+## Carried from P5-02a
+
+From PR #114 (explanation `docs/explanations/P5-02a-package-create-and-read.md` §7):
+- `PackageOut` has no unit label or recipient name. The desk list will want them: add them to the API
+  (additive) or join client-side from the units list, and decide while framing.
+- Generate one `Idempotency-Key` per form submission and keep it across retries of that submission (a new
+  key per click would log the package twice). A 201 with `Idempotent-Replayed: true` is a success.
+- The recipient picker reads `GET /units/{id}/occupants` (active current occupants only).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

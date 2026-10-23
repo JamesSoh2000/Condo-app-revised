@@ -1,0 +1,11 @@
+{% extends base %}
+{% block body %}{{ title }}
+{% if body %}
+{{ body }}
+{% endif %}{% if carrier is defined %}
+Carrier: {{ carrier }}{% endif %}{% if received_at is defined %}
+Received: {{ received_at }}{% endif %}
+Pickup desk hours: {{ pickup_desk_hours | default("ask the front desk") }}
+{% if link %}
+{{ app_base_url }}{{ link }}
+{% endif %}{% endblock %}

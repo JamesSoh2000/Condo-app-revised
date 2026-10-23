@@ -26,7 +26,7 @@ KINDS: dict[str, NotificationKind] = {
             "onboarding.submitted", "A resident asked to join the building (managers)", None
         ),
         NotificationKind(
-            "package.arrived", "Security logged a package for the user's unit", "notification"
+            "package.arrived", "Security logged a package for the user's unit", "package_arrived"
         ),
         NotificationKind(
             "package.picked_up", "A package for the user's unit was picked up", "notification"

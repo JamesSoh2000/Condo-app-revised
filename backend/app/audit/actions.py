@@ -32,3 +32,5 @@ OCCUPANCY_TRANSFERRED = "occupancy.transferred"
 ONBOARDING_SUBMITTED = "onboarding.submitted"
 ONBOARDING_APPROVED = "onboarding.approved"
 ONBOARDING_DENIED = "onboarding.denied"
+
+PACKAGE_RECEIVED = "package.received"

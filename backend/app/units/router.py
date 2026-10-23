@@ -1,20 +1,24 @@
+from collections.abc import Sequence
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, Query
 
+from app.buildings.enums import Feature
 from app.core.errors import problem_responses
 from app.core.pagination import CursorParams, Page
 from app.memberships.enums import Role
-from app.tenancy.deps import Ctx, DbSession, require_roles
+from app.tenancy.deps import Ctx, DbSession, require_feature, require_roles
 from app.tenancy.router import building_router
 from app.units import service
-from app.units.schemas import SearchText, UnitCreate, UnitOut, UnitUpdate
+from app.units.schemas import OccupantOut, SearchText, UnitCreate, UnitOut, UnitUpdate
 
 router = building_router(tags=["units"])
 # Staff who look units up (security at the desk) and the managers who maintain them.
 _STAFF = [Depends(require_roles(Role.SECURITY, Role.PROPERTY_MANAGEMENT))]
 _MANAGEMENT = [Depends(require_roles(Role.PROPERTY_MANAGEMENT))]
+# The package desk's form (P5-02a): only where the building has packages.
+_PACKAGE_DESK = [Depends(require_feature(Feature.PACKAGES)), *_STAFF]
 
 
 @router.get("/units", dependencies=_STAFF, responses=problem_responses(400, 401, 403, 404))
@@ -69,3 +73,14 @@ async def deactivate(unit_id: UUID, ctx: Ctx, db: DbSession) -> None:
 async def activate(unit_id: UUID, ctx: Ctx, db: DbSession) -> None:
     """Activate a deactivated unit."""
     await service.activate_unit(db, ctx, unit_id)
+
+
+@router.get(
+    "/units/{unit_id}/occupants",
+    dependencies=_PACKAGE_DESK,
+    responses=problem_responses(401, 403, 404),
+)
+async def occupants(unit_id: UUID, ctx: Ctx, db: DbSession) -> Sequence[OccupantOut]:
+    """Who currently lives in the unit with an active membership, earliest start first."""
+    # Sequence, not list: `list` is this module's route above.
+    return await service.list_occupants(db, ctx, unit_id)

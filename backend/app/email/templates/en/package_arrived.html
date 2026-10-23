@@ -1,0 +1,11 @@
+{% extends base %}
+{% block body %}
+  <p style="margin: 0 0 12px; font-weight: bold;">{{ title }}</p>
+  {% if body %}<p style="margin: 0 0 12px;">{{ body }}</p>{% endif %}
+  <p style="margin: 0 0 12px;">
+    {% if carrier is defined %}Carrier: {{ carrier }}<br>{% endif %}
+    {% if received_at is defined %}Received: {{ received_at }}<br>{% endif %}
+    Pickup desk hours: {{ pickup_desk_hours | default("ask the front desk") }}
+  </p>
+  {% if link %}<p style="margin: 0;"><a href="{{ app_base_url }}{{ link }}">Open in the app</a></p>{% endif %}
+{% endblock %}
