@@ -1,18 +1,22 @@
-"""Packages (P5-02a): the desk logs a package, everyone reads what `visible_packages` lets them.
+"""Packages (P5-02a, P5-02b): the desk logs a package and hands it out or returns it; everyone
+reads what `visible_packages` lets them.
 
 `create_package` is the reference slice's write: the package, its photo claim, the notifications
-with their email jobs and the audit row commit together, once (CLAUDE.md rule 5, ADR-0002). Reads
-go only through `visible_packages(ctx)` (CLAUDE.md rule 3).
+with their email jobs and the audit row commit together, once (CLAUDE.md rule 5, ADR-0002).
+`pickup_package` and `return_package` are its reference transitions: a conditional
+`UPDATE … WHERE status IN (…) RETURNING` decides which of two concurrent ones wins (CLAUDE.md
+rule 7). Reads go only through `visible_packages(ctx)` (CLAUDE.md rule 3).
 """
 
 import hashlib
 import json
 import re
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +33,14 @@ from app.notifications.service import notify, unit_resident_user_ids
 from app.packages.enums import PackageStatus
 from app.packages.models import PACKAGE_ATTACHED_TYPE, Package
 from app.packages.queries import visible_packages
-from app.packages.schemas import PackageCreate, PackageOut, PackageSummary
+from app.packages.schemas import (
+    PackageCreate,
+    PackageOut,
+    PackagePickup,
+    PackageReturn,
+    PackageSummary,
+)
+from app.packages.state import assert_transition, sources
 from app.tenancy.context import TenantContext
 from app.units.models import Unit
 from app.units.service import UnitNotFound
@@ -60,6 +71,10 @@ class UnitInactive(Conflict):
 
 class InvalidRecipient(UnprocessableContent):
     code = "invalid_recipient"
+
+
+class InvalidPickupMember(UnprocessableContent):
+    code = "invalid_pickup_member"
 
 
 @dataclass(frozen=True)
@@ -272,3 +287,182 @@ async def package_summary(db: AsyncSession, ctx: TenantContext) -> PackageSummar
     waiting = visible_packages(ctx).where(Package.status == PackageStatus.RECEIVED).subquery()
     count = await db.scalar(select(func.count()).select_from(waiting))
     return PackageSummary(waiting=count or 0)
+
+
+async def pickup_package(
+    db: AsyncSession, ctx: TenantContext, package_id: UUID, data: PackagePickup
+) -> PackageOut:
+    """Hand a `received` package out, to a member who may collect it or a name typed at the desk,
+    and tell its recipient (in-app). 404, 409 `invalid_transition`, 422 `invalid_pickup_member`."""
+    package = await _for_transition(db, ctx, package_id, PackageStatus.PICKED_UP)
+    member_id = data.picked_up_by_membership_id
+    if member_id is not None:
+        # Before the UPDATE: an unchecked id of another building would fail its composite FK there.
+        await _check_pickup_member(db, ctx, package, member_id)
+    picked_up = await _transition(
+        db,
+        ctx,
+        package_id,
+        PackageStatus.PICKED_UP,
+        picked_up_at=func.clock_timestamp(),
+        picked_up_by_membership_id=member_id,
+        picked_up_by_name=data.picked_up_by_name,
+        handed_out_by_membership_id=ctx.membership_id,
+    )
+    await notify(
+        db,
+        building_id=ctx.building_id,
+        recipient_user_ids=await _recipient_user_ids(db, ctx, picked_up),
+        kind="package.picked_up",
+        title="Your package was picked up",
+        body=f"The {picked_up.carrier} package at the desk was picked up.",
+        link=f"/packages/{package_id}",
+        entity_type=PACKAGE_ATTACHED_TYPE,
+        entity_id=package_id,
+    )
+    await record_audit(
+        db,
+        action=actions.PACKAGE_PICKED_UP,
+        entity_type=PACKAGE_ATTACHED_TYPE,
+        entity_id=package_id,
+        building_id=ctx.building_id,
+        actor_user_id=ctx.user_id,
+        # Field names only: the typed name stays out of the audit (CLAUDE.md rule 10).
+        metadata={
+            "unit_id": picked_up.unit_id,
+            "picked_up_by_membership_id": member_id,
+            "picked_up_by": "member" if member_id is not None else "name",
+        },
+    )
+    out = PackageOut.model_validate(picked_up)
+    await db.commit()
+    return out
+
+
+async def return_package(
+    db: AsyncSession, ctx: TenantContext, package_id: UUID, data: PackageReturn
+) -> PackageOut:
+    """Send a `received` package back to the carrier. 404, 409 `invalid_transition`."""
+    await _for_transition(db, ctx, package_id, PackageStatus.RETURNED)
+    returned = await _transition(
+        db,
+        ctx,
+        package_id,
+        PackageStatus.RETURNED,
+        returned_at=func.clock_timestamp(),
+        return_reason=data.reason,
+    )
+    await record_audit(
+        db,
+        action=actions.PACKAGE_RETURNED,
+        entity_type=PACKAGE_ATTACHED_TYPE,
+        entity_id=package_id,
+        building_id=ctx.building_id,
+        actor_user_id=ctx.user_id,
+        metadata={"unit_id": returned.unit_id},
+    )
+    out = PackageOut.model_validate(returned)
+    await db.commit()
+    return out
+
+
+async def _for_transition(
+    db: AsyncSession, ctx: TenantContext, package_id: UUID, to: PackageStatus
+) -> Package:
+    """The package as it is now, if it may become `to`: 404, else 409 `invalid_transition`. An
+    early answer only; the conditional UPDATE in `_transition` decides."""
+    package = await db.scalar(
+        visible_packages(ctx)
+        .where(Package.id == package_id)
+        .execution_options(populate_existing=True)
+    )
+    if package is None:
+        # The same answer for another building's package and none (ADR-0004).
+        raise PackageNotFound(detail="Package not found.")
+    assert_transition(package.status, to)
+    return package
+
+
+async def _transition(
+    db: AsyncSession, ctx: TenantContext, package_id: UUID, to: PackageStatus, **values: Any
+) -> Package:
+    """Move the package to `to` if it is still in a status that may (CLAUDE.md rule 7).
+
+    Under READ COMMITTED a concurrent transition holding the row makes this UPDATE wait; once it
+    commits, Postgres re-checks the WHERE on the row it wrote, finds another status and updates
+    nothing. Zero rows: re-read to answer 404 or 409 `invalid_transition` from the current status.
+    """
+    package = await db.scalar(
+        update(Package)
+        .where(
+            Package.id == package_id,
+            Package.building_id == ctx.building_id,
+            Package.status.in_(sources(to)),
+        )
+        .values(status=to, **values)
+        .returning(Package)
+        .execution_options(populate_existing=True)
+    )
+    if package is not None:
+        return package
+    current = await _for_transition(db, ctx, package_id, to)
+    # Unreachable: the UPDATE would have matched a package that may still become `to`.
+    raise AssertionError(f"package {current.id} matched no transition to {to}")
+
+
+async def _check_pickup_member(
+    db: AsyncSession, ctx: TenantContext, package: Package, membership_id: UUID
+) -> None:
+    """422 `invalid_pickup_member` unless the membership may collect `package`: an active member
+    of this building who is its named recipient or lives in its unit now (PRODUCT_SCOPE "Package
+    pickup", the P1-03 carry). One answer for every refusal, so another building's id looks
+    unknown."""
+    # FOR SHARE first: status and occupancy writes lock the membership row FOR NO KEY UPDATE
+    # (app.memberships), so one in flight finishes before the next statement, which (READ
+    # COMMITTED) then reads what it committed. Locking within one joined SELECT would re-check only
+    # the membership's new row, not the occupancy joined to it.
+    await db.execute(
+        select(BuildingMembership.id)
+        .where(
+            BuildingMembership.id == membership_id,
+            BuildingMembership.building_id == ctx.building_id,
+        )
+        .with_for_update(read=True)
+    )
+    lives_there = (
+        select(UnitOccupancy.id)
+        .where(
+            UnitOccupancy.building_id == ctx.building_id,
+            UnitOccupancy.membership_id == BuildingMembership.id,
+            UnitOccupancy.unit_id == package.unit_id,
+            UnitOccupancy.ended_at.is_(None),
+        )
+        .exists()
+    )
+    may_collect = await db.scalar(
+        select(BuildingMembership.id).where(
+            BuildingMembership.id == membership_id,
+            BuildingMembership.building_id == ctx.building_id,
+            BuildingMembership.status == MembershipStatus.ACTIVE,
+            or_(BuildingMembership.id == package.recipient_membership_id, lives_there),
+        )
+    )
+    if may_collect is None:
+        raise InvalidPickupMember(
+            detail="Only the recipient or someone who lives in the unit can collect this package."
+        )
+
+
+async def _recipient_user_ids(db: AsyncSession, ctx: TenantContext, package: Package) -> list[UUID]:
+    """Who hears of the pickup: the named recipient while their membership is active, or for a
+    package addressed to the unit, its current active occupants (as at arrival)."""
+    if package.recipient_membership_id is None:
+        return await unit_resident_user_ids(db, ctx.building_id, package.unit_id)
+    user_id = await db.scalar(
+        select(BuildingMembership.user_id).where(
+            BuildingMembership.id == package.recipient_membership_id,
+            BuildingMembership.building_id == ctx.building_id,
+            BuildingMembership.status == MembershipStatus.ACTIVE,
+        )
+    )
+    return [user_id] if user_id is not None else []

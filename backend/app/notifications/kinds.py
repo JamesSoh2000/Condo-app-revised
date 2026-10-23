@@ -29,7 +29,7 @@ KINDS: dict[str, NotificationKind] = {
             "package.arrived", "Security logged a package for the user's unit", "package_arrived"
         ),
         NotificationKind(
-            "package.picked_up", "A package for the user's unit was picked up", "notification"
+            "package.picked_up", "A package for the user or their unit was picked up", None
         ),
     )
 }

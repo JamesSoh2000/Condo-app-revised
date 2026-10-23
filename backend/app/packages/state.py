@@ -24,3 +24,8 @@ def assert_transition(from_: PackageStatus, to: PackageStatus) -> None:
     """Raise `InvalidTransition` (409) unless a package may move from `from_` to `to`."""
     if to not in ALLOWED.get(from_, frozenset()):
         raise InvalidTransition(detail=f"A {from_} package can't become {to}.")
+
+
+def sources(to: PackageStatus) -> tuple[PackageStatus, ...]:
+    """The statuses a package may become `to` from: the conditional UPDATE's `status IN (…)`."""
+    return tuple(from_ for from_, targets in ALLOWED.items() if to in targets)
