@@ -113,6 +113,8 @@ test('J4: the desk logs a package with a photo; the resident is told in-app and 
   // The resident may see it, but a desk action is security's (row 4).
   const asResident = await apiPost(residentContext.request, baseURL!, packagesPath(maple, `/${pkg.id}/pickup`), { picked_up_by_name: 'Me' });
   expect(asResident.status()).toBe(403);
+  // The role guard's refusal, not the CSRF check's 403 `csrf_failed` (review round 1, Claude L1).
+  expect(((await asResident.json()) as { code: string }).code).toBe('forbidden_role');
 
   await privacy(newContext, maple, pkg);
 });
