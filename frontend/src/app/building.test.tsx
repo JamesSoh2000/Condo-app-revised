@@ -343,10 +343,11 @@ describe('role guard (criterion 6; tenant rows 1 and 4)', () => {
       [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['security'])),
     });
 
-    renderApp(['/SecurityPackages']);
+    // /SecurityPackages until P5-03b migrated it (its own test: features/packages/packages.test.tsx).
+    renderApp(['/ManagementNotices']);
 
     expect(await screen.findByText(/being migrated/i)).toBeTruthy();
-    expect(location()).toBe('/SecurityPackages');
+    expect(location()).toBe('/ManagementNotices');
   });
 
   it('does not count a role the user holds in another building', async () => {
@@ -590,7 +591,8 @@ describe('another user in /me (review round 1, Claude M1)', () => {
         return json(buildingOut(MAPLE, mapleCalls === 1 ? ['resident', 'security'] : ['resident']));
       },
     });
-    const app = renderApp(['/SecurityPackages']);
+    // /SecurityPackages until P5-03b migrated it: any page a security member may open.
+    const app = renderApp(['/ManagementNotices']);
     await screen.findByText(/being migrated/i);
     expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
 

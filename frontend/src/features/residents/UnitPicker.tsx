@@ -83,7 +83,7 @@ export function UnitPicker({ picker, legend, busy, missing, searchRef }: PickerP
     list = <p className="text-sm">{term ? `No active unit starts with “${term}”.` : 'This building has no active units.'}</p>;
   } else {
     list = options.map((unit) => (
-      <label key={unit.id} className="flex min-h-11 items-center gap-2 rounded border bg-white px-3 py-2">
+      <label key={unit.id} className="flex min-h-11 items-center gap-2 rounded border bg-white px-3 py-2 [overflow-wrap:anywhere]">
         <input type="radio" name={`${id}-unit`} checked={chosen === unit.id} disabled={busy} onChange={() => picker.choose(unit.id)} />
         {unitName(unit.tower, unit.label)}
       </label>
@@ -116,7 +116,13 @@ export function UnitPicker({ picker, legend, busy, missing, searchRef }: PickerP
           </p>
         )}
       </div>
-      <fieldset aria-invalid={showMissing} aria-describedby={showMissing ? `${id}-unit-error` : undefined} aria-busy={units.isFetching}>
+      {/* `min-w-0`: a fieldset is otherwise as wide as its widest unit name, past a phone's width (P5-03b R1 F1). */}
+      <fieldset
+        aria-invalid={showMissing}
+        aria-describedby={showMissing ? `${id}-unit-error` : undefined}
+        aria-busy={units.isFetching}
+        className="min-w-0"
+      >
         <legend className="mb-1 text-sm font-medium">{legend}</legend>
         {unitsError}
         <div className="flex max-h-48 flex-col gap-2 overflow-y-auto">{list}</div>

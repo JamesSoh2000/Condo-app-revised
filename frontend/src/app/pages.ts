@@ -35,7 +35,12 @@ export const PAGE_ACCESS: Record<Page, PageAccess> = {
   Contacts: { label: 'Contacts' },
   Residents: { roles: ['property_management'], label: 'Residents', path: '/manage/residents' },
   Packages: { roles: ['resident'], feature: 'packages', label: 'My packages' },
-  SecurityPackages: { roles: ['security', 'property_management'], feature: 'packages', label: 'Package log' },
+  SecurityPackages: {
+    roles: ['security', 'property_management'],
+    feature: 'packages',
+    label: 'Package log',
+    path: '/security/packages',
+  },
   ManagementNotices: { roles: STAFF, feature: 'notices', label: 'Daily notices' },
   Maintenance: { roles: ['resident'], feature: 'maintenance', label: 'Maintenance requests' },
   ManagementMaintenance: { roles: STAFF, feature: 'maintenance', label: 'Maintenance' },

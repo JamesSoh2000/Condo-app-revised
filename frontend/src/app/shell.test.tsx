@@ -98,11 +98,12 @@ describe('home and placeholders (criterion 1)', () => {
     expect(screen.getByRole('banner').textContent).toContain('Alex Chen');
   });
 
-  // P2-06b guards pages by role: /SecurityPackages is opened as a security user (a resident gets /403).
+  // P2-06b guards pages by role: /ManagementNotices is opened as a security user (a resident gets /403).
+  // /SecurityPackages was here until P5-03b migrated it.
   it.each([
     ['/Packages', 'resident'],
     ['/packages', 'resident'],
-    ['/SecurityPackages', 'security'],
+    ['/ManagementNotices', 'security'],
     ['/Maintenance', 'resident'],
     ['/Dashboard', 'resident'],
     ['/Contacts', 'resident'],
