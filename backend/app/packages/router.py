@@ -60,7 +60,9 @@ async def list(
     ctx: Ctx,
     db: DbSession,
     params: Annotated[CursorParams, Depends()],
-    status: PackageStatus | None = None,
+    status: Annotated[
+        list[PackageStatus] | None, Query(description="Repeat it to list several statuses.")
+    ] = None,
     unit_id: UUID | None = None,
     carrier: Annotated[Carrier | None, Query(description="The carrier, any case.")] = None,
 ) -> Page[PackageOut]:

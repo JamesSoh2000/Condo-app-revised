@@ -39,7 +39,7 @@ export function useWaitingPackages(buildingId: string, filters: WaitingFilters) 
         params: {
           path: { building_id: buildingId },
           query: {
-            status: 'received',
+            status: ['received'],
             ...(filters.unitId && { unit_id: filters.unitId }),
             ...(filters.carrier && { carrier: filters.carrier }),
             ...(pageParam !== null && { cursor: pageParam }),

@@ -321,13 +321,13 @@ async def list_packages(
     ctx: TenantContext,
     params: CursorParams,
     *,
-    status: PackageStatus | None,
+    status: Sequence[PackageStatus] | None,
     unit_id: UUID | None,
     carrier: Carrier | None,
 ) -> Page[PackageOut]:
     stmt = visible_packages(ctx)
-    if status is not None:
-        stmt = stmt.where(Package.status == status)
+    if status:
+        stmt = stmt.where(Package.status.in_(status))
     if unit_id is not None:
         stmt = stmt.where(Package.unit_id == unit_id)
     if carrier is not None:
