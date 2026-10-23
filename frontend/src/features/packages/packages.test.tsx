@@ -453,6 +453,53 @@ describe('the list’s states (criterion 7)', () => {
   });
 });
 
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  // F2: a 429 on the next page lost the shared rate-limit message (criterion 7).
+  it('shows the rate-limit message when Show more gets a 429, and keeps the rows', async () => {
+    stubApi(
+      desk({
+        [list()]: (request) =>
+          new URL(request.url).searchParams.get('cursor') ? problem(429, 'rate_limited', { 'Retry-After': '30' }) : page([pkg(1)], 'c1'),
+      }),
+    );
+    renderApp([PAGE]);
+    await waiting();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    expect((await screen.findByRole('alert')).textContent).toBe('Too many requests. Try again in 30 seconds.');
+    expect(rows()).toHaveLength(1);
+  });
+
+  // F2's neighbour: a refresh that gets a 429 keeps the rows and says so with the same message.
+  it('shows the rate-limit message when a refresh gets a 429, and keeps the rows', async () => {
+    let limited = false;
+    stubApi(desk({ [list()]: () => (limited ? problem(429, 'rate_limited', { 'Retry-After': '30' }) : page([pkg(1)])) }));
+    renderApp([PAGE]);
+    await waiting();
+
+    limited = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Too many requests. Try again in 30 seconds.');
+    expect(rows()).toHaveLength(1);
+  });
+
+  // F1: a <fieldset> is at least as wide as its content (`min-inline-size: min-content`), so a 41-character unit name
+  // widened the picker past a 375 px page and out of its 16rem column. jsdom has no layout: the classes are checked
+  // here, and the Chromium measurement is in the PR.
+  it('lets the unit picker shrink and wrap a long unit name', async () => {
+    const long = { ...U101, tower: 'W'.repeat(20), label: 'W'.repeat(20) };
+    stubApi(desk({ [units]: () => json({ items: [long], next_cursor: null }) }));
+    renderApp([PAGE]);
+    await waiting();
+
+    const radio = await screen.findByRole('radio', { name: `${'W'.repeat(20)}-${'W'.repeat(20)}` });
+    expect(radio.closest('fieldset')!.className.split(' ')).toContain('min-w-0');
+    expect(radio.closest('label')!.className).toContain('[overflow-wrap:anywhere]');
+  });
+});
+
 describe('freshness (criterion 8; ADR-0012)', () => {
   it('asks again when the page mounts again, and on Refresh', async () => {
     const fetchMock = stubApi(desk());

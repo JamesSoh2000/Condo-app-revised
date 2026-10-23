@@ -99,7 +99,7 @@ export function WaitingList() {
         {list}
         {waiting.isFetchNextPageError && (
           <p role="alert" className="text-sm text-red-700">
-            Could not load more packages.
+            {rateLimitMessage(waiting.error) ?? 'Could not load more packages.'}
           </p>
         )}
         {waiting.hasNextPage && !waiting.isRefetchError && (
