@@ -667,6 +667,37 @@ describe('the dialog keeps its package (criterion 8; tenant rows 3 and 6)', () =
     expect(message()).toBeNull();
   });
 
+  it('a building switch with a return out unmounts the dialog; its late answer shows nothing in the next building (P5-05)', async () => {
+    sessionStorage.setItem('condo.buildingId', MAPLE.id);
+    const gate = deferred(() => json(pkg({ status: 'returned' })));
+    const sent = vi.fn(gate.handler);
+    desk({
+      'GET /api/auth/me': () => json({ ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: ['security'] }), membership(BIRCH, { roles: ['security'] })] }),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['security'])),
+      [`GET /api/buildings/${BIRCH.id}/notifications/summary`]: () => json({ unread_count: 0 }),
+      [`GET /api/buildings/${BIRCH.id}/packages`]: () => json({ items: [], next_cursor: null }),
+      [`GET /api/buildings/${BIRCH.id}/units`]: () => json({ items: [], next_cursor: null }),
+      [RETURN]: sent,
+    });
+    const app = renderApp([PAGE]);
+    await open('Return');
+    typeReason('Damaged');
+    confirm('Return');
+    await settle();
+    expect(sent).toHaveBeenCalledTimes(1);
+
+    openAccountMenu();
+    fireEvent.change(screen.getByLabelText('Building'), { target: { value: BIRCH.id } });
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'));
+    act(() => app.navigate()(PAGE));
+    await screen.findByText('No packages are waiting.');
+    gate.release();
+    await settle();
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(message()).toBeNull();
+  });
+
   it.each(['Hand out', 'Return'] as const)('building_not_found on %s marks the building denied', async (name) => {
     desk({ [name === 'Hand out' ? PICKUP : RETURN]: () => problem(404, 'building_not_found') });
     const app = renderApp([PAGE]);
