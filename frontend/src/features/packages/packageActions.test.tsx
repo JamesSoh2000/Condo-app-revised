@@ -577,6 +577,18 @@ describe('one request per confirmation, and focus (criterion 7)', () => {
     expect(document.activeElement).toBe(inDialog().getByRole('radio', { name: 'Sam Lee' }));
   });
 
+  it('with nothing chosen, Tab from the dialog goes to the first radio, and Shift+Tab from it wraps to the last button (R2 F1 neighbour)', async () => {
+    desk();
+    renderApp([PAGE]);
+    await open('Hand out');
+    await waitFor(() => expect(inDialog().getAllByRole('radio')).toHaveLength(3));
+
+    fireEvent.keyDown(dialog(), { key: 'Tab' });
+    expect(document.activeElement).toBe(inDialog().getByRole('radio', { name: 'Robin Park (recipient)' }));
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(inDialog().getByRole('button', { name: 'Hand out' }));
+  });
+
   it.each(['Cancel', 'Escape'] as const)('%s after a refresh dropped the row puts focus on the Waiting heading (R2 F2)', async (how) => {
     let listed = [PKG];
     desk({ [LIST]: () => json({ items: listed, next_cursor: null }) });
