@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Header, Response
+from fastapi import Depends, Header, Query, Response
 
 from app.buildings.enums import Feature
 from app.core.errors import problem_responses
@@ -10,6 +10,7 @@ from app.memberships.enums import Role
 from app.packages import service
 from app.packages.enums import PackageStatus
 from app.packages.schemas import (
+    Carrier,
     PackageCreate,
     PackageOut,
     PackagePickup,
@@ -61,9 +62,12 @@ async def list(
     params: Annotated[CursorParams, Depends()],
     status: PackageStatus | None = None,
     unit_id: UUID | None = None,
+    carrier: Annotated[Carrier | None, Query(description="The carrier, any case.")] = None,
 ) -> Page[PackageOut]:
     """The packages you may see in this building, newest first."""
-    return await service.list_packages(db, ctx, params, status=status, unit_id=unit_id)
+    return await service.list_packages(
+        db, ctx, params, status=status, unit_id=unit_id, carrier=carrier
+    )
 
 
 @router.get(

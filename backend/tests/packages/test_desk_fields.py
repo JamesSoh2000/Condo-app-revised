@@ -5,6 +5,7 @@ tenant rows these touch are here too (ENGINEERING_PRACTICES §7); the rest are i
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -90,11 +91,15 @@ async def test_every_package_endpoint_names_the_unit(
     got = await client.get(f"{_base(world)}/{package_id}")
     assert _fields(got.json()) == expected
 
-    other = await _for_resident1(db, world)
+    # Factory packages: one logged through the API a moment ago can fail the received-before-
+    # picked-up check when the host's clock and the database's differ.
+    to_pick_up, to_return = await _for_resident1(db, world), await _for_resident1(db, world)
     picked_up = await client.post(
-        f"{_base(world)}/{package_id}/pickup", json={"picked_up_by_name": "Neighbour"}
+        f"{_base(world)}/{to_pick_up.id}/pickup", json={"picked_up_by_name": "Neighbour"}
     )
-    returned = await client.post(f"{_base(world)}/{other.id}/return", json={"reason": "Refused"})
+    returned = await client.post(
+        f"{_base(world)}/{to_return.id}/return", json={"reason": "Refused"}
+    )
     assert picked_up.status_code == 200, picked_up.text
     assert returned.status_code == 200, returned.text
     assert _fields(picked_up.json()) == _fields(returned.json()) == expected
@@ -267,6 +272,7 @@ async def test_the_carrier_filter_combines_with_status_and_unit(
         world.a_security.membership,
         carrier="DHL",
         status=PackageStatus.RETURNED,
+        returned_at=datetime.now(UTC),
         return_reason="Refused",
     )
     client = await as_user(world.a_security.user)
@@ -457,4 +463,3 @@ async def test_a_resident_runs_no_name_lookup(
 
     # The same request and page; the desk's has the one name lookup more.
     assert len(by_security) == len(by_resident) + 1, (by_resident, by_security)
-

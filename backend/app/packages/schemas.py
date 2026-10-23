@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BeforeValidator, StringConstraints, model_validator
+from pydantic import BeforeValidator, Field, StringConstraints, model_validator
 
 from app.core.schemas import APIModel, InputModel
 from app.packages.enums import PackageStatus
@@ -73,7 +73,9 @@ class PackageReturn(InputModel):
     reason: ReturnReason
 
 
-class PackageOut(APIModel):
+class PackageColumns(APIModel):
+    """A package's own columns, read from its row; `PackageOut` adds what other rows say."""
+
     id: UUID
     unit_id: UUID
     recipient_membership_id: UUID | None
@@ -87,6 +89,18 @@ class PackageOut(APIModel):
     # Null until the package is picked up or returned (P5-02b).
     picked_up_at: datetime | None
     returned_at: datetime | None
+
+
+class PackageOut(PackageColumns):
+    # The unit's current tower and label (P5-03a).
+    unit_tower: str | None
+    unit_label: str
+    recipient_name: str | None = Field(
+        description=(
+            "The recipient's current full name, for security and property management only; null "
+            "for every other caller, and for a package addressed to the unit."
+        )
+    )
 
 
 class PackageSummary(APIModel):
