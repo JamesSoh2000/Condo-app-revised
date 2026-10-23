@@ -575,7 +575,7 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     state.waiting = [pkg(3), ...state.waiting];
     await act(() => app.queryClient.invalidateQueries({ queryKey: summaryKey }));
     await navLink('My packages, 3 waiting');
-    await act(async () => releaseOld!(page([pkg(1), pkg(2)])));
+    act(() => releaseOld!(page([pkg(1), pkg(2)])));
     await settle();
 
     await waitFor(() => expect(within(screen.getByRole('list', { name: 'Waiting for you' })).getAllByRole('listitem')).toHaveLength(3));
@@ -600,7 +600,7 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
 
     state.waiting = [pkg(3), ...state.waiting];
     await act(() => app.queryClient.invalidateQueries({ queryKey: summaryKey }));
-    await act(async () => releaseMore!(page([pkg(9)])));
+    act(() => releaseMore!(page([pkg(9)])));
     await settle();
 
     await waitFor(() => expect(within(screen.getByRole('list', { name: 'Waiting for you' })).getAllByRole('listitem')).toHaveLength(3));
