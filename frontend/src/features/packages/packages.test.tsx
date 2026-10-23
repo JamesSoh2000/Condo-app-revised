@@ -238,7 +238,7 @@ describe('building time (criterion 4)', () => {
     expect(rows()[0].textContent).toContain('1 min ago');
     const asked = listQueries(fetchMock).length;
 
-    await act(async () => {
+    act(() => {
       vi.advanceTimersByTime(60_000);
     });
     expect(rows()[0].textContent).toContain('2 min ago');
@@ -258,7 +258,7 @@ describe('search by unit (criterion 5)', () => {
     await waitFor(() => expect(listQueries(fetchMock).at(-1)).toEqual({ status: 'received', unit_id: U101.id }));
     fireEvent.click(screen.getByRole('button', { name: 'All units' }));
     await waitFor(() => expect(listQueries(fetchMock).at(-1)).toEqual({ status: 'received' }));
-    expect((screen.getByLabelText('Unit number') as HTMLInputElement).value).toBe('');
+    expect(screen.getByLabelText<HTMLInputElement>('Unit number').value).toBe('');
   });
 
   it('searches the building’s active units by the typed text', async () => {
@@ -308,7 +308,7 @@ describe('filter by carrier (criterion 6)', () => {
     renderApp([PAGE]);
     await waiting();
 
-    const select = screen.getByLabelText('Carrier') as HTMLSelectElement;
+    const select = screen.getByLabelText<HTMLSelectElement>('Carrier');
     expect([...select.options].map((option) => option.text)).toEqual(['All carriers', 'Amazon', 'Canada Post', 'DHL', 'FedEx', 'Purolator', 'UPS']);
     fireEvent.change(select, { target: { value: 'Canada Post' } });
 
@@ -490,7 +490,7 @@ describe('freshness (criterion 8; ADR-0012)', () => {
     renderApp([PAGE]);
     await waiting();
 
-    await act(async () => {
+    act(() => {
       vi.advanceTimersByTime(5 * 60_000);
     });
     expect(listQueries(fetchMock)).toHaveLength(1);
