@@ -49,7 +49,8 @@ export async function logPackage(
   buildingId: string,
   body: { unit_id: string; carrier: string; description?: string; tracking_last4?: string },
 ): Promise<PackageOut> {
-  const response = await apiPost(api, baseURL, packagesPath(buildingId), body);
-  expect(response.status(), 'log a package').toBe(201);
+  // The API requires a key per logging, as the Log package panel sends one (P5-02a).
+  const response = await apiPost(api, baseURL, packagesPath(buildingId), body, { 'Idempotency-Key': randomUUID() });
+  expect(response.status(), `log a package: ${await response.text()}`).toBe(201);
   return (await response.json()) as PackageOut;
 }
