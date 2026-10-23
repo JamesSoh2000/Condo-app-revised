@@ -271,7 +271,7 @@ async def _outs(
                 BuildingMembership.id.in_(recipient_ids),
             )
         )
-        names = {membership_id: full_name for membership_id, full_name in rows.tuples()}
+        names = {membership_id: full_name for membership_id, full_name in rows}
     return [
         PackageOut(
             **package.model_dump(),
