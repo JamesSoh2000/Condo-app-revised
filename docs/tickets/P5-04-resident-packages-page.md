@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P5-02a, P3-05 |
 | Replaces old | M7-T04, M7-T05 (resident badge part) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
