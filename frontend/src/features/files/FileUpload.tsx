@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 
 import { acceptFor, checkFile, contentTypeOf, describeRule, ruleFor, type FilePurpose } from '@/features/files/purposes';
-import { useUpload } from '@/features/files/useUpload';
+import { useUpload, type UploadStatus } from '@/features/files/useUpload';
 
 // Types every browser can draw; a HEIC preview would be a broken image in most of them.
 const PREVIEWABLE = ['image/jpeg', 'image/png', 'image/webp'];
@@ -17,6 +17,10 @@ export interface FileUploadProps {
   /** `environment` opens the back camera on phones (package photos). */
   capture?: 'environment' | 'user';
   label?: string;
+  /** Called with each new status, so a form can wait for the upload (P5-03c). */
+  onStatusChange?: (status: UploadStatus) => void;
+  /** No new file (button, drop) and no Retry, while the form that owns it is submitting (P5-03c R1 F1). */
+  disabled?: boolean;
 }
 
 /**
@@ -28,7 +32,7 @@ export function FileUpload(props: FileUploadProps) {
   return <FileUploadFor key={props.purpose} {...props} />;
 }
 
-function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label = 'Choose file' }: FileUploadProps) {
+function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label = 'Choose file', onStatusChange, disabled = false }: FileUploadProps) {
   const rule = useMemo(() => ruleFor(purpose, accept, maxBytes), [purpose, accept, maxBytes]);
   const { upload, retry, cancel, progress, status, error } = useUpload(purpose, { onUploaded });
   const [checkError, setCheckError] = useState<string | null>(null);
@@ -37,10 +41,14 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
   const input = useRef<HTMLInputElement>(null);
   const preview = useObjectUrl(chosen && PREVIEWABLE.includes(contentTypeOf(chosen)) ? chosen : null);
   const busy = status === 'uploading';
+  const locked = busy || disabled;
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
+  useEffect(() => onStatusChangeRef.current?.(status), [status]);
   const percent = Math.round(progress * 100);
 
   function start(file: File) {
-    if (busy) return;
+    if (locked) return;
     const problem = checkFile(file, rule);
     setCheckError(problem);
     setChosen(problem ? null : file);
@@ -62,7 +70,8 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
   else if (status === 'ready') announcement = `Uploaded ${chosen?.name ?? 'file'}.`;
 
   return (
-    <div className="flex flex-col gap-2">
+    // Wraps anywhere: a file name has no spaces to break at, and would widen a phone's page (P5-03c R1 F3).
+    <div className="flex min-w-0 flex-col gap-2 [overflow-wrap:anywhere]">
       <div
         data-testid="file-drop-zone"
         onDragOver={(event) => {
@@ -75,7 +84,7 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
       >
         <button
           type="button"
-          disabled={busy}
+          disabled={locked}
           onClick={() => input.current?.click()}
           className="rounded border bg-white px-3 py-1 text-sm disabled:opacity-50"
         >
@@ -89,7 +98,7 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
           tabIndex={-1}
           accept={acceptFor(rule)}
           capture={capture}
-          disabled={busy}
+          disabled={locked}
           onChange={(event) => {
             const file = event.target.files?.[0];
             // Cleared, so choosing the same file again is a change too.
@@ -124,7 +133,7 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
             {message}
           </p>
           {checkError === null && status === 'error' && (
-            <button type="button" onClick={retry} className="rounded border px-2 py-0.5 text-xs">
+            <button type="button" disabled={disabled} onClick={retry} className="rounded border px-2 py-0.5 text-xs">
               Retry
             </button>
           )}
