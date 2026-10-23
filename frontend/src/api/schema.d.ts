@@ -1599,6 +1599,15 @@ export interface components {
             picked_up_at: string | null;
             /** Returned At */
             returned_at: string | null;
+            /** Unit Tower */
+            unit_tower: string | null;
+            /** Unit Label */
+            unit_label: string;
+            /**
+             * Recipient Name
+             * @description The recipient's current full name, for security and property management only; null for every other caller, and for a package addressed to the unit.
+             */
+            recipient_name: string | null;
         };
         /**
          * PackagePickup
@@ -4046,6 +4055,8 @@ export interface operations {
             query?: {
                 status?: components["schemas"]["PackageStatus"] | null;
                 unit_id?: string | null;
+                /** @description The carrier, any case. */
+                carrier?: string | null;
                 limit?: number;
                 cursor?: string | null;
             };

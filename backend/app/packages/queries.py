@@ -37,3 +37,9 @@ def _grant(ctx: TenantContext) -> ColumnElement[bool]:
             occupancy_window_clause(ctx.membership_id, Package.unit_id, Package.received_at),
         )
     return false()
+
+
+def sees_recipient_names(ctx: TenantContext) -> bool:
+    """True if the caller is shown the names of the packages' recipients: the desk only (P5-03a).
+    A resident sees packages addressed to a co-occupant, and no other route shows them that name."""
+    return ctx.has_any(*_SEE_ALL)

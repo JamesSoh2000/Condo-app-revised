@@ -11,6 +11,7 @@ rule 7). Reads go only through `visible_packages(ctx)` (CLAUDE.md rule 3).
 import hashlib
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -32,8 +33,10 @@ from app.memberships.models import BuildingMembership, UnitOccupancy
 from app.notifications.service import notify, unit_resident_user_ids
 from app.packages.enums import PackageStatus
 from app.packages.models import PACKAGE_ATTACHED_TYPE, Package
-from app.packages.queries import visible_packages
+from app.packages.queries import sees_recipient_names, visible_packages
 from app.packages.schemas import (
+    Carrier,
+    PackageColumns,
     PackageCreate,
     PackageOut,
     PackagePickup,
@@ -44,6 +47,7 @@ from app.packages.state import assert_transition, sources
 from app.tenancy.context import TenantContext
 from app.units.models import Unit
 from app.units.service import UnitNotFound
+from app.users.models import User
 
 # Visible ASCII, no spaces: what a client generates (a UUID, a ULID) and repeats byte for byte.
 _IDEMPOTENCY_KEY = re.compile(r"[!-~]{8,80}")
@@ -111,7 +115,7 @@ async def create_package(
     # (to this package) since.
     existing = await _by_key(db, ctx, key)
     if existing is not None:
-        return _replay(existing, digest)
+        return await _replay(db, ctx, existing, digest)
 
     # FOR KEY SHARE (the P4-01a carry, as P4-05a's join): a deactivation committing now makes this
     # wait, and `is_active` is then read from the row it committed.
@@ -154,7 +158,7 @@ async def create_package(
         # READ COMMITTED: this statement sees the row the other request committed.
         existing = await _by_key(db, ctx, key)
         assert existing is not None  # noqa: S101 (the conflicting row is committed)
-        return _replay(existing, digest)
+        return await _replay(db, ctx, existing, digest)
 
     if data.photo_file_id is not None:
         # Both sides (the file's attachment and the package's column) must agree for the photo
@@ -217,7 +221,7 @@ async def create_package(
             "photo_file_id": data.photo_file_id,
         },
     )
-    out = PackageOut.model_validate(package)
+    out = await _out(db, ctx, package)
     await db.commit()
     return Created(out, replayed=False)
 
@@ -230,10 +234,63 @@ async def _by_key(db: AsyncSession, ctx: TenantContext, key: str) -> Package | N
     )
 
 
-def _replay(existing: Package, digest: str) -> Created:
+async def _replay(db: AsyncSession, ctx: TenantContext, existing: Package, digest: str) -> Created:
     if existing.request_hash != digest:
         raise IdempotencyKeyReused(detail="This Idempotency-Key was used with a different request.")
-    return Created(PackageOut.model_validate(existing), replayed=True)
+    return Created(await _out(db, ctx, existing), replayed=True)
+
+
+async def _outs(
+    db: AsyncSession, ctx: TenantContext, packages: Sequence[PackageColumns]
+) -> list[PackageOut]:
+    """`packages` with their units' current tower and label and, for the desk, their recipients'
+    current names (P5-03a): two statements at most, however many packages."""
+    if not packages:
+        return []
+    units = {
+        row.id: row
+        for row in await db.execute(
+            select(Unit.id, Unit.tower, Unit.label).where(
+                Unit.building_id == ctx.building_id,
+                Unit.id.in_({package.unit_id for package in packages}),
+            )
+        )
+    }
+    recipient_ids = {
+        package.recipient_membership_id
+        for package in packages
+        if package.recipient_membership_id is not None
+    }
+    names: dict[UUID, str] = {}
+    if recipient_ids and sees_recipient_names(ctx):
+        rows = await db.execute(
+            select(BuildingMembership.id, User.full_name)
+            .join(User, User.id == BuildingMembership.user_id)
+            .where(
+                BuildingMembership.building_id == ctx.building_id,
+                BuildingMembership.id.in_(recipient_ids),
+            )
+        )
+        names = {membership_id: full_name for membership_id, full_name in rows}
+    return [
+        PackageOut(
+            **package.model_dump(),
+            # The composite FKs keep both in the package's building, so the lookups find them.
+            unit_tower=units[package.unit_id].tower,
+            unit_label=units[package.unit_id].label,
+            recipient_name=(
+                None
+                if package.recipient_membership_id is None
+                else names.get(package.recipient_membership_id)
+            ),
+        )
+        for package in packages
+    ]
+
+
+async def _out(db: AsyncSession, ctx: TenantContext, package: Package) -> PackageOut:
+    [out] = await _outs(db, ctx, [PackageColumns.model_validate(package)])
+    return out
 
 
 async def _recipient_user_id(db: AsyncSession, ctx: TenantContext, data: PackageCreate) -> UUID:
@@ -266,13 +323,18 @@ async def list_packages(
     *,
     status: PackageStatus | None,
     unit_id: UUID | None,
+    carrier: Carrier | None,
 ) -> Page[PackageOut]:
     stmt = visible_packages(ctx)
     if status is not None:
         stmt = stmt.where(Package.status == status)
     if unit_id is not None:
         stmt = stmt.where(Package.unit_id == unit_id)
-    return await paginate(db, stmt, Package.id, params, PackageOut.model_validate)
+    if carrier is not None:
+        # Both sides lower-cased by Postgres: Python's `str.lower` differs for some letters.
+        stmt = stmt.where(func.lower(Package.carrier) == func.lower(carrier))
+    page = await paginate(db, stmt, Package.id, params, PackageColumns.model_validate)
+    return Page[PackageOut](items=await _outs(db, ctx, page.items), next_cursor=page.next_cursor)
 
 
 async def get_package(db: AsyncSession, ctx: TenantContext, package_id: UUID) -> PackageOut:
@@ -280,7 +342,7 @@ async def get_package(db: AsyncSession, ctx: TenantContext, package_id: UUID) ->
     if package is None:
         # The same answer for someone else's, another building's and no package (ADR-0004).
         raise PackageNotFound(detail="Package not found.")
-    return PackageOut.model_validate(package)
+    return await _out(db, ctx, package)
 
 
 async def package_summary(db: AsyncSession, ctx: TenantContext) -> PackageSummary:
@@ -334,7 +396,7 @@ async def pickup_package(
             "picked_up_by": "member" if member_id is not None else "name",
         },
     )
-    out = PackageOut.model_validate(picked_up)
+    out = await _out(db, ctx, picked_up)
     await db.commit()
     return out
 
@@ -361,7 +423,7 @@ async def return_package(
         actor_user_id=ctx.user_id,
         metadata={"unit_id": returned.unit_id},
     )
-    out = PackageOut.model_validate(returned)
+    out = await _out(db, ctx, returned)
     await db.commit()
     return out
 
