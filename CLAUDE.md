@@ -146,8 +146,13 @@ Everything a command prints is re-read on every later turn, so don't print the s
 - Check focus and accessible names in Chromium, not only jsdom (no CSS or click focus; P2-06c, P4-07a, P4-08b/d).
 - A query whose component can unmount and come back while its data changes elsewhere needs `refetchOnMount: 'always'`
   or `gcTime: 0`, or the 30 s `staleTime` serves the old answer (PR #98 R3 M1, P4-08d R1 F2; 2026-10-21).
+- A view that refreshes on a signal (a polled count, a mutation) compares data with it: list the reads that can start
+  before the signal's first value and those in flight at a change, wait for the first value, and cancel before you
+  invalidate (`invalidateQueries` alone keeps an answer already on its way) (P5-04 R1 F1, R2 F1; 2026-10-23).
 - Check code with a parser (TypeScript's, Python's `ast`), not a regex: generics, multi-line calls, comments, nested
-  objects and aliased imports escape text matching (P4-09 F4, PR #108 R1-F1 and R3-F1; 2026-10-22).
+  objects and aliased imports escape text matching (P4-09 F4, PR #108 R1-F1 and R3-F1; 2026-10-22). To know which
+  function a name means, ask the TypeScript checker (`getSymbolAtLocation`), not your own import tables: namespaces,
+  wrappers, aliases and shadowing escaped one five times (P5-05 R1–R3; 2026-10-23).
 - Measure every new control, fieldset and message in Chromium at 375 px with the longest values the API allows
   (`max_length`, a 255-character file name), not realistic text: a `<fieldset>` and unbroken words grow past the
   viewport (P4-08a, P4-08c, P5-03b R1 F1, P5-03c R1 F3; 2026-10-23).
