@@ -5,6 +5,11 @@ worked example. Follow the steps in order; each names the helper to reuse and th
 rules themselves are in [CLAUDE.md](../CLAUDE.md); this is the order and the parts. Split it into tickets as P5
 did: schema → create/read API → action API → desk UI → resident UI → E2E, each ≤ ~400 non-test lines.
 
+**Before you start.** Read [CLAUDE.md](../CLAUDE.md): "rule N" below is its numbered non-negotiables. Roles are
+`app/memberships/enums.py::Role` (`resident`, `security`, `property_management`, `council`), features
+`app/buildings/enums.py::Feature`. What the stub leaves open (who may act, extra states, time limits) is decided
+while framing with the playbook's decision rules, and recorded in the ticket before any code.
+
 ## 1. Schema with composite FKs (`backend/app/<domain>/models.py`, one migration)
 
 - Columns from `app/models/mixins.py` (uuid7 `id`, timestamps); enums with `app/models/types.py::database_enum`
@@ -17,6 +22,9 @@ did: schema → create/read API → action API → desk UI → resident UI → E
   Use a partial index where only some rows need it.
 - `make revision m="…"`, then read and fix it: server defaults, enum types, partial indexes (CLAUDE.md rule 11).
   Test the constraints directly (`backend/tests/packages/test_schema.py`).
+- A child table (comments, a photo list) carries `building_id` too, with composite FKs to its parent and author;
+  it gets no visibility of its own beyond its parent's (step 3). An idempotency key and request hash are columns
+  on the row they create, `UNIQUE (building_id, idempotency_key)`.
 
 ## 2. State module (`<domain>/state.py`)
 
@@ -33,6 +41,9 @@ did: schema → create/read API → action API → desk UI → resident UI → E
   on top, never a looser grant.
 - Every read, count, action and file hook narrows this query (`.where`, `.exists()`, a subquery); none writes its
   own filter. Test it per role and per occupancy case (`test_visibility.py`).
+- A child's query starts from its parent's (`visible_<child>(ctx)` joins `visible_<domain>(ctx)`) and adds its own
+  narrowing (internal rows only for staff). That filter also decides who is notified or emailed about a child row,
+  and what the file hook grants: a row a reader may not see never reaches them by another path.
 
 ## 4. Service with a single commit (`<domain>/service.py`)
 
@@ -44,9 +55,14 @@ did: schema → create/read API → action API → desk UI → resident UI → E
 - Actions: `_for_transition` (404 / 409 early answer from `visible_*`), then `_transition`, a conditional
   `UPDATE … WHERE status IN (sources(to)) RETURNING` (rule 7); zero rows re-reads for the right error. Of two at
   once exactly one wins (`backend/tests/packages/test_concurrency.py`, two sessions).
+- Who may take an action beyond the route's roles (only the requester may cancel), and a time limit (reopen within
+  N days), go in the same conditional UPDATE's WHERE, by the database clock (`now()`), so the check and the write
+  are one statement; a refusal re-reads for the error as above.
 - Create that a double-click could duplicate: an `Idempotency-Key` header plus a request hash, unique per building
   (`check_idempotency_key`, `request_hash`; `test_idempotency.py`). Errors are domain errors from
   `app/core/errors.py` with a stable `code` (rule 8).
+- Schemas in `<domain>/schemas.py`: `XCreate(InputModel)` with `max_length` on every string, `XOut(APIModel)`
+  (`app/core/schemas.py`). Lists take `app/core/pagination.py::CursorParams` and return `Page[XOut]`.
 
 ## 5. Router on the building router (`<domain>/router.py`)
 
