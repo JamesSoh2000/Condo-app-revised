@@ -158,6 +158,28 @@ export function inspect(file: string, source: string): Fn[] {
     if (from !== undefined) return { key: `${from}::${member}`, name: member };
     return member === 'useBuilding' ? { key: `<member>::${member}`, name: member } : undefined;
   };
+  // A hook bound to a local name, `const read = useBuilding` or `const { useBuilding: ub } = Building`, is that hook
+  // (review round 2, Claude L1). Destructured from anything but a namespace import, only `useBuilding` counts, as for
+  // a member call. Read in source order, before the calls.
+  const bind = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      const value = node.initializer;
+      if (ts.isIdentifier(node.name)) {
+        const hook = hookOf(value);
+        if (hook && /^use[A-Z]/.test(hook.name)) names.set(node.name.text, hook.key);
+      } else if (ts.isObjectBindingPattern(node.name)) {
+        const from = ts.isIdentifier(value) ? namespaces.get(value.text) : undefined;
+        for (const element of node.name.elements) {
+          const property = element.propertyName ?? element.name;
+          if (!ts.isIdentifier(element.name) || !(ts.isIdentifier(property) || ts.isStringLiteral(property))) continue;
+          if (from !== undefined) names.set(element.name.text, `${from}::${property.text}`);
+          else if (property.text === 'useBuilding') names.set(element.name.text, '<member>::useBuilding');
+        }
+      }
+    }
+    ts.forEachChild(node, bind);
+  };
+  bind(tree);
   const fns = new Map<ts.Node | undefined, Fn>();
   const visit = (node: ts.Node) => {
     const hook = ts.isCallExpression(node) ? hookOf(node.expression) : undefined;
@@ -323,6 +345,20 @@ describe('the inspector', () => {
     expect(run(`${NESTED}export function G() { const useCan = () => !useBuildingDenied(); return useCan(); }`)).toEqual(['features/x/X.tsx::A']);
     // A module-level hook still counts, however it is declared.
     expect(run(`${IMPORT}const useCan = memo(() => !useBuildingDenied());\nfunction A() { useBuilding({ passive: true }); useCan(); }`)).toEqual([]);
+  });
+
+  // Review round 2, Claude L1: a hook bound to a local name escaped.
+  it('R2-L1: a hook bound to a local name, by assignment or destructuring, is that hook', () => {
+    expect(run(`${IMPORT}const read = useBuilding;\nfunction A() { read({ passive: true }); }`)).toEqual(['features/x/X.tsx::A']);
+    expect(run(`${NS}const { useBuilding: ub } = Building;\nfunction A() { ub({ passive: true }); }`)).toEqual(['features/x/X.tsx::A']);
+    expect(run(`${NS}const { useBuilding } = Building;\nfunction A() { useBuilding({ passive: true }); }`)).toEqual(['features/x/X.tsx::A']);
+    expect(run(`${NS}const read = Building.useBuilding;\nfunction A() { read({ passive: true }); }`)).toEqual(['features/x/X.tsx::A']);
+    // The denial through the same shapes counts, so a guarded component still passes.
+    expect(run(`${NS}const { useBuilding: ub, useBuildingDenied: denied } = Building;\nfunction A() { ub({ passive: true }); denied(); }`)).toEqual([]);
+    expect(run(`${IMPORT}const denied = useBuildingDenied;\nfunction A() { useBuilding({ passive: true }); denied(); }`)).toEqual([]);
+    // Destructured from anything else, `useBuilding` still counts (fail-closed) and the denial doesn't.
+    expect(run(`const { useBuilding: ub } = hooks;\nfunction A() { ub({ passive: true }); }`)).toEqual(['features/x/X.tsx::A']);
+    expect(run(`${IMPORT}const { useBuildingDenied: d } = fake;\nfunction A() { useBuilding({ passive: true }); d(); }`)).toEqual(['features/x/X.tsx::A']);
   });
 
   it('a denial read in another component does not cover this one', () => {
