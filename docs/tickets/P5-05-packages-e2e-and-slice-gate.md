@@ -119,7 +119,7 @@ in a fresh subagent.
 
 ## Carried from P5-04
 
-- **First follow-up (step 8 promotion):** the pattern "a list read before the change it is compared with" now
+- **Step 8 promotion (next after P5-03d's overflow check, above):** the pattern "a list read before the change it is compared with" now
   appears twice (P5-04 R1 F1, R2 F1 in `docs/AGENT_MISTAKES_LOG.md`). Turn it into a fitness test or a `CLAUDE.md`
   lesson: when a view refreshes data on a signal (a polled count, a mutation), list the reads that can start before
   the signal's first value and those already in flight at a change, and cancel before invalidating.
