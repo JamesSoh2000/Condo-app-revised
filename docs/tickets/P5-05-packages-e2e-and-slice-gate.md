@@ -181,8 +181,14 @@ in a fresh subagent.
   - 8–10, 12–13: the carried follow-ups (P5-03d, P5-02b, the P4 recap), each made a criterion.
   - 11: the P3-05 fitness test, carried since P3-05.
   - 3: the worker restart is done on the prod-like stack with several `email.send` jobs queued (packages
-    logged in a burst) and the restart issued before Mailpit has them all; evidence: each email arrives
-    once, and the worker log.
+    logged in a burst) and the restart issued before Mailpit has them all, both ways: a graceful stop
+    (SIGTERM) and a crash (SIGKILL) with a job running. Evidence: every queued email arrives, the jobs all
+    end `succeeded`, and the worker log. Corrected during verification: the first wording said "each email
+    arrives once", which ADR-0006 does not promise ("delivery is at-least-once… never promise exactly-once
+    email"): after a crash the job that was running may send twice. Once each is required of the graceful
+    stop only. (Also in the inbox's "Decisions to audit".)
+  - 3: the photo check also records that the presigned URL still answers after 60 s on the S3 emulator
+    (LocalStack's default skips signature checks); the expiry itself is D-06's check against real S3.
   - 4: the check runs in a fresh subagent given only `docs/SLICE_RECIPE.md` and the P6-03 stub (in
     `P6-P7-backlog.md`; there is no P6-03 ticket file yet); its plan and the gaps it shows are in the PR.
   - 5: the recap is written in step 8 after this merges, as its own docs PR (as P4's was, PR #113): the
