@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P5-02a |
 | Replaces old | M7-T02 (transition part) |
-| Status | in progress |
+| Status | done |
 
 Split from the original P5-02 (Package API). Create and read are in
 [P5-02a](./P5-02a-package-create-and-read.md).

@@ -93,7 +93,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P4-09](./P4-09-playwright-harness-onboarding-e2e.md) | Playwright harness and onboarding E2E | B | 2 | P4-07b, P4-08c, P4-03, P1-08 | done | — |
 | [P5-01](./P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 | P1-03, P3-04b | done | — |
 | [P5-02a](./P5-02a-package-create-and-read.md) | Package create and read | A | 1 | P5-01, P3-03, P2-04, P4-01a | done | — |
-| [P5-02b](./P5-02b-package-pickup-and-return.md) | Package pickup and return | A | 1 | P5-02a | todo | — |
+| [P5-02b](./P5-02b-package-pickup-and-return.md) | Package pickup and return | A | 1 | P5-02a | done | — |
 | [P5-03](./P5-03-security-packages-page.md) | Security packages page | B | 2 | P5-02a, P5-02b, P3-06 | todo | — |
 | [P5-04](./P5-04-resident-packages-page.md) | Resident packages page | B | 2 | P5-02a, P3-05 | todo | — |
 | [P5-05](./P5-05-packages-e2e-and-slice-gate.md) | Packages E2E and reference-slice gate | B | 1 | P5-03, P5-04, P4-09, P1-08 | todo | — |

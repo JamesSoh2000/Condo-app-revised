@@ -99,6 +99,15 @@ From PR #114 (explanation `docs/explanations/P5-02a-package-create-and-read.md` 
   key per click would log the package twice). A 201 with `Idempotent-Replayed: true` is a success.
 - The recipient picker reads `GET /units/{id}/occupants` (active current occupants only).
 
+## Carried from P5-02b
+
+From PR #115: `POST …/packages/{id}/pickup` takes exactly one of `picked_up_by_membership_id` (the recipient
+or an active current occupant of the unit, else 422 `invalid_pickup_member`) and `picked_up_by_name`
+(1–120 characters); `POST …/{id}/return` takes `reason` (1–300). Both answer 409 `invalid_transition` when
+the package is no longer `received` (another desk got there first): refresh the list, don't retry.
+`PackageOut` doesn't return who collected a package or the return reason; if the page shows them, add them
+to `PackageOut` here (staff-only fields need care: residents read `PackageOut` too).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

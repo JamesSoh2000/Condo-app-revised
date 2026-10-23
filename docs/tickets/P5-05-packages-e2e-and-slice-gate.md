@@ -65,6 +65,14 @@ developer can build a slice independently, using the recipe.
   each count and status from its source (each PR's "Independent review", the log's "Caught by" column, the
   later tickets that close an explanation's §7 item), not a summary.
 
+## Carried from P5-02b
+
+From PR #115: `backend/tests/packages/test_api.py::_picked_up` (P5-02a) writes `picked_up_at` from the host
+clock + 1 s while `received_at` is the database's `now()`. When the WSL2 host and the Docker VM drifted over
+a second it failed `ck_packages_picked_up_after_received` (twice on 2026-10-22: the P5-02b local `make check`
+and the Codex review run; both passed on rerun). Make it use the database clock (`func.clock_timestamp()`),
+or `received_at` plus an interval, before the slice gate relies on a green suite.
+
 ## Acceptance criteria
 
 1. **Given** `make e2e`, **then** J1–J4 and J7 pass locally and in CI.
