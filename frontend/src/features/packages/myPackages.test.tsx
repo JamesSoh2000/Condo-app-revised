@@ -548,3 +548,112 @@ describe('the lists follow the badge (criterion 9)', () => {
     expect(listCalls(fetchMock, 'picked_up,returned')).toHaveLength(2);
   });
 });
+
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  const summaryKey = ['b', MAPLE.id, 'packages', 'summary'];
+
+  it('F1: a count change during the list’s first request still shows the new list', async () => {
+    let releaseOld: ((response: Response) => void) | undefined;
+    let asked = 0;
+    const state: Server = { waiting: [pkg(1), pkg(2)], history: [] };
+    stubApi(
+      resident(state, {
+        [`GET ${BASE}`]: (request) => {
+          if (statuses(request) !== 'received') return page([]);
+          asked += 1;
+          if (asked === 1) return new Promise<Response>((resolve) => (releaseOld = resolve));
+          return page(state.waiting);
+        },
+      }),
+    );
+    const app = renderApp(['/']);
+    await navLink('My packages, 2 waiting');
+    act(() => app.navigate()('/packages'));
+    await waitFor(() => expect(releaseOld).toBeDefined());
+
+    // The first answer was read before the new package; it is still out when the count moves.
+    state.waiting = [pkg(3), ...state.waiting];
+    await act(() => app.queryClient.invalidateQueries({ queryKey: summaryKey }));
+    await navLink('My packages, 3 waiting');
+    await act(async () => releaseOld!(page([pkg(1), pkg(2)])));
+    await settle();
+
+    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Waiting for you' })).getAllByRole('listitem')).toHaveLength(3));
+  });
+
+  it('F1 neighbour: a count change during Load more asks for the whole list again', async () => {
+    let releaseMore: ((response: Response) => void) | undefined;
+    const state: Server = { waiting: [pkg(1), pkg(2)], history: [] };
+    stubApi(
+      resident(state, {
+        [`GET ${BASE}`]: (request) => {
+          if (statuses(request) !== 'received') return page([]);
+          if (new URL(request.url).searchParams.get('cursor')) return new Promise<Response>((resolve) => (releaseMore = resolve));
+          return page(state.waiting, 'c'.repeat(22));
+        },
+      }),
+    );
+    const app = renderApp(['/packages']);
+    await waitingList();
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    await waitFor(() => expect(releaseMore).toBeDefined());
+
+    state.waiting = [pkg(3), ...state.waiting];
+    await act(() => app.queryClient.invalidateQueries({ queryKey: summaryKey }));
+    await act(async () => releaseMore!(page([pkg(9)])));
+    await settle();
+
+    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Waiting for you' })).getAllByRole('listitem')).toHaveLength(3));
+  });
+
+  it('F2: reopening a cached package whose request fails shows the failure and Try again, not the old package', async () => {
+    let fail = false;
+    const item = TWO_AND_THREE.waiting[0];
+    stubApi(resident(TWO_AND_THREE, { [`GET ${BASE}/${item.id}`]: () => (fail ? problem(500, 'internal_error') : json(item)) }));
+    renderApp(['/packages']);
+
+    const link = within(await waitingList()).getAllByRole('link')[0];
+    fireEvent.click(link);
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Amazon package' })).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    fail = true;
+    fireEvent.click(link);
+    const dialog = await screen.findByRole('dialog', { name: 'Package' });
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('Could not load the package.');
+    expect(within(dialog).queryByText('Waiting at the front desk')).toBeNull();
+
+    fail = false;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('dialog', { name: 'Amazon package' })).toBeTruthy();
+  });
+
+  it('F2 neighbour: a focus refetch that fails while the dialog is open shows the failure', async () => {
+    let fail = false;
+    const item = TWO_AND_THREE.waiting[0];
+    stubApi(resident(TWO_AND_THREE, { [`GET ${BASE}/${item.id}`]: () => (fail ? problem(500, 'internal_error') : json(item)) }));
+    renderApp([`/packages/${item.id}`]);
+    await screen.findByRole('dialog', { name: 'Amazon package' });
+
+    fail = true;
+    setVisibility('hidden');
+    setVisibility('visible');
+
+    const dialog = await screen.findByRole('dialog', { name: 'Package' });
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('Could not load the package.');
+  });
+
+  it('F2 neighbour: a refetch answering 404 after the package showed turns into not found', async () => {
+    let gone = false;
+    const item = TWO_AND_THREE.waiting[0];
+    stubApi(resident(TWO_AND_THREE, { [`GET ${BASE}/${item.id}`]: () => (gone ? problem(404, 'package_not_found') : json(item)) }));
+    renderApp([`/packages/${item.id}`]);
+    await screen.findByRole('dialog', { name: 'Amazon package' });
+
+    gone = true;
+    setVisibility('hidden');
+    setVisibility('visible');
+
+    expect(await screen.findByRole('dialog', { name: 'Package not found' })).toBeTruthy();
+  });
+});

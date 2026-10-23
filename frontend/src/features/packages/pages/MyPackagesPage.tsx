@@ -28,11 +28,16 @@ function Packages({ buildingId }: { buildingId: string }) {
   const time = buildingTime(useBuilding({ passive: true }).data);
 
   // The lists don't poll (ADR-0012); when the badge's polled count moves, they are asked again (criterion 9).
+  // Cancelled first, as after a desk mutation: a request already out, even a list's first, may have been read before
+  // the change, and invalidating alone would keep it (review round 1, Codex F1).
   const waiting = usePackageSummary(buildingId).data?.waiting;
   const seen = useRef(waiting);
   useEffect(() => {
     if (waiting === undefined) return;
-    if (seen.current !== undefined && seen.current !== waiting) void queryClient.invalidateQueries({ queryKey: myPackagesKey(buildingId) });
+    if (seen.current !== undefined && seen.current !== waiting) {
+      const filters = { queryKey: myPackagesKey(buildingId) };
+      void queryClient.cancelQueries(filters).then(() => queryClient.invalidateQueries(filters));
+    }
     seen.current = waiting;
   }, [waiting, buildingId, queryClient]);
 

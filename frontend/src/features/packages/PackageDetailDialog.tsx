@@ -38,7 +38,9 @@ export function PackageDetailDialog({ packageId, time, onClose }: Props) {
   }, []);
 
   const notFound = !valid || (query.error instanceof ApiError && query.error.status === 404);
-  const item = notFound ? undefined : query.data;
+  // A failed request hides an answer cached from before, so an old status never reads as current (review round 1,
+  // Codex F2).
+  const item = notFound || query.isError ? undefined : query.data;
   const title = notFound ? 'Package not found' : item ? `${item.carrier} package` : 'Package';
 
   let body;
