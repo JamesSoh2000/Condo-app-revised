@@ -473,8 +473,11 @@ describe('one request per confirmation, and focus (criterion 7)', () => {
 
     const button = inDialog().getByRole<HTMLButtonElement>('button', { name });
     button.focus();
-    fireEvent.click(button);
-    fireEvent.click(button);
+    // In one act, so the second click comes before React re-renders the disabled button: the guard must stop it.
+    act(() => {
+      fireEvent.click(button);
+      fireEvent.click(button);
+    });
     await settle();
 
     expect(count(fetchMock, route)).toBe(1);
