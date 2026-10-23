@@ -207,7 +207,8 @@ describe('logging a package (criterion 1)', () => {
     await waitFor(() => expect(count(fetchMock, LIST)).toBe(1));
 
     await chooseUnit();
-    fireEvent.change(await inForm().findByRole('combobox', { name: 'Recipient' }), { target: { value: ROBIN.membership_id } });
+    await inForm().findByRole('option', { name: 'Robin Park' });
+    fireEvent.change(inForm().getByRole('combobox', { name: 'Recipient' }), { target: { value: ROBIN.membership_id } });
     chooseCarrier('UPS');
     fireEvent.change(inForm().getByLabelText('Description (optional)'), { target: { value: 'Small box' } });
     fireEvent.change(inForm().getByLabelText('Last 4 of tracking (optional)'), { target: { value: 'ab12' } });
@@ -474,8 +475,8 @@ describe('the server’s refusals (criterion 6)', () => {
     const { fetchMock, sent } = desk(inTurn(() => problem(422, 'invalid_recipient'), () => json(created(), 201)));
     await open();
     await chooseUnit();
-    fireEvent.change(await inForm().findByRole('combobox', { name: 'Recipient' }), { target: { value: SAM.membership_id } });
     await inForm().findByRole('option', { name: 'Sam Lee' });
+    fireEvent.change(inForm().getByRole('combobox', { name: 'Recipient' }), { target: { value: SAM.membership_id } });
     chooseCarrier('UPS');
     const before = count(fetchMock, occupants(U101));
     submit();

@@ -61,10 +61,12 @@ interface PickerProps {
   /** Show "Choose a unit." while none is chosen. */
   missing: boolean;
   searchRef?: RefObject<HTMLInputElement>;
+  /** The search field's label; a page with two unit searches names them apart (P5-03c). */
+  label?: string;
 }
 
 /** The search field and the units it found, as radio buttons, with the list's loading, empty and failed states. */
-export function UnitPicker({ picker, legend, busy, missing, searchRef }: PickerProps) {
+export function UnitPicker({ picker, legend, busy, missing, searchRef, label = 'Unit number' }: PickerProps) {
   const id = useId();
   const { units, options, term, chosen, invalidSearch } = picker;
   // A failed refresh shows above the units it kept, as the members list's (P4-08e review round 1, Codex F1).
@@ -94,7 +96,7 @@ export function UnitPicker({ picker, legend, busy, missing, searchRef }: PickerP
     <>
       <div className="flex flex-col gap-1">
         <label htmlFor={`${id}-search`} className="text-sm font-medium">
-          Unit number
+          {label}
         </label>
         <input
           ref={searchRef}

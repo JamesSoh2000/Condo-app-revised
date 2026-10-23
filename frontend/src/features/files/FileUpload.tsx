@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 
 import { acceptFor, checkFile, contentTypeOf, describeRule, ruleFor, type FilePurpose } from '@/features/files/purposes';
-import { useUpload } from '@/features/files/useUpload';
+import { useUpload, type UploadStatus } from '@/features/files/useUpload';
 
 // Types every browser can draw; a HEIC preview would be a broken image in most of them.
 const PREVIEWABLE = ['image/jpeg', 'image/png', 'image/webp'];
@@ -17,6 +17,8 @@ export interface FileUploadProps {
   /** `environment` opens the back camera on phones (package photos). */
   capture?: 'environment' | 'user';
   label?: string;
+  /** Called with each new status, so a form can wait for the upload (P5-03c). */
+  onStatusChange?: (status: UploadStatus) => void;
 }
 
 /**
@@ -28,7 +30,7 @@ export function FileUpload(props: FileUploadProps) {
   return <FileUploadFor key={props.purpose} {...props} />;
 }
 
-function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label = 'Choose file' }: FileUploadProps) {
+function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label = 'Choose file', onStatusChange }: FileUploadProps) {
   const rule = useMemo(() => ruleFor(purpose, accept, maxBytes), [purpose, accept, maxBytes]);
   const { upload, retry, cancel, progress, status, error } = useUpload(purpose, { onUploaded });
   const [checkError, setCheckError] = useState<string | null>(null);
@@ -37,6 +39,9 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
   const input = useRef<HTMLInputElement>(null);
   const preview = useObjectUrl(chosen && PREVIEWABLE.includes(contentTypeOf(chosen)) ? chosen : null);
   const busy = status === 'uploading';
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
+  useEffect(() => onStatusChangeRef.current?.(status), [status]);
   const percent = Math.round(progress * 100);
 
   function start(file: File) {

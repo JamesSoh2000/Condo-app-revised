@@ -93,6 +93,8 @@ const listQueries = (fetchMock: ReturnType<typeof stubApi>) =>
     .filter((url) => url.pathname === `/api/buildings/${MAPLE.id}/packages`)
     .map((url) => Object.fromEntries(url.searchParams));
 const location = () => screen.getByTestId('location').textContent;
+// The list's own unit search; P5-03c's log form has another on the same page.
+const filter = () => within(screen.getByRole('group', { name: 'Show packages for' }));
 
 describe('the route and its access (criterion 2; tenant rows 1, 2 and 4)', () => {
   it.each([['security'], ['property_management']] as const)('opens /security/packages for %s', async (role) => {
@@ -253,7 +255,7 @@ describe('search by unit (criterion 5)', () => {
     await waiting();
 
     fireEvent.change(screen.getByLabelText('Unit number'), { target: { value: '10' } });
-    fireEvent.click(await screen.findByRole('radio', { name: 'A-101' }));
+    fireEvent.click(await filter().findByRole('radio', { name: 'A-101' }));
 
     await waitFor(() => expect(listQueries(fetchMock).at(-1)).toEqual({ status: 'received', unit_id: U101.id }));
     fireEvent.click(screen.getByRole('button', { name: 'All units' }));
@@ -267,7 +269,7 @@ describe('search by unit (criterion 5)', () => {
     await waiting();
 
     fireEvent.change(screen.getByLabelText('Unit number'), { target: { value: '10' } });
-    await screen.findByRole('radio', { name: 'A-101' });
+    await filter().findByRole('radio', { name: 'A-101' });
 
     await waitFor(() => {
       const searched = fetchMock.mock.calls.map(([request]) => new URL(request.url)).filter((url) => url.pathname.endsWith('/units'));
@@ -279,7 +281,7 @@ describe('search by unit (criterion 5)', () => {
     const fetchMock = stubApi(desk());
     renderApp([PAGE]);
     await waiting();
-    fireEvent.click(await screen.findByRole('radio', { name: 'A-101' }));
+    fireEvent.click(await filter().findByRole('radio', { name: 'A-101' }));
     await waitFor(() => expect(listQueries(fetchMock).at(-1)).toEqual({ status: 'received', unit_id: U101.id }));
 
     fireEvent.change(screen.getByLabelText('Unit number'), { target: { value: '2' } });
@@ -321,7 +323,7 @@ describe('filter by carrier (criterion 6)', () => {
     await waiting();
 
     fireEvent.change(screen.getByLabelText('Carrier'), { target: { value: 'FedEx' } });
-    fireEvent.click(await screen.findByRole('radio', { name: '102' }));
+    fireEvent.click(await filter().findByRole('radio', { name: '102' }));
 
     await waitFor(() => expect(listQueries(fetchMock).at(-1)).toEqual({ status: 'received', carrier: 'FedEx', unit_id: U102.id }));
   });
@@ -494,7 +496,7 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     renderApp([PAGE]);
     await waiting();
 
-    const radio = await screen.findByRole('radio', { name: `${'W'.repeat(20)}-${'W'.repeat(20)}` });
+    const radio = await filter().findByRole('radio', { name: `${'W'.repeat(20)}-${'W'.repeat(20)}` });
     expect(radio.closest('fieldset')!.className.split(' ')).toContain('min-w-0');
     expect(radio.closest('label')!.className).toContain('[overflow-wrap:anywhere]');
   });
