@@ -29,17 +29,25 @@ function Packages({ buildingId }: { buildingId: string }) {
 
   // The lists don't poll (ADR-0012); when the badge's polled count moves, they are asked again (criterion 9).
   // Cancelled first, as after a desk mutation: a request already out, even a list's first, may have been read before
-  // the change, and invalidating alone would keep it (review round 1, Codex F1).
-  const waiting = usePackageSummary(buildingId).data?.waiting;
+  // the change, and invalidating alone would keep it (review round 1, Codex F1). They start only once there is a
+  // count (cached by the nav, or this mount's first answer), so no list is older than the count it is compared with
+  // (review round 2, Codex F1); if the count fails they start anyway, and its first answer then asks them again.
+  const summary = usePackageSummary(buildingId);
+  const waiting = summary.data?.waiting;
+  const ready = waiting !== undefined || summary.isError;
+  const blind = useRef(false);
   const seen = useRef(waiting);
   useEffect(() => {
-    if (waiting === undefined) return;
-    if (seen.current !== undefined && seen.current !== waiting) {
+    if (waiting === undefined) {
+      blind.current ||= ready;
+      return;
+    }
+    if (seen.current === undefined ? blind.current : seen.current !== waiting) {
       const filters = { queryKey: myPackagesKey(buildingId) };
       void queryClient.cancelQueries(filters).then(() => queryClient.invalidateQueries(filters));
     }
     seen.current = waiting;
-  }, [waiting, buildingId, queryClient]);
+  }, [waiting, ready, buildingId, queryClient]);
 
   // Focus goes back to the Details link that opened the dialog, or to the heading (a deep link, or a list that
   // refreshed the link away).
@@ -66,8 +74,8 @@ function Packages({ buildingId }: { buildingId: string }) {
         My packages
       </h1>
       <div className="mt-4 flex flex-col gap-8">
-        <MyPackageList list="waiting" time={time} onOpen={onOpen} />
-        <MyPackageList list="history" time={time} onOpen={onOpen} />
+        <MyPackageList list="waiting" enabled={ready} time={time} onOpen={onOpen} />
+        <MyPackageList list="history" enabled={ready} time={time} onOpen={onOpen} />
       </div>
       {packageId !== undefined && <PackageDetailDialog key={packageId} packageId={packageId} time={time} onClose={close} />}
     </section>

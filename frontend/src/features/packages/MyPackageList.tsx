@@ -33,6 +33,8 @@ export function packageMoment(item: Package): { label: string; at: string } {
 
 interface Props {
   list: MyList;
+  /** False until the page may ask for the list (it waits for the waiting count, round 2 F1). */
+  enabled: boolean;
   time: Intl.DateTimeFormat | undefined;
   /** A Details link was followed: the page returns focus to it when the dialog closes. */
   onOpen: (link: HTMLAnchorElement) => void;
@@ -42,8 +44,8 @@ interface Props {
  * One of the resident's lists (P5-04): "Waiting for you" as cards with the photo and where to collect it, or "History"
  * as rows saying how each package ended. Paged with Load more; each item links to its detail dialog.
  */
-export function MyPackageList({ list, time, onOpen }: Props) {
-  const query = useMyPackages(useBuildingId(), list);
+export function MyPackageList({ list, enabled, time, onOpen }: Props) {
+  const query = useMyPackages(useBuildingId(), list, enabled);
   const text = TEXT[list];
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
 

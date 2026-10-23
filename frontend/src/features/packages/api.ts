@@ -128,12 +128,13 @@ export const myPackagesKey = (buildingId: string) => [...packagesKey(buildingId)
 /**
  * One of the caller's lists, newest first, one page at a time. `visible_packages` on the server decides what is
  * the caller's. Stale at once, so asked on every mount and on focus; lists don't poll (ADR-0012), and the page asks
- * them again when the polled summary changes (P5-04 criterion 9).
+ * them again when the polled summary changes (P5-04 criterion 9). Not asked until `enabled`.
  */
-export function useMyPackages(buildingId: string, list: MyList) {
+export function useMyPackages(buildingId: string, list: MyList, enabled: boolean) {
   return useInfiniteQuery({
     queryKey: [...myPackagesKey(buildingId), list],
     staleTime: 0,
+    enabled,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       api.get('/api/buildings/{building_id}/packages', {

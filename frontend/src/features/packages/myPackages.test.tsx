@@ -657,3 +657,79 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     expect(await screen.findByRole('dialog', { name: 'Package not found' })).toBeTruthy();
   });
 });
+
+describe('review round 2 (Codex gpt-6.1-sol)', () => {
+  const summaryKey = ['b', MAPLE.id, 'packages', 'summary'];
+  const waitingCount = () => within(screen.getByRole('list', { name: 'Waiting for you' })).getAllByRole('listitem').length;
+
+  /** The summary's first answer waits for `release`; later ones answer at once from `state`. */
+  function heldSummary(state: Server) {
+    const held: { release?: (response: Response) => void } = {};
+    let first = true;
+    const route: Handler = () => {
+      if (!first) return json({ waiting: state.waiting.length });
+      first = false;
+      return new Promise<Response>((resolve) => (held.release = resolve));
+    };
+    return { held, route };
+  }
+
+  it('F1: a package logged before the first summary answers still reaches the cards', async () => {
+    const state: Server = { waiting: [pkg(1), pkg(2)], history: [] };
+    const { held, route } = heldSummary(state);
+    const fetchMock = stubApi(resident(state, { [`GET ${BASE}/summary`]: route }));
+    const app = renderApp(['/packages']);
+    await waitFor(() => expect(held.release).toBeDefined());
+
+    // No list is asked before the count it will be compared with.
+    await settle();
+    expect(listCalls(fetchMock, 'received')).toHaveLength(0);
+
+    state.waiting = [pkg(3), ...state.waiting];
+    act(() => held.release!(json({ waiting: 3 })));
+    await navLink('My packages, 3 waiting');
+    await waitFor(() => expect(waitingCount()).toBe(3));
+    await act(() => app.queryClient.invalidateQueries({ queryKey: summaryKey }));
+    await settle();
+    expect(waitingCount()).toBe(3);
+  });
+
+  it('F1 neighbour: with a count cached by the nav, the lists start at once', async () => {
+    const state: Server = { waiting: [pkg(1), pkg(2)], history: [] };
+    let hold = false;
+    const pending: ((response: Response) => void)[] = [];
+    const fetchMock = stubApi(
+      resident(state, {
+        [`GET ${BASE}/summary`]: () =>
+          hold ? new Promise<Response>((resolve) => pending.push(resolve)) : json({ waiting: state.waiting.length }),
+      }),
+    );
+    const app = renderApp(['/']);
+    await navLink('My packages, 2 waiting');
+
+    hold = true;
+    act(() => app.navigate()('/packages'));
+    await waitFor(() => expect(waitingCount()).toBe(2));
+    expect(listCalls(fetchMock, 'received')).toHaveLength(1);
+    act(() => pending.forEach((release) => release(json({ waiting: 2 }))));
+  });
+
+  it('F1 neighbour: a failed first summary still loads the lists, and its first answer refreshes them', async () => {
+    const state: Server = { waiting: [pkg(1), pkg(2)], history: [] };
+    let fail = true;
+    const fetchMock = stubApi(
+      resident(state, {
+        [`GET ${BASE}/summary`]: () => (fail ? problem(500, 'internal_error') : json({ waiting: state.waiting.length })),
+      }),
+    );
+    const app = renderApp(['/packages']);
+    await waitFor(() => expect(waitingCount()).toBe(2));
+
+    state.waiting = [pkg(3), ...state.waiting];
+    fail = false;
+    await act(() => app.queryClient.invalidateQueries({ queryKey: summaryKey }));
+    await navLink('My packages, 3 waiting');
+    await waitFor(() => expect(waitingCount()).toBe(3));
+    expect(listCalls(fetchMock, 'picked_up,returned')).toHaveLength(2);
+  });
+});
