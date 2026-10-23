@@ -434,6 +434,20 @@ describe('the form’s checks (criterion 4)', () => {
     expect(sent[0].body.photo_file_id).toBeNull();
   });
 
+  it('never sends a finished photo once a refused file has replaced it', async () => {
+    const { sent } = desk();
+    await open();
+    await fillMinimum();
+    await uploadPhoto();
+    const input = form().querySelector<HTMLInputElement>('input[type="file"]')!;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'notes.txt', { type: 'text/plain' })] } });
+    expect(inForm().getByRole('alert')).toBeTruthy();
+
+    submit();
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].body.photo_file_id).toBeNull();
+  });
+
   it('sends one request for a double click', async () => {
     let answer = () => {};
     const { sent } = desk(() => new Promise<Response>((resolve) => (answer = () => resolve(json(created(), 201)))));
