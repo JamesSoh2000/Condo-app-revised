@@ -4,7 +4,7 @@
 |---|---|
 | Phase / lane | P5 / B |
 | Risk tier | 1 |
-| Depends on | P5-03, P5-04, P4-09, P1-08 |
+| Depends on | P5-03c, P5-03d, P5-04, P4-09, P1-08 |
 | Replaces old | M7-T06, M7-T10 (local part; the staging part is D-06) |
 | Status | todo |
 

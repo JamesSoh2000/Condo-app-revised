@@ -31,7 +31,7 @@
 | 3 | P2-01, P2-02, P2-03, P2-04 | P2-05, P2-06, P3-02 | Log in locally (dev and prod-like stacks) with seeded users; non-members get 404 everywhere |
 | 4 | P3-03, P3-04, P4-01 | P3-05, P3-06, P4-04, P4-09 (harness part) | Email lands in Mailpit; upload round-trip through the S3 emulator; notification badge polls |
 | 5 | P4-02, P4-03, P4-05, P4-06 | P4-07, P4-08, P4-09 | **Onboarding E2E green in CI:** bootstrap → invite → join → approve → reset |
-| 6 | P5-01, P5-02a, P5-02b | P5-03, P5-04, P5-05 | **Reference slice gate:** packages E2E + concurrency tests, in CI and on the prod-like stack |
+| 6 | P5-01, P5-02a, P5-02b | P5-03a–d, P5-04, P5-05 | **Reference slice gate:** packages E2E + concurrency tests, in CI and on the prod-like stack |
 | 7 | P6-03, P6-04 (maintenance), P6-05 (dashboard) | P6-01, P6-02 (notices), P6-06, P6-07 | Journeys 5, 6 and 8 green |
 | 8 | P7-01, P7-02, P7-03 | P7-04, P7-05, P7-06, P7-07 | **Demo-ready bar met (local)**; recorded walkthrough; retro; milestone D scheduled |
 | 9–10 | D-04, D-05 (coded locally, verified on staging), then D-06 | D-01, D-02, D-03, then D-06 | **Deployed:** merge → staging URL; staging smoke and the staging-only checks pass |
@@ -168,7 +168,10 @@ prod-like stack).
 | [P5-01](./tickets/P5-01-package-schema-state-machine.md) | Package schema and state machine | A | 1 |
 | [P5-02a](./tickets/P5-02a-package-create-and-read.md) | Package create and read | A | 1 |
 | [P5-02b](./tickets/P5-02b-package-pickup-and-return.md) | Package pickup and return | A | 1 |
-| [P5-03](./tickets/P5-03-security-packages-page.md) | Security packages page | B | 2 |
+| [P5-03a](./tickets/P5-03a-package-desk-read-fields.md) | Package desk read fields | A | 1 |
+| [P5-03b](./tickets/P5-03b-package-desk-page-and-waiting-list.md) | Package desk page and waiting list | B | 2 |
+| [P5-03c](./tickets/P5-03c-log-package-panel.md) | Log package panel | B | 2 |
+| [P5-03d](./tickets/P5-03d-package-pickup-and-return-dialogs.md) | Package pickup and return dialogs | B | 2 |
 | [P5-04](./tickets/P5-04-resident-packages-page.md) | Resident packages page | B | 2 |
 | [P5-05](./tickets/P5-05-packages-e2e-and-slice-gate.md) | Packages E2E and reference-slice gate | B | 1 |
 
