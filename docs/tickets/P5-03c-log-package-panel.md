@@ -79,6 +79,19 @@ From PR #114 (explanation `docs/explanations/P5-02a-package-create-and-read.md` 
   key per click would log the package twice). A 201 with `Idempotent-Replayed: true` is a success.
 - The recipient picker reads `GET /units/{id}/occupants` (active current occupants only).
 
+## Carried from P5-03b
+
+- **First follow-up (step 8):** the pattern "overflow at 375 px with long text" now has three entries in
+  `docs/AGENT_MISTAKES_LOG.md` (P4-08a, P4-08c, P5-03b round 1 F1) and was never promoted (P4-08c flagged it for
+  P4-08d). Promote it: a `CLAUDE.md` lesson, or better a check, that every new control, fieldset and message is
+  measured in Chromium at 375 px with the longest values the API allows (`max_length`), not realistic text.
+- The P3-05 fitness test (every component under `src/app` or `src/features` that reads
+  `useBuilding({ passive: true })` also calls `useBuildingDenied()`) is still open. P5-03b did not pick it up: as
+  worded it fails on `app/AccountMenu.tsx::BuildingChoices`, so it needs either that component changed or an
+  exemption with a reason.
+- After a create, invalidate `packagesKey(buildingId)` (`features/packages/api.ts`); the waiting list follows.
+  `CARRIERS` in the same file is the quick-pick's list. Put the panel inside `SecurityPackagesPage`'s keyed `div`.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

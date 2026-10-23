@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P5-03a, P3-06 |
 | Replaces old | M7-T03 (page and list part) |
-| Status | in progress |
+| Status | done |
 
 Split from the original P5-03 (Security packages page) while framing P5-03a. This part is the page, its
 route and the "Waiting" list, and retires the legacy page. The "Log package" panel is
