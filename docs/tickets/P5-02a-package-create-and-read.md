@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P5-01, P3-03, P2-04, P4-01 |
 | Replaces old | M7-T02 (create/list part), M7-T05 (summary part) |
-| Status | in progress |
+| Status | done |
 
 Split from the original P5-02 (Package API) because 7 endpoints plus the 10-case table were too big for one
 PR even without counting tests. Pickup and return are in [P5-02b](./P5-02b-package-pickup-and-return.md).

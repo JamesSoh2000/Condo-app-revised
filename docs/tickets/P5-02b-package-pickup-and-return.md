@@ -84,6 +84,12 @@ From PR #109: the state checks accept an empty `picked_up_by_name` or `return_re
 Refuse blank values in the request schemas (`min_length`, stripped), with a test. Use
 `app.packages.state.assert_transition` and the same from-states in the conditional UPDATE.
 
+## Carried from P5-02a
+
+From PR #114: a create replay renders the package as it is now (decision D3), so after a pickup a retried
+create shows `picked_up`; test that the replay still answers 201 with the new status. The pickup form's
+member list is `GET /units/{id}/occupants` (active current occupants only, the P1-03 carry).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
