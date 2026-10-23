@@ -10,14 +10,15 @@
  * their bodies, so a new one counts without a list here.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, posix, relative, sep } from 'node:path';
 
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const SRC = join(__dirname, '..');
 const ROOTS = ['app', 'features'];
-const DENIAL = 'useBuildingDenied';
+/** The denial hook, as `<module>::<name>`: a module is its path under src without the extension (`app/guards`). */
+const DENIAL = 'app/BuildingProvider::useBuildingDenied';
 
 /** `<path under src>::<function>` → why it may read the building passively without reading the denial. */
 const EXEMPT: Record<string, string> = {
@@ -33,9 +34,11 @@ const EXEMPT: Record<string, string> = {
 interface Fn {
   id: string;
   name: string;
+  /** Its module, as in `DENIAL`. */
+  module: string;
   /** It calls `useBuilding` with `passive: true`, or with an argument it can't read. */
   passive: boolean;
-  /** The hook names it calls, imports resolved to their exported names. */
+  /** The hooks it calls, as `<module>::<exported name>`, each resolved through the file's imports. */
   calls: Set<string>;
 }
 
@@ -47,37 +50,64 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+/** A source file's module: its path under src, without the extension or a trailing `/index`. */
+function moduleOf(file: string): string {
+  return relative(SRC, file).split(sep).join('/').replace(/\.tsx?$/, '').replace(/\/index$/, '');
+}
+
+/** The module an import names, from `from`'s module: `@/…` and relative paths; a package keeps its own name. */
+function resolveModule(from: string, specifier: string): string {
+  if (specifier.startsWith('@/')) return specifier.slice(2).replace(/\.tsx?$/, '').replace(/\/index$/, '');
+  if (specifier.startsWith('.')) return posix.normalize(posix.join(posix.dirname(from), specifier)).replace(/\.tsx?$/, '').replace(/\/index$/, '');
+  return `package:${specifier}`;
+}
+
 /**
- * Each named import's local name → its exported name (`useBuilding as ub` → `useBuilding`), and the namespace
- * imports (`* as Building`), whose members are the module's own names (review round 1, Codex F1).
+ * Each named import's local name → `<module>::<exported name>` (`useBuilding as ub` → `app/BuildingProvider::useBuilding`),
+ * and each namespace import's local name → its module (`* as Building`; review round 1, Codex F1). Resolved to the
+ * module, so a hook is known by where it is defined, not by its name alone (review round 1, Claude M1).
  */
-function importNames(tree: ts.SourceFile): { names: Map<string, string>; namespaces: Set<string> } {
+function imports(tree: ts.SourceFile, module: string): { names: Map<string, string>; namespaces: Map<string, string> } {
   const names = new Map<string, string>();
-  const namespaces = new Set<string>();
+  const namespaces = new Map<string, string>();
   for (const statement of tree.statements) {
-    const bindings = ts.isImportDeclaration(statement) ? statement.importClause?.namedBindings : undefined;
-    if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const from = resolveModule(module, statement.moduleSpecifier.text);
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) namespaces.set(bindings.name.text, from);
     if (bindings && ts.isNamedImports(bindings)) {
-      for (const element of bindings.elements) names.set(element.name.text, (element.propertyName ?? element.name).text);
+      for (const element of bindings.elements) names.set(element.name.text, `${from}::${(element.propertyName ?? element.name).text}`);
     }
   }
   return { names, namespaces };
 }
 
-/** A function's name: its declaration's, or the variable an arrow or function expression is assigned to. */
-function functionName(node: ts.Node): string | undefined {
-  if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) && node.name) return node.name.getText();
-  if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent)) return node.parent.name.getText();
-  return undefined;
+type FunctionNode = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration;
+
+function isFunction(node: ts.Node): node is FunctionNode {
+  return ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node);
 }
 
-/** The named function a call is in: hooks run in the component or hook body, not in a callback inside it. */
-function owner(node: ts.Node): string {
-  for (let at = node.parent; at; at = at.parent) {
-    const name = functionName(at);
-    if (name !== undefined) return name;
-  }
-  return '<module>';
+/**
+ * A function's name: its own, else the variable it is assigned to, through any wrapping calls (`const A = memo(() =>
+ * …)`), `default` for a default export, else `<anonymous@line>`. Never a name shared with another function (review
+ * round 1, Claude M1: wrapped and anonymous components all became one `<module>`).
+ */
+function functionName(fn: FunctionNode): string {
+  if (fn.name && (ts.isIdentifier(fn.name) || ts.isStringLiteral(fn.name))) return fn.name.text;
+  if (ts.isFunctionDeclaration(fn) && fn.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) return 'default';
+  let at: ts.Node = fn.parent;
+  while (ts.isCallExpression(at) || ts.isParenthesizedExpression(at) || ts.isAsExpression(at)) at = at.parent;
+  if (ts.isVariableDeclaration(at) && ts.isIdentifier(at.name)) return at.name.text;
+  if (ts.isExportAssignment(at)) return 'default';
+  const { line } = fn.getSourceFile().getLineAndCharacterOfPosition(fn.getStart());
+  return `<anonymous@${line + 1}>`;
+}
+
+/** The function a hook call runs in: the nearest one around it, since hooks run in a component's or hook's own body. */
+function owner(node: ts.Node): FunctionNode | undefined {
+  for (let at = node.parent; at; at = at.parent) if (isFunction(at)) return at;
+  return undefined;
 }
 
 /**
@@ -99,32 +129,35 @@ function isPassive(call: ts.CallExpression): boolean {
   return passive;
 }
 
-/** Each named function in `source` that calls a hook, with what it calls. */
+/** Each function in `source` that calls a hook, with what it calls. */
 export function inspect(file: string, source: string): Fn[] {
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-  const { names, namespaces } = importNames(tree);
-  // The hook a call names: an identifier (a renamed import resolved), a namespace import's member, or any object's
-  // `useBuilding` (fail-closed: it can only add a passive reader). Another object's member is no hook, so a
-  // `fake.useBuildingDenied()` reads no denial.
-  const hookOf = (callee: ts.Expression): string | undefined => {
-    if (ts.isIdentifier(callee)) return names.get(callee.text) ?? callee.text;
+  const module = moduleOf(file);
+  const { names, namespaces } = imports(tree, module);
+  // The hook a call names, as `<module>::<name>`: an identifier (imported, else this module's own), a namespace
+  // import's member, or any other object's `useBuilding` (fail-closed: it can only add a passive reader). Another
+  // object's other members are no hook, so `fake.useBuildingDenied()` reads no denial.
+  const hookOf = (callee: ts.Expression): { key: string; name: string } | undefined => {
+    if (ts.isIdentifier(callee)) {
+      const key = names.get(callee.text) ?? `${module}::${callee.text}`;
+      return { key, name: key.slice(key.lastIndexOf('::') + 2) };
+    }
     if (!ts.isPropertyAccessExpression(callee)) return undefined;
     const member = callee.name.text;
-    if (ts.isIdentifier(callee.expression) && namespaces.has(callee.expression.text)) return member;
-    return member === 'useBuilding' ? member : undefined;
+    const from = ts.isIdentifier(callee.expression) ? namespaces.get(callee.expression.text) : undefined;
+    if (from !== undefined) return { key: `${from}::${member}`, name: member };
+    return member === 'useBuilding' ? { key: `<member>::${member}`, name: member } : undefined;
   };
-  const fns = new Map<string, Fn>();
+  const fns = new Map<ts.Node | undefined, Fn>();
   const visit = (node: ts.Node) => {
     const hook = ts.isCallExpression(node) ? hookOf(node.expression) : undefined;
-    if (ts.isCallExpression(node) && hook !== undefined) {
-      if (/^use[A-Z]/.test(hook)) {
-        const name = owner(node);
-        const id = `${relative(SRC, file)}::${name}`;
-        const fn = fns.get(id) ?? { id, name, passive: false, calls: new Set<string>() };
-        fn.calls.add(hook);
-        if (hook === 'useBuilding' && isPassive(node)) fn.passive = true;
-        fns.set(id, fn);
-      }
+    if (ts.isCallExpression(node) && hook !== undefined && /^use[A-Z]/.test(hook.name)) {
+      const at = owner(node);
+      const name = at ? functionName(at) : '<module>';
+      const fn = fns.get(at) ?? { id: `${relative(SRC, file).split(sep).join('/')}::${name}`, name, module, passive: false, calls: new Set<string>() };
+      fn.calls.add(hook.key);
+      if (hook.name === 'useBuilding' && isPassive(node)) fn.passive = true;
+      fns.set(at, fn);
     }
     ts.forEachChild(node, visit);
   };
@@ -132,14 +165,18 @@ export function inspect(file: string, source: string): Fn[] {
   return [...fns.values()];
 }
 
-/** The passive readers that read no denial, given every function: the hooks that read it are found to a fixed point. */
+/**
+ * The passive readers that read no denial, given every function. A hook reads it if it calls the denial or another
+ * hook that does, found to a fixed point, each known by its module and name.
+ */
 export function unguarded(fns: Fn[]): string[] {
   const aware = new Set([DENIAL]);
   for (let grew = true; grew; ) {
     grew = false;
     for (const fn of fns) {
-      if (/^use[A-Z]/.test(fn.name) && !aware.has(fn.name) && [...fn.calls].some((hook) => aware.has(hook))) {
-        aware.add(fn.name);
+      const key = `${fn.module}::${fn.name}`;
+      if (/^use[A-Z]/.test(fn.name) && !aware.has(key) && [...fn.calls].some((hook) => aware.has(hook))) {
+        aware.add(key);
         grew = true;
       }
     }
@@ -216,6 +253,45 @@ describe('the inspector', () => {
     expect(run(`${IMPORT}function A() { useBuilding({ passive: true, passive: false }); }`)).toEqual([]);
     expect(run(`${IMPORT}function A() { useBuilding({ passive: false, passive: true }); }`)).toEqual(['features/x/X.tsx::A']);
     expect(run(`${IMPORT}function A() { useBuilding({ enabled: true }); }`)).toEqual([]);
+  });
+
+  // Review round 1, Claude M1: wrapped and anonymous components shared one `<module>` entry, and a hook that reads the
+  // denial was matched by name in any file.
+  it('R1-M1: a wrapped component is its variable, so a denial read in its neighbour does not cover it', () => {
+    expect(run(`${IMPORT}export const A = memo(() => { useBuilding({ passive: true }); });\nexport const B = memo(() => { useBuildingDenied(); });`)).toEqual([
+      'features/x/X.tsx::A',
+    ]);
+    expect(run(`${IMPORT}export const A = memo(forwardRef(() => { useBuilding({ passive: true }); useBuildingDenied(); }));`)).toEqual([]);
+    expect(run(`${IMPORT}export const A = forwardRef(function Inner() { useBuilding({ passive: true }); });`)).toEqual(['features/x/X.tsx::Inner']);
+  });
+
+  it('R1-M1: an anonymous component is its own entry', () => {
+    expect(run(`${IMPORT}export default function () { useBuilding({ passive: true }); }\nexport const C = memo(() => { useBuildingDenied(); });`)).toEqual([
+      'features/x/X.tsx::default',
+    ]);
+    expect(run(`${IMPORT}export default memo(() => { useBuilding({ passive: true }); });\nfunction C() { useBuildingDenied(); }`)).toEqual([
+      'features/x/X.tsx::default',
+    ]);
+    expect(run(`${IMPORT}register(() => { useBuilding({ passive: true }); });\nfunction C() { useBuildingDenied(); }`)).toEqual([
+      'features/x/X.tsx::<anonymous@2>',
+    ]);
+  });
+
+  it('R1-M1: a hook that reads the denial counts only where it is defined, resolved through the import', () => {
+    const SAFE = "import { useBuildingDenied } from '@/app/BuildingProvider';\nexport function useCanX() { return !useBuildingDenied(); }";
+    const a = inspect(join(SRC, 'features/a/A.tsx'), SAFE);
+    const local = inspect(join(SRC, 'features/b/B.tsx'), `${IMPORT}function useCanX() { return true; }\nfunction P() { useBuilding({ passive: true }); useCanX(); }`);
+    expect(unguarded([...a, ...local])).toEqual(['features/b/B.tsx::P']);
+    const imported = inspect(join(SRC, 'features/b/B.tsx'), `${IMPORT}import { useCanX } from '@/features/a/A';\nfunction P() { useBuilding({ passive: true }); useCanX(); }`);
+    expect(unguarded([...a, ...imported])).toEqual([]);
+    const relative = inspect(join(SRC, 'features/a/P.tsx'), `${IMPORT}import { useCanX as can } from './A';\nfunction P() { useBuilding({ passive: true }); can(); }`);
+    expect(unguarded([...a, ...relative])).toEqual([]);
+    const elsewhere = inspect(join(SRC, 'features/b/B.tsx'), `${IMPORT}import { useCanX } from '@/features/c/C';\nfunction P() { useBuilding({ passive: true }); useCanX(); }`);
+    expect(unguarded([...a, ...elsewhere])).toEqual(['features/b/B.tsx::P']);
+    // The denial itself, through its module's name only.
+    expect(run("import { useBuilding } from '@/app/BuildingProvider';\nimport { useBuildingDenied } from './fake';\nfunction A() { useBuilding({ passive: true }); useBuildingDenied(); }")).toEqual([
+      'features/x/X.tsx::A',
+    ]);
   });
 
   it('a denial read in another component does not cover this one', () => {
