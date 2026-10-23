@@ -65,6 +65,22 @@ developer can build a slice independently, using the recipe.
   each count and status from its source (each PR's "Independent review", the log's "Caught by" column, the
   later tickets that close an explanation's §7 item), not a summary.
 
+## Carried from P5-03d
+
+- **First follow-up (playbook step 8):** the pattern "overflow at 375 px with long text" reached 5 in the mistakes
+  log (P5-03d R1 F2) after its `CLAUDE.md` lesson. Add a check that enforces it, for example an E2E step that fills
+  every package field with the API's longest values and asserts `scrollWidth <= clientWidth` at 375 and 768 px on
+  the desk page, both dialogs and the outcome message.
+- Pickup and return E2E: two contexts race one package (the loser sees "Already picked up or returned by a
+  colleague." and its list drops the row); the dialogs' focus on open, Shift+Tab inside a radio group, and
+  Cancel after the row is gone (all checked in Chromium by hand in PR #119, not in CI).
+- Not tested: a building switch while a **return** is out (the pickup case is; both use `usePackageSubmit`).
+- The P3-05 fitness test (every component under `src/app` or `src/features` that reads
+  `useBuilding({ passive: true })` also calls `useBuildingDenied()`), still open after P5-03b–d. As worded it
+  fails on `app/AccountMenu.tsx::BuildingChoices`: change that component or exempt it with a reason.
+- Accepted Low risk (P5-03d D2): the pickup dialog's occupants are inserted above "Someone else" when they load,
+  so the list can shift under a click. Reserve the space or show the choices together if it matters.
+
 ## Carried from P5-02b
 
 From PR #115: `backend/tests/packages/test_api.py::_picked_up` (P5-02a) writes `picked_up_at` from the host
