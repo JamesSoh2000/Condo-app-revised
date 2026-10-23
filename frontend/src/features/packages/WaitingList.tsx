@@ -38,8 +38,10 @@ export function WaitingList() {
   const [open, setOpen] = useState<Open | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const messageRef = useRef<HTMLParagraphElement>(null);
-  // Where focus goes once the dialog has closed: the message (the row is leaving), or back to the opener. State, so
-  // the effect runs after the commit that shows the message (as the residents' PendingRequests).
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Where focus goes once the dialog has closed: the message (the row is leaving), or back to the opener, or to the
+  // heading if a refresh took the opener's row (the empty message is hidden: R2 F2). State, so the effect runs after
+  // the commit that shows the message (as the residents' PendingRequests).
   const [focusTo, setFocusTo] = useState<{ target: HTMLElement | 'message' } | null>(null);
   useEffect(() => {
     if (focusTo) (focusTo.target === 'message' ? messageRef.current : focusTo.target)?.focus();
@@ -47,8 +49,8 @@ export function WaitingList() {
 
   const close = (outcome: string | null) => {
     if (outcome) setMessage(outcome);
-    const back = !outcome && open?.opener.isConnected ? open.opener : null;
-    setFocusTo({ target: back ?? 'message' });
+    const back = open?.opener.isConnected ? open.opener : headingRef.current;
+    setFocusTo({ target: outcome || !back ? 'message' : back });
     setOpen(null);
   };
   const act = (kind: Open['kind'], item: Package, opener: HTMLButtonElement) => {
@@ -115,7 +117,9 @@ export function WaitingList() {
       </div>
       <div className="flex min-w-0 flex-col gap-4">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Waiting</h2>
+          <h2 ref={headingRef} tabIndex={-1} className="text-lg font-semibold">
+            Waiting
+          </h2>
           <button
             type="button"
             disabled={waiting.isFetching}

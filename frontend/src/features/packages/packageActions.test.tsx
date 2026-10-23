@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { components } from '@/api/schema';
-import { MAPLE, RESIDENT_ME, buildingOut, json, membership, problem, renderApp, stubApi, type Handler } from '@/test/renderApp';
+import { BIRCH, MAPLE, RESIDENT_ME, buildingOut, json, membership, openAccountMenu, problem, renderApp, stubApi, type Handler } from '@/test/renderApp';
 
 vi.mock('@/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/client')>();
@@ -551,6 +551,48 @@ describe('one request per confirmation, and focus (criterion 7)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
+  it('Shift+Tab from a checked radio that is not the first wraps to the last button: a radio group is one tab stop (R2 F1)', async () => {
+    desk();
+    renderApp([PAGE]);
+    await open('Hand out');
+    await waitFor(() => choose('Sam Lee'));
+    const sam = inDialog().getByRole('radio', { name: 'Sam Lee' });
+    sam.focus();
+
+    fireEvent.keyDown(sam, { key: 'Tab', shiftKey: true });
+
+    expect(document.activeElement).toBe(inDialog().getByRole('button', { name: 'Hand out' }));
+  });
+
+  it('Tab from the last button goes to the group’s checked radio, its one tab stop (R2 F1 neighbour)', async () => {
+    desk();
+    renderApp([PAGE]);
+    await open('Hand out');
+    await waitFor(() => choose('Sam Lee'));
+    const last = inDialog().getByRole('button', { name: 'Hand out' });
+    last.focus();
+
+    fireEvent.keyDown(last, { key: 'Tab' });
+
+    expect(document.activeElement).toBe(inDialog().getByRole('radio', { name: 'Sam Lee' }));
+  });
+
+  it.each(['Cancel', 'Escape'] as const)('%s after a refresh dropped the row puts focus on the Waiting heading (R2 F2)', async (how) => {
+    let listed = [PKG];
+    desk({ [LIST]: () => json({ items: listed, next_cursor: null }) });
+    renderApp([PAGE]);
+    await open('Return');
+    listed = [];
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh', hidden: true }));
+    await screen.findByText('No packages are waiting.');
+
+    if (how === 'Cancel') fireEvent.click(inDialog().getByRole('button', { name: 'Cancel' }));
+    else fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Waiting' }));
+  });
+
   it('a new dialog starts empty after a cancelled one', async () => {
     desk();
     renderApp([PAGE]);
@@ -581,6 +623,36 @@ describe('the dialog keeps its package (criterion 8; tenant rows 3 and 6)', () =
     confirm('Hand out');
     await waitFor(() => expect(message()?.textContent).toBe('Already picked up or returned by a colleague.'));
     expect(pickup.bodies).toHaveLength(1);
+  });
+
+  it('a building switch with a pickup out unmounts the dialog; its late answer shows nothing in the next building', async () => {
+    sessionStorage.setItem('condo.buildingId', MAPLE.id);
+    const gate = deferred(() => json(pkg({ status: 'picked_up' })));
+    desk({
+      'GET /api/auth/me': () => json({ ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: ['security'] }), membership(BIRCH, { roles: ['security'] })] }),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['security'])),
+      [`GET /api/buildings/${BIRCH.id}/notifications/summary`]: () => json({ unread_count: 0 }),
+      [`GET /api/buildings/${BIRCH.id}/packages`]: () => json({ items: [], next_cursor: null }),
+      [`GET /api/buildings/${BIRCH.id}/units`]: () => json({ items: [], next_cursor: null }),
+      [PICKUP]: gate.handler,
+    });
+    const app = renderApp([PAGE]);
+    await open('Hand out');
+    choose('Someone else');
+    typeName('Jo Courier');
+    confirm('Hand out');
+    await settle();
+
+    openAccountMenu();
+    fireEvent.change(screen.getByLabelText('Building'), { target: { value: BIRCH.id } });
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'));
+    act(() => app.navigate()(PAGE));
+    await screen.findByText('No packages are waiting.');
+    gate.release();
+    await settle();
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(message()).toBeNull();
   });
 
   it.each(['Hand out', 'Return'] as const)('building_not_found on %s marks the building denied', async (name) => {
