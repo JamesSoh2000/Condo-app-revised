@@ -1,10 +1,10 @@
-import { Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import { AppShell } from '@/app/AppShell';
 import { useSessionEpoch } from '@/app/AuthProvider';
 import { BuildingProvider } from '@/app/BuildingProvider';
 import { RequireActiveMembership, RequireAuth, RequirePageAccess } from '@/app/guards';
-import { PAGE_ACCESS } from '@/app/pages';
+import { PAGE_ACCESS, pagePath } from '@/app/pages';
 import { DEMO_PAGES } from '@/app/routeScope';
 import { BeingMigrated, ForbiddenPage, HomePlaceholder, NotFoundPage } from '@/app/screens';
 import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage';
@@ -12,12 +12,13 @@ import { AcceptInvitePage, InviteInvalid } from '@/features/auth/pages/AcceptInv
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { ResetLinkInvalid, ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage';
 import { JoinInvalid, JoinPage } from '@/features/onboarding/JoinPage';
+import { SecurityPackagesPage } from '@/features/packages/pages/SecurityPackagesPage';
 import { ResidentsPage } from '@/features/residents/ResidentsPage';
 
 /**
  * The app's routes. Legacy demo pages keep their old paths but render a placeholder until their slice
- * migrates them, so the shell imports no Base44 page (P2-06a); a migrated page takes its own path (P4-08b). Other
- * legacy pages are 404, as before.
+ * migrates them, so the shell imports no Base44 page (P2-06a); a migrated page takes its own path (P4-08b), and its
+ * legacy path redirects there (P5-03b). Other legacy pages are 404, as before.
  * Building pages need an active building and their `PAGE_ACCESS` row (P2-06b); `/403` needs only a session. The
  * login, password-reset, invitation and join pages need none; their paths without a token or code show the page's
  * invalid-link screen, not "Page not found".
@@ -61,14 +62,26 @@ export function AppRoutes() {
               </RequirePageAccess>
             }
           />
+          <Route
+            path={PAGE_ACCESS.SecurityPackages.path}
+            element={
+              <RequirePageAccess access={PAGE_ACCESS.SecurityPackages}>
+                <SecurityPackagesPage />
+              </RequirePageAccess>
+            }
+          />
           {DEMO_PAGES.map((page) => (
             <Route
               key={page}
               path={`/${page}`}
               element={
-                <RequirePageAccess access={PAGE_ACCESS[page]}>
-                  <BeingMigrated page={page} />
-                </RequirePageAccess>
+                PAGE_ACCESS[page].path ? (
+                  <LegacyRedirect to={pagePath(page)} />
+                ) : (
+                  <RequirePageAccess access={PAGE_ACCESS[page]}>
+                    <BeingMigrated page={page} />
+                  </RequirePageAccess>
+                )
               }
             />
           ))}
@@ -77,4 +90,10 @@ export function AppRoutes() {
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
+}
+
+/** A migrated page's legacy `/<Name>` path: to its own path, with the query and hash, so old links keep working. */
+function LegacyRedirect({ to }: { to: string }) {
+  const { search, hash } = useLocation();
+  return <Navigate replace to={{ pathname: to, search, hash }} />;
 }
