@@ -290,6 +290,79 @@ describe('logging a package (criterion 1)', () => {
   });
 });
 
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  it('F2: forgets the recipient when the unit changes, even on a return to that unit', async () => {
+    const { sent } = desk();
+    await open();
+    await chooseUnit();
+    await inForm().findByRole('option', { name: 'Sam Lee' });
+    const recipient = () => inForm().getByRole<HTMLSelectElement>('combobox', { name: 'Recipient' });
+    fireEvent.change(recipient(), { target: { value: SAM.membership_id } });
+    await chooseUnit(/^102$/);
+    await chooseUnit();
+    await inForm().findByRole('option', { name: 'Sam Lee' });
+
+    expect(recipient().value).toBe('');
+    chooseCarrier('UPS');
+    submit();
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].body.recipient_membership_id).toBeNull();
+  });
+
+  it('F2: forgets the recipient when a new unit search is typed and the same unit chosen again', async () => {
+    const { sent } = desk();
+    await open();
+    await chooseUnit();
+    await inForm().findByRole('option', { name: 'Sam Lee' });
+    fireEvent.change(inForm().getByRole('combobox', { name: 'Recipient' }), { target: { value: SAM.membership_id } });
+    fireEvent.change(inForm().getByLabelText('Unit'), { target: { value: 'A' } });
+    await chooseUnit();
+    await inForm().findByRole('option', { name: 'Sam Lee' });
+    chooseCarrier('UPS');
+    submit();
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].body.recipient_membership_id).toBeNull();
+  });
+
+  /** A create held open until `answer()`, with the form already submitted. */
+  async function pending() {
+    let answer = () => {};
+    const server = desk(() => new Promise<Response>((resolve) => (answer = () => resolve(json(created(), 201)))));
+    await open();
+    await fillMinimum();
+    return { ...server, answer: () => answer() };
+  }
+
+  it('F1: locks the photo while a submission is out, so a photo chosen then can’t be dropped', async () => {
+    const { sent, answer } = await pending();
+    submit();
+    await waitFor(() => expect(sent).toHaveLength(1));
+
+    expect(inForm().getByRole<HTMLButtonElement>('button', { name: 'Choose photo' }).disabled).toBe(true);
+    expect(form().querySelector<HTMLInputElement>('input[type="file"]')!.disabled).toBe(true);
+    const file = new File(['x'], 'parcel.jpg', { type: 'image/jpeg' });
+    fireEvent.drop(screen.getByTestId('file-drop-zone'), { dataTransfer: { files: [file] } });
+    expect(FakeXHR.instances).toHaveLength(0);
+
+    answer();
+    await waitFor(() => expect(status()).toBe('Logged ✓'));
+    expect(inForm().getByRole<HTMLButtonElement>('button', { name: 'Choose photo' }).disabled).toBe(false);
+  });
+
+  it('F1: locks "Remove photo" while a submission is out, and sends the photo it had', async () => {
+    const { sent, answer } = await pending();
+    await uploadPhoto();
+    submit();
+    await waitFor(() => expect(sent).toHaveLength(1));
+
+    expect(inForm().getByRole<HTMLButtonElement>('button', { name: 'Remove photo' }).disabled).toBe(true);
+    answer();
+    await waitFor(() => expect(status()).toBe('Logged ✓'));
+    expect(sent[0].body.photo_file_id).toBe(FILE_A);
+  });
+});
+
 describe('the Idempotency-Key (criteria 2 and 5)', () => {
   it('sends the same key when a network failure is retried, then a new key for the next package', async () => {
     const { sent } = desk(inTurn(networkDown, () => json(created(), 201)));
