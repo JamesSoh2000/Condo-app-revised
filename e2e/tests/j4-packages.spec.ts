@@ -1,3 +1,5 @@
+import { type APIResponse } from '@playwright/test';
+
 import { expect, type NewContext, type Page, test } from '../helpers/test';
 
 import { apiPost, buildingId, PERSONAS, type Persona, storageStatePath } from '../helpers/auth';
@@ -17,6 +19,15 @@ const UNITS: Record<string, { unit: string; resident: Persona; name: string }> =
 /** The nav's "My packages" link, whose accessible name carries the waiting count (PackagesNavLabel). */
 function myPackagesLink(page: Page) {
   return page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: /^My packages/ });
+}
+
+/**
+ * The response is the problem `code` with `status`: a status alone can't tell the guard that answered from another
+ * (CSRF's 403, an unknown route's 404; review round 1, Claude L1 and its neighbours).
+ */
+async function expectProblem(response: APIResponse, status: number, code: string) {
+  expect(response.status(), `${response.url()}: status`).toBe(status);
+  expect(((await response.json()) as { code: string }).code, `${response.url()}: code`).toBe(code);
 }
 
 function badgeName(count: number) {
@@ -112,9 +123,8 @@ test('J4: the desk logs a package with a photo; the resident is told in-app and 
 
   // The resident may see it, but a desk action is security's (row 4).
   const asResident = await apiPost(residentContext.request, baseURL!, packagesPath(maple, `/${pkg.id}/pickup`), { picked_up_by_name: 'Me' });
-  expect(asResident.status()).toBe(403);
   // The role guard's refusal, not the CSRF check's 403 `csrf_failed` (review round 1, Claude L1).
-  expect(((await asResident.json()) as { code: string }).code).toBe('forbidden_role');
+  await expectProblem(asResident, 403, 'forbidden_role');
 
   await privacy(newContext, maple, pkg);
 });
@@ -128,26 +138,26 @@ async function privacy(newContext: NewContext, maple: string, pkg: PackageOut) {
   const photoUrl = `/api/buildings/${maple}/files/${pkg.photo_file_id}/download-url`;
 
   const anonymous = await newContext();
-  expect((await anonymous.request.get(packagesPath(maple, `/${pkg.id}`))).status()).toBe(401);
+  await expectProblem(await anonymous.request.get(packagesPath(maple, `/${pkg.id}`)), 401, 'not_authenticated');
 
   // resident2 lives in unit 102: same building, someone else's package.
   const neighbour = await newContext({ storageState: storageStatePath('resident102') });
-  expect((await neighbour.request.get(packagesPath(maple, `/${pkg.id}`))).status()).toBe(404);
-  expect((await neighbour.request.get(photoUrl)).status()).toBe(404);
+  await expectProblem(await neighbour.request.get(packagesPath(maple, `/${pkg.id}`)), 404, 'package_not_found');
+  await expectProblem(await neighbour.request.get(photoUrl), 404, 'file_not_found');
   const neighbourPage = await neighbour.newPage();
   await neighbourPage.goto(`/packages/${pkg.id}`);
   await expect(neighbourPage.getByRole('dialog').getByRole('heading', { name: 'Package not found' })).toBeVisible();
   await expect(neighbourPage.getByRole('img', { name: /^Package photo/ })).toHaveCount(0);
 
   const pending = await newContext({ storageState: storageStatePath('pendingResident') });
-  expect((await pending.request.get(packagesPath(maple, `/${pkg.id}`))).status()).toBe(404);
-  expect((await pending.request.get(photoUrl)).status()).toBe(404);
+  await expectProblem(await pending.request.get(packagesPath(maple, `/${pkg.id}`)), 404, 'building_not_found');
+  await expectProblem(await pending.request.get(photoUrl), 404, 'building_not_found');
 
   const birch = await newContext({ storageState: storageStatePath('birchManager') });
   const birchId = await buildingId(birch.request, 'birch');
-  expect((await birch.request.get(packagesPath(maple, `/${pkg.id}`))).status()).toBe(404);
-  expect((await birch.request.get(photoUrl)).status()).toBe(404);
+  await expectProblem(await birch.request.get(packagesPath(maple, `/${pkg.id}`)), 404, 'building_not_found');
+  await expectProblem(await birch.request.get(photoUrl), 404, 'building_not_found');
   // Maple's ids under Birch's own path are no better.
-  expect((await birch.request.get(packagesPath(birchId, `/${pkg.id}`))).status()).toBe(404);
-  expect((await birch.request.get(`/api/buildings/${birchId}/files/${pkg.photo_file_id}/download-url`)).status()).toBe(404);
+  await expectProblem(await birch.request.get(packagesPath(birchId, `/${pkg.id}`)), 404, 'package_not_found');
+  await expectProblem(await birch.request.get(`/api/buildings/${birchId}/files/${pkg.photo_file_id}/download-url`), 404, 'file_not_found');
 }
