@@ -36,7 +36,7 @@ every packages query is fetched again. No API changed; this is a frontend ticket
 - **Chosen:** one key per form. It is made when the form mounts and after each success, and kept across
   every failure: a network error, a 5xx, a 4xx refusal, and edits made after a failure. If the server answers
   409 `idempotency_key_reused`, the first attempt *was* logged with the earlier details: the form says so,
-  "Waiting" is fetched again, and a new form with a new key starts (`LogPackageForm.tsx::failed`).
+  "Waiting" is fetched again, and a new form with a new key starts (`frontend/src/features/packages/LogPackageForm.tsx::failed`).
 - **Alternatives rejected:** a new key per click (a retry after a lost response logs twice); a new key
   whenever a field changes after a failure (if the lost attempt committed, the edited retry logs a second
   package without anyone noticing).
