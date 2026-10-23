@@ -85,7 +85,6 @@ test('the desk page, both dialogs and the outcome messages fit 375 and 768 px wi
   newContext,
   baseURL,
 }) => {
-  test.setTimeout(120_000);
   const setup = await longUnit(newContext, baseURL!);
   const packages = await longPackages(newContext, baseURL!, setup, 4);
   const desk = await newContext({ storageState: storageStatePath('mapleSecurity') });
