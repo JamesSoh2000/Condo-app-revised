@@ -10,6 +10,12 @@ export const SEED_PASSWORD = 'DevPassword!2026';
 export const PERSONAS = {
   mapleManager: 'manager@example.test',
   birchManager: 'birch.manager@example.test',
+  mapleSecurity: 'security@example.test',
+  // Residents of units 101, 102 and 304 (backend/app/seed.py), and a Maple membership still pending.
+  resident101: 'resident1@example.test',
+  resident102: 'resident2@example.test',
+  resident304: 'resident4@example.test',
+  pendingResident: 'pending@example.test',
 } as const;
 export type Persona = keyof typeof PERSONAS;
 
@@ -34,9 +40,15 @@ function spaHeaders(baseURL: string): Record<string, string> {
   return { 'X-Requested-With': 'fetch', Origin: new URL(baseURL).origin };
 }
 
-/** POSTs JSON as the SPA would, with the context's cookies. */
-export function apiPost(api: APIRequestContext, baseURL: string, url: string, data: unknown): Promise<APIResponse> {
-  return api.post(url, { data, headers: spaHeaders(baseURL) });
+/** POSTs JSON as the SPA would, with the context's cookies, plus any `headers`. */
+export function apiPost(
+  api: APIRequestContext,
+  baseURL: string,
+  url: string,
+  data: unknown,
+  headers: Record<string, string> = {},
+): Promise<APIResponse> {
+  return api.post(url, { data, headers: { ...headers, ...spaHeaders(baseURL) } });
 }
 
 /** Logs `email` in through the API: the context gets the session cookie. */

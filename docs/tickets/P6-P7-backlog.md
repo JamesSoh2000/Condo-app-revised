@@ -35,6 +35,13 @@ interfaces and the decisions to make while framing.
   `ArchivedUpdatesModal`, and lower the ratchet.
 - **Decide while framing:** sanitizing Markdown rendering (no raw HTML); the banner copy for "this is not an
   emergency alert system".
+- **First follow-up (playbook step 8, from P5-05 review round 3, open Medium):** `frontend/src/test/buildingDenial.test.ts`
+  resolves hook names with its own tables, not by lexical scope: a function-local alias (`const read =
+  useBuildingDenied` in one function), a declaration shadowing a module-level hook, and `useBuilding!(…)`,
+  `(useBuilding)(…)`, `useBuilding.call(…)` can make it pass a passive reader that reads no denial (no current code
+  has these shapes). Resolve each callee with the TypeScript checker (`ts.createProgram` over `src/app` and
+  `src/features`, `getSymbolAtLocation`, following aliases) and keep the round-1 to round-3 cases as tests (the
+  reviewers' proofs are listed in PR #121's "Independent review").
 - **Carried from P3-06:** replace `NoticeAttachmentUpload.jsx` (Base44 `UploadFile`, public `attachment_url`)
   with `FileUpload purpose="notice_attachment"` and the notice's `file_id` claimed by P6-01's API; show
   attachments through the files download URL, not a public link.
@@ -52,6 +59,13 @@ interfaces and the decisions to make while framing.
 - **Decide while framing:**
   - Can security see or act on maintenance? (default: read and comment only)
   - Emergency category behaviour: show the building's emergency phone, and never rely on the app.
+- **From the P5-05 recipe check** (a fresh agent planned this ticket from `docs/SLICE_RECIPE.md` and this stub only,
+  PR #121): decide while framing what the recipe can't say: a "common area" location (a table, a fixed list, free
+  text?) and who sees a common-area request; whether `cancel` is the requester only or any occupant who can see it;
+  what `reopen` leads to (`in_progress`?) and whether it clears `resolved_at`; which `*_at` column each status has;
+  who is notified for each kind (requester, occupants, managers on a new request or a resident's comment) and which
+  send email; several photos per request (a join table, a limit) and whether comments take photos; whether a moved-out
+  resident still sees later comments on a request from their occupancy.
 
 ### P6-04 — Maintenance frontend · Lane A · Tier 2
 - **Goal:** resident pages for submit (with photos), list and detail with a timeline. A manager board or list

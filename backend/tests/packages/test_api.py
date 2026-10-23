@@ -3,7 +3,7 @@
 `test_create_concurrency.py`, the occupants route in `tests/units/test_occupants.py`."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -764,16 +764,25 @@ async def test_reads_without_a_session_are_401(
 # --- List (criterion 9) ---------------------------------------------------------------------------
 
 
+# A second after `received_at`, by the database's clock as `received_at` is (its default `now()`):
+# the host's clock can be more than a second off the database's, which failed the table's
+# `*_after_received` checks (WSL2 and the Docker VM, twice on 2026-10-22; the P5-02b carry).
+_AFTER_RECEIVED = func.now() + timedelta(seconds=1)
+
+
 async def _picked_up(db: AsyncSession, unit: Unit, world: World) -> Package:
-    return await make_package(
+    package = await make_package(
         db,
         unit,
         world.a_security.membership,
         status=PackageStatus.PICKED_UP,
-        picked_up_at=datetime.now(UTC) + timedelta(seconds=1),
+        picked_up_at=_AFTER_RECEIVED,
         picked_up_by_name="Neighbour",
         handed_out_by_membership_id=world.a_security.membership.id,
     )
+    # The value the database computed, for the tests that compare the API's answer with it.
+    await db.refresh(package)
+    return package
 
 
 def _ids(response: Response) -> list[str]:
@@ -824,14 +833,16 @@ async def test_the_list_filters_by_status_and_unit(
 
 
 async def _returned(db: AsyncSession, unit: Unit, received_by: BuildingMembership) -> Package:
-    return await make_package(
+    package = await make_package(
         db,
         unit,
         received_by,
         status=PackageStatus.RETURNED,
-        returned_at=datetime.now(UTC) + timedelta(seconds=1),
+        returned_at=_AFTER_RECEIVED,
         return_reason="Damaged",
     )
+    await db.refresh(package)
+    return package
 
 
 async def test_the_list_filters_by_several_statuses(

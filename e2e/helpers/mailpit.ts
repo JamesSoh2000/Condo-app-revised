@@ -15,16 +15,23 @@ interface SearchResult {
 
 /**
  * The newest email to `to` whose subject includes `subjectIncludes`, polled until it arrives (the worker sends
- * mail a moment after the request that queued it). Each journey uses its own recipient, so the match is its own.
+ * mail a moment after the request that queued it). Each journey uses its own recipient, so the match is its own;
+ * one that mails a seeded account passes `textIncludes`, a string only its own email's text part holds.
  */
-export async function waitForEmail(to: string, subjectIncludes: string, timeout = 30_000): Promise<Email> {
+export async function waitForEmail(
+  to: string,
+  subjectIncludes: string,
+  { timeout = 30_000, textIncludes }: { timeout?: number; textIncludes?: string } = {},
+): Promise<Email> {
   const api = await request.newContext({ baseURL: MAILPIT_URL });
   try {
     let id: string | undefined;
     await expect
       .poll(
         async () => {
-          const response = await api.get('/api/v1/search', { params: { query: `to:"${to}"` } });
+          // Mailpit's free text matches the message's content, so another run's email to the same account is left out.
+          const query = textIncludes ? `to:"${to}" "${textIncludes}"` : `to:"${to}"`;
+          const response = await api.get('/api/v1/search', { params: { query } });
           expect(response.ok()).toBe(true);
           const { messages } = (await response.json()) as SearchResult;
           // Newest first; `to:` matches substrings, so the address is compared exactly.
@@ -39,6 +46,7 @@ export async function waitForEmail(to: string, subjectIncludes: string, timeout 
     const response = await api.get(`/api/v1/message/${id}`);
     expect(response.ok()).toBe(true);
     const message = (await response.json()) as { ID: string; Subject: string; Text: string };
+    if (textIncludes) expect(message.Text, `email ${message.ID}'s text`).toContain(textIncludes);
     return { id: message.ID, subject: message.Subject, text: message.Text };
   } finally {
     await api.dispose();

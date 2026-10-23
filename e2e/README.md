@@ -11,6 +11,8 @@ cover the rest.
 | `tests/j2-staff-invite.spec.ts` | J2: the manager invites security on the Invitations tab → email → accept → security's home; the account menu opens with Enter and Space |
 | `tests/j3-onboarding.spec.ts` | J3: join link → signup → unit → pending → the manager approves → email, notification, home; Birch can't see the resident. Plus the deny path |
 | `tests/j7-password-reset.spec.ts` | J7: forgot → email → reset → another device is signed out. Plus the `condo.auth` Web Lock across two pages (a seeded resident) |
+| `tests/j4-packages.spec.ts` | J4: the desk logs a package with a photo → the resident's badge and bell → the notification's link opens it with the photo (a 60 s presigned URL) → the `package_arrived` email and its link → the desk hands it out → History. Then who else gets 401, 403 or 404 for the package and its photo: signed out, another Maple unit's resident, a pending member, Birch's manager. `chromium` uses unit 101, `mobile` unit 304, so the two runs don't move each other's badge (P5-05) |
+| `tests/packages-desk.spec.ts` | Not a journey: the package desk at 375 and 768 px with the API's longest values (page, both dialogs, the outcome messages), two desks handing out one package, the dialogs' focus, Cancel after the row is gone (P5-05). Each test makes its own unit |
 | `tests/header-panels.spec.ts` | Not a journey: the header's bell panel and account menu at 320–412 px stay inside the viewport and across the header, and from 640 px hang under their buttons; a tap below an open panel closes it (P4-08h). Maple's manager from `.auth/`, so no login of its own |
 
 ## Run
@@ -47,21 +49,23 @@ API_IMAGE_TAG=$(git rev-parse HEAD) E2E_BASE_URL=http://localhost:8080 E2E_COMPO
 | `E2E_MAILPIT_URL` | `http://localhost:8025` | Mailpit's API (both stacks publish it there) |
 
 A journey makes its own users and building, with random emails and slugs, so the two projects can run in
-parallel and a retry needs no reset. The shared seeded managers (Maple's and Birch's) log in once per run, in
-`tests/auth.setup.ts`, and their cookies are reused from `.auth/`.
+parallel and a retry needs no reset; one that uses seeded accounts gives each project its own (J4's units). The
+shared seeded accounts (`PERSONAS` in `helpers/auth.ts`: Maple's and Birch's managers, Maple's security, the
+residents of units 101, 102 and 304, and a pending member) log in once per run, in `tests/auth.setup.ts`, and their
+cookies are reused from `.auth/`.
 
 The rate limits keep their production values, and every request comes from one IP, so a run has a budget. The
 reset empties the windows, which is why `make e2e` resets every time; before a retry, `helpers/test.ts` empties
 them too, so a retried test gets the budget its first attempt had. Every spec imports `test` from there. Measured
-in `rate_limits` after one run of both projects (re-measured in P4-08g: unchanged, since creating an invitation
-has no limit):
+in `rate_limits` after one run of both projects (re-measured in P5-05: J4 and the desk checks add only the five
+new personas' logins; the desk's unit search has no limit):
 
 | Limit | Per run | Allowed |
 |---|---|---|
 | Invitation lookups and accepts per IP | 14 (J1, J2) | 20 per 10 minutes |
 | Signups per IP | 6 (J3 ×2, J7 reset ×1, per project) | 10 per hour |
-| Logins per IP | 10 | 30 per 10 minutes |
-| Logins per email | 4 for `resident5@example.test` (J7 Web Lock); 1 for each manager; 2 for each J7 reset account | 8 per 15 minutes |
+| Logins per IP | 15 | 30 per 10 minutes |
+| Logins per email | 4 for `resident5@example.test` (J7 Web Lock); 1 for each persona; 2 for each J7 reset account | 8 per 15 minutes |
 | Join lookups, unit searches, join requests | 4 each | 20, 120 per 10 minutes; 10 per user per hour |
 | Password-reset requests and confirms | 2 each | 30 per IP, 8 per email |
 
