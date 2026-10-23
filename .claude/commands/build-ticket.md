@@ -15,7 +15,8 @@ only after re-reading the code, never from memory of what you built.
    $ARGUMENTS in `docs/tickets/README.md` is `done`. Create the worktree and branch
    (`git worktree add ../bw-<id> -b <id-lowercase>-<slug> origin/main`) and work there. Set the ticket's
    status to `in progress`.
-2. **Frame** as in `.claude/commands/frame-ticket.md`. Commit the ticket file as the branch's first commit.
+2. **Frame** as in `.claude/commands/frame-ticket.md`, reading the ticket from the new worktree, never the main
+   checkout, whose `main` can be behind `origin/main` (P5-03c, P5-05). Commit the ticket file as the branch's first commit.
    If it needs a split, do the split, commit it, and continue with the first part.
 3. **Plan, then implement** as in `.claude/commands/implement-ticket.md`, through `make check` green, the
    stack run for Tier 1–2 user-reachable behaviour, and a PR opened with the template filled in

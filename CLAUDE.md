@@ -148,7 +148,7 @@ Everything a command prints is re-read on every later turn, so don't print the s
   or `gcTime: 0`, or the 30 s `staleTime` serves the old answer (PR #98 R3 M1, P4-08d R1 F2; 2026-10-21).
 - A view that refreshes on a signal (a polled count, a mutation) compares data with it: list the reads that can start
   before the signal's first value and those in flight at a change, wait for the first value, and cancel before you
-  invalidate (`invalidateQueries` alone keeps an answer already on its way) (P5-04 R1 F1, R2 F1; 2026-10-23).
+  invalidate (`invalidateQueries` alone reuses a first request still on its way) (P5-04 R1 F1, R2 F1; 2026-10-23).
 - Check code with a parser (TypeScript's, Python's `ast`), not a regex: generics, multi-line calls, comments, nested
   objects and aliased imports escape text matching (P4-09 F4, PR #108 R1-F1 and R3-F1; 2026-10-22). To know which
   function a name means, ask the TypeScript checker (`getSymbolAtLocation`), not your own import tables: namespaces,
