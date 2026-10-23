@@ -39,7 +39,13 @@ export function LogPackageForm({ headingId }: { headingId: string }) {
   const occupants = useUnitOccupants(buildingId, picker.chosen);
   const create = useLogPackage(buildingId);
   const [key, setKey] = useState(newKey);
-  const [recipient, setRecipient] = useState<{ unitId: string; membershipId: string } | null>(null);
+  const [recipient, setRecipient] = useState<string | null>(null);
+  // Any change of unit forgets the recipient, even a return to the unit it was chosen in (R1 F2).
+  const [recipientUnit, setRecipientUnit] = useState(picker.chosen);
+  if (recipientUnit !== picker.chosen) {
+    setRecipientUnit(picker.chosen);
+    setRecipient(null);
+  }
   const [carrier, setCarrier] = useState<string | null>(null);
   const [otherCarrier, setOtherCarrier] = useState('');
   const [description, setDescription] = useState('');
@@ -54,11 +60,8 @@ export function LogPackageForm({ headingId }: { headingId: string }) {
   const id = useId();
   const busy = create.isPending;
 
-  // A recipient counts only for the unit it was chosen in, and while the unit's list still has them.
-  const recipientId =
-    recipient && recipient.unitId === picker.chosen && occupants.data?.some((o) => o.membership_id === recipient.membershipId)
-      ? recipient.membershipId
-      : '';
+  // A recipient counts only while the unit's list still has them.
+  const recipientId = recipient && occupants.data?.some((o) => o.membership_id === recipient) ? recipient : '';
   const carrierValue = carrier === OTHER ? otherCarrier.trim() : carrier;
   const trackingValue = tracking.trim();
   const problems = {
@@ -181,9 +184,7 @@ export function LogPackageForm({ headingId }: { headingId: string }) {
             id={`${id}-recipient`}
             value={recipientId}
             disabled={busy || picker.chosen === null}
-            onChange={(event) =>
-              setRecipient(picker.chosen && event.target.value ? { unitId: picker.chosen, membershipId: event.target.value } : null)
-            }
+            onChange={(event) => setRecipient(event.target.value || null)}
             className="min-h-11 w-full min-w-0 rounded border px-2"
           >
             <option value="">Anyone in the unit</option>
@@ -268,9 +269,10 @@ export function LogPackageForm({ headingId }: { headingId: string }) {
             label="Choose photo"
             onUploaded={(fileId) => setPhoto({ status: 'ready', fileId })}
             onStatusChange={onPhotoStatus}
+            disabled={busy}
           />
           {photo.status !== 'idle' && photo.status !== 'uploading' && (
-            <button type="button" onClick={removePhoto} className="min-h-11 self-start rounded border px-4 text-sm">
+            <button type="button" disabled={busy} onClick={removePhoto} className="min-h-11 self-start rounded border px-4 text-sm disabled:opacity-50">
               Remove photo
             </button>
           )}
