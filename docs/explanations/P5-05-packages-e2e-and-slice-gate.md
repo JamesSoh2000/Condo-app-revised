@@ -16,6 +16,8 @@
 > `packages-desk` on the prod-like stack (image `8fdb1c2`; `git diff 8fdb1c2 320ff23` touches no app code) →
 > `13 passed`. Full-suite numbers below come from the PR's runs, cited with their commits. Differences from the
 > plan: see §2.
+> **Updated** (pre-merge, bookkeeping commit): §2 and §7 add the ticket's "Carried from P5-04" section, which framing
+> missed (no code changed; the rows below name where each item went).
 > Written by the implementing session after that check ([ADR-0017](../adr/0017-implementer-writes-the-explanation.md)).
 > Form: full. Tier: 1. Walkthrough variant: C (one J4 run through the stack).
 
@@ -91,6 +93,7 @@ Smaller decisions:
 | P5-03d D2 (occupants load above "Someone else") stays an accepted Low | reserve the space | a UI change; the ticket says no new features | ticket | PR |
 | The photo is a base64 constant (`e2e/helpers/packages.ts::PHOTO_PNG`) | a binary fixture file | no binary in the repo | autonomous | PR deviations |
 | Privacy checks assert the problem `code`, not only the status (`::expectProblem`) | status only | an unknown route also answers 404 (`not_found`), and CSRF 403s (`csrf_failed`) | review round 1, L1 | PR review log |
+| The slice gate accepts the multi-role union on `/packages` (the P5-04 carry): a resident who is also desk staff sees the building's packages there | narrow it with a `mine` filter | a product change outside the ticket; `visible_packages` documents the union | autonomous | inbox, ticket |
 | The emulator's lax expiry is recorded, not fixed | turn on LocalStack signature checks | a compose change outside the ticket; D-06 checks real S3 | autonomous | PR follow-ups |
 
 **Framing changes:** criteria 6–13 added (each J4 step as an assertion; 10-case rows 2–6 through the browser and
@@ -340,6 +343,12 @@ The failures behind the fixes:
 - The recipe check's domain gaps for P6-03 (common areas, what reopen leads to, comment recipients, several photos):
   will be added to the P6-03 stub in the bookkeeping commit.
 - Criterion 5 (the recap) is not on this branch: it is step 8's PR.
+- **Missed in framing:** the ticket's "Carried from P5-04" section (it was read from a main checkout behind
+  `origin/main`). Its step-8 promotion (a `CLAUDE.md` lesson for "a list read before the change it is compared with")
+  is not in this PR: a `CLAUDE.md` change after review round 3 would need a fourth round, so it goes in the P5 recap
+  PR. Its P5-04 R3 coverage gaps (a pickup time's own conversion, a non-English locale, the lists' loading messages,
+  Load more after a failure) stay untested and go to the recap's open risks. Tracked: the ticket's note, the inbox,
+  the mistakes log.
 
 ## 8. How to change this safely
 

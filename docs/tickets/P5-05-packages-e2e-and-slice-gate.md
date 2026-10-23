@@ -6,7 +6,7 @@
 | Risk tier | 1 |
 | Depends on | P5-03c, P5-03d, P5-04, P4-09, P1-08 |
 | Replaces old | M7-T06, M7-T10 (local part; the staging part is D-06) |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
@@ -167,6 +167,13 @@ in a fresh subagent.
   accepts that, or whether the page should narrow to the caller's own packages (a server-side `mine` filter).
 - The seed has no package photos, so P5-04's stack run showed "No photo" boxes only; a journey that logs a package
   with a photo would cover the resident's `PrivateImage` alt text in a browser.
+
+**Handled at bookkeeping (PR #121):** this section was missed in framing (the ticket was first read from a main
+checkout behind `origin/main`; `docs/AGENT_MISTAKES_LOG.md`). Its items: the step-8 promotion (a `CLAUDE.md` lesson for
+"a list read before the change it is compared with") is done in the P5 recap PR, step 8, since a change to
+`CLAUDE.md` after review round 3 would need a fourth round; the bell link, the badge's polling and the photo's alt text
+are covered by J4 (it reloads, and finds the image by `Package photo: <carrier>`); the multi-role union is accepted for
+the slice gate (inbox "Decisions to audit"); the P5-04 R3 coverage gaps go to the recap's open risks.
 
 ## Frame notes (filled by the agent in step 1)
 
