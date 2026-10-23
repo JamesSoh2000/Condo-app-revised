@@ -90,3 +90,29 @@ export function useLogPackage(buildingId: string) {
     },
   });
 }
+
+export type PickupBody = components['schemas']['PackagePickup'];
+export type PackageAction = { kind: 'pickup'; id: string; body: PickupBody } | { kind: 'return'; id: string; reason: string };
+
+/**
+ * Hand a waiting package out, or send it back (P5-03d). As `useLogPackage`, every packages query (the waiting list,
+ * and the summary when a page reads it) is cancelled, then asked again however it ends: an answer lost on the way may
+ * have been applied, and a 409 means another desk changed the list.
+ */
+export function usePackageAction(buildingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
+    mutationKey: [...packagesKey(buildingId), 'action'],
+    mutationFn: (action: PackageAction) => {
+      const path = { building_id: buildingId, package_id: action.id };
+      return action.kind === 'pickup'
+        ? api.post('/api/buildings/{building_id}/packages/{package_id}/pickup', { params: { path }, body: action.body })
+        : api.post('/api/buildings/{building_id}/packages/{package_id}/return', { params: { path }, body: { reason: action.reason } });
+    },
+    onSettled: () => {
+      const filters = { queryKey: packagesKey(buildingId) };
+      void queryClient.cancelQueries(filters).then(() => queryClient.invalidateQueries(filters));
+    },
+  });
+}

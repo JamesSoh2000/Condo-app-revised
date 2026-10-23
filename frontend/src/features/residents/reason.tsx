@@ -31,10 +31,12 @@ interface Props {
   busy: boolean;
   fieldRef: RefObject<HTMLTextAreaElement>;
   onChange: (value: string) => void;
+  /** In UTF-16 units, twice the code points allowed; the caller counts as the server does. */
+  maxLength?: number;
 }
 
 /** The reason textarea of a dialog, with its error below it. */
-export function ReasonField({ label, value, error, busy, fieldRef, onChange }: Props) {
+export function ReasonField({ label, value, error, busy, fieldRef, onChange, maxLength = 1000 }: Props) {
   const id = useId();
   return (
     <div className="mt-3 flex flex-col gap-1">
@@ -46,7 +48,7 @@ export function ReasonField({ label, value, error, busy, fieldRef, onChange }: P
         id={id}
         rows={3}
         // 500 code points take at most 1,000 UTF-16 units; `reasonError` counts as the server does.
-        maxLength={1000}
+        maxLength={maxLength}
         value={value}
         readOnly={busy}
         onChange={(event) => onChange(event.target.value)}
