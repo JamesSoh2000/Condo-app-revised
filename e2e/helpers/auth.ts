@@ -10,6 +10,12 @@ export const SEED_PASSWORD = 'DevPassword!2026';
 export const PERSONAS = {
   mapleManager: 'manager@example.test',
   birchManager: 'birch.manager@example.test',
+  mapleSecurity: 'security@example.test',
+  // Residents of units 101, 102 and 304 (backend/app/seed.py), and a Maple membership still pending.
+  resident101: 'resident1@example.test',
+  resident102: 'resident2@example.test',
+  resident304: 'resident4@example.test',
+  pendingResident: 'pending@example.test',
 } as const;
 export type Persona = keyof typeof PERSONAS;
 
