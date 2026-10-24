@@ -117,8 +117,9 @@ in framing.
 
 Added or sharpened in framing (step 1):
 
-1a. The downgrade drops the table and both enum types (`notice_priority`, `notice_status`); a second upgrade
-    recreates them (no "type already exists").
+1a. `database_enum` stores the enums as varchar with a check constraint (`native_enum=False`), so an unknown
+    `priority` or `status` value is refused by `ck_notices_notice_priority` / `ck_notices_notice_status`; the
+    downgrade drops the table and a second upgrade recreates it.
 2a. Criterion 2 covers every composite reference: `attachment_file_id`, `author_membership_id`,
     `published_by_membership_id`, `archived_by_membership_id` (one parametrized case each, named by its
     constraint `fk_notices_building_id_<column>`), and the same row with A's references is accepted.
