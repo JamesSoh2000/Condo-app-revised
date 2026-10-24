@@ -622,7 +622,7 @@ async def test_the_list_pages_with_the_cursor(db: AsyncSession, as_user: Any, wo
 async def test_live_lists_only_published_unexpired_notices_for_the_manager(
     db: AsyncSession, as_user: Any, world: World
 ) -> None:
-    """P6-02a criterion 9: the feed's `live=true` is what the unread summary counts, for every role."""
+    """P6-02a criterion 9: `live=true` is what the unread summary counts, for every role."""
     notices = await _notices(db, world)
     client = await as_user(world.a_manager.user)
 
