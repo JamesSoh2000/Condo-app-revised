@@ -92,6 +92,21 @@ Left open by the stub:
 - whether a manager may mark a draft read, and the read endpoint's status code
 - whether the bulk enqueue changes `notify` for every caller or is a notices-only path
 
+## Carried from P6-01b (do while framing)
+
+From PR #125 (explanation `docs/explanations/P6-01b-notice-authoring-api.md` §7):
+- **First follow-up (open Low, review round 3):** `expires_at` equal to `datetime.max` in UTC
+  (`9999-12-31T23:59:59.999999Z`) is accepted and asyncpg stores Postgres `infinity`; refuse it in
+  `app/notices/schemas.py::_in_utc` (422) with a case in `tests/notices/test_api.py`'s input tests.
+- The fan-out on publish goes in `publish_notice` after its conditional UPDATE and before `_audit`, inside the same
+  transaction; the publish race tests in `tests/notices/test_concurrency.py` must still show one notification set.
+- A replaced or cleared draft attachment keeps its claim and S3 object (P6-01b D6); nothing deletes it. Decide whether
+  a retention job (P3-04c's deletion path) should, or leave it tracked.
+- The feed orders by creation (P6-01b D4); if the resident feed should order by `published_at`, it needs a keyset and
+  an index migration.
+- Mistake pattern seen twice now (P4-02b, P6-01b R1): a time check read before a later lock wait. Consider a test
+  helper that holds a row lock across a request, or a CLAUDE.md lesson sharpening: "check after the *last* wait".
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

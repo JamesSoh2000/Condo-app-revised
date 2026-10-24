@@ -101,7 +101,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P5-04](./P5-04-resident-packages-page.md) | Resident packages page | B | 2 | P5-02a, P3-05 | done | — |
 | [P5-05](./P5-05-packages-e2e-and-slice-gate.md) | Packages E2E and reference-slice gate | B | 1 | P5-03c, P5-03d, P5-04, P4-09, P1-08 | done | — |
 | [P6-01a](./P6-01a-notice-schema-and-visibility.md) | Notice schema, state machine and visibility (split from P6-01) | B | 2 | P3-04b, P2-03 | done | — |
-| [P6-01b](./P6-01b-notice-authoring-api.md) | Notice authoring API (split from P6-01) | B | 2 | P6-01a, P2-04, P3-04b | todo | — |
+| [P6-01b](./P6-01b-notice-authoring-api.md) | Notice authoring API (split from P6-01) | B | 2 | P6-01a, P2-04, P3-04b | done | — |
 | [P6-01c](./P6-01c-notice-reads-and-fan-out.md) | Notice reads, unread summary and publish fan-out (split from P6-01) | B | 2 | P6-01b, P3-03, P3-02 | todo | — |
 
 ### Milestone D — deployment (after week 8)
