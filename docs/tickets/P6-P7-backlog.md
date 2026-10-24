@@ -10,23 +10,10 @@ interfaces and the decisions to make while framing.
 ## P6 — Notices, maintenance, dashboard (week 7)
 
 ### P6-01 — Notices backend · Lane B · Tier 2
-- **Goal:** managers create, edit, publish and archive notices with priority `normal`/`urgent`, an optional
-  expiry and an optional PDF or image attachment. Residents and staff list published notices and mark them
-  read.
-- **Interfaces:**
-  - tables `notices` and `notice_reads`
-  - `POST /notices`, `PATCH /notices/{id}` (draft only), `POST /notices/{id}/publish`, `/archive`
-  - `GET /notices?status=published&cursor=`, `GET /notices/summary` `{unread, urgent_unread}`
-  - `POST /notices/{id}/read`
-  - on publish, `notify(notice.published)` to every active member (one bulk insert); email only for
-    `urgent`
-  - audit
-- **Decide while framing:**
-  - Can security author notices? (default: no)
-  - Does editing after publish create a new version, or is it blocked? (default: blocked; archive and
-    republish instead)
-- **Watch:** the 600-recipient fan-out must stay a single insert plus bulk job enqueue. Measure it.
-- Replaces old M6-T03 and M6-T09 (backend part).
+Drafted and split into [P6-01a](./P6-01a-notice-schema-and-visibility.md) (schema, state machine, visibility,
+attachment hook), [P6-01b](./P6-01b-notice-authoring-api.md) (manager API) and
+[P6-01c](./P6-01c-notice-reads-and-fan-out.md) (reads, unread summary, publish fan-out). The stub's "Decide while
+framing" items and its 600-recipient **Watch** are carried into those tickets.
 
 ### P6-02 — Notices frontend · Lane B · Tier 2
 - **Goal:** a resident feed with an unread state; an **urgent banner** shown on every page until acknowledged;
