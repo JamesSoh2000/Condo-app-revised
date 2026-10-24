@@ -11,7 +11,12 @@ from typing import Any
 
 import pytest
 from sqlalchemy import event, func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.audit.models import AuditEvent
 from app.core.errors import DomainError
@@ -309,6 +314,7 @@ def test_a_notice_expiring_while_its_fan_out_waits_is_not_published(
                 .with_for_update()
             )
             engine = blocker.bind
+            assert isinstance(engine, AsyncEngine)
             event.listen(engine.sync_engine, "before_cursor_execute", record)
             task = asyncio.create_task(_act(sessions, world, notice, "publish"))
             try:
