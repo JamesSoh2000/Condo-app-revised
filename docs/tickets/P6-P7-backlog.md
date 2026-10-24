@@ -16,30 +16,13 @@ attachment hook), [P6-01b](./P6-01b-notice-authoring-api.md) (manager API) and
 framing" items and its 600-recipient **Watch** are carried into those tickets.
 
 ### P6-02 — Notices frontend · Lane B · Tier 2
-- **Goal:** a resident feed with an unread state; an **urgent banner** shown on every page until acknowledged;
-  a manager editor (rich text limited to Markdown, attachment upload, preview, publish).
-- Replace the legacy `ManagementNotices`, `BuildingUpdatesFeed`, `EmergencyAlertPopup` and
-  `ArchivedUpdatesModal`, and lower the ratchet.
-- **Decide while framing:** sanitizing Markdown rendering (no raw HTML); the banner copy for "this is not an
-  emergency alert system".
-- **First follow-up (playbook step 8, from P5-05 review round 3, open Medium):** `frontend/src/test/buildingDenial.test.ts`
-  resolves hook names with its own tables, not by lexical scope: a function-local alias (`const read =
-  useBuildingDenied` in one function), a declaration shadowing a module-level hook, and `useBuilding!(…)`,
-  `(useBuilding)(…)`, `useBuilding.call(…)` can make it pass a passive reader that reads no denial (no current code
-  has these shapes). Resolve each callee with the TypeScript checker (`ts.createProgram` over `src/app` and
-  `src/features`, `getSymbolAtLocation`, following aliases) and keep the round-1 to round-3 cases as tests (the
-  reviewers' proofs are listed in PR #121's "Independent review").
-- **Carried from P3-06:** replace `NoticeAttachmentUpload.jsx` (Base44 `UploadFile`, public `attachment_url`)
-  with `FileUpload purpose="notice_attachment"` and the notice's `file_id` claimed by P6-01's API; show
-  attachments through the files download URL, not a public link.
-- **Carried from P6-01c (PR #126):** the notice notifications link to `/notices/{id}`: give the feed that route (a
-  notice page or the feed scrolled to it). Read state comes from `NoticeOut.read_at`, `POST /notices/{id}/read` (204)
-  and `GET /notices/summary` (`{unread, urgent_unread}`, live published notices only). The feed still orders by
-  creation (P6-01b D4); if it should order by `published_at`, that needs a keyset and an index migration.
-- **Step 8 (from P6-01c R1, the 3rd "time check before a later wait"):** the `CLAUDE.md` lesson didn't stop it. For
-  the next backend ticket with a time check (P6-03's reopen window): a test helper that holds a row lock (a
-  membership, a file, the record) across a request, used for every statement after the check, as
-  `tests/notices/test_concurrency.py::test_a_notice_expiring_while_its_fan_out_waits_is_not_published` does by hand.
+Drafted and split into [P6-02a](./P6-02a-notices-feed-and-detail.md) (feed, detail, Markdown rendering, unread
+badge, the P5-05 `buildingDenial` fitness follow-up), [P6-02b](./P6-02b-urgent-banner-and-attachments.md) (urgent
+banner and its copy, attachment downloads), [P6-02c](./P6-02c-manager-notice-list-and-actions.md) (manager list,
+publish, archive) and [P6-02d](./P6-02d-notice-editor.md) (editor, preview, `FileUpload` attachment, the P3-06
+carry). The stub's "Decide while framing" items, its P6-01c carry (the `/notices/{id}` route, read state, creation
+order) and the legacy files it replaces are carried into those tickets; its "Step 8" item (a row-lock test helper
+for a time check) is for a backend ticket and moved to P6-03 below.
 
 ### P6-03 — Maintenance backend · Lane A · Tier 2
 - **Goal:** residents submit requests (category, description, location: unit or common area, photos). Managers
@@ -54,6 +37,11 @@ framing" items and its 600-recipient **Watch** are carried into those tickets.
 - **Decide while framing:**
   - Can security see or act on maintenance? (default: read and comment only)
   - Emergency category behaviour: show the building's emergency phone, and never rely on the app.
+- **Step 8, moved from the P6-02 stub when it was drafted (from P6-01c R1, the 3rd "time check before a later
+  wait"):** the `CLAUDE.md` lesson didn't stop it. For the next backend ticket with a time check
+  (P6-03's reopen window): a test helper that holds a row lock (a membership, a file, the record) across a
+  request, used for every statement after the check, as
+  `tests/notices/test_concurrency.py::test_a_notice_expiring_while_its_fan_out_waits_is_not_published` does by hand.
 - **From the P5-05 recipe check** (a fresh agent planned this ticket from `docs/SLICE_RECIPE.md` and this stub only,
   PR #121): decide while framing what the recipe can't say: a "common area" location (a table, a fixed list, free
   text?) and who sees a common-area request; whether `cancel` is the requester only or any occupant who can see it;
