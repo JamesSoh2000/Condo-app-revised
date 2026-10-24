@@ -79,7 +79,7 @@ async def create_file(db: AsyncSession, ctx: TenantContext, data: FileCreate) ->
     limit = rule.limits[data.content_type]
     if data.size_bytes > limit:
         raise FileTooLarge(
-            detail=f"A {data.content_type} {data.purpose} may be at most {limit} bytes."
+            detail=f"A {data.purpose} ({data.content_type}) may be at most {limit} bytes."
         )
 
     file_id = uuid7()
