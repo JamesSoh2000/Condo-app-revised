@@ -155,6 +155,7 @@ describe('the page, its nav item and its guard (criteria 3, 4)', () => {
       'Contacts',
       'Residents',
       'Package log',
+      'Notices',
       'Daily notices',
       'Maintenance',
     ]);

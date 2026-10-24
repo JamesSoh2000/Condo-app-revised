@@ -57,10 +57,12 @@ const meWith = (...memberships: Me['memberships']): Me => ({ ...RESIDENT_ME, mem
  * The building request the guards make, then the bell's summary request once it loaded (P3-05), and for a resident
  * the nav's waiting packages count (P5-04).
  */
-const loadCalls = (building: { id: string }, { resident = true } = {}) => [
+const loadCalls = (building: { id: string }, { resident = true, notices = true } = {}) => [
   `GET /api/buildings/${building.id}`,
   `GET /api/buildings/${building.id}/notifications/summary`,
   ...(resident ? [`GET /api/buildings/${building.id}/packages/summary`] : []),
+  // Every member's nav asks for the unread notices where notices are on (P6-02a).
+  ...(notices ? [`GET /api/buildings/${building.id}/notices/summary`] : []),
 ];
 
 /** Resident in Maple (packages, notices, maintenance), security in Birch (packages only). */
@@ -249,7 +251,7 @@ describe('one building per tab (criterion 2)', () => {
       expect(await findInMain(name)).toBeTruthy();
       expect(screen.queryByRole('heading', { name: /choose a building/i })).toBeNull();
       // Resident in Maple, security in Birch.
-      await waitFor(() => expect(buildingCalls(fetchMock)).toEqual(loadCalls({ id }, { resident: id === MAPLE.id })));
+      await waitFor(() => expect(buildingCalls(fetchMock)).toEqual(loadCalls({ id }, { resident: id === MAPLE.id, notices: id === MAPLE.id })));
       cleanup();
     }
   });

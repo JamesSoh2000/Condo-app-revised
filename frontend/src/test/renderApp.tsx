@@ -80,6 +80,9 @@ const DEFAULT_ROUTES: Record<string, Handler> = {
   // A resident's nav asks for the waiting packages count (P5-04).
   [`GET /api/buildings/${MAPLE.id}/packages/summary`]: () => json({ waiting: 0 }),
   [`GET /api/buildings/${BIRCH.id}/packages/summary`]: () => json({ waiting: 0 }),
+  // Every member's nav asks for the unread notices count (P6-02a).
+  [`GET /api/buildings/${MAPLE.id}/notices/summary`]: () => json({ unread: 0, urgent_unread: 0 }),
+  [`GET /api/buildings/${BIRCH.id}/notices/summary`]: () => json({ unread: 0, urgent_unread: 0 }),
   // A property manager's nav asks for the pending count (P4-08d).
   [`GET /api/buildings/${MAPLE.id}/onboarding-requests/summary`]: () => json({ pending_onboarding_count: 0 }),
   [`GET /api/buildings/${BIRCH.id}/onboarding-requests/summary`]: () => json({ pending_onboarding_count: 0 }),

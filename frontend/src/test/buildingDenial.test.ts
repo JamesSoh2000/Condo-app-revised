@@ -5,20 +5,23 @@
  * so the same function must also read `useBuildingDenied()`, itself or through a hook that does (`useCanViewAs`), or
  * be exempt below with the reason.
  *
- * Read with the TypeScript parser, not text matching (CLAUDE.md lessons): a renamed or namespace import is still the
- * hook, an argument it can't read counts as passive (fail-closed), and the hooks that read the denial are found from
- * their bodies, so a new one counts without a list here.
+ * Read with the TypeScript checker, not text matching or name tables (CLAUDE.md lessons; P6-02a, the P5-05 round-3
+ * follow-up): each call's callee is resolved to the function it names through the checker's symbols, following
+ * imports, namespace members, `const` aliases, destructuring and wrappers (`memo(() => …)`), so scope, shadowing and
+ * renames are the language's own. A callee it can't resolve counts as `useBuilding` if that is its name or it is
+ * computed (fail-closed: it can only add a passive reader), and never as the denial. An argument it can't read counts
+ * as passive (fail-closed).
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, posix, relative, sep } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const SRC = join(__dirname, '..');
 const ROOTS = ['app', 'features'];
-/** The denial hook, as `<module>::<name>`: a module is its path under src without the extension (`app/guards`). */
-const DENIAL = 'app/BuildingProvider::useBuildingDenied';
+/** Where the two hooks the rule is about are defined, by their path under src. */
+const PROVIDER = 'app/BuildingProvider.tsx';
 
 /** `<path under src>::<function>` → why it may read the building passively without reading the denial. */
 const EXEMPT: Record<string, string> = {
@@ -29,19 +32,19 @@ const EXEMPT: Record<string, string> = {
   'features/packages/pages/MyPackagesPage.tsx::Packages':
     'Rendered only by MyPackagesPage, a route under RequireActiveMembership → BuildingLoaded, which renders the denial ' +
     'screen instead of its children once useBuildingDenied() is true (app/guards.tsx).',
+  'features/notices/NoticesPage.tsx::Notices':
+    'Rendered only by NoticesPage, a route under RequireActiveMembership → BuildingLoaded, which renders the denial ' +
+    'screen instead of its children once useBuildingDenied() is true (app/guards.tsx).',
 };
 
 interface Fn {
+  /** `<path under src>::<name>`, as in `EXEMPT`. */
   id: string;
-  name: string;
-  /**
-   * How calls name it: `<module>::<name>` for a module-level function, as in `DENIAL`; a nested one's key is its own
-   * (`…@<position>`), since a call by name reaches the module's, not it (review round 2, Codex F2).
-   */
+  /** The function itself, as the calls that resolve to it name it: its file and position. */
   key: string;
   /** It calls `useBuilding` with `passive: true`, or with an argument it can't read. */
   passive: boolean;
-  /** The hooks it calls, as `<module>::<exported name>`, each resolved through the file's imports. */
+  /** The keys of the hooks it calls: resolved functions, or `<unresolved>::<name>`. */
   calls: Set<string>;
 }
 
@@ -53,36 +56,35 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-/** A source file's module: its path under src, without the extension or a trailing `/index`. */
-function moduleOf(file: string): string {
-  return relative(SRC, file).split(sep).join('/').replace(/\.tsx?$/, '').replace(/\/index$/, '');
-}
-
-/** The module an import names, from `from`'s module: `@/…` and relative paths; a package keeps its own name. */
-function resolveModule(from: string, specifier: string): string {
-  if (specifier.startsWith('@/')) return specifier.slice(2).replace(/\.tsx?$/, '').replace(/\/index$/, '');
-  if (specifier.startsWith('.')) return posix.normalize(posix.join(posix.dirname(from), specifier)).replace(/\.tsx?$/, '').replace(/\/index$/, '');
-  return `package:${specifier}`;
-}
+const underSrc = (file: string) => relative(SRC, file).split(sep).join('/');
 
 /**
- * Each named import's local name → `<module>::<exported name>` (`useBuilding as ub` → `app/BuildingProvider::useBuilding`),
- * and each namespace import's local name → its module (`* as Building`; review round 1, Codex F1). Resolved to the
- * module, so a hook is known by where it is defined, not by its name alone (review round 1, Claude M1).
+ * A program over `files` (absolute path → source), resolving `@/…` as the app's tsconfig does. Only these files: no
+ * libraries and no other imports are read (`noLib`, `noResolve`), so a name from React or a missing module stays
+ * unresolved, which the rule treats as above. Binding the names needs no types.
  */
-function imports(tree: ts.SourceFile, module: string): { names: Map<string, string>; namespaces: Map<string, string> } {
-  const names = new Map<string, string>();
-  const namespaces = new Map<string, string>();
-  for (const statement of tree.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-    const from = resolveModule(module, statement.moduleSpecifier.text);
-    const bindings = statement.importClause?.namedBindings;
-    if (bindings && ts.isNamespaceImport(bindings)) namespaces.set(bindings.name.text, from);
-    if (bindings && ts.isNamedImports(bindings)) {
-      for (const element of bindings.elements) names.set(element.name.text, `${from}::${(element.propertyName ?? element.name).text}`);
-    }
-  }
-  return { names, namespaces };
+function program(files: Map<string, string>): ts.Program {
+  const options: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ESNext,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    jsx: ts.JsxEmit.Preserve,
+    baseUrl: join(SRC, '..'),
+    paths: { '@/*': ['src/*'] },
+    noLib: true,
+    noResolve: true,
+    noEmit: true,
+    types: [],
+  };
+  const host = ts.createCompilerHost(options, true);
+  host.fileExists = (path) => files.has(path);
+  host.readFile = (path) => files.get(path);
+  host.directoryExists = () => true;
+  host.getSourceFile = (path, language) => {
+    const text = files.get(path);
+    return text === undefined ? undefined : ts.createSourceFile(path, text, language, true, path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  };
+  return ts.createProgram([...files.keys()], options, host);
 }
 
 type FunctionNode = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration;
@@ -107,10 +109,101 @@ function functionName(fn: FunctionNode): string {
   return `<anonymous@${line + 1}>`;
 }
 
+const keyOf = (fn: FunctionNode) => `${underSrc(fn.getSourceFile().fileName)}@${fn.getStart()}`;
+
 /** The function a hook call runs in: the nearest one around it, since hooks run in a component's or hook's own body. */
 function owner(node: ts.Node): FunctionNode | undefined {
   for (let at = node.parent; at; at = at.parent) if (isFunction(at)) return at;
   return undefined;
+}
+
+/** An expression without the wrappers that don't change which function it is: `(f)`, `f!`, `f as T`, `f satisfies T`. */
+function unwrap(expression: ts.Expression): ts.Expression {
+  let at = expression;
+  while (ts.isParenthesizedExpression(at) || ts.isNonNullExpression(at) || ts.isAsExpression(at) || ts.isSatisfiesExpression(at) || ts.isTypeAssertionExpression(at)) {
+    at = at.expression;
+  }
+  return at;
+}
+
+/** What a callee names: a function in the program, or a name the checker can't follow to one. */
+type Target = { fn: FunctionNode } | { unresolved: string };
+
+/**
+ * The name an unresolved callee goes by: an identifier's, a member's, `<computed>` for `x[name]` (which may be any
+ * hook), or `<other>` for a shape that names no hook (`super(…)`, `f()(…)`), as before the checker.
+ */
+function nameOf(expression: ts.Expression): string {
+  const at = unwrap(expression);
+  if (ts.isIdentifier(at)) return at.text;
+  if (ts.isPropertyAccessExpression(at)) return at.name.text;
+  if (ts.isElementAccessExpression(at)) {
+    const arg = at.argumentExpression;
+    return ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg) ? arg.text : '<computed>';
+  }
+  return '<other>';
+}
+
+function resolver(checker: ts.TypeChecker) {
+  /**
+   * The function a value expression is, through wrappers, aliases and the checker's symbols. `name` is what it goes by
+   * if it is no function the checker can follow: a variable's own name for its value (`const navigate =
+   * useNavigate()`), else the expression's.
+   */
+  const ofExpression = (expression: ts.Expression, seen: Set<ts.Symbol>, name = nameOf(expression)): Target => {
+    const at = unwrap(expression);
+    if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) return { fn: at };
+    // A wrapped function (`memo(() => …)`, `forwardRef(function Inner() …)`): the first function inside it.
+    if (ts.isCallExpression(at)) {
+      for (const arg of at.arguments) {
+        const inner = ofExpression(arg, seen);
+        if ('fn' in inner) return inner;
+      }
+      return { unresolved: name };
+    }
+    let node: ts.Node = at;
+    if (ts.isPropertyAccessExpression(at)) node = at.name;
+    else if (ts.isElementAccessExpression(at)) node = at.argumentExpression;
+    const symbol = checker.getSymbolAtLocation(node);
+    return symbol ? ofSymbol(symbol, seen, name) : { unresolved: name };
+  };
+
+  /** The function a symbol stands for: its declaration, followed through imports, `const` aliases and destructuring. */
+  const ofSymbol = (start: ts.Symbol, seen: Set<ts.Symbol>, name: string): Target => {
+    // An import, re-export or namespace member: the checker follows the whole chain; one it can't is its unknown symbol,
+    // with no declaration.
+    const symbol = start.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(start) : start;
+    if (seen.has(symbol)) return { unresolved: name };
+    seen.add(symbol);
+    const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];
+    if (!declaration) return { unresolved: name };
+    if (isFunction(declaration)) return { fn: declaration };
+    if (ts.isVariableDeclaration(declaration)) {
+      // Only a `const` keeps its value: a `let` or `var` alias may be reassigned, so it is unresolved (fail-closed).
+      const list = declaration.parent;
+      const constant = ts.isVariableDeclarationList(list) && (list.flags & ts.NodeFlags.Const) !== 0;
+      return constant && declaration.initializer ? ofExpression(declaration.initializer, seen, name) : { unresolved: name };
+    }
+    if (ts.isBindingElement(declaration)) {
+      // `const { useBuilding: ub } = Building`: the member of what is destructured.
+      const pattern = declaration.parent;
+      const holder = pattern.parent;
+      const property = declaration.propertyName ?? declaration.name;
+      const member = ts.isIdentifier(property) || ts.isStringLiteral(property) ? property.text : '<computed>';
+      const constant = ts.isVariableDeclaration(holder) && ts.isVariableDeclarationList(holder.parent) && (holder.parent.flags & ts.NodeFlags.Const) !== 0;
+      if (!constant || !ts.isObjectBindingPattern(pattern) || !holder.initializer) return { unresolved: member };
+      const found = checker.getTypeAtLocation(holder.initializer).getProperty(member);
+      return found ? ofSymbol(found, seen, member) : { unresolved: member };
+    }
+    if (ts.isPropertyAssignment(declaration)) return ofExpression(declaration.initializer, seen, name);
+    if (ts.isShorthandPropertyAssignment(declaration)) {
+      const value = checker.getShorthandAssignmentValueSymbol(declaration);
+      return value ? ofSymbol(value, seen, name) : { unresolved: name };
+    }
+    return { unresolved: name };
+  };
+
+  return (callee: ts.Expression) => ofExpression(callee, new Set());
 }
 
 /**
@@ -119,8 +212,7 @@ function owner(node: ts.Node): FunctionNode | undefined {
  * a computed name, an accessor), which may set it (review round 1, Codex F1). No argument, or no such member, isn't.
  * An argument that isn't an object literal is.
  */
-function isPassive(call: ts.CallExpression): boolean {
-  const [options] = call.arguments;
+function isPassive(options: ts.Expression | undefined): boolean {
   if (options === undefined) return false;
   if (!ts.isObjectLiteralExpression(options)) return true;
   let passive = false;
@@ -132,82 +224,69 @@ function isPassive(call: ts.CallExpression): boolean {
   return passive;
 }
 
-/** Each function in `source` that calls a hook, with what it calls. */
-export function inspect(file: string, source: string): Fn[] {
-  const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-  const module = moduleOf(file);
-  const { names, namespaces } = imports(tree, module);
-  // The hook a call names, as `<module>::<name>`: an identifier (imported, else this module's own), a namespace
-  // import's member, or any other object's `useBuilding` (fail-closed: it can only add a passive reader). Another
-  // object's other members are no hook, so `fake.useBuildingDenied()` reads no denial.
-  const hookOf = (callee: ts.Expression): { key: string; name: string } | undefined => {
-    if (ts.isIdentifier(callee)) {
-      const key = names.get(callee.text) ?? `${module}::${callee.text}`;
-      return { key, name: key.slice(key.lastIndexOf('::') + 2) };
-    }
-    // `x.member` or `x['member']`; a computed `x[name]` may be any hook, so it counts as `useBuilding` (fail-closed:
-    // it can only add a passive reader; review round 2, Codex F1).
-    let member: string;
-    if (ts.isPropertyAccessExpression(callee)) member = callee.name.text;
-    else if (ts.isElementAccessExpression(callee)) {
-      const at = callee.argumentExpression;
-      if (!ts.isStringLiteral(at) && !ts.isNoSubstitutionTemplateLiteral(at)) return { key: '<computed>::useBuilding', name: 'useBuilding' };
-      member = at.text;
-    } else return undefined;
-    const from = ts.isIdentifier(callee.expression) ? namespaces.get(callee.expression.text) : undefined;
-    if (from !== undefined) return { key: `${from}::${member}`, name: member };
-    return member === 'useBuilding' ? { key: `<member>::${member}`, name: member } : undefined;
+const isHookName = (name: string) => /^use[A-Z]/.test(name);
+
+/**
+ * Each function in `files` (path under src → source) that calls a hook, with what it calls, and the keys of the two
+ * hooks the rule is about, as defined in `PROVIDER`.
+ */
+export function analyze(files: Record<string, string>): { fns: Fn[]; denial: string | undefined; building: string | undefined } {
+  const sources = new Map(Object.entries(files).map(([path, text]) => [join(SRC, path), text]));
+  const built = program(sources);
+  const resolve = resolver(built.getTypeChecker());
+  const provider = built.getSourceFile(join(SRC, PROVIDER));
+  const exported = (name: string) => {
+    const found = provider?.statements.find((s): s is ts.FunctionDeclaration => ts.isFunctionDeclaration(s) && s.name?.text === name);
+    return found && keyOf(found);
   };
-  // A hook bound to a local name, `const read = useBuilding` or `const { useBuilding: ub } = Building`, is that hook
-  // (review round 2, Claude L1). Destructured from anything but a namespace import, only `useBuilding` counts, as for
-  // a member call. Read in source order, before the calls.
-  const bind = (node: ts.Node) => {
-    if (ts.isVariableDeclaration(node) && node.initializer) {
-      const value = node.initializer;
-      if (ts.isIdentifier(node.name)) {
-        const hook = hookOf(value);
-        if (hook && /^use[A-Z]/.test(hook.name)) names.set(node.name.text, hook.key);
-      } else if (ts.isObjectBindingPattern(node.name)) {
-        const from = ts.isIdentifier(value) ? namespaces.get(value.text) : undefined;
-        for (const element of node.name.elements) {
-          const property = element.propertyName ?? element.name;
-          if (!ts.isIdentifier(element.name) || !(ts.isIdentifier(property) || ts.isStringLiteral(property))) continue;
-          if (from !== undefined) names.set(element.name.text, `${from}::${property.text}`);
-          else if (property.text === 'useBuilding') names.set(element.name.text, '<member>::useBuilding');
+  const denial = exported('useBuildingDenied');
+  const building = exported('useBuilding');
+
+  const fns = new Map<string, Fn>();
+  for (const tree of built.getSourceFiles()) {
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node)) {
+        let callee: ts.Expression = unwrap(node.expression);
+        let args: readonly ts.Expression[] = node.arguments;
+        let applied = false;
+        // `hook.call(thisArg, options)` and `hook.apply(thisArg, [options])` run `hook`.
+        if (ts.isPropertyAccessExpression(callee) && (callee.name.text === 'call' || callee.name.text === 'apply')) {
+          applied = callee.name.text === 'apply';
+          callee = callee.expression;
+          args = args.slice(1);
+        }
+        const target = resolve(callee);
+        const name = 'fn' in target ? functionName(target.fn) : target.unresolved;
+        const isBuilding = 'fn' in target ? keyOf(target.fn) === building : name === 'useBuilding' || name === '<computed>';
+        if (isHookName(name) || isBuilding) {
+          const at = owner(node);
+          const key = at ? keyOf(at) : `${underSrc(tree.fileName)}::<module>`;
+          const id = `${underSrc(tree.fileName)}::${at ? functionName(at) : '<module>'}`;
+          const fn = fns.get(key) ?? { id, key, passive: false, calls: new Set<string>() };
+          fn.calls.add('fn' in target ? keyOf(target.fn) : `<unresolved>::${name}`);
+          // `apply`'s options are in an array it can't read: passive (fail-closed). A computed callee with no argument
+          // reads like `useBuilding()`, the active reader the rule leaves alone.
+          if (isBuilding && (applied ? args.length > 0 : isPassive(args[0]))) fn.passive = true;
+          fns.set(key, fn);
         }
       }
-    }
-    ts.forEachChild(node, bind);
-  };
-  bind(tree);
-  const fns = new Map<ts.Node | undefined, Fn>();
-  const visit = (node: ts.Node) => {
-    const hook = ts.isCallExpression(node) ? hookOf(node.expression) : undefined;
-    if (ts.isCallExpression(node) && hook !== undefined && /^use[A-Z]/.test(hook.name)) {
-      const at = owner(node);
-      const name = at ? functionName(at) : '<module>';
-      const key = at && owner(at) ? `${module}::${name}@${at.getStart()}` : `${module}::${name}`;
-      const fn = fns.get(at) ?? { id: `${relative(SRC, file).split(sep).join('/')}::${name}`, name, key, passive: false, calls: new Set<string>() };
-      fn.calls.add(hook.key);
-      if (hook.name === 'useBuilding' && isPassive(node)) fn.passive = true;
-      fns.set(at, fn);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(tree);
-  return [...fns.values()];
+      ts.forEachChild(node, visit);
+    };
+    visit(tree);
+  }
+  return { fns: [...fns.values()], denial, building };
 }
 
 /**
- * The passive readers that read no denial, given every function. A hook reads it if it calls the denial or another
- * hook that does, found to a fixed point, each known by its `key`.
+ * The passive readers that read no denial. A function reads it if it calls the denial or another function that does,
+ * found to a fixed point, each known by its key, so only the function a call resolves to counts.
  */
-export function unguarded(fns: Fn[]): string[] {
-  const aware = new Set([DENIAL]);
+export function unguarded({ fns, denial }: { fns: Fn[]; denial: string | undefined }): string[] {
+  const aware = new Set(denial ? [denial] : []);
   for (let grew = true; grew; ) {
     grew = false;
     for (const fn of fns) {
-      if (/^use[A-Z]/.test(fn.name) && !aware.has(fn.key) && [...fn.calls].some((hook) => aware.has(hook))) {
+      if (!aware.has(fn.key) && [...fn.calls].some((hook) => aware.has(hook))) {
         aware.add(fn.key);
         grew = true;
       }
@@ -216,8 +295,12 @@ export function unguarded(fns: Fn[]): string[] {
   return fns.filter((fn) => fn.passive && ![...fn.calls].some((hook) => aware.has(hook))).map((fn) => fn.id);
 }
 
-function inventory(): Fn[] {
-  return ROOTS.flatMap((root) => sourceFiles(join(SRC, root))).flatMap((file) => inspect(file, readFileSync(file, 'utf8')));
+let cached: ReturnType<typeof analyze> | undefined;
+function inventory(): ReturnType<typeof analyze> {
+  cached ??= analyze(
+    Object.fromEntries(ROOTS.flatMap((root) => sourceFiles(join(SRC, root))).map((file) => [underSrc(file), readFileSync(file, 'utf8')])),
+  );
+  return cached;
 }
 
 describe('passive building readers also read the denial (P5-05 criterion 11, P3-05)', () => {
@@ -230,13 +313,25 @@ describe('passive building readers also read the denial (P5-05 criterion 11, P3-
   });
 
   it('finds the readers the rule is about (the scan is not empty)', () => {
-    const passive = inventory().filter((fn) => fn.passive).map((fn) => fn.id);
+    const passive = inventory().fns.filter((fn) => fn.passive).map((fn) => fn.id);
     expect(passive).toEqual(expect.arrayContaining(['app/AccountMenu.tsx::BuildingChoices', 'app/MainNav.tsx::BuildingNav']));
+  });
+
+  it('resolves the two hooks in the real provider, and a hook that reads the denial through it', () => {
+    const { denial, building, fns } = inventory();
+    expect(denial).toBeDefined();
+    expect(building).toBeDefined();
+    expect(existsSync(join(SRC, PROVIDER))).toBe(true);
+    // `useCanViewAs` reads the denial; the nav's passive reader passes through it and its own call.
+    expect(fns.find((fn) => fn.id === 'app/MainNav.tsx::useCanViewAs')?.calls).toContain(denial);
   });
 });
 
 describe('the inspector', () => {
-  const run = (source: string) => unguarded(inspect(join(SRC, 'features/x/X.tsx'), source));
+  /** The provider the cases import: the two hooks, defined as the real ones are (function declarations). */
+  const PROVIDER_STUB = 'export function useBuilding(options?: unknown) { return options; }\nexport function useBuildingDenied() { return false; }\n';
+  const check = (files: Record<string, string>) => unguarded(analyze({ [PROVIDER]: PROVIDER_STUB, ...files }));
+  const run = (source: string) => check({ 'features/x/X.tsx': source });
   const IMPORT = "import { useBuilding, useBuildingDenied } from '@/app/BuildingProvider';\n";
 
   it('lists a passive reader that reads no denial', () => {
@@ -311,15 +406,14 @@ describe('the inspector', () => {
 
   it('R1-M1: a hook that reads the denial counts only where it is defined, resolved through the import', () => {
     const SAFE = "import { useBuildingDenied } from '@/app/BuildingProvider';\nexport function useCanX() { return !useBuildingDenied(); }";
-    const a = inspect(join(SRC, 'features/a/A.tsx'), SAFE);
-    const local = inspect(join(SRC, 'features/b/B.tsx'), `${IMPORT}function useCanX() { return true; }\nfunction P() { useBuilding({ passive: true }); useCanX(); }`);
-    expect(unguarded([...a, ...local])).toEqual(['features/b/B.tsx::P']);
-    const imported = inspect(join(SRC, 'features/b/B.tsx'), `${IMPORT}import { useCanX } from '@/features/a/A';\nfunction P() { useBuilding({ passive: true }); useCanX(); }`);
-    expect(unguarded([...a, ...imported])).toEqual([]);
-    const relative = inspect(join(SRC, 'features/a/P.tsx'), `${IMPORT}import { useCanX as can } from './A';\nfunction P() { useBuilding({ passive: true }); can(); }`);
-    expect(unguarded([...a, ...relative])).toEqual([]);
-    const elsewhere = inspect(join(SRC, 'features/b/B.tsx'), `${IMPORT}import { useCanX } from '@/features/c/C';\nfunction P() { useBuilding({ passive: true }); useCanX(); }`);
-    expect(unguarded([...a, ...elsewhere])).toEqual(['features/b/B.tsx::P']);
+    const local = `${IMPORT}function useCanX() { return true; }\nfunction P() { useBuilding({ passive: true }); useCanX(); }`;
+    expect(check({ 'features/a/A.tsx': SAFE, 'features/b/B.tsx': local })).toEqual(['features/b/B.tsx::P']);
+    const imported = `${IMPORT}import { useCanX } from '@/features/a/A';\nfunction P() { useBuilding({ passive: true }); useCanX(); }`;
+    expect(check({ 'features/a/A.tsx': SAFE, 'features/b/B.tsx': imported })).toEqual([]);
+    const relativeImport = `${IMPORT}import { useCanX as can } from './A';\nfunction P() { useBuilding({ passive: true }); can(); }`;
+    expect(check({ 'features/a/A.tsx': SAFE, 'features/a/P.tsx': relativeImport })).toEqual([]);
+    const elsewhere = `${IMPORT}import { useCanX } from '@/features/c/C';\nfunction P() { useBuilding({ passive: true }); useCanX(); }`;
+    expect(check({ 'features/a/A.tsx': SAFE, 'features/b/B.tsx': elsewhere })).toEqual(['features/b/B.tsx::P']);
     // The denial itself, through its module's name only.
     expect(run("import { useBuilding } from '@/app/BuildingProvider';\nimport { useBuildingDenied } from './fake';\nfunction A() { useBuilding({ passive: true }); useBuildingDenied(); }")).toEqual([
       'features/x/X.tsx::A',
@@ -364,6 +458,57 @@ describe('the inspector', () => {
   it('a denial read in another component does not cover this one', () => {
     expect(run(`${IMPORT}function A() { useBuildingDenied(); return <B />; }\nfunction B() { useBuilding({ passive: true }); }`)).toEqual([
       'features/x/X.tsx::B',
+    ]);
+  });
+
+  // Review round 3, Codex F1 / Claude L1 (PR #121): names were resolved without scope, so these passed a reader that
+  // reads no denial. Each now fails, and the same shapes reading the denial pass.
+  it('R3: a function-local alias of the denial covers only its own function', () => {
+    expect(run(`${IMPORT}function G() { const read = useBuildingDenied; read(); }\nfunction A() { useBuilding({ passive: true }); read(); }`)).toEqual([
+      'features/x/X.tsx::A',
+    ]);
+    expect(run(`${IMPORT}function A() { const read = useBuildingDenied; useBuilding({ passive: true }); read(); }`)).toEqual([]);
+  });
+
+  it('R3: a declaration that shadows a hook reading the denial is the one called', () => {
+    const SAFE = `${IMPORT}function useCheck() { return !useBuildingDenied(); }\n`;
+    expect(run(`${SAFE}function A() { function useCheck() { return false; } useBuilding({ passive: true }); useCheck(); }`)).toEqual([
+      'features/x/X.tsx::A',
+    ]);
+    expect(run(`${SAFE}function A() { const useCheck = () => false; useBuilding({ passive: true }); useCheck(); }`)).toEqual(['features/x/X.tsx::A']);
+    // A local named like the denial is not the denial.
+    expect(run(`${IMPORT}function A() { const useBuildingDenied = () => false; useBuilding({ passive: true }); useBuildingDenied(); }`)).toEqual([
+      'features/x/X.tsx::A',
+    ]);
+    // Unshadowed, the module's hook still counts.
+    expect(run(`${SAFE}function A() { useBuilding({ passive: true }); useCheck(); }`)).toEqual([]);
+  });
+
+  it('R3: a callee in `!`, parentheses, `as` or `.call`/`.apply` is still the hook', () => {
+    for (const call of [
+      'useBuilding!({ passive: true })',
+      '(useBuilding)({ passive: true })',
+      '(useBuilding as typeof useBuilding)({ passive: true })',
+      'useBuilding.call(null, { passive: true })',
+      'useBuilding.apply(null, [{ passive: false }])',
+      'Building.useBuilding.call(undefined, { passive: true })',
+    ]) {
+      expect(run(`${IMPORT}${NS}function A() { ${call}; }`), call).toEqual(['features/x/X.tsx::A']);
+    }
+    expect(run(`${IMPORT}function A() { useBuilding.call(null, { passive: false }); }`)).toEqual([]);
+    for (const denied of ['useBuildingDenied!()', '(useBuildingDenied)()', 'useBuildingDenied.call(null)']) {
+      expect(run(`${IMPORT}function A() { useBuilding({ passive: true }); ${denied}; }`), denied).toEqual([]);
+    }
+  });
+
+  it('R3 neighbours: a `let` alias may be reassigned, so it is no denial; a re-export is followed', () => {
+    expect(run(`${IMPORT}let read = useBuildingDenied;\nread = () => false;\nfunction A() { useBuilding({ passive: true }); read(); }`)).toEqual([
+      'features/x/X.tsx::A',
+    ]);
+    const REEXPORT = "export { useBuildingDenied as useDenied, useBuilding as useB } from '@/app/BuildingProvider';\n";
+    expect(check({ 'features/r/index.ts': REEXPORT, 'features/x/X.tsx': "import { useB, useDenied } from '@/features/r';\nfunction A() { useB({ passive: true }); useDenied(); }" })).toEqual([]);
+    expect(check({ 'features/r/index.ts': REEXPORT, 'features/x/X.tsx': "import { useB } from '@/features/r';\nfunction A() { useB({ passive: true }); }" })).toEqual([
+      'features/x/X.tsx::A',
     ]);
   });
 });

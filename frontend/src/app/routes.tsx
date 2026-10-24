@@ -11,6 +11,7 @@ import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage';
 import { AcceptInvitePage, InviteInvalid } from '@/features/auth/pages/AcceptInvitePage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { ResetLinkInvalid, ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage';
+import { NoticesPage } from '@/features/notices/NoticesPage';
 import { JoinInvalid, JoinPage } from '@/features/onboarding/JoinPage';
 import { MyPackagesPage } from '@/features/packages/pages/MyPackagesPage';
 import { SecurityPackagesPage } from '@/features/packages/pages/SecurityPackagesPage';
@@ -77,6 +78,15 @@ export function AppRoutes() {
             element={
               <RequirePageAccess access={PAGE_ACCESS.Packages}>
                 <MyPackagesPage />
+              </RequirePageAccess>
+            }
+          />
+          {/* The notifications link to `/notices/<id>`; until P6-02b gives a notice its view, it is the feed. */}
+          <Route
+            path={`${PAGE_ACCESS.Notices.path}/*`}
+            element={
+              <RequirePageAccess access={PAGE_ACCESS.Notices}>
+                <NoticesPage />
               </RequirePageAccess>
             }
           />
