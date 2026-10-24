@@ -144,28 +144,82 @@ function nameOf(expression: ts.Expression): string {
   return '<other>';
 }
 
-function resolver(checker: ts.TypeChecker) {
+function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boolean) {
   /**
    * The function a value expression is, through wrappers, aliases and the checker's symbols. `name` is what it goes by
    * if it is no function the checker can follow: a variable's own name for its value (`const navigate =
-   * useNavigate()`), else the expression's.
+   * useNavigate()`), else the expression's; but `useBuilding` if the value may be it (`mayBeBuilding`, fail-closed:
+   * P6-02a review round 1, Codex F1 and F2).
    */
   const ofExpression = (expression: ts.Expression, seen: Set<ts.Symbol>, name = nameOf(expression)): Target => {
     const at = unwrap(expression);
     if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) return { fn: at };
-    // A wrapped function (`memo(() => …)`, `forwardRef(function Inner() …)`): the first function inside it.
+    const unknown = (): Target => ({ unresolved: mayBeBuilding(at, seen) ? 'useBuilding' : name });
+    // A wrapped function (`memo(() => …)`, `forwardRef(function Inner() …)`): the first function written inside it,
+    // however deep. A function only passed in by name (`makeHook(useBuildingDenied)`) may not be what the call returns,
+    // so the call is unknown (review round 1, Codex F2).
     if (ts.isCallExpression(at)) {
       for (const arg of at.arguments) {
-        const inner = ofExpression(arg, seen);
-        if ('fn' in inner) return inner;
+        const inner = unwrap(arg);
+        if (!(ts.isArrowFunction(inner) || ts.isFunctionExpression(inner) || ts.isCallExpression(inner))) continue;
+        const found = ofExpression(inner, seen);
+        if ('fn' in found) return found;
       }
-      return { unresolved: name };
+      return unknown();
     }
+    if (!ts.isIdentifier(at) && !ts.isPropertyAccessExpression(at) && !ts.isElementAccessExpression(at)) return unknown();
     let node: ts.Node = at;
     if (ts.isPropertyAccessExpression(at)) node = at.name;
     else if (ts.isElementAccessExpression(at)) node = at.argumentExpression;
     const symbol = checker.getSymbolAtLocation(node);
-    return symbol ? ofSymbol(symbol, seen, name) : { unresolved: name };
+    return symbol ? ofSymbol(symbol, seen, name) : unknown();
+  };
+
+  /** True if `target` is `useBuilding`, or a value the checker couldn't follow that may be it. */
+  const isBuildingTarget = (target: Target) => ('fn' in target ? isBuilding(target.fn) : target.unresolved === 'useBuilding');
+
+  /**
+   * Whether a value the checker can't follow may be `useBuilding`: it, or a name or member inside it (a factory's
+   * argument, a branch of a conditional), resolves to it. Fail-closed, as the name rule for unresolved callees: it can
+   * only add a passive reader. Never asked of the denial: an unknown value earns no denial.
+   */
+  const mayBeBuilding = (expression: ts.Node, seen: Set<ts.Symbol>): boolean => {
+    let found = false;
+    const visit = (node: ts.Node) => {
+      if (found) return;
+      if (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+        const symbol = checker.getSymbolAtLocation(ts.isPropertyAccessExpression(node) ? node.name : ts.isElementAccessExpression(node) ? node.argumentExpression : node);
+        if (symbol && isBuildingTarget(ofSymbol(symbol, new Set(seen), nameOf(node)))) {
+          found = true;
+          return;
+        }
+        if (!symbol && nameOf(node) === 'useBuilding') {
+          found = true;
+          return;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(expression);
+    return found;
+  };
+
+  /** Every value a mutable variable may hold: its initializer and each assignment to it in its file. */
+  const valuesOf = (symbol: ts.Symbol, declaration: ts.VariableDeclaration): ts.Expression[] => {
+    const values = declaration.initializer ? [declaration.initializer] : [];
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left) &&
+        checker.getSymbolAtLocation(node.left) === symbol
+      ) {
+        values.push(node.right);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(declaration.getSourceFile());
+    return values;
   };
 
   /** The function a symbol stands for: its declaration, followed through imports, `const` aliases and destructuring. */
@@ -179,10 +233,17 @@ function resolver(checker: ts.TypeChecker) {
     if (!declaration) return { unresolved: name };
     if (isFunction(declaration)) return { fn: declaration };
     if (ts.isVariableDeclaration(declaration)) {
-      // Only a `const` keeps its value: a `let` or `var` alias may be reassigned, so it is unresolved (fail-closed).
+      // Only a `const` keeps its value. A `let` or `var` may be reassigned, so it is no function and earns no denial;
+      // it is `useBuilding` if any value it is given may be (review round 1, Codex F1).
       const list = declaration.parent;
       const constant = ts.isVariableDeclarationList(list) && (list.flags & ts.NodeFlags.Const) !== 0;
-      return constant && declaration.initializer ? ofExpression(declaration.initializer, seen, name) : { unresolved: name };
+      if (constant && declaration.initializer) return ofExpression(declaration.initializer, seen, name);
+      const building = valuesOf(symbol, declaration).some((value) => isBuildingTarget(ofExpression(value, new Set(seen), name)));
+      return { unresolved: building ? 'useBuilding' : name };
+    }
+    if (ts.isParameter(declaration)) {
+      // A parameter is what the caller passes; its default may be `useBuilding` (fail-closed).
+      return { unresolved: declaration.initializer && mayBeBuilding(declaration.initializer, seen) ? 'useBuilding' : name };
     }
     if (ts.isBindingElement(declaration)) {
       // `const { useBuilding: ub } = Building`: the member of what is destructured.
@@ -233,7 +294,6 @@ const isHookName = (name: string) => /^use[A-Z]/.test(name);
 export function analyze(files: Record<string, string>): { fns: Fn[]; denial: string | undefined; building: string | undefined } {
   const sources = new Map(Object.entries(files).map(([path, text]) => [join(SRC, path), text]));
   const built = program(sources);
-  const resolve = resolver(built.getTypeChecker());
   const provider = built.getSourceFile(join(SRC, PROVIDER));
   const exported = (name: string) => {
     const found = provider?.statements.find((s): s is ts.FunctionDeclaration => ts.isFunctionDeclaration(s) && s.name?.text === name);
@@ -241,6 +301,7 @@ export function analyze(files: Record<string, string>): { fns: Fn[]; denial: str
   };
   const denial = exported('useBuildingDenied');
   const building = exported('useBuilding');
+  const resolve = resolver(built.getTypeChecker(), (fn) => keyOf(fn) === building);
 
   const fns = new Map<string, Fn>();
   for (const tree of built.getSourceFiles()) {
@@ -499,6 +560,44 @@ describe('the inspector', () => {
     for (const denied of ['useBuildingDenied!()', '(useBuildingDenied)()', 'useBuildingDenied.call(null)']) {
       expect(run(`${IMPORT}function A() { useBuilding({ passive: true }); ${denied}; }`), denied).toEqual([]);
     }
+  });
+
+  // P6-02a review round 1, Codex F1 and F2: a mutable alias of `useBuilding` escaped, and a hook passed to any call was
+  // taken as what the call returns. A value the checker can't follow that mentions `useBuilding` now counts as it
+  // (fail-closed), and only an inline function inside a call is that call's function.
+  it.each(['let', 'var'])('P6-02a R1-F1: a `%s` alias of `useBuilding` is a passive reader', (kind) => {
+    expect(run(`${IMPORT}${kind} read = useBuilding;\nfunction A() { read({ passive: true }); }`)).toEqual(['features/x/X.tsx::A']);
+    expect(run(`${NS}${kind} read = Building.useBuilding;\nfunction A() { read({ passive: true }); }`)).toEqual(['features/x/X.tsx::A']);
+  });
+
+  it('P6-02a R1-F1 neighbours: any value that may be `useBuilding` counts as it; none earns the denial', () => {
+    const FLAGGED = ['features/x/X.tsx::A'];
+    // Reassigned later, or declared without a value.
+    expect(run(`${IMPORT}let read = () => null;\nread = useBuilding;\nfunction A() { read({ passive: true }); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}let read;\nfunction set() { read = useBuilding; }\nfunction A() { read({ passive: true }); }`)).toEqual(FLAGGED);
+    // A parameter's default, a conditional and a logical choice.
+    expect(run(`${IMPORT}function A(read = useBuilding) { read({ passive: true }); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}const read = flag ? useBuilding : () => null;\nfunction A() { read({ passive: true }); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}const read = other || useBuilding;\nfunction A() { read({ passive: true }); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}function A() { (flag ? useBuilding : other)({ passive: true }); }`)).toEqual(FLAGGED);
+    // Through a `const` alias of an alias.
+    expect(run(`${IMPORT}const b = useBuilding;\nlet read = b;\nfunction A() { read({ passive: true }); }`)).toEqual(FLAGGED);
+    // The same shapes never read the denial for the reader.
+    expect(run(`${IMPORT}let denied = useBuildingDenied;\nfunction A() { useBuilding({ passive: true }); denied(); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}const denied = flag ? useBuildingDenied : () => false;\nfunction A() { useBuilding({ passive: true }); denied(); }`)).toEqual(FLAGGED);
+    // A `let` alias that is never `useBuilding` stays out of the rule.
+    expect(run(`${IMPORT}let read = () => null;\nfunction A() { read({ passive: true }); }`)).toEqual([]);
+  });
+
+  it('P6-02a R1-F2: a hook passed to a factory is not what the factory returns', () => {
+    const FLAGGED = ['features/x/X.tsx::A'];
+    const FACTORY = 'function makeHook(_ignored: unknown) { return () => false; }\n';
+    expect(run(`${IMPORT}${FACTORY}const useNoDenial = makeHook(useBuildingDenied);\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}const useNoDenial = memo(useBuildingDenied);\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    // A factory given `useBuilding` may return it: counts as it (fail-closed).
+    expect(run(`${IMPORT}${FACTORY}const useB = makeHook(useBuilding);\nfunction A() { useB({ passive: true }); }`)).toEqual(FLAGGED);
+    // An inline function in a wrapper is still the wrapper's, however deep.
+    expect(run(`${IMPORT}const useCan = memo(forwardRef(() => !useBuildingDenied()));\nfunction A() { useBuilding({ passive: true }); useCan(); }`)).toEqual([]);
   });
 
   it('R3 neighbours: a `let` alias may be reassigned, so it is no denial; a re-export is followed', () => {
