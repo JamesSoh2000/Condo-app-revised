@@ -75,6 +75,8 @@ EXPECTED_ROW_COUNTS = {
     "onboarding_requests": 0,
     # P5-01: nor logs a package (tests make their own).
     "packages": 0,
+    # P6-01a: nor writes a notice (tests make their own).
+    "notices": 0,
 }
 
 
