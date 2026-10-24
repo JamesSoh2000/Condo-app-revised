@@ -4,6 +4,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from pydantic import AwareDatetime, BeforeValidator, StringConstraints, model_validator
+from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
 from app.core.schemas import APIModel, InputModel
@@ -53,9 +54,11 @@ class NoticeUpdate(InputModel):
     """A draft's new values: only the fields sent change. `expires_at` and `attachment_file_id`
     may be `null` to clear them; the other fields may not."""
 
-    title: Title | None = None
-    body: Body | None = None
-    priority: NoticePriority | None = None
+    # Optional, never null: SkipJsonSchema keeps the None default out of the OpenAPI schema (review
+    # round 1, Codex, as `UnitUpdate`), and the validator below refuses an explicit null.
+    title: Title | SkipJsonSchema[None] = None
+    body: Body | SkipJsonSchema[None] = None
+    priority: NoticePriority | SkipJsonSchema[None] = None
     expires_at: AwareDatetime | None = None
     attachment_file_id: UUID | None = None
 

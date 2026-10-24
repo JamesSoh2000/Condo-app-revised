@@ -15,6 +15,7 @@ from app.audit.models import AuditEvent
 from app.buildings.enums import Feature
 from app.buildings.models import BuildingFeature
 from app.files.models import File
+from app.main import app
 from app.notices import service
 from app.notices.enums import NoticeStatus
 from app.notices.models import Notice
@@ -171,17 +172,6 @@ async def test_create_defaults_to_normal_priority_without_expiry_or_attachment(
 
 async def test_create_without_a_session_is_401(client: AsyncClient, world: World) -> None:
     assert_problem(await client.post(_base(world), json=BODY), 401, "not_authenticated")
-
-
-async def test_multi_may_not_create_in_the_building_where_it_is_a_resident(
-    db: AsyncSession, as_user: Any, world: World
-) -> None:
-    client = await as_user(world.multi)
-    before = await _counts(db)
-
-    await assert_forbidden_role(client, "POST", _base(world), json=BODY)
-
-    assert await _counts(db) == before
 
 
 async def test_a_file_of_another_building_looks_like_an_unknown_file(
@@ -663,12 +653,14 @@ def _routes(world: World, notice_id: uuid.UUID) -> list[tuple[str, str, Any]]:
 WRITES = 4
 
 
-@pytest.mark.parametrize("persona", ["a_security", "a_resident1", "a_council"])
+@pytest.mark.parametrize("persona", ["a_security", "a_resident1", "a_council", "multi"])
 async def test_only_the_manager_may_write(
     db: AsyncSession, as_user: Any, world: World, persona: str
 ) -> None:
+    # multi is security in B, a resident in A: the role comes from A's membership.
     draft = await _draft(db, world)
-    client = await as_user(getattr(world, persona).user)
+    member = getattr(world, persona)
+    client = await as_user(member if persona == "multi" else member.user)
     before = await _counts(db)
 
     for method, url, json in _routes(world, draft.id)[:WRITES]:
@@ -722,3 +714,13 @@ async def test_every_notice_route_is_403_when_the_feature_is_off(
 
     assert await _counts(db) == before
     assert (await _notice(db, draft.id)).status is NoticeStatus.DRAFT
+
+
+@pytest.mark.parametrize("field", ["title", "body", "priority"])
+def test_the_edit_schema_does_not_offer_null_where_it_refuses_it(field: str) -> None:
+    # Review round 1 (Codex, Low): the OpenAPI schema (and so `schema.d.ts`) allowed `null` for
+    # these fields, which the validator refuses with 422.
+    schema = app.openapi()["components"]["schemas"]["NoticeUpdate"]["properties"][field]
+
+    assert all(choice.get("type") != "null" for choice in schema.get("anyOf", [schema]))
+    assert field not in app.openapi()["components"]["schemas"]["NoticeUpdate"].get("required", [])

@@ -1564,10 +1564,11 @@ export interface components {
          */
         NoticeUpdate: {
             /** Title */
-            title?: string | null;
+            title?: string;
             /** Body */
-            body?: string | null;
-            priority?: components["schemas"]["NoticePriority"] | null;
+            body?: string;
+            /** Priority */
+            priority?: components["schemas"]["NoticePriority"];
             /** Expires At */
             expires_at?: string | null;
             /** Attachment File Id */

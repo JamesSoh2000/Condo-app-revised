@@ -15,11 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.audit.models import AuditEvent
 from app.core.errors import DomainError
+from app.files.models import File
 from app.notices import service
 from app.notices.enums import NoticeStatus
 from app.notices.models import Notice
-from app.notices.schemas import NoticeUpdate
-from tests.notices.conftest import make_notice, persona_ctx
+from app.notices.schemas import NoticeCreate, NoticeUpdate
+from tests.notices.conftest import make_attachment, make_notice, persona_ctx
 from tests.notifications.test_concurrency import migrate
 from tests.world import World, build_world
 
@@ -174,5 +175,63 @@ def test_a_notice_expiring_while_its_publish_waits_is_not_published(
         assert outcome == "422 notice_expired"
         assert (await _row(sessions, notice)).status is NoticeStatus.DRAFT
         assert await _audits(sessions, notice) == []
+
+    _run(scratch_database_url, body)
+
+
+@pytest.mark.parametrize("operation", ["create", "edit", "edit-no-file"])
+def test_an_expiry_passing_while_the_attachment_claim_waits_is_refused(
+    scratch_database_url: str, operation: str
+) -> None:
+    # Review round 1 (Codex, Medium): create and edit checked `expires_at` before `claim_file`,
+    # whose UPDATE waits on a file row another transaction holds; an expiry passing during that
+    # wait was saved (201/200) instead of 422.
+    async def body(sessions: Sessions, world: World, notice: Notice) -> None:
+        async with sessions() as setup:
+            file = await make_attachment(
+                setup, world.a.id, world.a_manager.user.id, content_type="application/pdf"
+            )
+            await setup.commit()
+
+        async with sessions() as blocker:
+            # The neighbour (edit-no-file): an edit waiting on the notice's own row lock.
+            held = Notice if operation == "edit-no-file" else File
+            held_id = notice.id if operation == "edit-no-file" else file.id
+            await blocker.scalar(select(held).where(held.id == held_id).with_for_update())
+            expires = await blocker.scalar(select(func.clock_timestamp() + timedelta(seconds=1)))
+            assert expires is not None
+
+            async def request() -> str:
+                async with sessions() as db:
+                    ctx = persona_ctx(world, "a_manager")
+                    try:
+                        if operation == "create":
+                            data = NoticeCreate(
+                                title="T", body="B", expires_at=expires, attachment_file_id=file.id
+                            )
+                            await service.create_notice(db, ctx, data)
+                        elif operation == "edit-no-file":
+                            update_ = NoticeUpdate(expires_at=expires)
+                            await service.update_notice(db, ctx, notice.id, update_)
+                        else:
+                            update_ = NoticeUpdate(expires_at=expires, attachment_file_id=file.id)
+                            await service.update_notice(db, ctx, notice.id, update_)
+                    except DomainError as exc:
+                        return f"{exc.status} {exc.code}"
+                    return "2xx"
+
+            task = asyncio.create_task(request())
+            await asyncio.sleep(1.5)
+            assert not task.done(), "the request did not wait for the held row"
+            await blocker.rollback()
+            outcome = await asyncio.wait_for(task, timeout=10)
+
+        assert outcome == "422 notice_expired"
+        async with sessions() as db:
+            claimed = await db.scalar(select(File.attached_id).where(File.id == file.id))
+            count = await db.scalar(select(func.count()).select_from(Notice))
+        assert claimed is None
+        assert count == 1  # only the fixture's draft
+        assert (await _row(sessions, notice)).expires_at is None
 
     _run(scratch_database_url, body)

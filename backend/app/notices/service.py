@@ -48,12 +48,13 @@ _NOW = func.statement_timestamp()
 
 async def create_notice(db: AsyncSession, ctx: TenantContext, data: NoticeCreate) -> NoticeOut:
     """Write a `draft`, with its attachment claimed for it."""
-    if data.expires_at is not None:
-        await _check_future(db, data.expires_at)
     notice_id = uuid7()
     if data.attachment_file_id is not None:
         # Before the insert: another building's file is a 404 here, not a composite-FK error.
         await _claim(db, ctx, data.attachment_file_id, notice_id)
+    if data.expires_at is not None:
+        # After the claim, which can wait on the file's lock (the P4-02b lesson; review round 1).
+        await _check_future(db, data.expires_at)
     notice = await db.scalar(
         insert(Notice)
         .values(
@@ -94,8 +95,6 @@ async def update_notice(
     if notice.status is not NoticeStatus.DRAFT:
         raise NoticeNotEditable(detail=f"A {notice.status} notice can't be edited.")
     values: dict[str, Any] = {name: getattr(data, name) for name in data.model_fields_set}
-    if values.get("expires_at") is not None:
-        await _check_future(db, values["expires_at"])
     if "attachment_file_id" in values:
         file_id = values["attachment_file_id"]
         if file_id == notice.attachment_file_id:
@@ -103,6 +102,9 @@ async def update_notice(
             del values["attachment_file_id"]
         elif file_id is not None:
             await _claim(db, ctx, file_id, notice_id)
+    if values.get("expires_at") is not None:
+        # After every wait (the row lock, the file claim), as in `create_notice`.
+        await _check_future(db, values["expires_at"])
     if values:
         updated = await db.scalar(
             update(Notice)
@@ -222,6 +224,8 @@ async def _locked(db: AsyncSession, ctx: TenantContext, notice_id: UUID) -> Noti
 
 
 async def _check_future(db: AsyncSession, expires_at: datetime) -> None:
+    """422 `notice_expired` unless `expires_at` is later than this statement's clock. Call it after
+    the last statement that can wait on a lock, so the clock isn't from before the wait."""
     now: datetime | None = await db.scalar(select(_NOW))
     assert now is not None  # noqa: S101 (one row, never null)
     if expires_at <= now:
