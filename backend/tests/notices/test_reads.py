@@ -96,19 +96,23 @@ async def test_marking_read_twice_keeps_one_row_and_the_first_read_at(
     client = await as_user(world.a_resident1.user)
     assert (await client.post(_read_url(world, notice))).status_code == 204
     [first] = await _reads(db, notice)
+    first_at = first.read_at
     # Back-date it, so a second write of `read_at` would show.
     await db.execute(
         update(NoticeRead)
         .where(NoticeRead.notice_id == notice.id)
-        .values(read_at=first.read_at - timedelta(hours=1))
+        .values(read_at=first_at - timedelta(hours=1))
     )
+    # A value, not the row: `_reads` refreshes the same identity-mapped object.
     [backdated] = await _reads(db, notice)
+    backdated_at = backdated.read_at
+    assert backdated_at < first_at
 
     second = await client.post(_read_url(world, notice))
 
     assert second.status_code == 204, second.text
     [kept] = await _reads(db, notice)
-    assert kept.read_at == backdated.read_at
+    assert kept.read_at == backdated_at
 
 
 async def test_a_read_writes_no_audit_row_and_changes_no_notification(
