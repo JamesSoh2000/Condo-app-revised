@@ -8,9 +8,11 @@
  * Read with the TypeScript checker, not text matching or name tables (CLAUDE.md lessons; P6-02a, the P5-05 round-3
  * follow-up): each call's callee is resolved to the function it names through the checker's symbols, following
  * imports, namespace members, `const` aliases, destructuring and wrappers (`memo(() => …)`), so scope, shadowing and
- * renames are the language's own. A callee it can't resolve counts as `useBuilding` if that is its name or it is
- * computed (fail-closed: it can only add a passive reader), and never as the denial. An argument it can't read counts
- * as passive (fail-closed).
+ * renames are the language's own. Only a binding that can't change earns the denial: an import or namespace member, a
+ * `const` alias, a function declaration never reassigned, an inline function in React's `memo` or `forwardRef`. Any
+ * other value (a `let`, an object's member or method, a call's result) earns nothing, and counts as `useBuilding` if
+ * it may be it, by its name or its contents (fail-closed: it can only add a passive reader; P6-02a review rounds 1–2).
+ * An argument it can't read counts as passive (fail-closed).
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -155,10 +157,11 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
     const at = unwrap(expression);
     if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) return { fn: at };
     const unknown = (): Target => ({ unresolved: mayBeBuilding(at, seen) ? 'useBuilding' : name });
-    // A wrapped function (`memo(() => …)`, `forwardRef(function Inner() …)`): the first function written inside it,
-    // however deep. A function only passed in by name (`makeHook(useBuildingDenied)`) may not be what the call returns,
-    // so the call is unknown (review round 1, Codex F2).
+    // A function wrapped by React's `memo` or `forwardRef`, which keep it: the first function written inside, however
+    // deep. Any other call may return anything, and a function only passed in by name may not be what it returns
+    // (review round 1, Codex F2; round 2, Codex F1): unknown.
     if (ts.isCallExpression(at)) {
+      if (!isReactWrapper(unwrap(at.expression))) return unknown();
       for (const arg of at.arguments) {
         const inner = unwrap(arg);
         if (!(ts.isArrowFunction(inner) || ts.isFunctionExpression(inner) || ts.isCallExpression(inner))) continue;
@@ -173,6 +176,25 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
     else if (ts.isElementAccessExpression(at)) node = at.argumentExpression;
     const symbol = checker.getSymbolAtLocation(node);
     return symbol ? ofSymbol(symbol, seen, name) : unknown();
+  };
+
+  /** True if `node`'s symbol is imported from `react` (`import { memo } from 'react'`, `import * as React …`). */
+  const fromReact = (node: ts.Node): boolean => {
+    const symbol = checker.getSymbolAtLocation(node);
+    let at: ts.Node | undefined = symbol?.declarations?.[0];
+    while (at && !ts.isImportDeclaration(at)) at = at.parent;
+    return !!at && ts.isStringLiteral(at.moduleSpecifier) && at.moduleSpecifier.text === 'react';
+  };
+
+  /**
+   * React's `memo` or `forwardRef`: imported from `react` (by name or through its namespace), or a global of that name
+   * that nothing in the program declares (the inspector's cases; `noLib` leaves React's own types out).
+   */
+  const isReactWrapper = (callee: ts.Expression): boolean => {
+    const wrapper = (name: string) => name === 'memo' || name === 'forwardRef';
+    if (ts.isIdentifier(callee)) return wrapper(callee.text) && (checker.getSymbolAtLocation(callee) === undefined || fromReact(callee));
+    if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)) return wrapper(callee.name.text) && fromReact(callee.expression);
+    return false;
   };
 
   /** True if `target` is `useBuilding`, or a value the checker couldn't follow that may be it. */
@@ -204,13 +226,20 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
     return found;
   };
 
-  /** Every value a mutable variable may hold: its initializer and each assignment to it in its file. */
-  const valuesOf = (symbol: ts.Symbol, declaration: ts.VariableDeclaration): ts.Expression[] => {
-    const values = declaration.initializer ? [declaration.initializer] : [];
+  const ASSIGNMENTS = new Set([
+    ts.SyntaxKind.EqualsToken,
+    ts.SyntaxKind.BarBarEqualsToken,
+    ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+    ts.SyntaxKind.QuestionQuestionEqualsToken,
+  ]);
+
+  /** Each value assigned to the binding `symbol` in its file (`=`, `||=`, `&&=`, `??=`); a module binding can't be assigned elsewhere. */
+  const assignedTo = (symbol: ts.Symbol, declaration: ts.Node): ts.Expression[] => {
+    const values: ts.Expression[] = [];
     const visit = (node: ts.Node) => {
       if (
         ts.isBinaryExpression(node) &&
-        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ASSIGNMENTS.has(node.operatorToken.kind) &&
         ts.isIdentifier(node.left) &&
         checker.getSymbolAtLocation(node.left) === symbol
       ) {
@@ -222,7 +251,15 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
     return values;
   };
 
-  /** The function a symbol stands for: its declaration, followed through imports, `const` aliases and destructuring. */
+  /** What a binding that can change is: never a function, `useBuilding` if any of its values may be (fail-closed). */
+  const changeable = (values: ts.Expression[], seen: Set<ts.Symbol>, name: string): Target => ({
+    unresolved: values.some((value) => isBuildingTarget(ofExpression(value, new Set(seen), name))) ? 'useBuilding' : name,
+  });
+
+  /**
+   * The function a symbol stands for: its declaration, followed through imports, `const` aliases and destructuring, as
+   * long as the binding can't change; otherwise unresolved (see the file's comment).
+   */
   const ofSymbol = (start: ts.Symbol, seen: Set<ts.Symbol>, name: string): Target => {
     // An import, re-export or namespace member: the checker follows the whole chain; one it can't is its unknown symbol,
     // with no declaration.
@@ -231,6 +268,13 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
     seen.add(symbol);
     const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];
     if (!declaration) return { unresolved: name };
+    if (ts.isFunctionDeclaration(declaration)) {
+      // A function declaration is a binding too: reassigned anywhere in its file, it may not be what runs (round 2, Codex F2).
+      const values = assignedTo(symbol, declaration);
+      return values.length === 0 ? { fn: declaration } : changeable(values, seen, name);
+    }
+    // An object's or a class's method can be replaced (`hooks.useCan = …`): it earns nothing (round 2, Codex F2).
+    if (ts.isMethodDeclaration(declaration)) return { unresolved: name };
     if (isFunction(declaration)) return { fn: declaration };
     if (ts.isVariableDeclaration(declaration)) {
       // Only a `const` keeps its value. A `let` or `var` may be reassigned, so it is no function and earns no denial;
@@ -238,8 +282,7 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
       const list = declaration.parent;
       const constant = ts.isVariableDeclarationList(list) && (list.flags & ts.NodeFlags.Const) !== 0;
       if (constant && declaration.initializer) return ofExpression(declaration.initializer, seen, name);
-      const building = valuesOf(symbol, declaration).some((value) => isBuildingTarget(ofExpression(value, new Set(seen), name)));
-      return { unresolved: building ? 'useBuilding' : name };
+      return changeable([...(declaration.initializer ? [declaration.initializer] : []), ...assignedTo(symbol, declaration)], seen, name);
     }
     if (ts.isParameter(declaration)) {
       // A parameter is what the caller passes; its default may be `useBuilding` (fail-closed).
@@ -256,11 +299,10 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
       const found = checker.getTypeAtLocation(holder.initializer).getProperty(member);
       return found ? ofSymbol(found, seen, member) : { unresolved: member };
     }
-    if (ts.isPropertyAssignment(declaration)) return ofExpression(declaration.initializer, seen, name);
-    if (ts.isShorthandPropertyAssignment(declaration)) {
-      const value = checker.getShorthandAssignmentValueSymbol(declaration);
-      return value ? ofSymbol(value, seen, name) : { unresolved: name };
-    }
+    // An object's member can be replaced (`hooks.useBuildingDenied = …`), even in a `const` object: it earns nothing,
+    // and is `useBuilding` if its value may be (round 2, Codex F2).
+    if (ts.isPropertyAssignment(declaration)) return changeable([declaration.initializer], seen, name);
+    if (ts.isShorthandPropertyAssignment(declaration)) return changeable([declaration.name], seen, name);
     return { unresolved: name };
   };
 
@@ -598,6 +640,40 @@ describe('the inspector', () => {
     expect(run(`${IMPORT}${FACTORY}const useB = makeHook(useBuilding);\nfunction A() { useB({ passive: true }); }`)).toEqual(FLAGGED);
     // An inline function in a wrapper is still the wrapper's, however deep.
     expect(run(`${IMPORT}const useCan = memo(forwardRef(() => !useBuildingDenied()));\nfunction A() { useBuilding({ passive: true }); useCan(); }`)).toEqual([]);
+  });
+
+  // P6-02a review round 2, Codex F1 and F2: a named callback given to any call, and an object's member, earned the
+  // denial though neither need be what runs. Only bindings that can't change earn it: imports and namespace members,
+  // `const` aliases, function declarations never reassigned, and an inline function in React's `memo` or `forwardRef`.
+  it('P6-02a R2-F1: an inline function given to a call other than `memo` or `forwardRef` earns nothing', () => {
+    const FLAGGED = ['features/x/X.tsx::A'];
+    const FACTORY = 'function makeHook(_ignored: unknown) { return () => false; }\n';
+    expect(
+      run(`${IMPORT}${FACTORY}const useNoDenial = makeHook(function useDiscarded() { return useBuildingDenied(); });\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`),
+    ).toEqual(FLAGGED);
+    expect(run(`${IMPORT}${FACTORY}const useNoDenial = makeHook(() => useBuildingDenied());\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    // A local function called `memo` is not React's.
+    expect(run(`${IMPORT}function memo(_f: unknown) { return () => false; }\nconst useCan = memo(() => !useBuildingDenied());\nfunction A() { useBuilding({ passive: true }); useCan(); }`)).toEqual(FLAGGED);
+    // React's wrappers, imported or not, keep their function.
+    const REACT = "import { memo, forwardRef } from 'react';\n";
+    expect(run(`${IMPORT}${REACT}const useCan = memo(forwardRef(() => !useBuildingDenied()));\nfunction A() { useBuilding({ passive: true }); useCan(); }`)).toEqual([]);
+  });
+
+  it('P6-02a R2-F2: an object’s member, a method and a reassigned function earn no denial', () => {
+    const FLAGGED = ['features/x/X.tsx::A'];
+    expect(run(`${IMPORT}const hooks = { useBuildingDenied };\nhooks.useBuildingDenied = () => false;\nfunction A() { useBuilding({ passive: true }); hooks.useBuildingDenied(); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}const hooks = { denied: useBuildingDenied };\nfunction A() { useBuilding({ passive: true }); hooks.denied(); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}const hooks = { useCan() { return useBuildingDenied(); } };\nfunction A() { useBuilding({ passive: true }); hooks.useCan(); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}class Hooks { static useCan() { return useBuildingDenied(); } }\nfunction A() { useBuilding({ passive: true }); Hooks.useCan(); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}const hooks = { useBuildingDenied };\nconst { useBuildingDenied: d } = hooks;\nfunction A() { useBuilding({ passive: true }); d(); }`)).toEqual(FLAGGED);
+    // A function declaration is a mutable binding: once reassigned, it earns nothing.
+    const SAFE = `${IMPORT}function useCheck() { return !useBuildingDenied(); }\n`;
+    expect(run(`${SAFE}function off() { useCheck = () => false; }\nfunction A() { useBuilding({ passive: true }); useCheck(); }`)).toEqual(FLAGGED);
+    expect(run(`${SAFE}useCheck ??= () => false;\nfunction A() { useBuilding({ passive: true }); useCheck(); }`)).toEqual(FLAGGED);
+    expect(run(`${SAFE}function A() { useBuilding({ passive: true }); useCheck(); }`)).toEqual([]);
+    // Fail-closed the other way: an object's member that may be `useBuilding` is a passive reader.
+    expect(run(`${IMPORT}const hooks = { read: useBuilding };\nfunction A() { hooks.read({ passive: true }); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}function useB(o: unknown) { return o; }\nuseB = useBuilding;\nfunction A() { useB({ passive: true }); }`)).toEqual(FLAGGED);
   });
 
   it('R3 neighbours: a `let` alias may be reassigned, so it is no denial; a re-export is followed', () => {
