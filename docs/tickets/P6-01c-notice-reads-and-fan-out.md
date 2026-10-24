@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-01b, P3-03, P3-02 |
 | Replaces old | M6-T03 (read and notify part) |
-| Status | in progress |
+| Status | done |
 
 Split from the P6-01 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-01a](./P6-01a-notice-schema-and-visibility.md) and [P6-01b](./P6-01b-notice-authoring-api.md).

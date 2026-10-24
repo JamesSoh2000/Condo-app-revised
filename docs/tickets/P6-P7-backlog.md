@@ -32,6 +32,14 @@ framing" items and its 600-recipient **Watch** are carried into those tickets.
 - **Carried from P3-06:** replace `NoticeAttachmentUpload.jsx` (Base44 `UploadFile`, public `attachment_url`)
   with `FileUpload purpose="notice_attachment"` and the notice's `file_id` claimed by P6-01's API; show
   attachments through the files download URL, not a public link.
+- **Carried from P6-01c (PR #126):** the notice notifications link to `/notices/{id}`: give the feed that route (a
+  notice page or the feed scrolled to it). Read state comes from `NoticeOut.read_at`, `POST /notices/{id}/read` (204)
+  and `GET /notices/summary` (`{unread, urgent_unread}`, live published notices only). The feed still orders by
+  creation (P6-01b D4); if it should order by `published_at`, that needs a keyset and an index migration.
+- **Step 8 (from P6-01c R1, the 3rd "time check before a later wait"):** the `CLAUDE.md` lesson didn't stop it. For
+  the next backend ticket with a time check (P6-03's reopen window): a test helper that holds a row lock (a
+  membership, a file, the record) across a request, used for every statement after the check, as
+  `tests/notices/test_concurrency.py::test_a_notice_expiring_while_its_fan_out_waits_is_not_published` does by hand.
 
 ### P6-03 — Maintenance backend · Lane A · Tier 2
 - **Goal:** residents submit requests (category, description, location: unit or common area, photos). Managers
