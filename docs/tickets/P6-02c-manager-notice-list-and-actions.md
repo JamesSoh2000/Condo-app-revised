@@ -75,7 +75,7 @@ ArchiveDialog.tsx,api.ts}`, `frontend/src/app/{pages.ts,routes.tsx,routeScope.ts
 
 1. Why does the UI never send `PATCH status`, and what does a 409 tell it?
 2. Of two publishes at once, which wins and how does the loser's screen recover?
-3. Why can security see the feed but not this page?
+3. Which roles open this page and which only the feed, and why (as framing settles it)?
 
 ## Open decisions (resolve while framing)
 

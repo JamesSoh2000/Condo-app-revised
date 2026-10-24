@@ -15,7 +15,7 @@ Split from the P6-02 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); before
 ## Goal
 
 Every member of a building with `notices` on reads its live notices in a feed with an unread state, opens one at
-`/notices/<id>` (the link P6-01c's notifications carry), which marks it read, and sees an unread count on the nav
+`/notices/<id>` (the link P6-01c's notifications carry), marks it read, and sees an unread count on the nav
 item. The legacy `BuildingUpdatesFeed` and `ArchivedUpdatesModal` are gone.
 
 ## Why
