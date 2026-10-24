@@ -107,6 +107,17 @@ Left open:
 - list order (`paginate` orders by `id`; a draft published later sorts by its creation)
 - whether `POST /notices` takes an `Idempotency-Key` (the stub doesn't ask for one)
 
+## Carried from P6-01a (do while framing)
+
+From PR #124 (explanation `docs/explanations/P6-01a-notice-schema-and-visibility.md` §7):
+- `ck_notices_title_not_blank` and `ck_notices_body_not_blank` trim spaces (the body also tabs and newlines),
+  so `NoticeCreate`/`NoticeUpdate` must refuse control characters before the strip
+  (`app/units/schemas.py::printable_before_strip`, as the packages schemas do), with a test for a tab-only title.
+- `ix_notices_building_id_status_id` matches `paginate`'s `ORDER BY id DESC`; if the feed orders by
+  `published_at`, add that index in this ticket's migration.
+- An expired notice keeps `status = published` (P6-01a D5): `NoticeOut` or the client shows "expired" from
+  `expires_at`, and publish must refuse an `expires_at` already past by the database clock.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
