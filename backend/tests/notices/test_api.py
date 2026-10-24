@@ -39,13 +39,11 @@ def _base(world: World, building: Any = None) -> str:
 
 
 async def _counts(db: AsyncSession) -> tuple[int, int, int]:
-    """Notices, audit rows and claimed files: what a refused or failed write must leave as it was."""
+    """Notices, audit rows and claimed files: what a refused or failed write must leave alone."""
     notices = await db.scalar(select(func.count()).select_from(Notice)) or 0
     audits = await db.scalar(select(func.count()).select_from(AuditEvent)) or 0
     claims = (
-        await db.scalar(
-            select(func.count()).select_from(File).where(File.attached_id.is_not(None))
-        )
+        await db.scalar(select(func.count()).select_from(File).where(File.attached_id.is_not(None)))
         or 0
     )
     return notices, audits, claims
@@ -244,7 +242,7 @@ async def test_a_failure_after_the_insert_leaves_nothing(
     assert (await _file(db, file.id)).attached_id is None
 
 
-# --- Input Postgres would refuse (criterion 8) -----------------------------------------------------
+# --- Input Postgres would refuse (criterion 8) ----------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -252,7 +250,7 @@ async def test_a_failure_after_the_insert_leaves_nothing(
     [
         {"title": ""},
         {"title": "   "},
-        {"title": " "},
+        {"title": "\u2003"},
         {"title": "T" * 201},
         {"title": "Wa\x00ter"},
         {"title": "\tWater"},
@@ -331,7 +329,7 @@ async def test_an_expiry_already_past_is_refused_on_create(
     assert await _counts(db) == before
 
 
-# --- Edit (criteria 3, 7, 8, 10) -------------------------------------------------------------------
+# --- Edit (criteria 3, 7, 8, 10) ------------------------------------------------------------------
 
 
 async def _draft(db: AsyncSession, world: World, **overrides: Any) -> Notice:
@@ -523,7 +521,7 @@ async def test_a_failure_after_an_edits_claim_leaves_both_files_as_they_were(
     assert (await _file(db, new.id)).attached_id is None
 
 
-# --- Get and list (criteria 1, 5) ------------------------------------------------------------------
+# --- Get and list (criteria 1, 5) -----------------------------------------------------------------
 
 
 async def _notices(db: AsyncSession, world: World) -> dict[str, Notice]:
@@ -647,7 +645,7 @@ async def test_another_buildings_notice_is_404_through_this_building(
     assert (await _notice(db, other.id)).status is NoticeStatus.DRAFT
 
 
-# --- The tenant table for every route (criteria 1, 6) ----------------------------------------------
+# --- The tenant table for every route (criteria 1, 6) ---------------------------------------------
 
 
 def _routes(world: World, notice_id: uuid.UUID) -> list[tuple[str, str, Any]]:
@@ -700,9 +698,7 @@ async def test_every_route_is_401_without_a_session(
     draft = await _draft(db, world)
 
     for method, url, json in _routes(world, draft.id):
-        assert_problem(
-            await client.request(method, url, json=json), 401, "not_authenticated"
-        )
+        assert_problem(await client.request(method, url, json=json), 401, "not_authenticated")
 
 
 async def test_every_notice_route_is_403_when_the_feature_is_off(
@@ -722,9 +718,7 @@ async def test_every_notice_route_is_403_when_the_feature_is_off(
 
     for client in (manager, resident):
         for method, url, json in _routes(world, draft.id):
-            assert_problem(
-                await client.request(method, url, json=json), 403, "feature_disabled"
-            )
+            assert_problem(await client.request(method, url, json=json), 403, "feature_disabled")
 
     assert await _counts(db) == before
     assert (await _notice(db, draft.id)).status is NoticeStatus.DRAFT

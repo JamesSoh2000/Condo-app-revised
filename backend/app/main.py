@@ -70,6 +70,7 @@ def create_app() -> FastAPI:
     from app.files import router as files
     from app.invitations import router as invitations
     from app.memberships import router as memberships
+    from app.notices import router as notices
     from app.notifications import router as notifications
     from app.onboarding import router as onboarding
     from app.packages import router as packages
@@ -86,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(files.router)
     app.include_router(invitations.router)
     app.include_router(memberships.router)
+    app.include_router(notices.router)
     app.include_router(notifications.router)
     app.include_router(onboarding.own_router)
     app.include_router(onboarding.router)

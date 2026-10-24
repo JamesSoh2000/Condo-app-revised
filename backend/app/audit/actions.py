@@ -36,3 +36,8 @@ ONBOARDING_DENIED = "onboarding.denied"
 PACKAGE_RECEIVED = "package.received"
 PACKAGE_PICKED_UP = "package.picked_up"
 PACKAGE_RETURNED = "package.returned"
+
+NOTICE_CREATED = "notice.created"
+NOTICE_UPDATED = "notice.updated"
+NOTICE_PUBLISHED = "notice.published"
+NOTICE_ARCHIVED = "notice.archived"

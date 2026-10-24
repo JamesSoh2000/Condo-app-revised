@@ -69,9 +69,7 @@ async def _row(sessions: Sessions, notice: Notice) -> Notice:
 
 async def _audits(sessions: Sessions, notice: Notice) -> list[str]:
     async with sessions() as db:
-        rows = await db.scalars(
-            select(AuditEvent.action).where(AuditEvent.entity_id == notice.id)
-        )
+        rows = await db.scalars(select(AuditEvent.action).where(AuditEvent.entity_id == notice.id))
         return sorted(rows)
 
 
@@ -107,7 +105,7 @@ def test_a_concurrent_publish_and_archive_of_a_draft_both_follow_the_state_machi
             assert sorted(outcomes) == ["200", "409 invalid_transition"]
             assert audits == ["notice.archived"]
         else:
-            assert outcomes == ["200", "200"]
+            assert list(outcomes) == ["200", "200"]
             assert audits == ["notice.archived", "notice.published"]
 
     _run(scratch_database_url, body)
