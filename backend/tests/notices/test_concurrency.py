@@ -10,16 +10,17 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import event, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.audit.models import AuditEvent
 from app.core.errors import DomainError
 from app.files.models import File
 from app.jobs.models import Job
+from app.memberships.models import BuildingMembership
 from app.notices import service
 from app.notices.enums import NoticePriority, NoticeStatus
-from app.notices.models import Notice
+from app.notices.models import Notice, NoticeRead
 from app.notices.schemas import NoticeCreate, NoticeUpdate
 from app.notifications.models import Notification
 from tests.email.conftest import point_settings_at
@@ -270,5 +271,121 @@ def test_an_expiry_passing_while_the_attachment_claim_waits_is_refused(
         assert claimed is None
         assert count == 1  # only the fixture's draft
         assert (await _row(sessions, notice)).expires_at is None
+
+    _run(scratch_database_url, body)
+
+
+@pytest.mark.parametrize("priority", [NoticePriority.NORMAL, NoticePriority.URGENT])
+def test_a_notice_expiring_while_its_fan_out_waits_is_not_published(
+    scratch_database_url: str, monkeypatch: pytest.MonkeyPatch, priority: NoticePriority
+) -> None:
+    # Review round 1 (Codex, Low): the expiry was checked by the publish UPDATE, before the fan-out,
+    # whose notifications INSERT takes KEY SHARE on each recipient's membership and waits on a
+    # transaction holding one FOR UPDATE. An expiry passing in that wait was published (200), with
+    # its notifications and emails. The CLAUDE.md lesson: check after the *last* wait.
+    point_settings_at(monkeypatch, 1025)
+
+    async def body(sessions: Sessions, world: World, notice: Notice) -> None:
+        async with sessions() as setup:
+            await setup.execute(
+                update(Notice)
+                .where(Notice.id == notice.id)
+                .values(
+                    priority=priority,
+                    expires_at=func.clock_timestamp() + timedelta(seconds=1),
+                )
+            )
+            await setup.commit()
+        inserting = asyncio.Event()
+
+        def record(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+            if statement.startswith("INSERT INTO notifications "):
+                inserting.set()
+
+        async with sessions() as blocker:
+            await blocker.scalar(
+                select(BuildingMembership)
+                .where(BuildingMembership.id == world.a_resident1.membership.id)
+                .with_for_update()
+            )
+            engine = blocker.bind
+            event.listen(engine.sync_engine, "before_cursor_execute", record)
+            task = asyncio.create_task(_act(sessions, world, notice, "publish"))
+            try:
+                await asyncio.wait_for(inserting.wait(), timeout=5)
+                await asyncio.sleep(1.2)
+                assert not task.done(), "the publish did not wait on the recipient's membership"
+            finally:
+                await blocker.rollback()
+                event.remove(engine.sync_engine, "before_cursor_execute", record)
+            outcome = await asyncio.wait_for(task, timeout=10)
+
+        assert outcome == "422 notice_expired"
+        assert (await _row(sessions, notice)).status is NoticeStatus.DRAFT
+        assert await _audits(sessions, notice) == []
+        async with sessions() as db:
+            told = await db.scalar(select(func.count()).select_from(Notification))
+            jobs = await db.scalar(select(func.count()).select_from(Job))
+        assert (told, jobs) == (0, 0)
+
+    _run(scratch_database_url, body)
+
+
+def test_two_simultaneous_reads_keep_one_row_and_the_first_read_at(
+    scratch_database_url: str,
+) -> None:
+    # Review round 1 (Codex's independent check, kept): the second read's INSERT waits on the
+    # first's uncommitted row, then does nothing.
+    async def body(sessions: Sessions, world: World, notice: Notice) -> None:
+        async with sessions() as setup:
+            await setup.execute(
+                update(Notice)
+                .where(Notice.id == notice.id)
+                .values(
+                    status=NoticeStatus.PUBLISHED,
+                    published_at=func.now(),
+                    published_by_membership_id=world.a_manager.membership.id,
+                )
+            )
+            await setup.commit()
+        first_inserted = asyncio.Event()
+        second_started = asyncio.Event()
+        first_times: list[Any] = []
+
+        class PausedSession(AsyncSession):
+            async def commit(self) -> None:
+                task = asyncio.current_task()
+                if task is not None and task.get_name() == "first-read":
+                    first_times.append(await self.scalar(select(NoticeRead.read_at)))
+                    first_inserted.set()
+                    await second_started.wait()
+                    await asyncio.sleep(0.1)
+                await super().commit()
+
+        readers = async_sessionmaker(
+            sessions.kw["bind"], class_=PausedSession, expire_on_commit=False, autoflush=False
+        )
+        ctx = persona_ctx(world, "a_resident1")
+
+        async def first() -> None:
+            async with readers() as db:
+                await service.mark_read(db, ctx, notice.id)
+
+        async def second() -> None:
+            await first_inserted.wait()
+            second_started.set()
+            async with readers() as db:
+                await service.mark_read(db, ctx, notice.id)
+
+        await asyncio.wait_for(
+            asyncio.gather(
+                asyncio.create_task(first(), name="first-read"),
+                asyncio.create_task(second(), name="second-read"),
+            ),
+            timeout=10,
+        )
+        async with sessions() as verify:
+            assert await verify.scalar(select(func.count()).select_from(NoticeRead)) == 1
+            assert await verify.scalar(select(NoticeRead.read_at)) == first_times[0]
 
     _run(scratch_database_url, body)

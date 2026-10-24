@@ -168,6 +168,13 @@ async def publish_notice(db: AsyncSession, ctx: TenantContext, notice_id: UUID) 
     await _tell_members(db, ctx, published)
     await _audit(db, ctx, actions.NOTICE_PUBLISHED, notice_id, {})
     out = await _out(db, ctx, published)
+    if published.expires_at is not None:
+        # Again after the last statement that can wait: the fan-out's INSERTs wait on a membership
+        # or a dedupe key another transaction holds, and the expiry may pass meanwhile (review
+        # round 1, Codex). The flush sends the pending audit row first (autoflush is off). Raising
+        # rolls the publish, the notifications and the jobs back.
+        await db.flush()
+        await _check_future(db, published.expires_at)
     await db.commit()
     return out
 

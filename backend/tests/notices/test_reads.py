@@ -16,6 +16,7 @@ from app.buildings.models import BuildingFeature
 from app.notices.enums import NoticePriority
 from app.notices.models import Notice, NoticeRead
 from app.notifications.models import Notification
+from tests.helpers.db import assert_integrity_error
 from tests.helpers.tenancy import (
     assert_cross_building_404,
     assert_not_visible,
@@ -23,6 +24,7 @@ from tests.helpers.tenancy import (
     without_request_id,
 )
 from tests.notices.conftest import archived, db_now, make_notice, published
+from tests.notifications.conftest import make_notification
 from tests.world import World
 
 pytestmark = pytest.mark.anyio
@@ -118,16 +120,35 @@ async def test_marking_read_twice_keeps_one_row_and_the_first_read_at(
 async def test_a_read_writes_no_audit_row_and_changes_no_notification(
     db: AsyncSession, as_user: Any, world: World
 ) -> None:
-    # Criterion 1a.
+    # Criterion 1a. The reader's notification of this notice stays unread (review round 1, Codex:
+    # counting rows alone would miss a change to an existing one).
     notice = await _live(db, world)
+    told = await make_notification(
+        db,
+        world.a,
+        world.a_resident1.user.id,
+        kind="notice.published",
+        entity_type="notice",
+        entity_id=notice.id,
+    )
     client = await as_user(world.a_resident1.user)
     audits = await db.scalar(select(func.count()).select_from(AuditEvent))
-    notifications = await db.scalar(select(func.count()).select_from(Notification))
+    before = await _notification_rows(db)
 
     assert (await client.post(_read_url(world, notice))).status_code == 204
 
     assert await db.scalar(select(func.count()).select_from(AuditEvent)) == audits
-    assert await db.scalar(select(func.count()).select_from(Notification)) == notifications
+    after = await _notification_rows(db)
+    assert after == before
+    assert after[told.id]["read_at"] is None
+
+
+async def _notification_rows(db: AsyncSession) -> dict[Any, dict[str, Any]]:
+    rows = await db.scalars(select(Notification).execution_options(populate_existing=True))
+    return {
+        row.id: {column.key: getattr(row, column.key) for column in Notification.__table__.columns}
+        for row in rows
+    }
 
 
 @pytest.mark.parametrize("state", ["draft", "archived", "expired"])
@@ -343,3 +364,24 @@ async def test_the_write_answers_show_the_managers_own_read_at(
 
     other = await make_notice(db, world.a_manager.membership)
     assert (await manager.post(f"{_base(world)}/{other.id}/publish")).json()["read_at"] is None
+
+
+@pytest.mark.parametrize("reference", ["notice", "membership"])
+async def test_the_table_refuses_a_read_across_buildings(
+    db: AsyncSession, world: World, reference: str
+) -> None:
+    # Review round 1 (Codex's independent check, kept): the composite FKs (ADR-0005).
+    author = world.b_manager if reference == "notice" else world.a_manager
+    notice = await make_notice(db, author.membership)
+    member = world.b_resident1 if reference == "membership" else world.a_resident1
+
+    async def insert() -> None:
+        db.add(
+            NoticeRead(
+                building_id=world.a.id, notice_id=notice.id, membership_id=member.membership.id
+            )
+        )
+        await db.flush()
+
+    target = "notice_id_notices" if reference == "notice" else "membership_id_building_memberships"
+    await assert_integrity_error(db, insert(), constraint=f"fk_notice_reads_building_id_{target}")
