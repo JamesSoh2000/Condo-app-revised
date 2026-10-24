@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P3-04b, P2-03 |
 | Replaces old | M6-T03 (schema part) |
-| Status | in progress |
+| Status | done |
 
 Drafted from the P6-01 stub in [P6-P7-backlog.md](./P6-P7-backlog.md) and split three ways, as packages were
 (P5-01 → P5-02a → P5-02b), because the stub measures about 950 non-test lines: this ticket is the schema,
@@ -227,3 +227,9 @@ Left open by the stub (decide with the decision rules):
   - Not in this ticket: seed data (out of scope, as drafted).
 - Split: none. Estimate ~310 non-test lines (model 95, migration 90, state 35, queries 35, hook 30, purposes and
   files service 20, registry and main 5).
+
+## Follow-ups (from PR #124)
+
+- Carried to [P6-01b](./P6-01b-notice-authoring-api.md): `ck_notices_title_not_blank` trims spaces only, so the
+  API schema must refuse control characters (a tab-only title would pass the database); the feed index if it
+  orders by `published_at` (D8); attachment replacement on a draft.
