@@ -1,4 +1,4 @@
-# P6-02b — Urgent banner and notice attachments
+# P6-02b — One notice, urgent banner and attachments
 
 | Field | Value |
 |---|---|
@@ -13,9 +13,10 @@ Split from the P6-02 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 
 ## Goal
 
-A member with an unread urgent notice sees a banner on every page of the building until they acknowledge it,
-with copy saying this is not an emergency alert system; a notice's attachment opens through the files download
-URL. The legacy `EmergencyAlertPopup` is gone.
+A notice opens on its own at `/notices/<id>` (the link P6-01c's notifications carry; moved here from P6-02a
+when it was framed). A member with an unread urgent notice sees a banner on every page of the building until
+they acknowledge it, with copy saying this is not an emergency alert system; a notice's attachment opens through
+the files download URL. The legacy `EmergencyAlertPopup` is gone.
 
 ## Why
 
@@ -27,12 +28,16 @@ must say so. Attachments carry P3-06's item: the legacy `NoticeAttachmentUpload`
 ## Scope
 
 - In:
+  - **the notice at `/notices/:noticeId`** (moved from P6-02a): a notice view, or the feed scrolled to it (the
+    stub's carry leaves either open), with the title, the body through P6-02a's `NoticeBody`, priority, published
+    and expiry times, and P6-02a's "Mark as read" (or marking it read on open, as framing decides); it replaces
+    P6-02a's interim `/notices/<anything>` → feed
   - **urgent banner** in the building shell (`app/AppShell.tsx`), on every page of the selected building, driven
     by `notices_summary.urgent_unread` (the poll P6-02a uses): it names the urgent notice (or how many), links to
     it, and is acknowledged from the banner; it does not return for that notice after acknowledgement, and comes
     back for a new urgent one
   - the banner's **disclaimer copy** (stub decision, below)
-  - **attachment** on the P6-02a detail: when `attachment_file_id` is set, a download link that asks
+  - **attachment** on the notice view above: when `attachment_file_id` is set, a download link that asks
     `GET …/files/{id}/download-url` at click time (never a stored or public URL); images may show inline through
     `features/files/PrivateImage.tsx`
   - delete `src/components/EmergencyAlertPopup.jsx` (no route imports it today) and lower the ratchet
@@ -45,6 +50,16 @@ Consumes `notices_summary`, `notices_list`, `notices_read` and `files_download_u
 banner needs a list filter the API lacks is open decision 2.
 
 ## Acceptance criteria
+
+Moved from P6-02a's draft, unchanged:
+
+- **A.** **Given** an unread notice, **when** the member opens `/notices/<id>` (from the feed or a notification),
+  **then** that notice shows; **when** it is marked read, **then** `notices_read` is sent once for that action and
+  the feed's unread label and the badge clear without a reload. A repeat sends nothing new, or a repeat the API
+  ignores (204, first `read_at` kept).
+- **B.** **Given** `/notices/<id>` for a draft, archived or expired notice (as a non-manager), another building's
+  notice, a random UUID, or a segment that isn't a UUID, **then** the same "Notice not found" state shows (the last
+  without asking the API), the feed stays behind it, and closing it goes to `/notices`.
 
 1. **Given** `a_resident1` with one unread urgent notice, **when** they open any page of building A, **then** the
    banner shows its title and a link to `/notices/<id>`, within one poll (30 s) of publication while the tab is
@@ -67,6 +82,7 @@ banner needs a list filter the API lacks is open decision 2.
 
 ## Test plan
 
+- `frontend/src/features/notices/notice.test.tsx`: criteria A and B
 - `frontend/src/features/notices/banner.test.tsx`: criteria 1–5
 - `frontend/src/features/notices/attachment.test.tsx`: criterion 6
 - Chromium check at 375 px (criterion 7); the journey on `make up`, transcript in the PR; `make check`
@@ -88,7 +104,8 @@ banner needs a list filter the API lacks is open decision 2.
 1. **Banner copy** for "this is not an emergency alert system" (the stub's item; no default written down).
 2. **Which notice the banner names.** The summary has only counts; framing decides how the banner finds the
    unread urgent notices (the list's pages, or an API filter).
-3. **What "acknowledged" means**: marking the notice read (P6-02a's `notices_read`), or a separate dismissal.
+3. **Whether opening `/notices/<id>` marks the notice read**, or only its button does (P6-02a D4).
+4. **What "acknowledged" means**: marking the notice read (P6-02a's `notices_read`), or a separate dismissal.
 
 ## Frame notes (filled by the agent in step 1)
 

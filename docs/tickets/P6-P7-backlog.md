@@ -16,9 +16,9 @@ attachment hook), [P6-01b](./P6-01b-notice-authoring-api.md) (manager API) and
 framing" items and its 600-recipient **Watch** are carried into those tickets.
 
 ### P6-02 — Notices frontend · Lane B · Tier 2
-Drafted and split into [P6-02a](./P6-02a-notices-feed-and-detail.md) (feed, detail, Markdown rendering, unread
-badge, the P5-05 `buildingDenial` fitness follow-up), [P6-02b](./P6-02b-urgent-banner-and-attachments.md) (urgent
-banner and its copy, attachment downloads), [P6-02c](./P6-02c-manager-notice-list-and-actions.md) (manager list,
+Drafted and split into [P6-02a](./P6-02a-notices-feed-and-detail.md) (feed, Markdown rendering, unread
+badge, the P5-05 `buildingDenial` fitness follow-up), [P6-02b](./P6-02b-urgent-banner-and-attachments.md) (the notice at
+`/notices/<id>`, urgent banner and its copy, attachment downloads), [P6-02c](./P6-02c-manager-notice-list-and-actions.md) (manager list,
 publish, archive) and [P6-02d](./P6-02d-notice-editor.md) (editor, preview, `FileUpload` attachment, the P3-06
 carry). The stub's "Decide while framing" items, its P6-01c carry (the `/notices/{id}` route, read state, creation
 order) and the legacy files it replaces are carried into those tickets; its "Step 8" item (a row-lock test helper

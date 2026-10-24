@@ -32,7 +32,8 @@ P6-02d, so this page is usable with drafts written through the API first.
   - **publish** and **archive** confirm dialogs (`POST …/publish`, `…/archive`): one request per confirm, 409
     `invalid_transition` and 422 `notice_expired` turned into messages, the lists and the P6-02a feed and badge
     refreshed (`features/packages/PackageDialog.tsx::usePackageSubmit`)
-  - each row opens the P6-02a detail (`NoticeBody`), drafts included for the manager
+  - each row shows its body through P6-02a's `NoticeBody` (or opens P6-02b's notice view, if merged), drafts
+    included for the manager
   - delete `src/pages/ManagementNotices.jsx`; its legacy `/ManagementNotices` path reaches the new page
     (`app/routes.tsx::LegacyRedirect`); lower the ratchet
 - Out: writing or editing a draft (P6-02d); bulk actions; scheduling
