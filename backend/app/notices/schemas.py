@@ -50,11 +50,16 @@ def _in_utc(value: datetime) -> datetime:
     """The instant in UTC, as Postgres stores it. A time near datetime's limits can leave its range
     in UTC (`9999-12-31T23:59-01:00`), which asyncpg fails on as a 500 (review round 2, Codex)."""
     try:
-        return value.astimezone(UTC)
+        utc = value.astimezone(UTC)
     except OverflowError:
         raise PydanticCustomError(
             "datetime_range", "must be a time between years 1 and 9999 UTC"
         ) from None
+    # asyncpg writes `datetime.max` as Postgres `infinity`, which reads back as something else
+    # (the P6-01b carry, review round 3).
+    if utc == datetime.max.replace(tzinfo=UTC):
+        raise PydanticCustomError("datetime_range", "must be before 9999-12-31T23:59:59.999999Z")
+    return utc
 
 
 Expiry = Annotated[AwareDatetime, AfterValidator(_in_utc)]
@@ -110,3 +115,12 @@ class NoticeOut(APIModel):
     archived_by_membership_id: UUID | None
     created_at: datetime
     updated_at: datetime
+    # When you marked it read; null if you haven't (P6-01c).
+    read_at: datetime | None
+
+
+class NoticeSummary(APIModel):
+    """Your unread live notices in this building, for the badge and the urgent banner."""
+
+    unread: int
+    urgent_unread: int

@@ -9,7 +9,7 @@ from app.core.pagination import CursorParams, Page
 from app.memberships.enums import Role
 from app.notices import service
 from app.notices.enums import NoticeStatus
-from app.notices.schemas import NoticeCreate, NoticeOut, NoticeUpdate
+from app.notices.schemas import NoticeCreate, NoticeOut, NoticeSummary, NoticeUpdate
 from app.tenancy.deps import Ctx, DbSession, require_feature, require_roles
 from app.tenancy.router import building_router
 
@@ -47,12 +47,30 @@ async def list(
     return await service.list_notices(db, ctx, params, status=status)
 
 
+@router.get("/notices/summary", dependencies=[_FEATURE], responses=problem_responses(401, 403, 404))
+async def summary(ctx: Ctx, db: DbSession) -> NoticeSummary:
+    """How many live notices you haven't read here, and how many of those are urgent (for the
+    badge and the urgent banner). Drafts, archived and expired notices never count."""
+    return await service.notice_summary(db, ctx)
+
+
 @router.get(
     "/notices/{notice_id}", dependencies=[_FEATURE], responses=problem_responses(401, 403, 404)
 )
 async def get(notice_id: UUID, ctx: Ctx, db: DbSession) -> NoticeOut:
     """One notice you may see; any other is a 404."""
     return await service.get_notice(db, ctx, notice_id)
+
+
+@router.post(
+    "/notices/{notice_id}/read",
+    status_code=204,
+    dependencies=[_FEATURE],
+    responses=problem_responses(401, 403, 404),
+)
+async def read(notice_id: UUID, ctx: Ctx, db: DbSession) -> None:
+    """Mark a notice you can see read; repeating it keeps the first `read_at`. Any other is a 404."""
+    await service.mark_read(db, ctx, notice_id)
 
 
 @router.patch(
