@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-01a, P2-04, P3-04b |
 | Replaces old | M6-T03 (API part), M6-T09 (backend part) |
-| Status | in progress |
+| Status | done |
 
 Split from the P6-01 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); the schema is
 [P6-01a](./P6-01a-notice-schema-and-visibility.md), reads and the fan-out
