@@ -105,6 +105,11 @@ async def test_create_refuses_a_client_key(as_user, db, world, field):
         ("package_photo", "image/jpeg", MAX_IMAGE_BYTES),
         ("maintenance_photo", "image/png", MAX_IMAGE_BYTES),
         ("notice_attachment", "application/pdf", MAX_PDF_BYTES),
+        # P6-01a: notice images keep ADR-0007's image limit, not the PDF one.
+        ("notice_attachment", "image/png", MAX_IMAGE_BYTES),
+        ("notice_attachment", "image/jpeg", MAX_IMAGE_BYTES),
+        ("notice_attachment", "image/webp", MAX_IMAGE_BYTES),
+        ("notice_attachment", "image/heic", MAX_IMAGE_BYTES),
     ],
 )
 async def test_create_refuses_a_file_over_the_purpose_limit(
@@ -127,7 +132,8 @@ async def test_create_refuses_a_file_over_the_purpose_limit(
         ("package_photo", "image/svg+xml"),
         ("package_photo", "image/gif"),
         ("maintenance_photo", "text/html"),
-        ("notice_attachment", "image/png"),
+        # P6-01a allows notice images (PNG among them); GIF stays refused.
+        ("notice_attachment", "image/gif"),
         ("notice_attachment", "application/octet-stream"),
     ],
 )
@@ -171,6 +177,7 @@ async def test_presigned_form_enforces_the_exact_size_and_type(as_user, s3, worl
         ("a_resident1", "maintenance_photo", "image/png", png()),
         ("a_manager", "maintenance_photo", "image/png", png()),
         ("a_manager", "notice_attachment", "application/pdf", pdf()),
+        ("a_manager", "notice_attachment", "image/png", png()),
     ],
 )
 async def test_each_allowed_role_uploads_and_completes(
@@ -211,6 +218,9 @@ async def test_each_allowed_role_uploads_and_completes(
         ("a_council", "notice_attachment", "application/pdf"),
         ("a_council", "package_photo", "image/png"),
         ("a_resident2", "notice_attachment", "application/pdf"),
+        # P6-01a D1: security doesn't author notices, so doesn't attach to them either.
+        ("a_security", "notice_attachment", "application/pdf"),
+        ("a_security", "notice_attachment", "image/png"),
     ],
 )
 async def test_wrong_role_is_403(as_user, db, world, persona, purpose, content_type):
@@ -296,3 +306,18 @@ async def test_a_255_character_unicode_filename_is_kept(as_user, db, world):
     assert r.status_code == 201, r.text
     row = await db.get(File, uuid.UUID(r.json()["file_id"]))
     assert row.original_name == name
+
+
+async def test_a_notice_image_over_the_image_limit_is_refused_though_under_the_pdf_one(
+    as_user, db, world
+):
+    # P6-01a criterion 8: a per-type limit, not the purpose's largest.
+    client = await as_user(world.a_manager.user)
+    over = body(purpose="notice_attachment", content_type="image/png", size_bytes=MAX_IMAGE_BYTES + 1)
+
+    r = await client.post(files_url(world.a.id), json=over)
+
+    assert MAX_IMAGE_BYTES + 1 < MAX_PDF_BYTES
+    problem = assert_problem(r, 422, "file_too_large")
+    assert str(MAX_IMAGE_BYTES) in problem["detail"]
+    assert await file_count(db) == 0
