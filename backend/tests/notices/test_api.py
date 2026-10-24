@@ -256,6 +256,9 @@ async def test_a_failure_after_the_insert_leaves_nothing(
         {"priority": None},
         {"expires_at": "2099-01-01T00:00:00"},
         {"expires_at": "tomorrow"},
+        # Review round 2 (Codex, Low): valid locally, but out of datetime's range in UTC (a 500).
+        {"expires_at": "9999-12-31T23:59:59-01:00"},
+        {"expires_at": "0001-01-01T00:00:00+01:00"},
         {"attachment_file_id": "not-a-uuid"},
         {"surprise": "field"},
         {"title": None},
@@ -360,6 +363,8 @@ async def test_the_manager_edits_a_draft(db: AsyncSession, as_user: Any, world: 
         {"body": "a\x00b"},
         {"status": "published"},
         {"expires_at": "2099-01-01T00:00:00"},
+        {"expires_at": "9999-12-31T23:59:59-01:00"},
+        {"expires_at": "0001-01-01T00:00:00+01:00"},
     ],
     ids=lambda body: repr(body)[:40],
 )

@@ -1,9 +1,15 @@
 import unicodedata
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import AwareDatetime, BeforeValidator, StringConstraints, model_validator
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BeforeValidator,
+    StringConstraints,
+    model_validator,
+)
 from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticCustomError
 
@@ -40,12 +46,26 @@ Body = Annotated[
 ]
 
 
+def _in_utc(value: datetime) -> datetime:
+    """The instant in UTC, as Postgres stores it. A time near datetime's limits can leave its range
+    in UTC (`9999-12-31T23:59-01:00`), which asyncpg fails on as a 500 (review round 2, Codex)."""
+    try:
+        return value.astimezone(UTC)
+    except OverflowError:
+        raise PydanticCustomError(
+            "datetime_range", "must be a time between years 1 and 9999 UTC"
+        ) from None
+
+
+Expiry = Annotated[AwareDatetime, AfterValidator(_in_utc)]
+
+
 class NoticeCreate(InputModel):
     title: Title
     body: Body
     priority: NoticePriority = NoticePriority.NORMAL
     # After it, residents no longer see the notice; it must be later than now.
-    expires_at: AwareDatetime | None = None
+    expires_at: Expiry | None = None
     # A `ready` notice attachment the caller uploaded through the files API (ADR-0007).
     attachment_file_id: UUID | None = None
 
@@ -59,7 +79,7 @@ class NoticeUpdate(InputModel):
     title: Title | SkipJsonSchema[None] = None
     body: Body | SkipJsonSchema[None] = None
     priority: NoticePriority | SkipJsonSchema[None] = None
-    expires_at: AwareDatetime | None = None
+    expires_at: Expiry | None = None
     attachment_file_id: UUID | None = None
 
     @model_validator(mode="after")
