@@ -1,8 +1,9 @@
 """In-app notifications (P3-03): `notify`, who to notify, and the recipient's own routes.
 
 `notify` writes one row per recipient and queues each recipient's email in the caller's
-transaction, so a package and its notifications commit or roll back together (ADR-0002). It and
-the recipient helpers never commit (CLAUDE.md rule 5).
+transaction, so a package and its notifications commit or roll back together (ADR-0002): one INSERT
+for the rows and one for the emails, whatever the number of recipients (P6-01c). It and the
+recipient helpers never commit (CLAUDE.md rule 5).
 """
 
 import logging
@@ -19,7 +20,7 @@ from app.core import clock
 from app.core.config import is_email_address
 from app.core.errors import NotFound
 from app.core.pagination import CursorParams, Page, paginate
-from app.email.service import queue_email
+from app.email.service import EmailRecipient, queue_emails
 from app.email.templates import DEFAULT_LOCALE, SUPPORTED_LOCALES
 from app.memberships.enums import MembershipStatus, Role
 from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
@@ -56,7 +57,7 @@ async def notify(
     email_context: dict[str, Any] | None = None,
 ) -> None:
     """Notify each recipient in `building_id`: one row each, in one INSERT, and for an email kind
-    an `email.send` job each. Never commits.
+    an `email.send` job each, in one more. Never commits.
 
     Raises `ValueError`, writing nothing, for an unknown kind or a value its column can't hold. A
     recipient without a membership in the building fails the INSERT (`IntegrityError`). Only
@@ -107,9 +108,10 @@ async def notify(
         by_id = {row.id: row for row in users}
         # Set last, so the email says what the in-app row says.
         context = (email_context or {}) | {"title": title, "body": body, "link": link}
+        emails: list[EmailRecipient] = []
         # In id order: each dedupe key is a unique-index entry that a concurrent `notify` of the
         # same entity also inserts, so callers taking them in different orders would deadlock
-        # (Codex review round 2).
+        # (Codex review round 2). One INSERT for them all (P6-01c), in this order.
         for user_id in sorted(recipients):
             user = by_id[user_id]
             if not user.is_active or not is_email_address(user.email):
@@ -118,18 +120,18 @@ async def notify(
                     "notify: no email for user %s (inactive or unsendable address)", user_id
                 )
                 continue
-            job_id = await queue_email(
-                db,
-                to=user.email,
-                template=spec.email_template,
-                context=context,
-                locale=user.locale if user.locale in SUPPORTED_LOCALES else DEFAULT_LOCALE,
-                # Without an entity there is nothing to tell two events apart by.
-                dedupe_key=f"{kind}:{entity_id}:{user_id}" if entity_id is not None else None,
+            emails.append(
+                EmailRecipient(
+                    to=user.email,
+                    locale=user.locale if user.locale in SUPPORTED_LOCALES else DEFAULT_LOCALE,
+                    # Without an entity there is nothing to tell two events apart by.
+                    dedupe_key=f"{kind}:{entity_id}:{user_id}" if entity_id is not None else None,
+                )
             )
-            # None: an earlier call already queued this email (the dedupe key).
-            if job_id is not None:
-                emailed += 1
+        # Counts only the jobs added: a dedupe key an earlier call queued adds none.
+        emailed = await queue_emails(
+            db, template=spec.email_template, context=context, recipients=emails
+        )
     _log_timing(kind, len(recipients), emailed, started)
 
 
@@ -175,6 +177,19 @@ async def staff_user_ids(db: AsyncSession, building_id: UUID, roles: Sequence[Ro
                 MembershipRole.role.in_(roles),
             )
             .exists(),
+        )
+        .order_by(BuildingMembership.user_id)
+    )
+    return list(rows)
+
+
+async def active_member_user_ids(db: AsyncSession, building_id: UUID) -> list[UUID]:
+    """Users with an active membership in the building, any role, each once, in id order."""
+    rows = await db.scalars(
+        select(BuildingMembership.user_id)
+        .where(
+            BuildingMembership.building_id == building_id,
+            BuildingMembership.status == MembershipStatus.ACTIVE,
         )
         .order_by(BuildingMembership.user_id)
     )
