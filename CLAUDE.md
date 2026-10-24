@@ -140,7 +140,8 @@ Everything a command prints is re-read on every later turn, so don't print the s
 - Write in the PR only what is already on the branch. Until the bookkeeping commit exists, say "will be added to the
   inbox / <ticket> in step 6", not "listed in" (P1-04, P1-05, P1-07; 2026-10-16).
 - Don't write from a value read before a slow `await` (argon2, a lock wait): re-check it after the lock, with a fresh
-  clock, in the writing statement. Expiry must be final (P4-02b ×4; 2026-10-20).
+  clock, in the writing statement. Expiry must be final. "After the lock" means after the *last* statement that can
+  wait: a later row lock or file claim counts too (P4-02b ×4, 2026-10-20; P6-01b R1, 2026-10-24).
 - Validate caller input by what Postgres accepts, not Python: lone surrogates, NUL, NaN and byte lengths fail at
   flush as `DBAPIError`, not the documented `ValueError` (P3-02 ×2, P3-03; 2026-10-18).
 - Check focus and accessible names in Chromium, not only jsdom (no CSS or click focus; P2-06c, P4-07a, P4-08b/d).
