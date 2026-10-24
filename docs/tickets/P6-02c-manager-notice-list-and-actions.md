@@ -27,8 +27,8 @@ P6-02d, so this page is usable with drafts written through the API first.
 - In (`frontend/src/features/notices/`):
   - **manager page** (route and roles decided in framing; `PAGE_ACCESS.ManagementNotices` today lists every staff
     role while only property management may author, P6-01b), tabs or a filter by `status`
-    (`draft`, `published`, `archived`) over `notices_list`, newest first, 25 a page with "Load more"; expired
-    published notices are told apart
+    (`draft`, `published`, `archived`) over `notices_list`, in the order P6-02a settles, 25 a page with "Load
+    more"; expired published notices are told apart
   - **publish** and **archive** confirm dialogs (`POST …/publish`, `…/archive`): one request per confirm, 409
     `invalid_transition` and 422 `notice_expired` turned into messages, the lists and the P6-02a feed and badge
     refreshed (`features/packages/PackageDialog.tsx::usePackageSubmit`)
@@ -44,8 +44,8 @@ management only; 403 for other roles, 409 `invalid_transition`, 422 `notice_expi
 
 ## Acceptance criteria
 
-1. **Given** `a_manager` and notices in every status, **then** each status's list shows only its notices newest
-   first, and an expired published notice is labelled expired.
+1. **Given** `a_manager` and notices in every status, **then** each status's list shows only its notices, in the
+   order P6-02a settles, and an expired published notice is labelled expired.
 2. **Given** a draft, **when** the manager confirms publish, **then** exactly one request is sent, the draft moves
    to the published list, and the feed and badge (P6-02a) refresh; the dialog shows 422 `notice_expired` and 409
    `invalid_transition` as messages and stays open.

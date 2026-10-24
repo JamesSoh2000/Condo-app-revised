@@ -20,7 +20,9 @@ Drafted and split into [P6-02a](./P6-02a-notices-feed-and-detail.md) (feed, deta
 badge, the P5-05 `buildingDenial` fitness follow-up), [P6-02b](./P6-02b-urgent-banner-and-attachments.md) (urgent
 banner and its copy, attachment downloads), [P6-02c](./P6-02c-manager-notice-list-and-actions.md) (manager list,
 publish, archive) and [P6-02d](./P6-02d-notice-editor.md) (editor, preview, `FileUpload` attachment, the P3-06
-carry). The stub's "Decide while framing" items and the legacy files it replaces are carried into those tickets.
+carry). The stub's "Decide while framing" items, its P6-01c carry (the `/notices/{id}` route, read state, creation
+order) and the legacy files it replaces are carried into those tickets; its "Step 8" item (a row-lock test helper
+for a time check) is for a backend ticket and moved to P6-03 below.
 
 ### P6-03 — Maintenance backend · Lane A · Tier 2
 - **Goal:** residents submit requests (category, description, location: unit or common area, photos). Managers
@@ -35,6 +37,11 @@ carry). The stub's "Decide while framing" items and the legacy files it replaces
 - **Decide while framing:**
   - Can security see or act on maintenance? (default: read and comment only)
   - Emergency category behaviour: show the building's emergency phone, and never rely on the app.
+- **Step 8, moved from the P6-02 stub when it was drafted (from P6-01c R1, the 3rd "time check before a later
+  wait"):** the `CLAUDE.md` lesson didn't stop it. For the next backend ticket with a time check
+  (P6-03's reopen window): a test helper that holds a row lock (a membership, a file, the record) across a
+  request, used for every statement after the check, as
+  `tests/notices/test_concurrency.py::test_a_notice_expiring_while_its_fan_out_waits_is_not_published` does by hand.
 - **From the P5-05 recipe check** (a fresh agent planned this ticket from `docs/SLICE_RECIPE.md` and this stub only,
   PR #121): decide while framing what the recipe can't say: a "common area" location (a table, a fixed list, free
   text?) and who sees a common-area request; whether `cancel` is the requester only or any occupant who can see it;

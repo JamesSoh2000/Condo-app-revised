@@ -54,8 +54,8 @@ banner needs a list filter the API lacks is open decision 2.
    brings it back.
 3. **Given** two unread urgent notices, **then** the banner says so and links to each (or to the feed), as
    decided in framing.
-4. **Given** the banner, **then** its text says the app is not an emergency alert system and, for an emergency,
-   to call 911 (or the building's number, if one exists; framing checks), in the exact copy decided in framing.
+4. **Given** the banner, **then** its text says the app is not an emergency alert system and where to turn in
+   an emergency instead, in the exact copy decided in framing (open decision 1).
 5. **Given** a building with `notices` off, a normal (not urgent) unread notice, or a signed-out user, **then**
    no banner shows and no notices request is made where the feature is off.
 6. **Given** a notice with a PDF attachment, **when** the member clicks it, **then** a fresh download URL is

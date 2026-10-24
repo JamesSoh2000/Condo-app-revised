@@ -30,11 +30,14 @@ no-raw-HTML rule is set before the editor's preview (P6-02d) reuses it. ADR-0011
 - In (`frontend/src/features/notices/`):
   - `api.ts`: React Query hooks for `notices_list` (infinite, cursor pages), `notices_get`, `notices_summary`
     and `notices_read`, keys under `['b', buildingId, 'notices', …]` (`features/packages/api.ts::packagesKey`)
-  - **feed page** at `/notices`, any active member, feature `notices`: published notices newest first, each with
-    title, priority (urgent marked), published time in the building's timezone, and an unread marker from
+  - **feed page** at `/notices`, any active member, feature `notices`: published notices in the
+    API's order (open decision 5), each with title, priority (urgent marked), published time in the building's
+    timezone, and an unread marker from
     `read_at`; 25 a page with "Load more"; loading, empty, failed and failed-"Load more" states
-  - **detail** at `/notices/:noticeId`: the title, the body rendered from Markdown, priority, published and
-    expiry times; opening it sends `notices_read` once and the feed and badge update
+  - **the notice at `/notices/:noticeId`**, the route P6-01c's notifications link to (a notice view, or the feed
+    scrolled to it; the stub's carry leaves either open): the title, the body rendered from Markdown, priority,
+    published and expiry times; the member marks it read (on open or by an action, open decision 4) and the feed
+    and badge update
   - the shared **Markdown renderer** (`NoticeBody`), which never renders raw HTML (stub decision, below)
   - **nav badge** from `notices_summary.unread`, on the 30 s visible-tab cadence of the notification summary
   - `PAGE_ACCESS` row `Notices` (label, path, feature), its route under `RequirePageAccess`, keyed by building
@@ -60,11 +63,12 @@ change is planned; framing decides whether one is needed (open decision 2).
 ## Acceptance criteria
 
 1. **Given** `a_resident1` and three live notices in A, one read, **when** they open `/notices`, **then** three
-   rows show newest first, two marked unread, and the nav item reads "Notices, 2 unread"; with none unread, or
-   after a failed summary, it is plain "Notices".
+   rows show in the feed's order, two marked unread, and the nav item reads "Notices, 2 unread"; with none
+   unread, or after a failed summary, it is plain "Notices".
 2. **Given** an unread notice, **when** the member opens `/notices/<id>` (from the feed or a notification),
-   **then** the detail shows it, `notices_read` is sent once, and the row's unread marker and the badge clear
-   without a reload. Opening it again sends nothing new, or a repeat the API ignores (decided in framing).
+   **then** that notice shows; **when** it is marked read (as open decision 4 settles), **then** `notices_read`
+   is sent once for that action and the row's unread marker and the badge clear without a reload. A repeat sends
+   nothing new, or a repeat the API ignores (204, first `read_at` kept).
 3. **Given** a body containing `<script>`, `<img src=x onerror=…>`, a raw `<a href>` and a Markdown link to
    `javascript:alert(1)`, **then** no element from the HTML is created, no script runs and the link has no
    `javascript:` href; headings, emphasis, lists and `https` links render.
@@ -116,6 +120,9 @@ NoticesNavLabel.tsx}`, `frontend/src/app/{pages.ts,routes.tsx,routeScope.ts,Main
 3. **The legacy Dashboard.** It embeds `BuildingUpdatesFeed` in several role views; what replaces those embeds
    until P6-05 (nothing, or a link to `/notices`).
 4. **Mark read on open, or on an explicit action.** The stub says only "an unread state".
+5. **Feed order.** The list orders by creation (`notices_list` pages by `Notice.id`, P6-01b D4); a draft written
+   early and published late sorts below newer ones. Ordering by `published_at` needs a keyset and an index
+   migration (the stub's P6-01c carry). Framing decides whether creation order is acceptable here.
 
 ## Frame notes (filled by the agent in step 1)
 

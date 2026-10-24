@@ -32,7 +32,8 @@ P6-01b claims (ADR-0007: no S3 keys from clients).
     (a local date and time in the **building's** timezone, sent as an aware instant), optional attachment through
     `features/files/FileUpload.tsx` with `purpose="notice_attachment"` (PDF or image, the purpose's limits)
   - **preview** through P6-02a's `NoticeBody`, so preview and feed render the same way
-  - **publish** from the editor: save then `notices_publish`, with P6-02c's error handling
+  - **publish** from the editor (`notices_publish`), with P6-02c's error handling; what happens to unsaved
+    changes is open decision 3
   - the API's 422 field errors shown on their fields (`features/auth/formErrors.ts`), 409 `notice_not_editable`
     as a message
   - delete `src/components/NoticeAttachmentUpload.jsx` and the notice form in the legacy `Dashboard.jsx` that
