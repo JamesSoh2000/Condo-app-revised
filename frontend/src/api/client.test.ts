@@ -98,6 +98,7 @@ describe('generated types (criterion 1)', () => {
         | '/api/buildings/{building_id}/members'
         | '/api/buildings/{building_id}/notices'
         | '/api/buildings/{building_id}/notices/{notice_id}'
+        | '/api/buildings/{building_id}/notices/summary'
         | '/api/buildings/{building_id}/notifications'
         | '/api/buildings/{building_id}/notifications/summary'
         | '/api/buildings/{building_id}/onboarding-requests'

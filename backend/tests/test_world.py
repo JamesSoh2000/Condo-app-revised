@@ -77,6 +77,8 @@ EXPECTED_ROW_COUNTS = {
     "packages": 0,
     # P6-01a: nor writes a notice (tests make their own).
     "notices": 0,
+    # P6-01c: nor marks one read.
+    "notice_reads": 0,
 }
 
 

@@ -44,7 +44,9 @@ async def queue_email(
     """
     _check_recipient(to, dedupe_key)
     _check_context(template, context, [locale])
-    return await enqueue(db, "email.send", _payload(to, template, locale, context), dedupe_key=dedupe_key)
+    return await enqueue(
+        db, "email.send", _payload(to, template, locale, context), dedupe_key=dedupe_key
+    )
 
 
 async def queue_emails(
@@ -64,9 +66,7 @@ async def queue_emails(
     for recipient in recipients:
         _check_recipient(recipient.to, recipient.dedupe_key)
     _check_context(template, context, sorted({r.locale for r in recipients}))
-    jobs = [
-        (_payload(r.to, template, r.locale, context), r.dedupe_key) for r in recipients
-    ]
+    jobs = [(_payload(r.to, template, r.locale, context), r.dedupe_key) for r in recipients]
     return await enqueue_many(db, "email.send", jobs)
 
 

@@ -30,8 +30,8 @@ from app.notices.enums import NoticePriority, NoticeStatus
 from app.notices.models import NOTICE_ATTACHED_TYPE, Notice, NoticeRead
 from app.notices.queries import live, visible_notices
 from app.notices.schemas import NoticeCreate, NoticeOut, NoticeSummary, NoticeUpdate
-from app.notifications.service import active_member_user_ids, notify
 from app.notices.state import assert_transition, sources
+from app.notifications.service import active_member_user_ids, notify
 from app.tenancy.context import TenantContext
 
 

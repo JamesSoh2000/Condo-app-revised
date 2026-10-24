@@ -719,7 +719,7 @@ export interface paths {
         put?: never;
         /**
          * Read
-         * @description Mark a notice you can see read; repeating it keeps the first `read_at`. Any other is a 404.
+         * @description Mark a notice you can see read; repeating it keeps the first `read_at`. Others are 404.
          */
         post: operations["notices_read"];
         delete?: never;

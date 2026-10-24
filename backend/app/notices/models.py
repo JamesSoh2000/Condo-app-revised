@@ -98,7 +98,7 @@ class Notice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     published_by_membership_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived_by_membership_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
-    # The caller's `notice_reads.read_at`, loaded only by `with_expression` (P6-01c); None otherwise.
+    # The caller's `notice_reads.read_at`, loaded only by `with_expression` (P6-01c), else None.
     read_at: Mapped[datetime | None] = query_expression()
 
 
@@ -126,6 +126,4 @@ class NoticeRead(Base):
     notice_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     membership_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     building_id: Mapped[UUID] = mapped_column(ForeignKey("buildings.id", ondelete="RESTRICT"))
-    read_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("now()")
-    )
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))

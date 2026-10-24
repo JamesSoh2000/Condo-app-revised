@@ -100,9 +100,7 @@ def test_two_concurrent_publishes_tell_the_members_once(
     async def body(sessions: Sessions, world: World, notice: Notice) -> None:
         async with sessions() as db:
             await db.execute(
-                update(Notice)
-                .where(Notice.id == notice.id)
-                .values(priority=NoticePriority.URGENT)
+                update(Notice).where(Notice.id == notice.id).values(priority=NoticePriority.URGENT)
             )
             await db.commit()
 

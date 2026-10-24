@@ -17,6 +17,7 @@ from app.notices import service
 from app.notices.enums import NoticePriority, NoticeStatus
 from app.notices.models import Notice
 from app.notifications.models import Notification
+from app.notifications.service import notify
 from app.users.models import User
 from tests.email.conftest import point_settings_at
 from tests.notices.conftest import make_notice
@@ -87,10 +88,16 @@ async def test_a_normal_notice_tells_every_other_active_member_in_app_only(
     # Not the publisher, a_pending, a_suspended, nor anyone in B.
     assert [row.recipient_user_id for row in rows] == _told(world)
     assert {
-        (row.building_id, row.kind, row.title, row.body, row.link, row.entity_type)
-        for row in rows
+        (row.building_id, row.kind, row.title, row.body, row.link, row.entity_type) for row in rows
     } == {
-        (world.a.id, "notice.published", "New notice", notice.title, f"/notices/{notice.id}", "notice")
+        (
+            world.a.id,
+            "notice.published",
+            "New notice",
+            notice.title,
+            f"/notices/{notice.id}",
+            "notice",
+        )
     }
     assert len(_inserts(statements, "notifications")) == 1
     assert _inserts(statements, "jobs") == []
@@ -157,9 +164,7 @@ async def test_a_building_with_nobody_else_publishes_without_notifications(
     for membership in (world.b_resident1.membership, world.multi_in_b):
         membership.status = "suspended"  # type: ignore[assignment]
     await db.flush()
-    notice = await make_notice(
-        db, world.b_manager.membership, priority=NoticePriority.URGENT
-    )
+    notice = await make_notice(db, world.b_manager.membership, priority=NoticePriority.URGENT)
     client = await as_user(world.b_manager.user)
     statements.clear()
 
@@ -234,7 +239,7 @@ async def test_a_failure_after_the_fan_out_leaves_nothing(
 ) -> None:
     notice = await make_notice(db, world.a_manager.membership, priority=NoticePriority.URGENT)
     reached: list[str] = []
-    original = service.notify
+    original = notify
 
     async def notify_then_record(*args: Any, **kwargs: Any) -> None:
         await original(*args, **kwargs)

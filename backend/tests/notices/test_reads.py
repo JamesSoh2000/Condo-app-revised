@@ -301,7 +301,9 @@ async def test_list_and_get_show_the_callers_own_read_at(
     assert (await reader.post(_read_url(world, read))).status_code == 204
     [row] = await _reads(db, read)
 
-    listed = {item["id"]: item["read_at"] for item in (await reader.get(_base(world))).json()["items"]}
+    listed = {
+        item["id"]: item["read_at"] for item in (await reader.get(_base(world))).json()["items"]
+    }
     assert listed[str(unread.id)] is None
     assert listed[str(read.id)] is not None
     got = (await reader.get(f"{_base(world)}/{read.id}")).json()

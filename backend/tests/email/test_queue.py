@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.email.service import EmailRecipient, queue_email, queue_emails
+from app.email.templates import render_email
 from app.jobs.models import Job, JobStatus
 from tests.email.conftest import point_settings_at
 
@@ -192,12 +193,22 @@ async def test_queue_emails_enqueues_one_job_per_recipient_in_one_statement(
         (
             "email.send",
             "k:b",
-            {"to": "b@example.test", "template": "test", "locale": "fr", "context": {"name": "Ann"}},
+            {
+                "to": "b@example.test",
+                "template": "test",
+                "locale": "fr",
+                "context": {"name": "Ann"},
+            },
         ),
         (
             "email.send",
             None,
-            {"to": "a@example.test", "template": "test", "locale": "en", "context": {"name": "Ann"}},
+            {
+                "to": "a@example.test",
+                "template": "test",
+                "locale": "en",
+                "context": {"name": "Ann"},
+            },
         ),
     ]
 
@@ -209,14 +220,19 @@ async def test_queue_emails_counts_only_what_its_dedupe_keys_let_in(db: AsyncSes
         db,
         template="test",
         context={},
-        recipients=[EmailRecipient("a@example.test", dedupe_key="k:a"), EmailRecipient("b@example.test")],
+        recipients=[
+            EmailRecipient("a@example.test", dedupe_key="k:a"),
+            EmailRecipient("b@example.test"),
+        ],
     )
 
     assert queued == 1
     assert await job_count(db) == 2
 
 
-async def test_queue_emails_to_nobody_sends_nothing(db: AsyncSession, statements: list[str]) -> None:
+async def test_queue_emails_to_nobody_sends_nothing(
+    db: AsyncSession, statements: list[str]
+) -> None:
     await db.flush()
     statements.clear()
 
@@ -255,7 +271,7 @@ async def test_queue_emails_renders_in_every_recipients_locale(
     from app.email import service
 
     rendered: list[str] = []
-    original = service.render_email
+    original = render_email
 
     def spy(template: str, context: dict[str, Any], locale: str) -> Any:
         rendered.append(locale)
@@ -267,7 +283,10 @@ async def test_queue_emails_renders_in_every_recipients_locale(
         db,
         template="test",
         context={},
-        recipients=[EmailRecipient(f"u{n}@example.test", locale) for n, locale in enumerate(["fr", "en", "fr"])],
+        recipients=[
+            EmailRecipient(f"u{n}@example.test", locale)
+            for n, locale in enumerate(["fr", "en", "fr"])
+        ],
     )
 
     # Once per locale, not per recipient.

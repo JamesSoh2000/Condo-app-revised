@@ -69,7 +69,7 @@ async def get(notice_id: UUID, ctx: Ctx, db: DbSession) -> NoticeOut:
     responses=problem_responses(401, 403, 404),
 )
 async def read(notice_id: UUID, ctx: Ctx, db: DbSession) -> None:
-    """Mark a notice you can see read; repeating it keeps the first `read_at`. Any other is a 404."""
+    """Mark a notice you can see read; repeating it keeps the first `read_at`. Others are 404."""
     await service.mark_read(db, ctx, notice_id)
 
 
