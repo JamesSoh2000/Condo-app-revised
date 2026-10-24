@@ -11,6 +11,7 @@ import app.files.models
 import app.invitations.models
 import app.jobs.models
 import app.memberships.models
+import app.notices.models
 import app.notifications.models
 import app.onboarding.models
 import app.packages.models

@@ -313,7 +313,9 @@ async def test_a_notice_image_over_the_image_limit_is_refused_though_under_the_p
 ):
     # P6-01a criterion 8: a per-type limit, not the purpose's largest.
     client = await as_user(world.a_manager.user)
-    over = body(purpose="notice_attachment", content_type="image/png", size_bytes=MAX_IMAGE_BYTES + 1)
+    over = body(
+        purpose="notice_attachment", content_type="image/png", size_bytes=MAX_IMAGE_BYTES + 1
+    )
 
     r = await client.post(files_url(world.a.id), json=over)
 

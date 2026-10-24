@@ -5,16 +5,16 @@ Expiry is read by the database clock, `now()`: the test's transaction start, con
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.memberships.enums import Role
 from app.notices.models import Notice
 from app.notices.queries import visible_notices
-from tests.notices.conftest import archived, make_notice, persona_ctx, published
+from tests.notices.conftest import archived, db_now, make_notice, persona_ctx, published
 from tests.packages.conftest import ctx_for
 from tests.world import World
 
@@ -36,7 +36,7 @@ class Notices:
 
 @pytest.fixture
 async def notices(db: AsyncSession, world: World) -> Notices:
-    now: datetime = await db.scalar(select(func.now()))
+    now = await db_now(db)
     manager = world.a_manager.membership
     return Notices(
         draft=await make_notice(db, manager),
@@ -108,7 +108,7 @@ async def test_a_member_with_no_role_sees_no_more_than_published(
 
 
 async def test_a_notice_expiring_exactly_now_is_hidden(db: AsyncSession, world: World):
-    now: datetime = await db.scalar(select(func.now()))
+    now = await db_now(db)
     manager = world.a_manager.membership
     at_now = await make_notice(db, manager, **published(manager, LONG_AGO, expires_at=now))
 

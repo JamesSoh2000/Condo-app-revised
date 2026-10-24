@@ -2,7 +2,7 @@
 who may download an attached file: each purpose's `can_view` hook, registered by the owning domain.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,24 +23,33 @@ _HEIF_BRANDS = frozenset({b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", 
 
 @dataclass(frozen=True, slots=True)
 class PurposeRule:
-    content_types: frozenset[str]
-    max_bytes: int
+    # Each content type the purpose accepts, with its own size limit (ADR-0007 "Limits": an image
+    # stays at 10 MiB in a purpose that also takes 20 MiB PDFs).
+    limits: Mapping[str, int]
     # The roles, in the URL's building, that may upload a file for this purpose.
     uploader_roles: frozenset[Role]
+
+    @property
+    def content_types(self) -> frozenset[str]:
+        return frozenset(self.limits)
+
+
+_IMAGES = dict.fromkeys(IMAGE_TYPES, MAX_IMAGE_BYTES)
+_PDF = {"application/pdf": MAX_PDF_BYTES}
 
 
 PURPOSES: dict[FilePurpose, PurposeRule] = {
     # Security logs packages (PRODUCT_SCOPE.md); the manager may too.
     FilePurpose.PACKAGE_PHOTO: PurposeRule(
-        IMAGE_TYPES, MAX_IMAGE_BYTES, frozenset({Role.SECURITY, Role.PROPERTY_MANAGEMENT})
+        _IMAGES, frozenset({Role.SECURITY, Role.PROPERTY_MANAGEMENT})
     ),
     # Residents submit maintenance requests; the manager runs them.
     FilePurpose.MAINTENANCE_PHOTO: PurposeRule(
-        IMAGE_TYPES, MAX_IMAGE_BYTES, frozenset({Role.RESIDENT, Role.PROPERTY_MANAGEMENT})
+        _IMAGES, frozenset({Role.RESIDENT, Role.PROPERTY_MANAGEMENT})
     ),
-    # The manager publishes notices.
+    # The manager publishes notices, with a PDF or an image (P6-01a); security doesn't author them.
     FilePurpose.NOTICE_ATTACHMENT: PurposeRule(
-        frozenset({"application/pdf"}), MAX_PDF_BYTES, frozenset({Role.PROPERTY_MANAGEMENT})
+        _PDF | _IMAGES, frozenset({Role.PROPERTY_MANAGEMENT})
     ),
 }
 

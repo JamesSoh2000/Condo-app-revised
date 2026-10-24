@@ -76,8 +76,11 @@ async def create_file(db: AsyncSession, ctx: TenantContext, data: FileCreate) ->
     if data.content_type not in rule.content_types:
         allowed = ", ".join(sorted(rule.content_types))
         raise FileTypeNotAllowed(detail=f"A {data.purpose} must be one of: {allowed}.")
-    if data.size_bytes > rule.max_bytes:
-        raise FileTooLarge(detail=f"A {data.purpose} may be at most {rule.max_bytes} bytes.")
+    limit = rule.limits[data.content_type]
+    if data.size_bytes > limit:
+        raise FileTooLarge(
+            detail=f"A {data.content_type} {data.purpose} may be at most {limit} bytes."
+        )
 
     file_id = uuid7()
     file = File(

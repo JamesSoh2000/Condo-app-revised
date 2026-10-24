@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.files.models import File, FilePurpose, FileStatus
@@ -14,6 +15,13 @@ from app.notices.models import Notice
 from app.tenancy.context import TenantContext
 from tests.packages.conftest import PERSONA_ROLES, ctx_of
 from tests.world import World
+
+
+async def db_now(db: AsyncSession) -> datetime:
+    """The database clock `visible_notices` compares `expires_at` with: the transaction's start."""
+    now: datetime | None = await db.scalar(select(func.now()))
+    assert now is not None
+    return now
 
 
 def persona_ctx(world: World, name: str) -> TenantContext:

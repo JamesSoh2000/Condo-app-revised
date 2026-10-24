@@ -4,11 +4,11 @@ viewers."""
 import subprocess
 import sys
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.files import purposes
@@ -17,7 +17,14 @@ from app.files.service import claim_file
 from app.notices.attachments import can_view_notice_attachment
 from app.notices.models import NOTICE_ATTACHED_TYPE, Notice
 from tests.helpers.tenancy import assert_not_visible, assert_problem, without_request_id
-from tests.notices.conftest import archived, make_attachment, make_notice, persona_ctx, published
+from tests.notices.conftest import (
+    archived,
+    db_now,
+    make_attachment,
+    make_notice,
+    persona_ctx,
+    published,
+)
 from tests.world import World
 
 pytestmark = pytest.mark.anyio
@@ -43,7 +50,7 @@ async def attached(db: AsyncSession, world: World, **notice: object) -> File:
 
 
 async def attachments(db: AsyncSession, world: World) -> dict[str, File]:
-    now: datetime = await db.scalar(select(func.now()))
+    now = await db_now(db)
     manager = world.a_manager.membership
     return {
         "draft": await attached(db, world),
@@ -124,9 +131,7 @@ async def test_a_file_attached_to_a_notice_that_names_another_file_is_refused(
     db: AsyncSession, world: World
 ):
     shown = await attached(db, world, **published(world.a_manager.membership, LONG_AGO))
-    stray = await make_attachment(
-        db, world.a.id, world.a_manager.user.id, content_type="image/png"
-    )
+    stray = await make_attachment(db, world.a.id, world.a_manager.user.id, content_type="image/png")
     await db.execute(
         update(File)
         .where(File.id == stray.id)
