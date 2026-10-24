@@ -51,7 +51,7 @@ Operation ids `notices_create`, `notices_update`, `notices_publish`, `notices_ar
 - `NoticeUpdate(InputModel)`: the same fields, all optional; which may be cleared with `null` is decided in
   framing.
 - `NoticeOut(APIModel)`: the notice's columns (never an S3 key; the attachment is its `file_id`, downloaded
-  through `GET /files/{id}/download`).
+  through `GET /files/{id}/download-url`).
 - Errors: 404 `notice_not_found`; 409 `invalid_transition`; 409 for editing a non-draft (code decided in
   framing); `claim_file`'s 404 `file_not_found` / 422 `invalid_file`; 422 for an expiry already past at
   publish (code decided in framing).

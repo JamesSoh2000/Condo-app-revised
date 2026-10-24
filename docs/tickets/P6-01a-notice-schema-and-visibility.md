@@ -84,9 +84,11 @@ apply: a resident who moved in later sees notices published before they arrived.
 grants a file when it is attached as `NOTICE_ATTACHED_TYPE` to a notice in `visible_notices(ctx)` whose
 `attachment_file_id` is that file (both sides agree, as `app/packages/photos.py::can_view_package_photo`).
 
-**File purpose:** the stub asks for "an optional PDF or image attachment". Today
-`app/files/purposes.py::PURPOSES[NOTICE_ATTACHMENT]` accepts `application/pdf` only (20 MB, property
-management uploads). Whether this ticket widens it to `IMAGE_TYPES` too is decided in framing.
+**File purpose:** the stub asks for "an optional PDF or image attachment", so the `notice_attachment`
+purpose must accept both. Today `app/files/purposes.py::PURPOSES[NOTICE_ATTACHMENT]` accepts `application/pdf`
+only (one 20 MiB cap, property management uploads). This ticket widens it to `IMAGE_TYPES` as well, keeping
+ADR-0007's limits per type (images ≤ 10 MiB, PDF ≤ 20 MiB); how the rule expresses a per-type limit is decided
+in framing.
 
 ## Acceptance criteria
 
@@ -106,24 +108,28 @@ management uploads). Whether this ticket widens it to `IMAGE_TYPES` too is decid
    published one; nothing of B for anyone of A; and `b_manager` none of A's.
 7. **Given** a resident who joined after a notice was published (`a_former`'s second occupancy, or a
    later-created membership), **then** they see it: no occupancy filter applies.
-8. **Given** a `ready` notice attachment claimed by a published notice, **then** the file's download is
+8. **Given** a manager, **when** they start a `notice_attachment` upload (`POST /files`) of a JPEG, PNG,
+   WebP or HEIC image up to 10 MiB or a PDF up to 20 MiB, **then** it is accepted (201); an image over 10 MiB
+   gives 422 `file_too_large`, and any other type 422 as today.
+9. **Given** a `ready` notice attachment claimed by a published notice, **then** the file's download is
    allowed for every role that sees the notice, refused (404) for a draft's attachment to non-managers, for a
    file whose notice points at another file, and for another building's member.
 
 Framing adds the remaining 10-case rows that apply to a schema ticket (none of rows 1–4 and 9–10 have an
-endpoint yet; rows 5–7 are criteria 6–8).
+endpoint yet; rows 5–7 are criteria 6, 7 and 9).
 
 ## Test plan
 
 - `backend/tests/notices/test_schema.py` (criteria 1–4), `test_state.py` (5), `test_visibility.py` (6–7),
-  `test_attachments.py` (8, through `GET /files/{id}/download` as `tests/packages/test_photos.py` does).
+  `backend/tests/files/test_create.py` (8), `test_attachments.py` (9, through `GET /files/{id}/download-url` as
+  `tests/packages/test_photos.py` does).
 - A `make_notice` factory in `backend/tests/notices/conftest.py` that flushes, never commits.
 - Commands: `make check DB_PORT=55432`; `uv run pytest tests/notices -q`.
 
 ## Likely files
 
 `backend/app/notices/*`, `backend/app/models/registry.py`, `backend/app/main.py` (import the hook),
-`backend/app/files/purposes.py` (if widened), `backend/migrations/versions/*_notices.py`,
+`backend/app/files/{purposes,service}.py`, `backend/migrations/versions/*_notices.py`,
 `backend/tests/notices/*`.
 
 ## Must explain (learning checkpoint)
@@ -146,7 +152,7 @@ Left open by the stub (decide with the decision rules):
 - whether `draft → archived` is allowed (discarding a draft), and whether `archived` is final
 - whether an expired published notice stays in `visible_notices` for non-managers, or is filtered there
   (by the database clock) so every read and count agrees
-- whether the `notice_attachment` purpose accepts images as well as PDF (the stub says "PDF or image")
+- how the purpose rule holds a per-type size limit (images 10 MiB, PDF 20 MiB) for `notice_attachment`
 
 ## Frame notes (filled by the agent in step 1)
 
