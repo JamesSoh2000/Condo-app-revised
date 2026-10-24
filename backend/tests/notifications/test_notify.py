@@ -18,7 +18,12 @@ from app.memberships.enums import MembershipStatus, Role
 from app.memberships.models import BuildingMembership
 from app.notifications.kinds import KINDS
 from app.notifications.models import Notification
-from app.notifications.service import notify, staff_user_ids, unit_resident_user_ids
+from app.notifications.service import (
+    active_member_user_ids,
+    notify,
+    staff_user_ids,
+    unit_resident_user_ids,
+)
 from app.users.models import User
 from tests.email.conftest import point_settings_at
 from tests.factories import make_unit
@@ -200,6 +205,46 @@ async def test_no_recipients_writes_nothing(
 
     assert statements == []
     assert await rows(db) == []
+
+
+async def test_every_email_of_a_call_is_queued_in_one_statement(
+    db: AsyncSession, world: World, statements: list[str]
+) -> None:
+    # P6-01c: one `jobs` INSERT per call, whatever the number of recipients, in recipient-id order
+    # (each dedupe key is a unique-index entry; the P3-03 deadlock).
+    recipients = [world.a_resident2.user.id, world.a_resident1.user.id, world.a_council.user.id]
+    await db.flush()
+    statements.clear()
+
+    await notify(db, **arrived(world, recipients))
+
+    assert [s.split(" ")[2] for s in statements if s.startswith("INSERT")] == [
+        "notifications",
+        "jobs",
+    ]
+    entity = arrived(world, [])["entity_id"]
+    assert [job.dedupe_key for job in await email_jobs(db)] == [
+        f"package.arrived:{entity}:{user_id}" for user_id in sorted(recipients)
+    ]
+
+
+async def test_active_member_user_ids_lists_each_active_member_once(
+    db: AsyncSession, world: World
+) -> None:
+    assert await active_member_user_ids(db, world.a.id) == sorted(
+        [
+            world.a_manager.user.id,
+            world.a_security.user.id,
+            world.a_resident1.user.id,
+            world.a_resident2.user.id,
+            world.a_council.user.id,
+            world.a_former.user.id,
+            world.multi.id,
+        ]
+    )  # not a_pending, a_suspended
+    assert await active_member_user_ids(db, world.b.id) == sorted(
+        [world.b_manager.user.id, world.b_resident1.user.id, world.multi.id]
+    )
 
 
 # Criterion 1c
@@ -467,9 +512,10 @@ async def test_a_user_with_several_matching_roles_is_listed_once(
 
 def test_only_the_in_app_kinds_have_no_email() -> None:
     # P3-03's kinds all email; P4-05a adds the first in-app-only one (the ticket: managers are
-    # notified in-app), P5-02b the pickup (its ticket: in-app only). A new kind without a template
-    # must be added here on purpose.
+    # notified in-app), P5-02b the pickup (its ticket: in-app only), P6-01c a normal notice (only
+    # urgent ones email). A new kind without a template must be added here on purpose.
     assert sorted(k for k, spec in KINDS.items() if spec.email_template is None) == [
+        "notice.published",
         "onboarding.submitted",
         "package.picked_up",
     ]

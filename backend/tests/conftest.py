@@ -15,13 +15,14 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi import APIRouter
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, create_async_engine
 
@@ -347,6 +348,23 @@ class FrozenClock:
     def advance(self, **delta: float) -> datetime:
         self.at += timedelta(**delta)
         return self.at
+
+
+@pytest.fixture
+def statements(engine: AsyncEngine) -> Iterator[list[str]]:
+    """Every SQL statement sent while the test runs, in order: `statements.clear()` then count.
+    The harness's own savepoints (the `db` fixture's) are left out."""
+    sent: list[str] = []
+
+    def record(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+        if not statement.startswith(("SAVEPOINT ", "RELEASE SAVEPOINT ", "ROLLBACK TO SAVEPOINT ")):
+            sent.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", record)
+    try:
+        yield sent
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", record)
 
 
 @pytest.fixture

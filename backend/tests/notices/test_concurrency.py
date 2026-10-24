@@ -16,10 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.audit.models import AuditEvent
 from app.core.errors import DomainError
 from app.files.models import File
+from app.jobs.models import Job
 from app.notices import service
-from app.notices.enums import NoticeStatus
+from app.notices.enums import NoticePriority, NoticeStatus
 from app.notices.models import Notice
 from app.notices.schemas import NoticeCreate, NoticeUpdate
+from app.notifications.models import Notification
+from tests.email.conftest import point_settings_at
 from tests.notices.conftest import make_attachment, make_notice, persona_ctx
 from tests.notifications.test_concurrency import migrate
 from tests.world import World, build_world
@@ -83,6 +86,42 @@ def test_two_concurrent_publishes_have_one_winner(scratch_database_url: str) -> 
         assert sorted(outcomes) == ["200", "409 invalid_transition"]
         assert (await _row(sessions, notice)).status is NoticeStatus.PUBLISHED
         assert await _audits(sessions, notice) == ["notice.published"]
+
+    _run(scratch_database_url, body)
+
+
+def test_two_concurrent_publishes_tell_the_members_once(
+    scratch_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # P6-01c criterion 6: the loser waits on the row lock and 409s before its fan-out, so one set of
+    # notifications and one set of email jobs.
+    point_settings_at(monkeypatch, 1025)
+
+    async def body(sessions: Sessions, world: World, notice: Notice) -> None:
+        async with sessions() as db:
+            await db.execute(
+                update(Notice)
+                .where(Notice.id == notice.id)
+                .values(priority=NoticePriority.URGENT)
+            )
+            await db.commit()
+
+        outcomes = await asyncio.gather(
+            _act(sessions, world, notice, "publish"), _act(sessions, world, notice, "publish")
+        )
+
+        assert sorted(outcomes) == ["200", "409 invalid_transition"]
+        async with sessions() as db:
+            told = await db.scalar(
+                select(func.count())
+                .select_from(Notification)
+                .where(Notification.entity_id == notice.id)
+            )
+            jobs = await db.scalar(
+                select(func.count()).select_from(Job).where(Job.kind == "email.send")
+            )
+        # A's active members but the publisher, each with a sendable address.
+        assert (told, jobs) == (6, 6)
 
     _run(scratch_database_url, body)
 

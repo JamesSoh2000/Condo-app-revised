@@ -6,7 +6,6 @@ The test harness runs on one connection, so these use a scratch database of thei
 
 import asyncio
 import contextlib
-from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -17,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core import clock
-from app.email.service import queue_email
+from app.email.service import queue_emails
 from app.jobs.models import Job
 from app.notifications import service
 from app.notifications.models import Notification
@@ -45,26 +44,23 @@ def test_concurrent_notifies_of_one_entity_in_opposite_orders_both_finish(
     # other needed next, and Postgres aborted one caller with "deadlock detected".
     point_settings_at(monkeypatch, 1025)
     migrate(scratch_database_url)
-    original = queue_email
+    original = queue_emails
 
     async def check() -> None:
         engine = create_async_engine(scratch_database_url)
         sessions = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
-        both_queued_one = asyncio.Barrier(2)
-        calls: Counter[asyncio.Task[Any] | None] = Counter()
+        both_queued = asyncio.Barrier(2)
 
-        async def pause_after_the_first_email(*args: Any, **kwargs: Any) -> Any:
-            job_id = await original(*args, **kwargs)
-            task = asyncio.current_task()
-            calls[task] += 1
-            if calls[task] == 1:
-                # Both callers hold one key here unless the second is already waiting on the
-                # first's (the fixed order); then the first goes on after a moment.
-                with contextlib.suppress(TimeoutError):
-                    await asyncio.wait_for(both_queued_one.wait(), timeout=1)
-            return job_id
+        async def pause_after_the_emails(*args: Any, **kwargs: Any) -> Any:
+            # P6-01c: a call queues its emails in one INSERT, in recipient-id order whatever the
+            # order given. Both callers hold their keys here unless the second is already waiting on
+            # the first's; then the first goes on after a moment.
+            queued = await original(*args, **kwargs)
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(both_queued.wait(), timeout=1)
+            return queued
 
-        monkeypatch.setattr(service, "queue_email", pause_after_the_first_email)
+        monkeypatch.setattr(service, "queue_emails", pause_after_the_emails)
         try:
             async with sessions() as db:
                 world = await build_world(db)
