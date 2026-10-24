@@ -41,10 +41,15 @@ async def list(
     db: DbSession,
     params: Annotated[CursorParams, Depends()],
     status: NoticeStatus | None = None,
+    live: bool = False,
 ) -> Page[NoticeOut]:
     """The notices you may see in this building, newest written first: published ones that
-    haven't expired, and for the manager drafts, expired and archived ones too."""
-    return await service.list_notices(db, ctx, params, status=status)
+    haven't expired, and for the manager drafts, expired and archived ones too.
+
+    `live=true` keeps only published notices that haven't expired, for every role: the feed, and
+    what the unread summary counts (P6-02a).
+    """
+    return await service.list_notices(db, ctx, params, status=status, live_only=live)
 
 
 @router.get("/notices/summary", dependencies=[_FEATURE], responses=problem_responses(401, 403, 404))

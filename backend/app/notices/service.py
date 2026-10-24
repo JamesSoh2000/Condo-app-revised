@@ -208,11 +208,18 @@ async def archive_notice(db: AsyncSession, ctx: TenantContext, notice_id: UUID) 
 
 
 async def list_notices(
-    db: AsyncSession, ctx: TenantContext, params: CursorParams, *, status: NoticeStatus | None
+    db: AsyncSession,
+    ctx: TenantContext,
+    params: CursorParams,
+    *,
+    status: NoticeStatus | None,
+    live_only: bool = False,
 ) -> Page[NoticeOut]:
     stmt = visible_notices(ctx).options(with_expression(Notice.read_at, _read_at(ctx)))
     if status is not None:
         stmt = stmt.where(Notice.status == status)
+    if live_only:
+        stmt = stmt.where(live())
     return await paginate(db, stmt, Notice.id, params, NoticeOut.model_validate)
 
 
