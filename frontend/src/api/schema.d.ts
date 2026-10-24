@@ -660,6 +660,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/buildings/{building_id}/notices/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary
+         * @description How many live notices you haven't read here, and how many of those are urgent (for the
+         *     badge and the urgent banner). Drafts, archived and expired notices never count.
+         */
+        get: operations["notices_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/buildings/{building_id}/notices/{notice_id}": {
         parameters: {
             query?: never;
@@ -685,6 +706,26 @@ export interface paths {
          *     written again, not edited.
          */
         patch: operations["notices_update"];
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/notices/{notice_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read
+         * @description Mark a notice you can see read; repeating it keeps the first `read_at`. Others are 404.
+         */
+        post: operations["notices_read"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/buildings/{building_id}/notices/{notice_id}/publish": {
@@ -1544,6 +1585,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Read At */
+            read_at: string | null;
         };
         /**
          * NoticePriority
@@ -1557,6 +1600,16 @@ export interface components {
          * @enum {string}
          */
         NoticeStatus: "draft" | "published" | "archived";
+        /**
+         * NoticeSummary
+         * @description Your unread live notices in this building, for the badge and the urgent banner.
+         */
+        NoticeSummary: {
+            /** Unread */
+            unread: number;
+            /** Urgent Unread */
+            urgent_unread: number;
+        };
         /**
          * NoticeUpdate
          * @description A draft's new values: only the fields sent change. `expires_at` and `attachment_file_id`
@@ -3858,6 +3911,64 @@ export interface operations {
             };
         };
     };
+    notices_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoticeSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     notices_get: {
         parameters: {
             query?: never;
@@ -3988,6 +4099,63 @@ export interface operations {
                 };
             };
             /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notices_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notice_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;

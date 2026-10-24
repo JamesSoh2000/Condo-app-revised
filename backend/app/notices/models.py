@@ -12,7 +12,7 @@ from sqlalchemy import (
     Uuid,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, query_expression
 
 from app.models.base import Base
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
@@ -98,3 +98,32 @@ class Notice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     published_by_membership_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived_by_membership_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    # The caller's `notice_reads.read_at`, loaded only by `with_expression` (P6-01c), else None.
+    read_at: Mapped[datetime | None] = query_expression()
+
+
+class NoticeRead(Base):
+    """A member's "I've read it" for one notice (P6-01c): written once, by `INSERT … ON CONFLICT DO
+    NOTHING`, so the first `read_at` stays. It belongs to a membership, not a user: a member of two
+    buildings reads each building's notices as that building's member."""
+
+    __tablename__ = "notice_reads"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["building_id", "notice_id"],
+            ["notices.building_id", "notices.id"],
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["building_id", "membership_id"],
+            ["building_memberships.building_id", "building_memberships.id"],
+            ondelete="RESTRICT",
+        ),
+    )
+
+    # The primary key's order serves "this notice's reads"; the summary's anti-join looks up
+    # (notice, the caller's membership), which it also serves.
+    notice_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    membership_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    building_id: Mapped[UUID] = mapped_column(ForeignKey("buildings.id", ondelete="RESTRICT"))
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))

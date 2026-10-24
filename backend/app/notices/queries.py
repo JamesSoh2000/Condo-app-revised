@@ -24,11 +24,17 @@ def visible_notices(ctx: TenantContext) -> Select[Notice]:
     return select(Notice).where(Notice.building_id == ctx.building_id, _grant(ctx))
 
 
-def _grant(ctx: TenantContext) -> ColumnElement[bool]:
-    if ctx.has_any(Role.PROPERTY_MANAGEMENT):
-        return true()
+def live() -> ColumnElement[bool]:
+    """Published and not expired, by the database clock: what every member but the manager sees,
+    and what the unread summary counts for every member (P6-01c)."""
     # `now()` is the transaction's start, so one request's reads agree with each other.
     return and_(
         Notice.status == NoticeStatus.PUBLISHED,
         or_(Notice.expires_at.is_(None), Notice.expires_at > func.now()),
     )
+
+
+def _grant(ctx: TenantContext) -> ColumnElement[bool]:
+    if ctx.has_any(Role.PROPERTY_MANAGEMENT):
+        return true()
+    return live()

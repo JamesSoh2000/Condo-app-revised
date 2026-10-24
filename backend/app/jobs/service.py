@@ -48,6 +48,39 @@ async def enqueue(
     return job_id
 
 
+async def enqueue_many(
+    db: AsyncSession, kind: str, jobs: Sequence[tuple[dict[str, Any], str | None]]
+) -> int:
+    """`enqueue` for many `(payload, dedupe_key)` jobs of one kind, in one INSERT (P6-01c); return
+    how many were added. Never commits.
+
+    Rows go in the order given: each dedupe key is a unique-index entry, so callers that may insert
+    the same keys at once must pass them in one order (sorted), or they deadlock (P3-03). A key that
+    exists, or repeats earlier in `jobs`, adds nothing. No jobs, no statement.
+    """
+    if not jobs:
+        return 0
+    now = clock.now()
+    statement = (
+        insert(Job)
+        .values(
+            [
+                {
+                    "kind": kind,
+                    "payload": payload,
+                    "run_at": now,
+                    "dedupe_key": dedupe_key,
+                    "max_attempts": DEFAULT_MAX_ATTEMPTS,
+                }
+                for payload, dedupe_key in jobs
+            ]
+        )
+        .on_conflict_do_nothing(index_elements=[Job.dedupe_key])
+        .returning(Job.id)
+    )
+    return len((await db.execute(statement)).all())
+
+
 # Kept for `jobs-status` and as the record of a finish; deleted by `jobs.cleanup` after this.
 SUCCEEDED_RETENTION = timedelta(days=14)
 # A dead job's sensitive keys are removed after this, and `jobs-retry` refuses it from then on:

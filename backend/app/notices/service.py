@@ -5,14 +5,20 @@ Each write locks the notice row (`_locked`), checks the state machine, then writ
 conditional `UPDATE … WHERE status IN (…) RETURNING` (CLAUDE.md rule 7); the attachment claim and
 the audit row commit with it, once (CLAUDE.md rule 5). Reads go only through `visible_notices(ctx)`
 (CLAUDE.md rule 3).
+
+P6-01c adds the member's side: `mark_read` (one `notice_reads` row, kept once), `notice_summary`,
+each `NoticeOut`'s caller `read_at`, and the publish's fan-out (`_tell_members`): one notification
+INSERT and, for an urgent notice, one email-job INSERT, in the publish's transaction.
 """
 
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid7
 
-from sqlalchemy import func, insert, or_, select, update
+from sqlalchemy import ScalarSelect, func, insert, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import with_expression
 
 from app.audit import actions
 from app.audit.service import record_audit
@@ -20,11 +26,12 @@ from app.core.errors import Conflict, NotFound, UnprocessableContent
 from app.core.pagination import CursorParams, Page, paginate
 from app.files.models import FilePurpose
 from app.files.service import claim_file
-from app.notices.enums import NoticeStatus
-from app.notices.models import NOTICE_ATTACHED_TYPE, Notice
-from app.notices.queries import visible_notices
-from app.notices.schemas import NoticeCreate, NoticeOut, NoticeUpdate
+from app.notices.enums import NoticePriority, NoticeStatus
+from app.notices.models import NOTICE_ATTACHED_TYPE, Notice, NoticeRead
+from app.notices.queries import live, visible_notices
+from app.notices.schemas import NoticeCreate, NoticeOut, NoticeSummary, NoticeUpdate
 from app.notices.state import assert_transition, sources
+from app.notifications.service import active_member_user_ids, notify
 from app.tenancy.context import TenantContext
 
 
@@ -126,7 +133,7 @@ async def update_notice(
             notice_id,
             {"fields": sorted(values), "attachment_file_id": notice.attachment_file_id},
         )
-    out = NoticeOut.model_validate(notice)
+    out = await _out(db, ctx, notice)
     await db.commit()
     return out
 
@@ -157,8 +164,17 @@ async def publish_notice(db: AsyncSession, ctx: TenantContext, notice_id: UUID) 
     if published is None:
         # The row is locked and a draft: only the expiry can have refused it.
         raise NoticeExpired(detail="This notice's expiry has passed; change it, then publish.")
+    # After the UPDATE that won the row, before the audit: one transaction (the P6-01b carry).
+    await _tell_members(db, ctx, published)
     await _audit(db, ctx, actions.NOTICE_PUBLISHED, notice_id, {})
-    out = NoticeOut.model_validate(published)
+    out = await _out(db, ctx, published)
+    if published.expires_at is not None:
+        # Again after the last statement that can wait: the fan-out's INSERTs wait on a membership
+        # or a dedupe key another transaction holds, and the expiry may pass meanwhile (review
+        # round 1, Codex). The flush sends the pending audit row first (autoflush is off). Raising
+        # rolls the publish, the notifications and the jobs back.
+        await db.flush()
+        await _check_future(db, published.expires_at)
     await db.commit()
     return out
 
@@ -186,7 +202,7 @@ async def archive_notice(db: AsyncSession, ctx: TenantContext, notice_id: UUID) 
     )
     assert archived is not None  # noqa: S101 (the row is locked, and may be archived)
     await _audit(db, ctx, actions.NOTICE_ARCHIVED, notice_id, {"from_status": from_status})
-    out = NoticeOut.model_validate(archived)
+    out = await _out(db, ctx, archived)
     await db.commit()
     return out
 
@@ -194,18 +210,90 @@ async def archive_notice(db: AsyncSession, ctx: TenantContext, notice_id: UUID) 
 async def list_notices(
     db: AsyncSession, ctx: TenantContext, params: CursorParams, *, status: NoticeStatus | None
 ) -> Page[NoticeOut]:
-    stmt = visible_notices(ctx)
+    stmt = visible_notices(ctx).options(with_expression(Notice.read_at, _read_at(ctx)))
     if status is not None:
         stmt = stmt.where(Notice.status == status)
     return await paginate(db, stmt, Notice.id, params, NoticeOut.model_validate)
 
 
 async def get_notice(db: AsyncSession, ctx: TenantContext, notice_id: UUID) -> NoticeOut:
-    notice = await db.scalar(visible_notices(ctx).where(Notice.id == notice_id))
+    notice = await db.scalar(
+        visible_notices(ctx)
+        .where(Notice.id == notice_id)
+        .options(with_expression(Notice.read_at, _read_at(ctx)))
+    )
     if notice is None:
         # The same answer for a hidden notice, another building's and none (ADR-0004).
         raise NoticeNotFound(detail="Notice not found.")
     return NoticeOut.model_validate(notice)
+
+
+async def mark_read(db: AsyncSession, ctx: TenantContext, notice_id: UUID) -> None:
+    """Mark a notice the caller sees read, as their membership; again keeps the first `read_at`.
+    404 for any other, as `get_notice`."""
+    seen = await db.scalar(select(visible_notices(ctx).where(Notice.id == notice_id).exists()))
+    if not seen:
+        raise NoticeNotFound(detail="Notice not found.")
+    # A notice archived or expiring after the check keeps the read: harmless, and the composite FK
+    # still keeps it in this building. No audit row: a read is the member's own bookkeeping.
+    await db.execute(
+        pg_insert(NoticeRead)
+        .values(building_id=ctx.building_id, notice_id=notice_id, membership_id=ctx.membership_id)
+        .on_conflict_do_nothing(index_elements=[NoticeRead.notice_id, NoticeRead.membership_id])
+    )
+    await db.commit()
+
+
+async def notice_summary(db: AsyncSession, ctx: TenantContext) -> NoticeSummary:
+    """The caller's unread live notices, and how many of them are urgent: one query."""
+    unread = (
+        visible_notices(ctx)
+        .where(live(), _read_at(ctx).is_(None))
+        .with_only_columns(Notice.priority)
+        .subquery()
+    )
+    urgent = func.count().filter(unread.c.priority == NoticePriority.URGENT)
+    total, urgent_total = (await db.execute(select(func.count(), urgent).select_from(unread))).one()
+    return NoticeSummary(unread=total, urgent_unread=urgent_total)
+
+
+def _read_at(ctx: TenantContext) -> ScalarSelect[Any]:
+    """The caller's `read_at` of the notice in the enclosing query: null if they haven't read it."""
+    return (
+        select(NoticeRead.read_at)
+        .where(NoticeRead.notice_id == Notice.id, NoticeRead.membership_id == ctx.membership_id)
+        .scalar_subquery()
+    )
+
+
+async def _out(db: AsyncSession, ctx: TenantContext, notice: Notice) -> NoticeOut:
+    """A written notice's answer, with the caller's own `read_at` (one more SELECT)."""
+    read_at = await db.scalar(
+        select(NoticeRead.read_at).where(
+            NoticeRead.notice_id == notice.id, NoticeRead.membership_id == ctx.membership_id
+        )
+    )
+    return NoticeOut.model_validate(notice).model_copy(update={"read_at": read_at})
+
+
+async def _tell_members(db: AsyncSession, ctx: TenantContext, notice: Notice) -> None:
+    """Notify every active member but the publisher, in one INSERT; an urgent notice also queues
+    each one's email, in one more (P6-01c D1, D2, D4). The statements don't grow with the number of
+    members."""
+    urgent = notice.priority is NoticePriority.URGENT
+    members = await active_member_user_ids(db, ctx.building_id)
+    await notify(
+        db,
+        building_id=ctx.building_id,
+        recipient_user_ids=[user_id for user_id in members if user_id != ctx.user_id],
+        kind="notice.published_urgent" if urgent else "notice.published",
+        # Fixed; the notice's title (at most 200 characters) fits the notification's body.
+        title="Urgent notice" if urgent else "New notice",
+        body=notice.title,
+        link=f"/notices/{notice.id}",
+        entity_type=NOTICE_ATTACHED_TYPE,
+        entity_id=notice.id,
+    )
 
 
 async def _locked(db: AsyncSession, ctx: TenantContext, notice_id: UUID) -> Notice:

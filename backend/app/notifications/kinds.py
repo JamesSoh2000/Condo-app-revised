@@ -31,5 +31,10 @@ KINDS: dict[str, NotificationKind] = {
         NotificationKind(
             "package.picked_up", "A package for the user or their unit was picked up", None
         ),
+        # Two kinds, not one with a flag: the kind fixes the email (P6-01c D2).
+        NotificationKind("notice.published", "The manager published a notice", None),
+        NotificationKind(
+            "notice.published_urgent", "The manager published an urgent notice", "notification"
+        ),
     )
 }

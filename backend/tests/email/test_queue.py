@@ -6,7 +6,8 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.email.service import queue_email
+from app.email.service import EmailRecipient, queue_email, queue_emails
+from app.email.templates import render_email
 from app.jobs.models import Job, JobStatus
 from tests.email.conftest import point_settings_at
 
@@ -164,3 +165,129 @@ async def test_rolled_back_transaction_leaves_no_job(db: AsyncSession) -> None:
         await savepoint.rollback()
 
     assert await job_count(db) == 0
+
+
+# `queue_emails` (P6-01c): one template and context to many recipients, in one INSERT
+
+
+async def test_queue_emails_enqueues_one_job_per_recipient_in_one_statement(
+    db: AsyncSession, statements: list[str]
+) -> None:
+    await db.flush()
+    statements.clear()
+
+    queued = await queue_emails(
+        db,
+        template="test",
+        context={"name": "Ann"},
+        recipients=[
+            EmailRecipient("b@example.test", "fr", "k:b"),
+            EmailRecipient("a@example.test"),
+        ],
+    )
+
+    assert queued == 2
+    assert [s.split(" (")[0] for s in statements] == ["INSERT INTO jobs"]
+    jobs = (await db.scalars(select(Job).order_by(Job.id))).all()
+    assert [(job.kind, job.dedupe_key, job.payload) for job in jobs] == [
+        (
+            "email.send",
+            "k:b",
+            {
+                "to": "b@example.test",
+                "template": "test",
+                "locale": "fr",
+                "context": {"name": "Ann"},
+            },
+        ),
+        (
+            "email.send",
+            None,
+            {
+                "to": "a@example.test",
+                "template": "test",
+                "locale": "en",
+                "context": {"name": "Ann"},
+            },
+        ),
+    ]
+
+
+async def test_queue_emails_counts_only_what_its_dedupe_keys_let_in(db: AsyncSession) -> None:
+    await queue_email(db, to="a@example.test", template="test", context={}, dedupe_key="k:a")
+
+    queued = await queue_emails(
+        db,
+        template="test",
+        context={},
+        recipients=[
+            EmailRecipient("a@example.test", dedupe_key="k:a"),
+            EmailRecipient("b@example.test"),
+        ],
+    )
+
+    assert queued == 1
+    assert await job_count(db) == 2
+
+
+async def test_queue_emails_to_nobody_sends_nothing(
+    db: AsyncSession, statements: list[str]
+) -> None:
+    await db.flush()
+    statements.clear()
+
+    assert await queue_emails(db, template="test", context={}, recipients=[]) == 0
+    assert statements == []
+
+
+@pytest.mark.parametrize(
+    "overrides", [b for _, b in BAD_ARGUMENTS], ids=[a for a, _ in BAD_ARGUMENTS]
+)
+async def test_queue_emails_rejects_bad_arguments_and_enqueues_nothing(
+    db: AsyncSession, overrides: dict[str, Any]
+) -> None:
+    # The same refusals as `queue_email`, for the second recipient: nothing of the first is queued.
+    second = EmailRecipient(
+        overrides.get("to", "dev@example.test"),
+        overrides.get("locale", "en"),
+        overrides.get("dedupe_key"),
+    )
+
+    with pytest.raises(ValueError):
+        await queue_emails(
+            db,
+            template=overrides.get("template", "test"),
+            context=overrides.get("context", {}),
+            recipients=[EmailRecipient("ok@example.test"), second],
+        )
+
+    assert await db.scalar(select(1)) == 1
+    assert await job_count(db) == 0
+
+
+async def test_queue_emails_renders_in_every_recipients_locale(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.email import service
+
+    rendered: list[str] = []
+    original = render_email
+
+    def spy(template: str, context: dict[str, Any], locale: str) -> Any:
+        rendered.append(locale)
+        return original(template, context, locale)
+
+    monkeypatch.setattr(service, "render_email", spy)
+
+    await queue_emails(
+        db,
+        template="test",
+        context={},
+        recipients=[
+            EmailRecipient(f"u{n}@example.test", locale)
+            for n, locale in enumerate(["fr", "en", "fr"])
+        ],
+    )
+
+    # Once per locale, not per recipient.
+    assert sorted(rendered) == ["en", "fr"]
