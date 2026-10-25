@@ -17,6 +17,9 @@ Property management writes and edits a draft notice (title, Markdown body, prior
 previews it exactly as members will see it, and publishes it from the editor. The legacy
 `NoticeAttachmentUpload` and the legacy Dashboard's Base44 notice form are gone.
 
+*After the second split (Frame notes): this ticket is the editor with title, body, preview, priority, save and
+publish; the expiry, the attachment and the legacy deletion are [P6-02f](./P6-02f-notice-expiry-and-attachment.md).*
+
 ## Why
 
 The stub's manager editor ("rich text limited to Markdown, attachment upload, preview, publish") and P3-06's
@@ -51,13 +54,14 @@ Consumes `notices_create` (201), `notices_update` (`NoticeUpdate`: only fields s
 1. **Given** the manager fills title, body, priority and no expiry, **when** they save, **then** one
    `notices_create` is sent and the draft appears in P6-02c's drafts list.
 2. **Given** a draft, **when** the manager changes only the body, **then** `notices_update` sends only `body`;
-   clearing the expiry or the attachment sends `null` for it.
+   clearing the expiry or the attachment sends `null` for it. *(The `null` half moved unchanged to
+   [P6-02f](./P6-02f-notice-expiry-and-attachment.md) criterion 2, with the fields; see Split.)*
 3. **Given** the preview, **then** it renders the body with `NoticeBody` (no raw HTML, P6-02a criterion 3) and
    matches what the feed shows for the same text.
-4. **Given** an expiry of 18:00 on a date in a building in `America/Toronto`, **then** the request carries that
+4. *(Moved unchanged to [P6-02f](./P6-02f-notice-expiry-and-attachment.md) criterion 4; see Split.)* **Given** an expiry of 18:00 on a date in a building in `America/Toronto`, **then** the request carries that
    instant in Toronto time (DST included), not the device's zone; a past expiry shows the API's 422
    `notice_expired` on the field.
-5. **Given** an attachment, **then** it uploads through `FileUpload` with `purpose="notice_attachment"` and the
+5. *(Moved unchanged to [P6-02f](./P6-02f-notice-expiry-and-attachment.md) criterion 5; see Split.)* **Given** an attachment, **then** it uploads through `FileUpload` with `purpose="notice_attachment"` and the
    request carries only its `file_id`; a wrong type or size is refused before upload with the purpose's message;
    saving before the upload is ready is prevented.
 6. **Given** a 201-character title, an 10 001-character body, or a body with a NUL character, **then** the form
@@ -68,8 +72,9 @@ Consumes `notices_create` (201), `notices_update` (`NoticeUpdate`: only fields s
 8. **Access.** Only property management sees the editor's entry points; others get `/403` on its route if it has
    one.
 9. **Given** 375 px in Chromium with a 255-character file name and the longest title, **then** the form,
-   preview and upload stay inside the viewport.
-10. The legacy upload and the Dashboard's notice form are deleted and the ratchet is lowered.
+   preview and upload stay inside the viewport. *(The file name and the upload moved to P6-02f criterion 9; here:
+   the longest title and an unbroken 10 000-character body.)*
+10. *(Moved unchanged to [P6-02f](./P6-02f-notice-expiry-and-attachment.md) criterion 10; see Split.)* The legacy upload and the Dashboard's notice form are deleted and the ratchet is lowered.
 
 ## Test plan
 
@@ -98,7 +103,7 @@ upload, 292 lines).
 2. **Editor placement**: a dialog over P6-02c's page or its own route.
 3. **Whether publish from the editor saves first** when there are unsaved changes, or refuses until saved.
 
-## Carried from P6-02b (decide while framing)
+## Carried from P6-02b (decide while framing; moved to P6-02f)
 
 - `frontend/src/features/files/purposes.ts::PURPOSE_RULES.notice_attachment` allows PDF only, but the server's
   registry (`backend/app/files/purposes.py::PURPOSES`) accepts PDF **or** images (JPEG, PNG, WebP, HEIC). Make the
@@ -127,13 +132,13 @@ upload, 292 lines).
   - **3.** The preview shows the title, the Urgent label and `NoticeBody` of the **stripped** body, the text the
     server stores: an indented first line would be a code block in the preview of the unstripped text but not in the
     feed.
-  - **4.** One `datetime-local` field, read and written in `building.timezone` (`useBuilding`), never the device's.
+  - *(Moved to P6-02f.)* **4.** One `datetime-local` field, read and written in `building.timezone` (`useBuilding`), never the device's.
     Toronto 2026-07-15 18:00 is `2026-07-15T22:00:00.000Z` (EDT), 2026-12-15 18:00 is `2026-12-15T23:00:00.000Z`
     (EST); a time the DST change skips (2026-03-08 02:30) moves forward by the gap (03:30 EDT, `07:30Z`), a time it
     repeats (2026-11-01 01:30) is the earlier one (EDT, `05:30Z`), Temporal's `compatible`. Proven for two zones
     (Toronto and Tokyo), so one of them isn't the test machine's. An existing draft's expiry shows in building time.
     A 422 `notice_expired`, or a validation error on `expires_at` (`datetime_range`), shows on the expiry field.
-  - **5.** The purpose's rule is the server's, per type: PDF up to 20 MB, JPEG, PNG, WebP or HEIC up to 10 MB (the
+  - *(Moved to P6-02f.)* **5.** The purpose's rule is the server's, per type: PDF up to 20 MB, JPEG, PNG, WebP or HEIC up to 10 MB (the
     P6-02b carry): an 11 MB PNG is refused, a 15 MB PDF accepted, before any request. Save is refused while the upload
     runs or after it failed. An existing attachment is shown with a Remove (sends `null`); a 422 `invalid_file` or
     404 `file_not_found` on save shows on the attachment field and asks for a new upload.
@@ -172,12 +177,20 @@ upload, 292 lines).
     without unsaved changes; otherwise a hint says to save first. Alternative: save then publish in one press: two
     requests whose partial outcomes (saved but not published, published from an older save) each need a message and
     tests. Basis: simplest, reversible, autonomous.
-  - **D4 P6-02b carry**: `purposes.ts` gets per-type limits (`limits: Record<type, bytes>`), as the server's
+  - *(Moved to P6-02f.)* **D4 P6-02b carry**: `purposes.ts` gets per-type limits (`limits: Record<type, bytes>`), as the server's
     `PurposeRule.limits`, and `notice_attachment` is PDF or image. Basis: the carry, ADR-0007 "Limits".
   - **D5 P6-02c carries** ("Load more" focus in five lists, the feed card's focus): moved to the new
     [P6-02e](./P6-02e-list-focus-fixes.md), see Split. Basis: size; they touch other features' lists.
-  - **D6 DST**: Temporal's `compatible` resolution (criterion 4), the browser's and Temporal's default for a wall time.
+  - *(Moved to P6-02f.)* **D6 DST**: Temporal's `compatible` resolution (criterion 4), the browser's and Temporal's default for a wall time.
     Basis: convention, autonomous.
 - Split: the estimate with the carries was ~490 non-test lines (editor ~280, the building-time conversion ~35, hooks
   ~35, page and row ~45, purposes ~20, Modal ~5, focus carries ~70). The two P6-02c focus carries go to
   [P6-02e](./P6-02e-list-focus-fixes.md); P6-02d keeps criteria 1–14 and the P6-02b carry, ~420 lines.
+- **Split again after implementing** (2026-10-25): the whole ticket measured **570 added non-test lines**
+  (`git diff --numstat`, tests and docs excluded; editor 378, building-time conversion 60, page 43, purposes 29,
+  hooks 27, row 16, client 10, Modal 4, legacy 3), well over ~400. The expiry field and the attachment (criteria 4, 5,
+  10, the `null` half of 2, the file-name half of 9, the P6-02b carry D4, decision D6) moved **unchanged** to
+  [P6-02f](./P6-02f-notice-expiry-and-attachment.md), with the legacy deletion, since the Dashboard form it replaces
+  has an attachment. Nothing was loosened: every moved criterion is in P6-02f word for word, with its sharpening from
+  above. The code for them was written and tested on this branch first (PR commits `383daa1`, `8cba241`, `620779a`,
+  `0fcc09c`), then reverted here; P6-02f can start from them. P6-02d keeps criteria 1–3, 6–9 and cases 11–14.
