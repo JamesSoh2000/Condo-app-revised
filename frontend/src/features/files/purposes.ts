@@ -39,7 +39,7 @@ const BY_EXTENSION: Record<string, string> = { heic: 'image/heic' };
 export function ruleFor(purpose: FilePurpose, accept?: readonly string[], maxBytes?: number): FileRule {
   const limits = Object.entries(PURPOSE_RULES[purpose].limits)
     .filter(([type]) => !accept || accept.includes(type))
-    .map(([type, limit]) => [type, Math.min(limit, maxBytes ?? limit)]);
+    .map(([type, limit]): [string, number] => [type, Math.min(limit, maxBytes ?? limit)]);
   return { limits: Object.fromEntries(limits) };
 }
 

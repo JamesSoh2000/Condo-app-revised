@@ -103,7 +103,7 @@ function noticesApi(server: Server): Record<string, Handler> {
       const body = await record(request);
       const now = server.notices.find((item) => item.id === id)!;
       if (now.status !== 'draft') return problem(409, 'notice_not_editable');
-      const changed = { ...now, ...body, ...('attachment_file_id' in body && { attachment_content_type: body.attachment_file_id ? 'application/pdf' : null }) } as Notice;
+      const changed = { ...now, ...body, ...('attachment_file_id' in body && { attachment_content_type: body.attachment_file_id ? 'application/pdf' : null }) };
       server.notices = server.notices.map((item) => (item.id === id ? changed : item));
       return json(changed);
     };
@@ -555,7 +555,7 @@ describe('the attachment (P6-02f criterion 5)', () => {
     type('Title', 'Rules');
     type('Body (Markdown)', 'Attached.');
     await upload();
-    const uploadBody = await fetchMock.mock.calls.map(([request]) => request as Request).find((request) => request.url.endsWith(FILES))!.clone().json();
+    const uploadBody: unknown = await fetchMock.mock.calls.map(([request]) => request).find((request) => request.url.endsWith(FILES))!.clone().json();
     expect(uploadBody).toMatchObject({ purpose: 'notice_attachment', content_type: 'application/pdf' });
     save();
     await saved();
