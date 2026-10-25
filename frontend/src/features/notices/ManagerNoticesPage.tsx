@@ -82,7 +82,7 @@ function ManagerNotices() {
       <h2 ref={headingRef} tabIndex={-1} className="text-lg font-semibold">
         {list.label}
       </h2>
-      <ManagerNoticeList key={status} {...list} time={time} now={now} onAction={act} />
+      <ManagerNoticeList key={status} {...list} time={time} now={now} onAction={act} onFocusLost={() => headingRef.current?.focus()} />
       {open && <NoticeActionDialog action={open.action} item={open.item} onClose={close} />}
     </section>
   );

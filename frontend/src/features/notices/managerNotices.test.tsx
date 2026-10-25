@@ -372,6 +372,60 @@ describe('focus after a dialog (criterion 6)', () => {
   });
 });
 
+describe('a refresh that removes the focused row (review round 1, Codex F1)', () => {
+  it('a 409’s late refresh after Cancel moves focus from the restored opener to the list’s heading', async () => {
+    let asked = 0;
+    let release: ((response: Response) => void) | undefined;
+    stubApi(
+      manager(
+        { notices: [] },
+        {
+          [`GET ${BASE}`]: () =>
+            ++asked === 1 ? json({ items: [notice(2, { status: 'draft', title: 'Draft A' })], next_cursor: null }) : new Promise<Response>((resolve) => (release = resolve)),
+          [`POST ${BASE}/${notice(2).id}/publish`]: () => problem(409, 'invalid_transition'),
+        },
+      ),
+    );
+    renderApp([PAGE]);
+    const opener = within(await row('Drafts', 'Draft A')).getByRole('button', { name: 'Publish: Draft A' });
+    fireEvent.click(opener);
+    await confirm('Publish');
+    await within(await dialog()).findByRole('alert');
+    await waitFor(() => expect(release).toBeTypeOf('function'));
+    fireEvent.click(within(await dialog()).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+
+    act(() => release!(json({ items: [], next_cursor: null })));
+    await screen.findByText('No drafts.');
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Drafts', level: 2 }));
+  });
+
+  it('a refetch with no dialog open that removes the row whose button has focus does the same', async () => {
+    const state = { notices: EVERY() };
+    stubApi(manager(state));
+    const app = renderApp([PAGE]);
+    within(await row('Drafts', 'Draft A')).getByRole('button', { name: 'Archive: Draft A' }).focus();
+
+    state.notices = state.notices.filter((item) => item.title !== 'Draft A');
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'notices'] }));
+    await waitFor(async () => expect(await titles('Drafts')).toEqual(['Draft B']));
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Drafts', level: 2 }));
+  });
+
+  it('a refetch that removes another row leaves focus where it is', async () => {
+    const state = { notices: EVERY() };
+    stubApi(manager(state));
+    const app = renderApp([PAGE]);
+    const kept = within(await row('Drafts', 'Draft B')).getByRole('button', { name: 'Archive: Draft B' });
+    kept.focus();
+
+    state.notices = state.notices.filter((item) => item.title !== 'Draft A');
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'notices'] }));
+    await waitFor(async () => expect(await titles('Drafts')).toEqual(['Draft B']));
+    expect(document.activeElement).toBe(kept);
+  });
+});
+
 describe('the legacy page (criterion 7)', () => {
   it('/ManagementNotices goes to /manage/notices with its query and hash', async () => {
     stubApi(manager({ notices: EVERY() }));

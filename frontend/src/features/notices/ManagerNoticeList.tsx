@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react';
+
 import { useBuildingId } from '@/app/BuildingProvider';
 import { rateLimitMessage } from '@/features/auth/formErrors';
 import { useManagedNotices, type ManagedStatus, type Notice, type NoticeAction } from '@/features/notices/api';
@@ -15,10 +17,12 @@ interface Props {
   /** The device's clock, for the "Expired" label (D4). */
   now: number;
   onAction: (action: NoticeAction, item: Notice, opener: HTMLButtonElement) => void;
+  /** Called when a refresh removes the row that holds focus, which a browser would drop to <body>. */
+  onFocusLost: () => void;
 }
 
 /** One of the manager's lists (P6-02c criterion 1): its notices in the API's order, 25 a page with Load more. */
-export function ManagerNoticeList({ status, label, empty, time, now, onAction }: Props) {
+export function ManagerNoticeList({ status, label, empty, time, now, onAction, onFocusLost }: Props) {
   const query = useManagedNotices(useBuildingId(), status);
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
 
@@ -41,7 +45,7 @@ export function ManagerNoticeList({ status, label, empty, time, now, onAction }:
     ) : (
       <ul aria-label={label} className="flex flex-col gap-3">
         {items.map((item) => (
-          <Row key={item.id} item={item} time={time} now={now} onAction={onAction} />
+          <Row key={item.id} item={item} time={time} now={now} onAction={onAction} onFocusLost={onFocusLost} />
         ))}
       </ul>
     ));
@@ -75,12 +79,23 @@ interface RowProps {
   time: Intl.DateTimeFormat | undefined;
   now: number;
   onAction: Props['onAction'];
+  onFocusLost: Props['onFocusLost'];
 }
 
-function Row({ item, time, now, onAction }: RowProps) {
+function Row({ item, time, now, onAction, onFocusLost }: RowProps) {
+  // Whether focus is inside the row. A removed node gets no blur, so a row that unmounts while this is true held focus:
+  // any refresh that drops it (a 409's late refetch after Cancel, a focus refetch) hands focus on (review round 1 F1).
+  const focused = useRef(false);
+  const lost = useRef(onFocusLost);
+  lost.current = onFocusLost;
+  useEffect(() => () => void (focused.current && lost.current()), []);
   const expired = item.status === 'published' && item.expires_at !== null && Date.parse(item.expires_at) <= now;
   return (
-    <li className="min-w-0 rounded border bg-white p-3 [overflow-wrap:anywhere]">
+    <li
+      onFocus={() => (focused.current = true)}
+      onBlur={() => (focused.current = false)}
+      className="min-w-0 rounded border bg-white p-3 [overflow-wrap:anywhere]"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="min-w-0 font-medium">{item.title}</h3>
         {item.priority === 'urgent' && <span className="rounded bg-red-100 px-1.5 text-xs font-semibold text-red-800">Urgent</span>}
