@@ -32,11 +32,12 @@ const fresh: Handler = () => {
   return json({ url: `https://s3.test/bucket/${KEY}?X-Amz-Signature=${urls}`, expires_at: '2099-01-01T00:00:00Z' });
 };
 
-/** A stand-in for the tab `window.open` returns. */
-function fakeTab() {
-  const tab = { opener: {} as unknown, location: { href: '' }, close: vi.fn() };
-  const open = vi.spyOn(window, 'open').mockImplementation(() => tab as unknown as Window);
-  return { tab, open };
+/** `window.location`, with `assign` recorded: S3 serves a PDF as an attachment, so assigning it downloads (D5). */
+function fakeLocation() {
+  const assign = vi.fn();
+  vi.stubGlobal('location', { ...window.location, assign });
+  const open = vi.spyOn(window, 'open');
+  return { assign, open };
 }
 
 async function attachmentButton() {
@@ -45,33 +46,33 @@ async function attachmentButton() {
 }
 
 describe('the attachment (criterion 6)', () => {
-  it('asks a fresh URL on each click and opens it in the tab opened at the click', async () => {
+  it('asks a fresh URL on each click and downloads it in place, opening no tab', async () => {
     urls = 0;
     const fetchMock = stubApi(noticeMember({ notices: [WITH_PDF] }, { [`GET ${DOWNLOAD}`]: fresh }));
-    const { tab, open } = fakeTab();
+    const { assign, open } = fakeLocation();
     renderApp([`/notices/${WITH_PDF.id}`]);
 
     const button = await attachmentButton();
     // Nothing is asked before the click.
     expect(calls(fetchMock)).not.toContain(`GET ${DOWNLOAD}`);
     fireEvent.click(button);
-    // Opened in the click itself, blank, so a popup blocker allows it.
-    expect(open).toHaveBeenCalledWith('', '_blank');
-    await waitFor(() => expect(tab.location.href).toContain('X-Amz-Signature=1'));
-    expect(tab.opener).toBeNull();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(expect.stringContaining('X-Amz-Signature=1')));
 
     fireEvent.click(await attachmentButton());
-    await waitFor(() => expect(tab.location.href).toContain('X-Amz-Signature=2'));
+    await waitFor(() => expect(assign).toHaveBeenLastCalledWith(expect.stringContaining('X-Amz-Signature=2')));
     expect(calls(fetchMock).filter((call) => call === `GET ${DOWNLOAD}`)).toHaveLength(2);
+    expect(open).not.toHaveBeenCalled();
+    // The notice stays open.
+    expect(screen.getByRole('dialog', { name: 'AGM minutes' })).toBeTruthy();
   });
 
   it('never puts the URL, an S3 key or an attachment_url in the page', async () => {
     urls = 0;
     stubApi(noticeMember({ notices: [WITH_PDF] }, { [`GET ${DOWNLOAD}`]: fresh }));
-    const { tab } = fakeTab();
+    const { assign } = fakeLocation();
     renderApp([`/notices/${WITH_PDF.id}`]);
     fireEvent.click(await attachmentButton());
-    await waitFor(() => expect(tab.location.href).not.toBe(''));
+    await waitFor(() => expect(assign).toHaveBeenCalled());
 
     const html = document.body.innerHTML;
     expect(html).not.toContain('s3.test');
@@ -83,41 +84,31 @@ describe('the attachment (criterion 6)', () => {
   it.each([
     ['a 404 file_not_found', () => problem(404, 'file_not_found'), 'The attachment is not available.'],
     ['a 500', () => problem(500, 'internal_error'), 'Could not open the attachment, try again.'],
-  ])('closes the tab and shows a message on %s', async (_, answer, message) => {
+    ['a 429', () => problem(429, 'rate_limited', { 'Retry-After': '30' }), undefined],
+  ])('shows a message on %s and goes nowhere', async (_, answer, message) => {
     stubApi(noticeMember({ notices: [WITH_PDF] }, { [`GET ${DOWNLOAD}`]: answer }));
-    const { tab } = fakeTab();
+    const { assign } = fakeLocation();
     renderApp([`/notices/${WITH_PDF.id}`]);
     fireEvent.click(await attachmentButton());
 
     const dialog = screen.getByRole('dialog', { name: 'AGM minutes' });
-    expect(await within(dialog).findByRole('alert')).toHaveProperty('textContent', message);
-    expect(tab.close).toHaveBeenCalled();
-    expect(tab.location.href).toBe('');
-    // A file 404 isn't the notice's: the notice stays.
-    expect(within(dialog).getByRole('button', { name: 'Download attachment (PDF)' })).toBeTruthy();
-  });
-
-  it('navigates this tab when the browser gives no new one', async () => {
-    urls = 0;
-    stubApi(noticeMember({ notices: [WITH_PDF] }, { [`GET ${DOWNLOAD}`]: fresh }));
-    vi.spyOn(window, 'open').mockImplementation(() => null);
-    const assign = vi.fn();
-    vi.stubGlobal('location', { ...window.location, assign });
-    renderApp([`/notices/${WITH_PDF.id}`]);
-    fireEvent.click(await attachmentButton());
-    await waitFor(() => expect(assign).toHaveBeenCalledWith(expect.stringContaining('X-Amz-Signature=1')));
+    const alert = await within(dialog).findByRole('alert');
+    if (message) expect(alert.textContent).toBe(message);
+    else expect(alert.textContent).toMatch(/try again/i);
+    expect(assign).not.toHaveBeenCalled();
+    // A file 404 isn't the notice's: the notice stays, and the button can be pressed again.
+    expect(within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Download attachment (PDF)' }).disabled).toBe(false);
   });
 
   it('sends one request for a double click', async () => {
     urls = 0;
     const fetchMock = stubApi(noticeMember({ notices: [WITH_PDF] }, { [`GET ${DOWNLOAD}`]: fresh }));
-    const { tab, open } = fakeTab();
+    const { assign } = fakeLocation();
     renderApp([`/notices/${WITH_PDF.id}`]);
     const button = await attachmentButton();
     fireEvent.click(button);
     fireEvent.click(button);
-    await waitFor(() => expect(tab.location.href).not.toBe(''));
-    expect(open).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
     expect(calls(fetchMock).filter((call) => call === `GET ${DOWNLOAD}`)).toHaveLength(1);
   });
 

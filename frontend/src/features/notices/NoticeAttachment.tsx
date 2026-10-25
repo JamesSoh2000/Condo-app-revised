@@ -8,8 +8,8 @@ import { rateLimitMessage } from '@/features/auth/formErrors';
 /**
  * A notice's PDF attachment (P6-02b criterion 6, D5). The download URL is asked at each click, never cached or put in
  * the page: it is short-lived and its path holds the S3 key, and `files_download_url` decides through the notice
- * whether the caller may have it (ADR-0007). The tab is opened blank in the click itself, as a popup blocker would
- * refuse one opened after the request; a failure closes it again.
+ * whether the caller may have it (ADR-0007). S3 serves a PDF with `Content-Disposition: attachment`
+ * (`app/files/service.py::content_disposition`), so going to the URL downloads it and the page stays.
  */
 export function NoticeAttachment({ fileId }: { fileId: string }) {
   const buildingId = useBuildingId();
@@ -23,18 +23,12 @@ export function NoticeAttachment({ fileId }: { fileId: string }) {
     opening.current = true;
     setBusy(true);
     setFailure(null);
-    const tab = window.open('', '_blank');
     try {
       const { url } = await api.get('/api/buildings/{building_id}/files/{file_id}/download-url', {
         params: { path: { building_id: buildingId, file_id: fileId } },
       });
-      if (tab) {
-        // The file's page gets no handle on this one.
-        tab.opener = null;
-        tab.location.href = url;
-      } else window.location.assign(url);
+      window.location.assign(url);
     } catch (error) {
-      tab?.close();
       const notFound = error instanceof ApiError && error.status === 404;
       setFailure(notFound ? 'The attachment is not available.' : (rateLimitMessage(error) ?? 'Could not open the attachment, try again.'));
     } finally {
