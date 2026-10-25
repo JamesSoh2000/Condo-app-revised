@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-02a, P6-01b |
 | Replaces old | M6-T04 (manager list part) |
-| Status | todo |
+| Status | in progress |
 
 Split from the P6-02 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-02a](./P6-02a-notices-feed-and-detail.md), before [P6-02d](./P6-02d-notice-editor.md).
@@ -60,6 +60,38 @@ management only; 403 for other roles, 409 `invalid_transition`, 422 `notice_expi
    viewport, and focus returns to the row's action after a dialog closes.
 7. The legacy page is deleted, `/ManagementNotices` reaches the new page, and the ratchet is lowered.
 
+Sharpened while framing (the criteria above keep their words; these say how they are tested):
+
+- **1.** The page is `/manage/notices` (D2) with three lists, "Drafts", "Published" and "Archived", one shown at a
+  time behind three toggle buttons (`aria-pressed`), Drafts first. Each asks `notices_list?status=<status>` (25 a
+  page, "Load more" while `next_cursor` is set) and shows the API's order, newest written first (P6-02a D5). A
+  published notice whose `expires_at` is at or before the device's clock (rechecked each minute) has an "Expired"
+  label, as text; the server's clock still decides publishing (the 422 below).
+- **2, 3.** A draft row has "Publish" and "Archive"; a published row (expired or not) has "Archive"; an archived row has
+  none. One request per confirm, also for two clicks in the same tick. Whatever the answer, every notices query of the
+  building (the three lists, the feed, the summary badge, the urgent banner, a notice) is cancelled, then asked again.
+  On 409 `invalid_transition` the dialog says the notice was already published or archived elsewhere; on 422
+  `notice_expired` that its expiry has passed and it must be edited first; any other failure (500, network, 429)
+  says so with the rate-limit wording where it applies. In each case the dialog stays open, its buttons enabled
+  again, and the alert takes focus.
+- **6.** Focus after a dialog closes: Cancel and Escape (not while sending) return it to the row's button that opened
+  the dialog; after a success the row leaves its list, so focus goes to the page's outcome message ("“<title>” was
+  published." / "… archived."), as `WaitingList` does. If a refresh took the opener away while the dialog was open,
+  focus goes to the list's heading.
+
+Added while framing:
+
+8. **A case the ticket missed: switching building.** With the page open in A, choosing building B shows only B's
+   notices: nothing of A's rows shows while B's load, and an open dialog closes (the page is keyed by building).
+9. **Carried from P6-02b:** in the feed (`NoticeList.tsx`), after "Mark as read" succeeds and its button is gone,
+   focus is on the card (a container that stays mounted), not `<body>`; a failed read leaves focus on the button.
+10. **Carried from P6-02b (step 8 promotion):** `CLAUDE.md` "Lessons learned" gains the lesson that a control which
+    removes or disables itself drops focus to `<body>`: move focus to something that stays mounted first, and assert
+    `document.activeElement` after the action in the test.
+11. **Tenant row 3, UI side:** the page asks only the selected building's `/api/buildings/{id}/notices…` URLs, and a
+    `building_not_found` from any of them marks the building denied as every building query does
+    (`app/buildingDenial.ts`; the mutation key starts with `['b', buildingId]`).
+
 ## Test plan
 
 - `frontend/src/features/notices/managerNotices.test.tsx`: criteria 1–5, 7
@@ -95,8 +127,39 @@ ArchiveDialog.tsx,api.ts}`, `frontend/src/app/{pages.ts,routes.tsx,routeScope.ts
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+- Criteria added or sharpened: 1, 2, 3 and 6 sharpened (above); 8–11 added. Criterion 6's "focus returns to the
+  row's action" can't hold after a success, because the row leaves its list; it is sharpened to the outcome message
+  then, and the opener otherwise (as `WaitingList`, P5-03d). That doesn't loosen it: the cases where the opener still
+  exists keep it.
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
   also the alternatives considered and why they lost):
-- Split:
+  - **D1 Who opens the page: property management only** (open decision 1). Basis: the API. Only property
+    management may publish or archive (P6-01b `_AUTHOR`), and `visible_notices` gives security and council only live
+    notices, the feed's list. A read-only page for them would show the feed again with no drafts, so their notices
+    oversight (PRODUCT_SCOPE: council "read-only oversight: notices") is the `/notices` feed. Alternative: keep
+    `STAFF` with the actions hidden; lost because it duplicates `/notices` and invites a 403 on every action. Security
+    and council lose a nav item ("Daily notices") that led to a placeholder; nothing worked there before.
+  - **D2 Path `/manage/notices`, label "Manage notices"** (open decision 2). Basis: convention, as `Residents` took
+    `/manage/residents` (P4-08b); `/ManagementNotices` redirects there (`LegacyRedirect`, query and hash kept).
+    "Manage notices" tells it apart from the feed's "Notices" in the same nav.
+  - **D3 One list at a time behind toggle buttons**, not three stacked lists (as `MyPackagesPage`) or a tablist.
+    Basis: simplest reversible choice. Three stacked lists ask three paged queries on every mount; a WAI-ARIA
+    tablist needs arrow-key handling the codebase doesn't have yet. Each list keeps its own query key, so switching
+    back shows its cache and asks again (stale at once).
+  - **D4 Expired by the device's clock.** No `expired` status exists; the API's `live()` uses the database clock but
+    the list doesn't return a flag. Alternative: a second `live=true&status=published` query and mark what it lacks;
+    lost: twice the requests and paging two lists against each other. Limitation: a device clock that is off shows
+    the label early or late; publishing still checks the server's clock (422).
+  - **D5 Rows show the body inline** through `NoticeBody`, drafts included, with no link to `/notices/<id>`: the
+    feed's notice view (P6-02b) closes back to the feed, not here. The attachment shows in P6-02d's editor.
+  - **D6 One dialog component for both actions** (`NoticeActionDialog.tsx`) instead of `PublishDialog` and
+    `ArchiveDialog`: the two differ only in wording and endpoint. Unlike packages' `usePackageSubmit`, a 409 keeps the
+    dialog open (criterion 2 says so), so it has its own small submit hook rather than a flag on the packages one.
+  - **D7 Existing tests that used `/ManagementNotices`** as "a legacy staff page" (`shell.test.tsx`,
+    `building.test.tsx`, `nav.test.tsx`) move to `/ManagementMaintenance`, which has the same `STAFF` roles and a
+    feature. Same assertions on another page that still has the old shape; not a loosened test.
+- Split: none. Estimate ~370 non-test lines (page and list ~180, measured against `WaitingList.tsx` at 206; dialog
+  and submit hook ~100, against `PackageDialog.tsx` at 120; hooks ~45; routes, pages, feed focus, lesson ~45).
+- Review (this run, James's in-session instruction): the one reviewer is Codex `gpt-6.1-sol` at high effort through the
+  `codex-review` skill, in place of the Tier 2 fresh Claude reviewer; no Claude reviewer is spawned.
