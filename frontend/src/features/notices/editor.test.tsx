@@ -466,8 +466,12 @@ describe('unsaved work (case 12)', () => {
     await settle();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.getByRole('dialog')).toBeTruthy();
+    // Case 11 too (review round 2 note): no Publish, and Save disabled, while the PATCH is out.
+    expect(inEditor().queryByRole('button', { name: 'Publish' })).toBeNull();
+    expect(inEditor().getByRole<HTMLButtonElement>('button', { name: 'Save draft' }).disabled).toBe(true);
     answer(json(draft(1, { title: 'Pool', body: 'Open.' })));
     await saved();
+    expect(inEditor().getByRole('button', { name: 'Publish' })).toBeTruthy();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
