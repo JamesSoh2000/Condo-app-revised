@@ -1,9 +1,12 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 
 import { ApiError } from '@/api/errors';
 import { useBuildingId } from '@/app/BuildingProvider';
 import { codePoints, rateLimitMessage, serverFieldErrors } from '@/features/auth/formErrors';
+import { FileUpload } from '@/features/files/FileUpload';
+import type { UploadStatus } from '@/features/files/useUpload';
 import { useSaveNotice, type Notice, type NoticeCreate, type NoticeUpdate } from '@/features/notices/api';
+import { toInstant, toLocalInput } from '@/features/notices/expiry';
 import { NoticeBody } from '@/features/notices/NoticeBody';
 import { Modal } from '@/features/residents/Modal';
 
@@ -27,22 +30,40 @@ const M = {
   bodyLong: 'Use at most 10 000 characters.',
   bodyBad: 'Use visible characters, tabs and line breaks only.',
   priority: 'Choose Normal or Urgent.',
+  expired: 'This time has passed. Choose a later one.',
+  range: 'Choose a time before the year 9999.',
+  invalidTime: 'Enter a date and time.',
+  file: 'This file can’t be attached. Upload it again.',
+  uploading: 'Wait for the attachment to finish uploading.',
+  uploadFailed: 'The attachment didn’t upload. Retry it or remove it.',
   moved: 'This notice is no longer a draft: it was published or archived elsewhere. Your text is kept here to copy.',
 };
-// The expiry and the attachment come in P6-02f; a draft's own are kept, since an update sends only what changed.
-type Field = 'title' | 'body' | 'priority';
-const FIELDS: readonly Field[] = ['title', 'body', 'priority'];
+// Each has an element with id `${id}-<field>` and a `fieldError` (P6-02f criterion 11's test).
+type Field = 'title' | 'body' | 'priority' | 'expires_at' | 'attachment_file_id';
+export const FIELDS: readonly Field[] = ['title', 'body', 'priority', 'expires_at', 'attachment_file_id'];
 // The API's own 422s (criterion 6); a type not listed can't be placed and shows as a form message.
-const SERVER_MESSAGES: Partial<Record<Field, Record<string, string>>> = {
+export const SERVER_MESSAGES: Partial<Record<Field, Record<string, string>>> = {
   title: { missing: M.title, string_too_short: M.title, string_too_long: M.titleLong, control_characters: M.titleBad },
   body: { missing: M.body, string_too_short: M.body, string_too_long: M.bodyLong, control_characters: M.bodyBad },
   priority: { missing: 'This field is required.', enum: M.priority },
+  expires_at: { datetime_range: M.range },
+  attachment_file_id: { uuid_parsing: M.file },
 };
+const FILE_REFUSED = ['invalid_file', 'file_not_found'];
 const INPUT = 'w-full min-w-0 rounded border px-3 py-2';
+
+interface Upload {
+  status: UploadStatus;
+  // Only while `status` is `ready`.
+  fileId: string | null;
+}
+const NO_UPLOAD: Upload = { status: 'idle', fileId: null };
 
 interface Props {
   /** The draft to edit as its row showed it, or null for a new one. */
   item: Notice | null;
+  /** The building's timezone: the expiry is a wall time there (P6-02f criterion 4). */
+  timeZone: string;
   onSaved: (notice: Notice, created: boolean) => void;
   /** Publish the saved draft (D3): the page closes the editor and asks P6-02c's confirm dialog. */
   onPublish: (notice: Notice) => void;
@@ -50,16 +71,22 @@ interface Props {
 }
 
 /**
- * Write a new draft or edit one (P6-02d): title, Markdown body with a preview through the feed's `NoticeBody`, and
- * priority. A save sends only what differs from the last saved version
+ * Write a new draft or edit one (P6-02d): title, Markdown body with a preview through the feed's `NoticeBody`,
+ * priority, an expiry in building time and one attachment (P6-02f). A save sends only what differs from the last saved version
  * (criterion 2); after it the editor stays on the saved draft, which it can then publish (D3).
  */
-export function NoticeEditor({ item, onSaved, onPublish, onClose }: Props) {
+export function NoticeEditor({ item, timeZone, onSaved, onPublish, onClose }: Props) {
   const save = useSaveNotice(useBuildingId());
   const [saved, setSaved] = useState(item);
   const [title, setTitle] = useState(item?.title ?? '');
   const [body, setBody] = useState(item?.body ?? '');
   const [priority, setPriority] = useState<Notice['priority']>(item?.priority ?? 'normal');
+  const [expiry, setExpiry] = useState(item?.expires_at ? toLocalInput(item.expires_at, timeZone) : '');
+  // The saved attachment while kept; a finished upload replaces it.
+  const [kept, setKept] = useState(item?.attachment_file_id ?? null);
+  const [upload, setUpload] = useState<Upload>(NO_UPLOAD);
+  // A new `FileUpload` (no file, no message) after a save, a Remove or a refused file.
+  const [uploadInput, setUploadInput] = useState(0);
   const [preview, setPreview] = useState(false);
   const [tried, setTried] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
@@ -88,20 +115,33 @@ export function NoticeEditor({ item, onSaved, onPublish, onClose }: Props) {
     element?.focus();
   }, [focusTo, id]);
 
+  const attachment = upload.status === 'ready' ? upload.fileId : kept;
+  const savedExpiry = saved?.expires_at ? toLocalInput(saved.expires_at, timeZone) : '';
   const values = { title: pyStrip(title), body: pyStrip(body) };
   // What differs from the last save; for a new notice, everything it has.
   const changes: NoticeUpdate = {};
   if (values.title !== saved?.title) changes.title = values.title;
   if (values.body !== saved?.body) changes.body = values.body;
   if (priority !== (saved?.priority ?? 'normal') || !saved) changes.priority = priority;
-  const dirty = saved ? Object.keys(changes).length > 0 : Boolean(title || body || priority !== 'normal');
+  if (expiry !== savedExpiry) changes.expires_at = expiry ? toInstant(expiry, timeZone) : null;
+  if (attachment !== (saved?.attachment_file_id ?? null)) changes.attachment_file_id = attachment;
+  const dirty = saved
+    ? Object.keys(changes).length > 0
+    : Boolean(title || body || priority !== 'normal' || expiry || attachment || upload.status !== 'idle');
 
   const problems: Partial<Record<Field, string>> = {
     title: TITLE_BAD.test(title) ? M.titleBad : !values.title ? M.title : codePoints(values.title) > TITLE_MAX ? M.titleLong : undefined,
     body: BODY_BAD.test(body) ? M.bodyBad : !values.body ? M.body : codePoints(values.body) > BODY_MAX ? M.bodyLong : undefined,
+    expires_at: expiry && toInstant(expiry, timeZone) === null ? M.invalidTime : undefined,
+    attachment_file_id: upload.status === 'uploading' ? M.uploading : upload.status === 'error' ? M.uploadFailed : undefined,
   };
   const shown = (field: Field) => errors[field] ?? (tried ? problems[field] : undefined);
 
+  const onUploadStatus = useCallback((next: UploadStatus) => setUpload((current) => ({ status: next, fileId: next === 'ready' ? current.fileId : null })), []);
+  const resetUpload = () => {
+    setUpload(NO_UPLOAD);
+    setUploadInput((n) => n + 1);
+  };
   const edit = <T,>(set: (value: T) => void, field?: Field) => (value: T) => {
     set(value);
     setStatus('');
@@ -113,7 +153,11 @@ export function NoticeEditor({ item, onSaved, onPublish, onClose }: Props) {
     const placed = serverFieldErrors(error, FIELDS, SERVER_MESSAGES);
     let next: Partial<Record<Field, string>> = {};
     if (placed) next = Object.fromEntries(placed.map(({ field, message }) => [field, message]));
-    else if (code === 'notice_not_editable') setMoved(true);
+    else if (code === 'notice_expired') next = { expires_at: M.expired };
+    else if (code !== null && FILE_REFUSED.includes(code)) {
+      resetUpload();
+      next = { attachment_file_id: M.file };
+    } else if (code === 'notice_not_editable') setMoved(true);
     const first = FIELDS.find((field) => next[field]);
     setErrors(next);
     // The body's textarea isn't there in Preview (review round 1 F1).
@@ -157,6 +201,9 @@ export function NoticeEditor({ item, onSaved, onPublish, onClose }: Props) {
       setTitle(result.title);
       setBody(result.body);
       setPriority(result.priority);
+      setExpiry(result.expires_at ? toLocalInput(result.expires_at, timeZone) : '');
+      setKept(result.attachment_file_id);
+      resetUpload();
       setTried(false);
       setStatus('Draft saved.');
       setFocusTo({ target: 'status' });
@@ -257,6 +304,62 @@ export function NoticeEditor({ item, onSaved, onPublish, onClose }: Props) {
           </div>
           {fieldError('priority')}
         </fieldset>
+        <div className="flex flex-col gap-1">
+          <label htmlFor={`${id}-expires_at`} className="text-sm font-medium">
+            Expires (building time, optional)
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <input
+              id={`${id}-expires_at`}
+              type="datetime-local"
+              value={expiry}
+              readOnly={busy}
+              onChange={(event) => edit(setExpiry, 'expires_at')(event.target.value)}
+              aria-invalid={invalid('expires_at')}
+              aria-describedby={describedBy('expires_at')}
+              className={`${INPUT} sm:w-64`}
+            />
+            {expiry && (
+              <button type="button" disabled={busy} onClick={() => edit(setExpiry, 'expires_at')('')} className="min-h-11 rounded border px-4 text-sm disabled:opacity-50">
+                Remove expiry
+              </button>
+            )}
+          </div>
+          {fieldError('expires_at')}
+        </div>
+        {/* Focusable, so a refused file on save can move focus here. */}
+        <div id={`${id}-attachment_file_id`} tabIndex={-1} role="group" aria-labelledby={`${id}-attachment-label`} aria-describedby={describedBy('attachment_file_id')} className="flex min-w-0 flex-col gap-1">
+          <span id={`${id}-attachment-label`} className="text-sm font-medium">
+            Attachment (optional)
+          </span>
+          {kept !== null && upload.status === 'idle' && (
+            <p className="text-sm">{saved?.attachment_content_type === 'application/pdf' ? 'A PDF is attached.' : 'An image is attached.'}</p>
+          )}
+          {/* `purpose` stays constant: `useUpload` keeps a failed form if it changes before Retry (P3-06 R3). */}
+          <FileUpload
+            key={uploadInput}
+            purpose="notice_attachment"
+            label="Choose file"
+            onUploaded={(fileId) => edit(setUpload, 'attachment_file_id')({ status: 'ready', fileId })}
+            onStatusChange={onUploadStatus}
+            disabled={busy}
+          />
+          {(attachment !== null || upload.status === 'error') && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setKept(null);
+                resetUpload();
+                setErrors((current) => ({ ...current, attachment_file_id: undefined }));
+              }}
+              className="min-h-11 self-start rounded border px-4 text-sm disabled:opacity-50"
+            >
+              Remove attachment
+            </button>
+          )}
+          {fieldError('attachment_file_id')}
+        </div>
         {failure && (
           <div ref={failureRef} role="alert" tabIndex={-1} className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
             {failure}

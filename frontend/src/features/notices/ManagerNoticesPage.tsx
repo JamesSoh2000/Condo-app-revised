@@ -37,7 +37,8 @@ export function ManagerNoticesPage() {
 
 function ManagerNotices() {
   // Under the page's guards, which render it only once the building has loaded.
-  const time = buildingTime(useBuilding({ passive: true }).data);
+  const building = useBuilding({ passive: true }).data;
+  const time = buildingTime(building);
   const now = useNow();
   const [status, setStatus] = useState<ManagedStatus>('draft');
   const [open, setOpen] = useState<Open | null>(null);
@@ -110,9 +111,10 @@ function ManagerNotices() {
       </h2>
       <ManagerNoticeList key={status} {...list} time={time} now={now} onAction={act} onEdit={edit} onFocusLost={() => headingRef.current?.focus()} />
       {open && <NoticeActionDialog action={open.action} item={open.item} onClose={close} />}
-      {editing && (
+      {editing && building && (
         <NoticeEditor
           item={editing.item}
+          timeZone={building.timezone}
           onSaved={(_, created) => created && setStatus('draft')}
           // P6-02c's confirm dialog takes over; focus goes back to the editor's opener after it (D3).
           onPublish={(item) => {
