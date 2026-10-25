@@ -1,6 +1,6 @@
 /**
  * The typed API client (ADR-0011). Types come from `schema.d.ts`, generated from the backend's OpenAPI by
- * `make gen-api`. Use `api.get/post` (they throw `ApiError`); the raw `client` returns
+ * `make gen-api`. Use `api.get/post/patch` (they throw `ApiError`); the raw `client` returns
  * `{ data, error, response }`, and `unwrap()` turns that into data or an `ApiError`.
  */
 import createClient, { type FetchResponse, type MaybeOptionalInit, type Middleware } from 'openapi-fetch';
@@ -82,12 +82,12 @@ export function unwrap<T>(result: Result<T>): T {
   return result.data as T;
 }
 
-type PathsWith<M extends 'get' | 'post'> = {
+type PathsWith<M extends 'get' | 'post' | 'patch'> = {
   [P in keyof paths]: paths[P] extends Record<M, object> ? P : never;
 }[keyof paths];
 // The init argument is optional when the operation has no required parameters or body (as in openapi-fetch).
 type InitArg<I> = undefined extends I ? [init?: I] : [init: I];
-type Data<P extends keyof paths, M extends 'get' | 'post', I> = NonNullable<
+type Data<P extends keyof paths, M extends 'get' | 'post' | 'patch', I> = NonNullable<
   FetchResponse<paths[P][M] & object, I, `${string}/${string}`>['data']
 >;
 
@@ -114,6 +114,13 @@ export function createApiClient({ baseUrl = '' }: { baseUrl?: string } = {}) {
       ...init: InitArg<I>
     ): Promise<Data<P, 'post', I>> {
       const call = client.POST as (url: P, init?: I) => Promise<Result<Data<P, 'post', I>>>;
+      return unwrap(await call(url, ...init));
+    },
+    async patch<P extends PathsWith<'patch'>, I extends MaybeOptionalInit<paths[P], 'patch'>>(
+      url: P,
+      ...init: InitArg<I>
+    ): Promise<Data<P, 'patch', I>> {
+      const call = client.PATCH as (url: P, init?: I) => Promise<Result<Data<P, 'patch', I>>>;
       return unwrap(await call(url, ...init));
     },
   };

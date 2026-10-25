@@ -17,12 +17,14 @@ interface Props {
   /** The device's clock, for the "Expired" label (D4). */
   now: number;
   onAction: (action: NoticeAction, item: Notice, opener: HTMLButtonElement) => void;
+  /** Open the editor on a draft (P6-02d). */
+  onEdit: (item: Notice, opener: HTMLButtonElement) => void;
   /** Called when a refresh removes the row that holds focus, which a browser would drop to <body>. */
   onFocusLost: () => void;
 }
 
 /** One of the manager's lists (P6-02c criterion 1): its notices in the API's order, 25 a page with Load more. */
-export function ManagerNoticeList({ status, label, empty, time, now, onAction, onFocusLost }: Props) {
+export function ManagerNoticeList({ status, label, empty, time, now, onAction, onEdit, onFocusLost }: Props) {
   const query = useManagedNotices(useBuildingId(), status);
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
 
@@ -45,7 +47,7 @@ export function ManagerNoticeList({ status, label, empty, time, now, onAction, o
     ) : (
       <ul aria-label={label} className="flex flex-col gap-3">
         {items.map((item) => (
-          <Row key={item.id} item={item} time={time} now={now} onAction={onAction} onFocusLost={onFocusLost} />
+          <Row key={item.id} item={item} time={time} now={now} onAction={onAction} onEdit={onEdit} onFocusLost={onFocusLost} />
         ))}
       </ul>
     ));
@@ -79,10 +81,11 @@ interface RowProps {
   time: Intl.DateTimeFormat | undefined;
   now: number;
   onAction: Props['onAction'];
+  onEdit: Props['onEdit'];
   onFocusLost: Props['onFocusLost'];
 }
 
-function Row({ item, time, now, onAction, onFocusLost }: RowProps) {
+function Row({ item, time, now, onAction, onEdit, onFocusLost }: RowProps) {
   // Whether focus is inside the row. A removed node gets no blur, so a row that unmounts while this is true held focus:
   // any refresh that drops it (a 409's late refetch after Cancel, a focus refetch) hands focus on (review round 1 F1).
   const focused = useRef(false);
@@ -105,6 +108,16 @@ function Row({ item, time, now, onAction, onFocusLost }: RowProps) {
       <NoticeBody markdown={item.body} />
       {ACTIONS[item.status].length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
+          {item.status === 'draft' && (
+            <button
+              type="button"
+              aria-label={`Edit: ${item.title}`}
+              onClick={(event) => onEdit(item, event.currentTarget)}
+              className="min-h-11 rounded border px-4 text-sm font-medium"
+            >
+              Edit
+            </button>
+          )}
           {ACTIONS[item.status].map((action) => {
             const label = action === 'publish' ? 'Publish' : 'Archive';
             return (
