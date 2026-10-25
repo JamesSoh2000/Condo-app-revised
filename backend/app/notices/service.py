@@ -24,7 +24,7 @@ from app.audit import actions
 from app.audit.service import record_audit
 from app.core.errors import Conflict, NotFound, UnprocessableContent
 from app.core.pagination import CursorParams, Page, paginate
-from app.files.models import FilePurpose
+from app.files.models import File, FilePurpose
 from app.files.service import claim_file
 from app.notices.enums import NoticePriority, NoticeStatus
 from app.notices.models import NOTICE_ATTACHED_TYPE, Notice, NoticeRead
@@ -85,7 +85,8 @@ async def create_notice(db: AsyncSession, ctx: TenantContext, data: NoticeCreate
         notice_id,
         {"attachment_file_id": data.attachment_file_id},
     )
-    out = NoticeOut.model_validate(notice)
+    # As every write's answer: with the attachment's type (P6-02b).
+    out = await _out(db, ctx, notice)
     await db.commit()
     return out
 
@@ -214,20 +215,25 @@ async def list_notices(
     *,
     status: NoticeStatus | None,
     live_only: bool = False,
+    priority: NoticePriority | None = None,
+    unread_only: bool = False,
 ) -> Page[NoticeOut]:
-    stmt = visible_notices(ctx).options(with_expression(Notice.read_at, _read_at(ctx)))
+    stmt = visible_notices(ctx).options(*_expressions(ctx))
     if status is not None:
         stmt = stmt.where(Notice.status == status)
     if live_only:
         stmt = stmt.where(live())
+    if priority is not None:
+        stmt = stmt.where(Notice.priority == priority)
+    if unread_only:
+        # The caller's own reads, as the summary counts them.
+        stmt = stmt.where(_read_at(ctx).is_(None))
     return await paginate(db, stmt, Notice.id, params, NoticeOut.model_validate)
 
 
 async def get_notice(db: AsyncSession, ctx: TenantContext, notice_id: UUID) -> NoticeOut:
     notice = await db.scalar(
-        visible_notices(ctx)
-        .where(Notice.id == notice_id)
-        .options(with_expression(Notice.read_at, _read_at(ctx)))
+        visible_notices(ctx).where(Notice.id == notice_id).options(*_expressions(ctx))
     )
     if notice is None:
         # The same answer for a hidden notice, another building's and none (ADR-0004).
@@ -273,14 +279,45 @@ def _read_at(ctx: TenantContext) -> ScalarSelect[Any]:
     )
 
 
-async def _out(db: AsyncSession, ctx: TenantContext, notice: Notice) -> NoticeOut:
-    """A written notice's answer, with the caller's own `read_at` (one more SELECT)."""
-    read_at = await db.scalar(
-        select(NoticeRead.read_at).where(
-            NoticeRead.notice_id == notice.id, NoticeRead.membership_id == ctx.membership_id
-        )
+def _attachment_content_type() -> ScalarSelect[Any]:
+    """The content type of the enclosing query's notice's attachment, in its building; null without
+    one (P6-02b)."""
+    return (
+        select(File.content_type)
+        .where(File.building_id == Notice.building_id, File.id == Notice.attachment_file_id)
+        .scalar_subquery()
     )
-    return NoticeOut.model_validate(notice).model_copy(update={"read_at": read_at})
+
+
+def _expressions(ctx: TenantContext) -> tuple[Any, ...]:
+    """The answer's per-query columns: the caller's `read_at` and the attachment's type."""
+    return (
+        with_expression(Notice.read_at, _read_at(ctx)),
+        with_expression(Notice.attachment_content_type, _attachment_content_type()),
+    )
+
+
+async def _out(db: AsyncSession, ctx: TenantContext, notice: Notice) -> NoticeOut:
+    """A written notice's answer, with the caller's own `read_at` and the attachment's type (one
+    more SELECT)."""
+    read_at, content_type = (
+        await db.execute(
+            select(
+                select(NoticeRead.read_at)
+                .where(
+                    NoticeRead.notice_id == notice.id,
+                    NoticeRead.membership_id == ctx.membership_id,
+                )
+                .scalar_subquery(),
+                select(File.content_type)
+                .where(File.building_id == notice.building_id, File.id == notice.attachment_file_id)
+                .scalar_subquery(),
+            )
+        )
+    ).one()
+    return NoticeOut.model_validate(notice).model_copy(
+        update={"read_at": read_at, "attachment_content_type": content_type}
+    )
 
 
 async def _tell_members(db: AsyncSession, ctx: TenantContext, notice: Notice) -> None:

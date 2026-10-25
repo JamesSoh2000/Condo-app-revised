@@ -107,6 +107,8 @@ class NoticeOut(APIModel):
     expires_at: datetime | None
     # Downloaded through `GET /files/{id}/download-url`, by whoever may see the notice.
     attachment_file_id: UUID | None
+    # Its type, so a client can show an image inline and download a PDF (P6-02b); null without one.
+    attachment_content_type: str | None
     author_membership_id: UUID
     # Null until published; kept when a published notice is archived.
     published_at: datetime | None

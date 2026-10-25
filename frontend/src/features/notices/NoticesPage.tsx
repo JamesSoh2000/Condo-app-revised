@@ -1,15 +1,18 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { useBuilding, useBuildingId } from '@/app/BuildingProvider';
+import { pagePath } from '@/app/pages';
 import { noticeFeedKey, useNoticeSummary } from '@/features/notices/api';
+import { NoticeDetailDialog } from '@/features/notices/NoticeDetailDialog';
 import { NoticeList } from '@/features/notices/NoticeList';
 import { buildingTime } from '@/features/packages/time';
 
 /**
- * `/notices` (P6-02a), for every member: the building's live notices. `/notices/<id>`, the notifications' link, shows
- * the same feed until P6-02b gives a notice its own view. Keyed by building, so nothing of one building's feed shows
- * in another (criterion 10).
+ * `/notices` (P6-02a), for every member: the building's live notices. `/notices/<id>`, the notifications' and the
+ * banner's link, shows one notice in a dialog over the feed (P6-02b). Keyed by building, so nothing of one building's
+ * feed shows in another (criterion 10).
  */
 export function NoticesPage() {
   const buildingId = useBuildingId();
@@ -17,6 +20,9 @@ export function NoticesPage() {
 }
 
 function Notices({ buildingId }: { buildingId: string }) {
+  const { noticeId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   // Under the page's guards, which render it only once the building has loaded.
   const time = buildingTime(useBuilding({ passive: true }).data);
@@ -42,10 +48,26 @@ function Notices({ buildingId }: { buildingId: string }) {
     seen.current = unread;
   }, [unread, ready, buildingId, queryClient]);
 
+  // As `MyPackagesPage`: focus goes back to the heading when the dialog closes, and Close goes back to the feed it
+  // came from, or, for a link from elsewhere (the bell, the banner, a bookmark), to the feed in its place.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const wasOpen = useRef(noticeId !== undefined);
+  useEffect(() => {
+    if (wasOpen.current && noticeId === undefined) headingRef.current?.focus();
+    wasOpen.current = noticeId !== undefined;
+  }, [noticeId]);
+  const close = () => {
+    if ((location.state as { fromList?: boolean } | null)?.fromList) navigate(-1);
+    else navigate(pagePath('Notices'), { replace: true });
+  };
+
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Notices</h1>
+      <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-semibold">
+        Notices
+      </h1>
       <NoticeList enabled={ready} time={time} />
+      {noticeId !== undefined && <NoticeDetailDialog key={noticeId} noticeId={noticeId} time={time} onClose={close} />}
     </section>
   );
 }

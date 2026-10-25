@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 
 import { api } from '@/api/client';
 import type { components } from '@/api/schema';
@@ -27,6 +28,44 @@ export function useNoticeFeed(buildingId: string, enabled: boolean) {
         signal,
       }),
     getNextPageParam: (page) => page.next_cursor,
+  });
+}
+
+/** One notice (`notices_get`), for `/notices/<id>` (P6-02b). Under the notices key, so a read asks it again. */
+export function useNotice(buildingId: string, noticeId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...noticesKey(buildingId), 'one', noticeId],
+    staleTime: 0,
+    enabled,
+    queryFn: ({ signal }) =>
+      api.get('/api/buildings/{building_id}/notices/{notice_id}', {
+        params: { path: { building_id: buildingId, notice_id: noticeId } },
+        signal,
+      }),
+  });
+}
+
+/** How many unread urgent notices the banner lists by name (P6-02b D2); it links the rest to the feed. */
+export const BANNER_ROWS = 3;
+export const urgentNoticesKey = (buildingId: string) => [...noticesKey(buildingId), 'urgent'] as const;
+
+/**
+ * The caller's newest unread urgent live notices, for the banner (P6-02b D2). Asked only while `enabled` (the summary
+ * counts some), and again when that count changes (D4); it doesn't poll on its own (ADR-0012).
+ */
+export function useUrgentNotices(buildingId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: urgentNoticesKey(buildingId),
+    staleTime: 0,
+    enabled,
+    queryFn: ({ signal }) =>
+      api.get('/api/buildings/{building_id}/notices', {
+        params: {
+          path: { building_id: buildingId },
+          query: { live: true, priority: 'urgent', unread: true, limit: BANNER_ROWS },
+        },
+        signal,
+      }),
   });
 }
 
@@ -65,4 +104,24 @@ export function useMarkNoticeRead(buildingId: string) {
       void queryClient.cancelQueries(filters).then(() => queryClient.invalidateQueries(filters));
     },
   });
+}
+
+/**
+ * `useMarkNoticeRead` for a button: one request per press. The guard is set before the request, so a second press in the
+ * same tick, before `isPending` renders, sends nothing (P6-02a criterion 3).
+ */
+export function useMarkReadOnce(buildingId: string) {
+  const read = useMarkNoticeRead(buildingId);
+  const sending = useRef(false);
+  const markRead = (noticeId: string, onError?: (error: unknown) => void) => {
+    if (sending.current) return;
+    sending.current = true;
+    read.mutate(noticeId, {
+      onError,
+      onSettled: () => {
+        sending.current = false;
+      },
+    });
+  };
+  return { read, markRead };
 }

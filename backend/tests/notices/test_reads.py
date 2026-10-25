@@ -23,7 +23,7 @@ from tests.helpers.tenancy import (
     assert_problem,
     without_request_id,
 )
-from tests.notices.conftest import archived, db_now, make_notice, published
+from tests.notices.conftest import archived, db_now, make_attachment, make_notice, published
 from tests.notifications.conftest import make_notification
 from tests.world import World
 
@@ -385,3 +385,127 @@ async def test_the_table_refuses_a_read_across_buildings(
 
     target = "notice_id_notices" if reference == "notice" else "membership_id_building_memberships"
     await assert_integrity_error(db, insert(), constraint=f"fk_notice_reads_building_id_{target}")
+
+
+# --- P6-02b criterion 11: the banner's filters on the list ------------------------------------
+
+
+async def test_priority_and_unread_keep_the_callers_own_unread_urgent_live_notices(
+    db: AsyncSession, as_user: Any, world: World
+) -> None:
+    urgent = {"priority": NoticePriority.URGENT}
+    wanted = await _live(db, world, **urgent)
+    read = await _live(db, world, **urgent)
+    await _live(db, world)  # normal and unread
+    await _live(db, world, expires_at=LONG_AGO + timedelta(days=1), **urgent)  # expired
+    manager = world.a_manager.membership
+    await make_notice(db, manager, priority=NoticePriority.URGENT)  # a draft
+    await make_notice(
+        db, world.b_manager.membership, **published(world.b_manager.membership, LONG_AGO, **urgent)
+    )
+    reader = await as_user(world.a_resident1.user)
+    other = await as_user(world.a_resident2.user)
+    assert (await reader.post(_read_url(world, read))).status_code == 204
+    # Another member's read hides nothing from the reader.
+    assert (await other.post(_read_url(world, wanted))).status_code == 204
+
+    query = "?live=true&priority=urgent&unread=true"
+    response = await reader.get(f"{_base(world)}{query}")
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()["items"]] == [str(wanted.id)]
+    assert (await _summary(reader, world))["urgent_unread"] == 1
+    # The other resident read `wanted` and not `read`.
+    others = (await other.get(f"{_base(world)}{query}")).json()["items"]
+    assert [item["id"] for item in others] == [str(read.id)]
+
+
+async def test_each_filter_narrows_on_its_own(db: AsyncSession, as_user: Any, world: World) -> None:
+    normal = await _live(db, world)
+    urgent = await _live(db, world, priority=NoticePriority.URGENT)
+    reader = await as_user(world.a_resident1.user)
+    assert (await reader.post(_read_url(world, urgent))).status_code == 204
+
+    def ids(response: Any) -> set[str]:
+        assert response.status_code == 200, response.text
+        return {item["id"] for item in response.json()["items"]}
+
+    assert ids(await reader.get(f"{_base(world)}?priority=urgent")) == {str(urgent.id)}
+    assert ids(await reader.get(f"{_base(world)}?priority=normal")) == {str(normal.id)}
+    assert ids(await reader.get(f"{_base(world)}?unread=true")) == {str(normal.id)}
+    assert ids(await reader.get(f"{_base(world)}?unread=false")) == {str(normal.id), str(urgent.id)}
+
+
+async def test_the_manager_filters_inside_everything_they_see(
+    db: AsyncSession, as_user: Any, world: World
+) -> None:
+    manager = world.a_manager.membership
+    draft = await make_notice(db, manager, priority=NoticePriority.URGENT)
+    client = await as_user(world.a_manager.user)
+    items = (await client.get(f"{_base(world)}?priority=urgent&unread=true")).json()["items"]
+    assert [item["id"] for item in items] == [str(draft.id)]
+    # `live=true` still drops the draft.
+    live = (await client.get(f"{_base(world)}?priority=urgent&unread=true&live=true")).json()
+    assert live["items"] == []
+
+
+@pytest.mark.parametrize("query", ["priority=high", "priority=", "unread=maybe"])
+async def test_a_bad_filter_is_422(as_user: Any, world: World, query: str) -> None:
+    client = await as_user(world.a_resident1.user)
+    response = await client.get(f"{_base(world)}?{query}")
+    assert_problem(response, 422, "validation_error")
+
+
+# --- P6-02b review round 1, Codex F1: the attachment's type -----------------------------------
+
+
+async def test_every_answer_names_the_attachments_content_type(
+    db: AsyncSession, as_user: Any, world: World
+) -> None:
+    manager = world.a_manager
+    image = await make_attachment(db, world.a.id, manager.user.id, content_type="image/png")
+    with_image = await _live(db, world, attachment_file_id=image.id)
+    plain = await _live(db, world)
+    reader = await as_user(world.a_resident1.user)
+
+    listed = {
+        item["id"]: item["attachment_content_type"]
+        for item in (await reader.get(f"{_base(world)}?live=true")).json()["items"]
+    }
+    assert listed == {str(with_image.id): "image/png", str(plain.id): None}
+    got = (await reader.get(f"{_base(world)}/{with_image.id}")).json()
+    assert got["attachment_content_type"] == "image/png"
+    assert (await reader.get(f"{_base(world)}/{plain.id}")).json()[
+        "attachment_content_type"
+    ] is None
+
+    # The write answers too: a draft created with a PDF, then published.
+    pdf = await make_attachment(db, world.a.id, manager.user.id, content_type="application/pdf")
+    author = await as_user(manager.user)
+    created = await author.post(
+        _base(world),
+        json={"title": "Minutes", "body": "Attached.", "attachment_file_id": str(pdf.id)},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["attachment_content_type"] == "application/pdf"
+    published_ = await author.post(f"{_base(world)}/{created.json()['id']}/publish")
+    assert published_.json()["attachment_content_type"] == "application/pdf"
+
+
+async def test_an_edit_that_swaps_or_clears_the_attachment_answers_its_new_type(
+    db: AsyncSession, as_user: Any, world: World
+) -> None:
+    manager = world.a_manager
+    pdf = await make_attachment(db, world.a.id, manager.user.id, content_type="application/pdf")
+    image = await make_attachment(db, world.a.id, manager.user.id, content_type="image/webp")
+    author = await as_user(manager.user)
+    created = await author.post(
+        _base(world), json={"title": "Plan", "body": "See it.", "attachment_file_id": str(pdf.id)}
+    )
+    url = f"{_base(world)}/{created.json()['id']}"
+
+    swapped = await author.patch(url, json={"attachment_file_id": str(image.id)})
+    assert swapped.status_code == 200, swapped.text
+    assert swapped.json()["attachment_content_type"] == "image/webp"
+    cleared = await author.patch(url, json={"attachment_file_id": None})
+    assert cleared.json()["attachment_content_type"] is None
+    assert (await author.get(url)).json()["attachment_content_type"] is None

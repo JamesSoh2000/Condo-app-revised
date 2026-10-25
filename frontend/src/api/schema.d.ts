@@ -645,7 +645,9 @@ export interface paths {
          *     haven't expired, and for the manager drafts, expired and archived ones too.
          *
          *     `live=true` keeps only published notices that haven't expired, for every role: the feed, and
-         *     what the unread summary counts (P6-02a).
+         *     what the unread summary counts (P6-02a). `priority` keeps one priority, and `unread=true` the
+         *     notices you haven't read yourself: with `live=true&priority=urgent`, the urgent banner's
+         *     notices (P6-02b).
          */
         get: operations["notices_list"];
         put?: never;
@@ -1565,6 +1567,8 @@ export interface components {
             expires_at: string | null;
             /** Attachment File Id */
             attachment_file_id: string | null;
+            /** Attachment Content Type */
+            attachment_content_type: string | null;
             /**
              * Author Membership Id
              * Format: uuid
@@ -3777,6 +3781,8 @@ export interface operations {
             query?: {
                 status?: components["schemas"]["NoticeStatus"] | null;
                 live?: boolean;
+                priority?: components["schemas"]["NoticePriority"] | null;
+                unread?: boolean;
                 limit?: number;
                 cursor?: string | null;
             };

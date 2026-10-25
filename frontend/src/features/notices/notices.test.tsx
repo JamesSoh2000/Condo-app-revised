@@ -58,6 +58,7 @@ function notice(n: number, fields: Partial<Notice> = {}): Notice {
     status: 'published',
     expires_at: null,
     attachment_file_id: null,
+    attachment_content_type: null,
     author_membership_id: '01929a4e-0000-7000-8000-0000000d0009',
     published_at: '2026-10-20T14:00:00Z',
     published_by_membership_id: '01929a4e-0000-7000-8000-0000000d0009',

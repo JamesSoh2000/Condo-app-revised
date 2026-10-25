@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { ApiError } from '@/api/errors';
 import { useBuildingId } from '@/app/BuildingProvider';
 import { rateLimitMessage } from '@/features/auth/formErrors';
-import { useMarkNoticeRead, useNoticeFeed, type Notice } from '@/features/notices/api';
+import { useMarkReadOnce, useNoticeFeed, type Notice } from '@/features/notices/api';
 import { NoticeBody } from '@/features/notices/NoticeBody';
 
 interface Props {
@@ -80,52 +81,73 @@ interface CardProps {
 }
 
 function Card({ item, time, onGone }: CardProps) {
-  const read = useMarkNoticeRead(useBuildingId());
-  // Set before the request, so a second press in the same tick, before `isPending` renders, sends nothing.
-  const sending = useRef(false);
-  const at = (value: string) => <time dateTime={value}>{time?.format(new Date(value))}</time>;
+  const { read, markRead } = useMarkReadOnce(useBuildingId());
   const unread = item.read_at === null;
   const gone = read.error instanceof ApiError && read.error.status === 404;
-  const markRead = () => {
-    if (sending.current) return;
-    sending.current = true;
-    read.mutate(item.id, {
-      onError: (error) => {
-        if (error instanceof ApiError && error.status === 404) onGone(item.title);
-      },
-      onSettled: () => {
-        sending.current = false;
-      },
-    });
-  };
   return (
     <li className="min-w-0 rounded border bg-white p-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 font-medium">{item.title}</h2>
-        {item.priority === 'urgent' && <span className="rounded bg-red-100 px-1.5 text-xs font-semibold text-red-800">Urgent</span>}
-        {unread && <span className="rounded bg-blue-100 px-1.5 text-xs font-semibold text-blue-800">Unread</span>}
+        <NoticeLabels item={item} />
       </div>
-      <p className="text-xs text-slate-600">
-        {item.published_at && <>Published {at(item.published_at)}</>}
-        {item.expires_at && <> · Until {at(item.expires_at)}</>}
-      </p>
+      <NoticeTimes item={item} time={time} />
       <NoticeBody markdown={item.body} />
-      {unread && (
-        <button
-          type="button"
-          disabled={read.isPending}
-          aria-label={`Mark as read: ${item.title}`}
-          onClick={markRead}
-          className="mt-2 min-h-11 rounded border px-4 text-sm disabled:opacity-50"
+      <div className="mt-2 flex flex-wrap gap-2">
+        {/* The notice on its own, with its attachment (P6-02b); Close comes back here. */}
+        <Link
+          to={`/notices/${item.id}`}
+          state={{ fromList: true }}
+          aria-label={`Open: ${item.title}`}
+          className="inline-flex min-h-11 items-center rounded border px-4 text-sm"
         >
-          Mark as read
-        </button>
-      )}
+          Open
+        </Link>
+        {unread && (
+          <button
+            type="button"
+            disabled={read.isPending}
+            aria-label={`Mark as read: ${item.title}`}
+            onClick={() =>
+              markRead(item.id, (error) => {
+                if (error instanceof ApiError && error.status === 404) onGone(item.title);
+              })
+            }
+            className="min-h-11 rounded border px-4 text-sm disabled:opacity-50"
+          >
+            Mark as read
+          </button>
+        )}
+      </div>
       {read.isError && !gone && (
         <p role="alert" className="mt-1 text-sm text-red-700">
           {rateLimitMessage(read.error) ?? 'Could not mark the notice read.'}
         </p>
       )}
     </li>
+  );
+}
+
+const STATUS: Partial<Record<Notice['status'], string>> = { draft: 'Draft', archived: 'Archived' };
+
+/** A notice's labels: its status when not published (a manager's view), "Urgent", "Unread". */
+export function NoticeLabels({ item }: { item: Notice }) {
+  const status = STATUS[item.status];
+  return (
+    <>
+      {status && <span className="rounded bg-slate-200 px-1.5 text-xs font-semibold text-slate-800">{status}</span>}
+      {item.priority === 'urgent' && <span className="rounded bg-red-100 px-1.5 text-xs font-semibold text-red-800">Urgent</span>}
+      {item.read_at === null && <span className="rounded bg-blue-100 px-1.5 text-xs font-semibold text-blue-800">Unread</span>}
+    </>
+  );
+}
+
+/** "Published <time> · Until <time>", in the building's timezone. */
+export function NoticeTimes({ item, time }: { item: Notice; time: Intl.DateTimeFormat | undefined }) {
+  const at = (value: string) => <time dateTime={value}>{time?.format(new Date(value))}</time>;
+  return (
+    <p className="text-xs text-slate-600">
+      {item.published_at && <>Published {at(item.published_at)}</>}
+      {item.expires_at && <> · Until {at(item.expires_at)}</>}
+    </p>
   );
 }

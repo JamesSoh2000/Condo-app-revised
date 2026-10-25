@@ -129,6 +129,7 @@ async def test_the_manager_creates_a_draft_and_gets_it_back(
         "status": "draft",
         "expires_at": body["expires_at"],
         "attachment_file_id": str(file.id),
+        "attachment_content_type": "application/pdf",  # P6-02b
         "author_membership_id": str(world.a_manager.membership.id),
         "published_at": None,
         "published_by_membership_id": None,
