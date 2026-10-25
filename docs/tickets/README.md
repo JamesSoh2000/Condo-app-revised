@@ -107,7 +107,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P6-02b](./P6-02b-urgent-banner-and-attachments.md) | One notice, urgent banner and attachments (split from P6-02) | B | 2 | P6-02a, P3-06 | done | — |
 | [P6-02c](./P6-02c-manager-notice-list-and-actions.md) | Manager notice list, publish and archive (split from P6-02) | B | 2 | P6-02a, P6-01b | done | — |
 | [P6-02d](./P6-02d-notice-editor.md) | Notice editor with preview and publish (split from P6-02) | B | 2 | P6-02c, P3-06 | done | — |
-| [P6-02e](./P6-02e-list-focus-fixes.md) | List focus fixes: "Load more" and the feed card (split from P6-02d) | B | 2 | P6-02c | todo | — |
+| [P6-02e](./P6-02e-list-focus-fixes.md) | List focus fixes: "Load more" and the feed card (split from P6-02d) | B | 2 | P6-02c | in progress | — |
 | [P6-02f](./P6-02f-notice-expiry-and-attachment.md) | Notice editor: expiry and attachment (split from P6-02d) | B | 2 | P6-02d, P3-06 | todo | — |
 
 ### Milestone D — deployment (after week 8)
