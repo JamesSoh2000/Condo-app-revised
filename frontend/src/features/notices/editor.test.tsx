@@ -267,6 +267,7 @@ describe('the schema’s limits before sending (criterion 6)', () => {
     const input = inEditor().getByLabelText(field);
     await waitFor(() => expect(input.getAttribute('aria-invalid')).toBe('true'));
     expect(document.getElementById(input.getAttribute('aria-describedby')!)!.textContent).toBe(message);
+    expect(document.activeElement).toBe(input);
     await settle();
     expect(writes(fetchMock)).toEqual([]);
   });
@@ -295,6 +296,7 @@ describe('the schema’s limits before sending (criterion 6)', () => {
     const described = (label: string) => document.getElementById(inEditor().getByLabelText(label).getAttribute('aria-describedby')!)?.textContent;
     save();
     await waitFor(() => expect(described('Title')).toBe('Use at most 200 characters.'));
+    expect(document.activeElement).toBe(inEditor().getByLabelText('Title'));
     save();
     await waitFor(() => expect(described('Body (Markdown)')).toBe('Use visible characters, tabs and line breaks only.'));
     save();
@@ -340,8 +342,11 @@ describe('one request per press (case 11)', () => {
     type('Title', 'T');
     type('Body (Markdown)', 'B');
     const button = inEditor().getByRole('button', { name: 'Save draft' });
-    fireEvent.click(button);
-    fireEvent.click(button);
+    // In one act, so the second press comes before `disabled` renders, as a fast double click can.
+    act(() => {
+      button.click();
+      button.click();
+    });
     await settle();
     expect(writes(fetchMock)).toEqual([`POST ${BASE}`]);
     expect((button as HTMLButtonElement).disabled).toBe(true);
