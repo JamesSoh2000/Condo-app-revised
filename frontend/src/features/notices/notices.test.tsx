@@ -289,6 +289,27 @@ describe('marking read (criterion 2)', () => {
   });
 });
 
+describe('focus after "Mark as read" (P6-02c criterion 9)', () => {
+  it('is on the card once the button is gone, and on the button after a failure', async () => {
+    stubApi(member(THREE(), { [`POST ${BASE}/${notice(3).id}/read`]: () => problem(500, 'internal_error') }));
+    renderApp(['/notices']);
+    const [failing, , card] = await cards();
+
+    const button = within(card).getByRole('button', { name: 'Mark as read: Notice 1' });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(within(card).queryByRole('button', { name: /^Mark as read/ })).toBeNull());
+    expect(document.activeElement).toBe(card);
+
+    const other = within(failing).getByRole('button', { name: 'Mark as read: Notice 3' });
+    other.focus();
+    fireEvent.click(other);
+    await within(failing).findByRole('alert');
+    await waitFor(() => expect(document.activeElement).toBe(other));
+    expect((other as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
 describe('access (criterion 4)', () => {
   it.each<Role[]>([['resident'], ['security'], ['property_management'], ['council']])('%s opens the feed, in the nav', async (role) => {
     stubApi(member(THREE(), {}, [role]));
