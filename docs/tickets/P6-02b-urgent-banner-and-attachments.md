@@ -137,8 +137,9 @@ Moved from P6-02a's draft, unchanged:
     banner and no banner list request.
   - **7** (sharpened): measured in Chromium at 375 px with a 200-character unbroken title and three rows: no
     horizontal scroll, and the nav's bottom edge is above the banner's top. The banner content sits in a
-    `role="status"` (polite) live region that is mounted before content arrives, so it is announced; focus doesn't
-    move when it appears.
+    polite live region that is mounted before content arrives, so it is announced; focus doesn't move when it
+    appears. (Implementation note: an `aria-live="polite"` wrapper, not `role="status"`, which would collide with the
+    shell's other unnamed status regions; see the PR's deviations.)
   - **8** (corrected, not loosened): `EmergencyAlertPopup.jsx` has no `base44.`/`@base44/` reference
     (`scripts/base44-count.sh`: 247, baseline 247), so deleting it cannot lower the Base44 ratchet. The criterion
     becomes: the file is deleted, nothing imports it, and `scripts/base44-count.sh` still passes at the baseline
@@ -155,10 +156,11 @@ Moved from P6-02a's draft, unchanged:
     live notices; another resident's read doesn't hide it; another building's notice never appears; a bad
     `priority` is a 422.
   - **6** (sharpened): the attachment is a "Download attachment (PDF)" button, not a link with an `href`. A click
-    opens a blank tab synchronously (so popup blockers allow it), asks
-    `GET …/files/{attachment_file_id}/download-url` at that moment (never cached: each click asks again), then points
-    the tab at the URL with its `opener` cleared. On 404 `file_not_found` (or any failure) the tab closes and the
-    dialog says "The attachment is not available." (or the rate-limit or generic message). The DOM never contains
+    asks `GET …/files/{attachment_file_id}/download-url` at that moment (never cached: each click asks again), then
+    goes to the URL, which S3 serves as `Content-Disposition: attachment`, so the PDF downloads and the page stays.
+    (Implementation note: framing first planned a new tab; the stack showed the PDF downloads and leaves that tab
+    blank, see the PR's D5.) On 404 `file_not_found` (or any failure) nothing is opened and the dialog says "The
+    attachment is not available." (or the rate-limit or generic message). The DOM never contains
     the URL, the file id as a link, or an S3 key. Notice attachments are PDF only (`PURPOSE_RULES.notice_attachment`),
     so no inline image.
 - Criteria loosened (with reason; also listed in the inbox): none. Criterion 8's "lower the ratchet" is a correction
