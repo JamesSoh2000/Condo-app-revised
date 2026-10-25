@@ -299,3 +299,23 @@ describe('tenancy (criterion 10)', () => {
     await waitFor(noBanner);
   });
 });
+
+describe('review round 2 (Codex gpt-6.1-sol), the neighbour of F1', () => {
+  it('after Acknowledge, focus is kept by the banner’s slot, not dropped to the page', async () => {
+    stubApi(noticeMember({ notices: [urgent(3), urgent(2)] }));
+    renderApp(['/packages']);
+    const region = await banner();
+    const button = await within(region).findByRole('button', { name: 'Acknowledge: Urgent 3' });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Acknowledge: Urgent 3' })).toBeNull());
+    const slot = region.parentElement!;
+    expect(slot.getAttribute('aria-live')).toBe('polite');
+    expect(document.activeElement).toBe(slot);
+
+    // The last one: the banner goes, and focus stays on the slot, where Tab carries on into the page.
+    fireEvent.click(await within(region).findByRole('button', { name: 'Acknowledge: Urgent 2' }));
+    await waitFor(noBanner);
+    expect(document.activeElement).toBe(slot);
+  });
+});

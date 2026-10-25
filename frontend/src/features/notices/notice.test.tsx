@@ -225,3 +225,29 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Mark as read' }));
   });
 });
+
+describe('review round 2 (Codex gpt-6.1-sol)', () => {
+  it('F1: focus stays in the dialog after "Mark as read", so Escape still closes it', async () => {
+    stubApi(noticeMember(TWO()));
+    const app = renderApp([`/notices/${notice(2).id}`]);
+    const dialog = await screen.findByRole('dialog', { name: 'Water shut-off' });
+    const button = within(dialog).getByRole('button', { name: 'Mark as read' });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(within(dialog).queryByRole('button', { name: 'Mark as read' })).toBeNull());
+    expect(document.activeElement).toBe(dialog);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await waitFor(() => expect(app.location().pathname).toBe('/notices'));
+  });
+
+  it('F1: and after a failed read, focus is in the dialog with its message', async () => {
+    stubApi(noticeMember(TWO(), { [`POST ${BASE}/${notice(2).id}/read`]: () => problem(500, 'internal_error') }));
+    renderApp([`/notices/${notice(2).id}`]);
+    const dialog = await screen.findByRole('dialog', { name: 'Water shut-off' });
+    const button = within(dialog).getByRole('button', { name: 'Mark as read' });
+    button.focus();
+    fireEvent.click(button);
+    await within(dialog).findByRole('alert');
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+});

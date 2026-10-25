@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ApiError } from '@/api/errors';
@@ -13,7 +13,13 @@ export const DISCLAIMER = 'This app is not an emergency alert system: in an emer
  * by the polled summary (ADR-0012: within one 30 s poll while the tab is visible). It names the newest three, each
  * acknowledged by marking it read (D3), and says it is not emergency alerting (D1).
  */
-export function UrgentBanner({ buildingId }: { buildingId: string }) {
+interface Props {
+  buildingId: string;
+  /** The shell's live region around the banner, which stays mounted: focus goes there when a row leaves (R2 F1). */
+  slotRef: RefObject<HTMLDivElement>;
+}
+
+export function UrgentBanner({ buildingId, slotRef }: Props) {
   const queryClient = useQueryClient();
   // A failed refresh keeps the last count: an urgent banner shouldn't blink away on one lost poll.
   const count = useNoticeSummary(buildingId).data?.urgent_unread ?? 0;
@@ -42,7 +48,7 @@ export function UrgentBanner({ buildingId }: { buildingId: string }) {
         {rows ? (
           <ul className="flex flex-col gap-2">
             {rows.map((item) => (
-              <Row key={item.id} item={item} buildingId={buildingId} />
+              <Row key={item.id} item={item} buildingId={buildingId} slotRef={slotRef} />
             ))}
           </ul>
         ) : (
@@ -61,7 +67,7 @@ export function UrgentBanner({ buildingId }: { buildingId: string }) {
   );
 }
 
-function Row({ item, buildingId }: { item: Notice; buildingId: string }) {
+function Row({ item, buildingId, slotRef }: { item: Notice } & Props) {
   const { read, markRead } = useMarkReadOnce(buildingId);
   // A 404: the notice left (archived, expired) before the press; the refresh drops its row (criterion 9).
   const failed = read.isError && !(read.error instanceof ApiError && read.error.status === 404);
@@ -74,7 +80,11 @@ function Row({ item, buildingId }: { item: Notice; buildingId: string }) {
         type="button"
         disabled={read.isPending}
         aria-label={`Acknowledge: ${item.title}`}
-        onClick={() => markRead(item.id)}
+        onClick={() => {
+          // The row (or the whole banner) leaves once read: focus would drop to <body>.
+          slotRef.current?.focus();
+          markRead(item.id);
+        }}
         className="min-h-11 rounded border border-red-300 bg-white px-3 text-sm disabled:opacity-50"
       >
         Acknowledge

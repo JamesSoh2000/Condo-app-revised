@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, type RefObject } from 'react';
 
 import { ApiError } from '@/api/errors';
 import { useBuildingId } from '@/app/BuildingProvider';
@@ -43,7 +43,7 @@ export function NoticeDetailDialog({ noticeId, time, onClose }: Props) {
 
   let body;
   if (notFound) body = <p className="mt-2">There is no notice at this address.</p>;
-  else if (item) body = <Detail item={item} time={time} />;
+  else if (item) body = <Detail item={item} time={time} dialogRef={dialogRef} />;
   else if (query.isError) {
     body = (
       <div role="alert" className="mt-2 text-sm text-red-700">
@@ -70,7 +70,13 @@ export function NoticeDetailDialog({ noticeId, time, onClose }: Props) {
   );
 }
 
-function Detail({ item, time }: { item: Notice; time: Intl.DateTimeFormat | undefined }) {
+interface DetailProps {
+  item: Notice;
+  time: Intl.DateTimeFormat | undefined;
+  dialogRef: RefObject<HTMLDivElement>;
+}
+
+function Detail({ item, time, dialogRef }: DetailProps) {
   const { read, markRead } = useMarkReadOnce(useBuildingId());
   // A 404 means the notice left while open: the read's refresh then shows "Notice not found".
   const failed = read.isError && !(read.error instanceof ApiError && read.error.status === 404);
@@ -92,7 +98,11 @@ function Detail({ item, time }: { item: Notice; time: Intl.DateTimeFormat | unde
         <button
           type="button"
           disabled={read.isPending}
-          onClick={() => markRead(item.id)}
+          onClick={() => {
+            // The button is disabled, then gone: focus would drop to <body>, out of the dialog's Escape (R2 F1).
+            dialogRef.current?.focus();
+            markRead(item.id);
+          }}
           className="mt-3 min-h-11 rounded border px-4 text-sm disabled:opacity-50"
         >
           Mark as read
