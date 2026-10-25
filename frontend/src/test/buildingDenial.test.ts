@@ -38,6 +38,9 @@ const EXEMPT: Record<string, string> = {
   'features/notices/NoticesPage.tsx::Notices':
     'Rendered only by NoticesPage, a route under RequireActiveMembership → BuildingLoaded, which renders the denial ' +
     'screen instead of its children once useBuildingDenied() is true (app/guards.tsx).',
+  'features/notices/ManagerNoticesPage.tsx::ManagerNotices':
+    'Rendered only by ManagerNoticesPage, a route under RequireActiveMembership → BuildingLoaded, which renders the ' +
+    'denial screen instead of its children once useBuildingDenied() is true (app/guards.tsx).',
 };
 
 interface Fn {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ApiError } from '@/api/errors';
@@ -84,8 +84,16 @@ function Card({ item, time, onGone }: CardProps) {
   const { read, markRead } = useMarkReadOnce(useBuildingId());
   const unread = item.read_at === null;
   const gone = read.error instanceof ApiError && read.error.status === 404;
+  // The button disables, then goes, on a press: focus waits on the card, which stays, and comes back to the button if
+  // the read fails (P6-02c criterion 9), or a browser drops it to <body>.
+  const cardRef = useRef<HTMLLIElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [refocus, setRefocus] = useState(false);
+  useEffect(() => {
+    if (refocus && read.isError) buttonRef.current?.focus();
+  }, [refocus, read.isError]);
   return (
-    <li className="min-w-0 rounded border bg-white p-3 [overflow-wrap:anywhere]">
+    <li ref={cardRef} tabIndex={-1} className="min-w-0 rounded border bg-white p-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 font-medium">{item.title}</h2>
         <NoticeLabels item={item} />
@@ -104,14 +112,18 @@ function Card({ item, time, onGone }: CardProps) {
         </Link>
         {unread && (
           <button
+            ref={buttonRef}
             type="button"
             disabled={read.isPending}
             aria-label={`Mark as read: ${item.title}`}
-            onClick={() =>
+            onClick={(event) => {
+              const focused = document.activeElement === event.currentTarget;
+              if (focused) cardRef.current?.focus();
+              setRefocus(focused);
               markRead(item.id, (error) => {
                 if (error instanceof ApiError && error.status === 404) onGone(item.title);
-              })
-            }
+              });
+            }}
             className="min-h-11 rounded border px-4 text-sm disabled:opacity-50"
           >
             Mark as read

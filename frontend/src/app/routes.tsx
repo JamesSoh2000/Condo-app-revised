@@ -11,6 +11,7 @@ import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage';
 import { AcceptInvitePage, InviteInvalid } from '@/features/auth/pages/AcceptInvitePage';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { ResetLinkInvalid, ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage';
+import { ManagerNoticesPage } from '@/features/notices/ManagerNoticesPage';
 import { NoticesPage } from '@/features/notices/NoticesPage';
 import { JoinInvalid, JoinPage } from '@/features/onboarding/JoinPage';
 import { MyPackagesPage } from '@/features/packages/pages/MyPackagesPage';
@@ -87,6 +88,14 @@ export function AppRoutes() {
             element={
               <RequirePageAccess access={PAGE_ACCESS.Notices}>
                 <NoticesPage />
+              </RequirePageAccess>
+            }
+          />
+          <Route
+            path={PAGE_ACCESS.ManagementNotices.path}
+            element={
+              <RequirePageAccess access={PAGE_ACCESS.ManagementNotices}>
+                <ManagerNoticesPage />
               </RequirePageAccess>
             }
           />

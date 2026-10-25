@@ -43,7 +43,8 @@ export const PAGE_ACCESS: Record<Page, PageAccess> = {
   },
   // Every member reads the building's notices (P6-02a); `visible_notices` decides which.
   Notices: { feature: 'notices', label: 'Notices', path: '/notices' },
-  ManagementNotices: { roles: STAFF, feature: 'notices', label: 'Daily notices' },
+  // Only property management publishes and archives (P6-01b); the others read the feed (P6-02c D1).
+  ManagementNotices: { roles: ['property_management'], feature: 'notices', label: 'Manage notices', path: '/manage/notices' },
   Maintenance: { roles: ['resident'], feature: 'maintenance', label: 'Maintenance requests' },
   ManagementMaintenance: { roles: STAFF, feature: 'maintenance', label: 'Maintenance' },
 };

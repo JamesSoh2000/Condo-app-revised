@@ -125,3 +125,52 @@ export function useMarkReadOnce(buildingId: string) {
   };
   return { read, markRead };
 }
+
+/** The manager's three lists (P6-02c D3); "expired" isn't a status but a published notice past its `expires_at` (D4). */
+export type ManagedStatus = 'draft' | 'published' | 'archived';
+export const MANAGED_PAGE = 25;
+
+/**
+ * One of the manager's lists, by `status`, in the API's order, 25 a page. Under the notices key, so an action's
+ * invalidation asks every list, the feed, the summary and the banner again. Stale at once, as the feed.
+ */
+export function useManagedNotices(buildingId: string, status: ManagedStatus) {
+  return useInfiniteQuery({
+    queryKey: [...noticesKey(buildingId), 'manage', status],
+    staleTime: 0,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      api.get('/api/buildings/{building_id}/notices', {
+        params: {
+          path: { building_id: buildingId },
+          query: { status, limit: MANAGED_PAGE, ...(pageParam !== null && { cursor: pageParam }) },
+        },
+        signal,
+      }),
+    getNextPageParam: (page) => page.next_cursor,
+  });
+}
+
+export type NoticeAction = 'publish' | 'archive';
+
+/**
+ * Publish or archive one notice (`POST …/publish`, `…/archive`; never `PATCH status`). However it ends, every notices
+ * query is cancelled, then asked again, as `useMarkNoticeRead`: a 409 means another tab or manager moved it first.
+ */
+export function useNoticeAction(buildingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
+    mutationKey: [...noticesKey(buildingId), 'action'],
+    mutationFn: ({ id, action }: { id: string; action: NoticeAction }) => {
+      const params = { path: { building_id: buildingId, notice_id: id } };
+      return action === 'publish'
+        ? api.post('/api/buildings/{building_id}/notices/{notice_id}/publish', { params })
+        : api.post('/api/buildings/{building_id}/notices/{notice_id}/archive', { params });
+    },
+    onSettled: () => {
+      const filters = { queryKey: noticesKey(buildingId) };
+      void queryClient.cancelQueries(filters).then(() => queryClient.invalidateQueries(filters));
+    },
+  });
+}

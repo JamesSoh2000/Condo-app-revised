@@ -105,6 +105,16 @@ upload, 292 lines).
   copy match before the editor's upload uses it (P6-02b review round 1 F1). The notice view already handles both:
   `NoticeOut.attachment_content_type`, JPEG/PNG/WebP shown inline, others downloaded.
 
+## Carried from P6-02c (decide while framing)
+
+- **"Load more" drops focus** (P6-02c review round 2 F1, Low): a "Load more" that fetches the last page removes
+  itself, and keyboard focus falls to `<body>`. The same `hasNextPage && <button>` shape is in
+  `frontend/src/features/notices/{ManagerNoticeList,NoticeList}.tsx`, `features/packages/{WaitingList,MyPackageList}.tsx`
+  and the residents lists. Fix it once (focus the list's last new row or its heading), with a test per list.
+- **The feed card has round 1 F1's shape** (P6-02c review round 1 F1, fixed only on the manager page): a refresh that
+  removes the focused card in `NoticeList.tsx::Card` drops focus. `ManagerNoticeList.tsx::Row` shows the fix (track
+  focus with `onFocus`/`onBlur`, hand it on when unmounting with focus).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

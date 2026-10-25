@@ -156,7 +156,7 @@ describe('the page, its nav item and its guard (criteria 3, 4)', () => {
       'Residents',
       'Package log',
       'Notices',
-      'Daily notices',
+      'Manage notices',
       'Maintenance',
     ]);
     expect(within(nav).getByRole('link', { name: 'Residents' }).getAttribute('href')).toBe(PAGE);
