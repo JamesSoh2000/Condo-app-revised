@@ -82,6 +82,8 @@ export function NoticeEditor({ item, timeZone, onSaved, onPublish, onClose }: Pr
   const [body, setBody] = useState(item?.body ?? '');
   const [priority, setPriority] = useState<Notice['priority']>(item?.priority ?? 'normal');
   const [expiry, setExpiry] = useState(item?.expires_at ? toLocalInput(item.expires_at, timeZone) : '');
+  // A half-typed `datetime-local`: Chromium then reports value '' with `validity.badInput` (review round 1 F2).
+  const [expiryBad, setExpiryBad] = useState(false);
   // The saved attachment while kept; a finished upload replaces it.
   const [kept, setKept] = useState(item?.attachment_file_id ?? null);
   const [upload, setUpload] = useState<Upload>(NO_UPLOAD);
@@ -127,18 +129,25 @@ export function NoticeEditor({ item, timeZone, onSaved, onPublish, onClose }: Pr
   if (priority !== (saved?.priority ?? 'normal') || !saved) changes.priority = priority;
   if (expiry !== savedExpiry) changes.expires_at = expiry ? toInstant(expiry, timeZone) : null;
   if (attachment !== (saved?.attachment_file_id ?? null)) changes.attachment_file_id = attachment;
-  const dirty = saved
-    ? Object.keys(changes).length > 0
-    : Boolean(title || body || priority !== 'normal' || expiry || attachment || upload.status !== 'idle');
+  // An upload running or failed, or a half-typed expiry, is unsaved work too, so Publish waits (review round 1 F1, F2).
+  const pending = expiryBad || upload.status === 'uploading' || upload.status === 'error';
+  const dirty = saved ? Object.keys(changes).length > 0 || pending : Boolean(title || body || priority !== 'normal' || expiry || attachment || pending);
 
   const problems: Partial<Record<Field, string>> = {
     title: TITLE_BAD.test(title) ? M.titleBad : !values.title ? M.title : codePoints(values.title) > TITLE_MAX ? M.titleLong : undefined,
     body: BODY_BAD.test(body) ? M.bodyBad : !values.body ? M.body : codePoints(values.body) > BODY_MAX ? M.bodyLong : undefined,
-    expires_at: expiry && toInstant(expiry, timeZone) === null ? M.invalidTime : undefined,
+    expires_at: expiryBad || (expiry && toInstant(expiry, timeZone) === null) ? M.invalidTime : undefined,
     attachment_file_id: upload.status === 'uploading' ? M.uploading : upload.status === 'error' ? M.uploadFailed : undefined,
   };
   const shown = (field: Field) => errors[field] ?? (tried ? problems[field] : undefined);
 
+  const syncExpiry = () => {
+    const bad = expiryRef.current?.validity.badInput ?? false;
+    if (bad === expiryBad) return;
+    setExpiryBad(bad);
+    setStatus('');
+    setErrors((current) => ({ ...current, expires_at: undefined }));
+  };
   const onUploadStatus = useCallback((next: UploadStatus) => setUpload((current) => ({ status: next, fileId: next === 'ready' ? current.fileId : null })), []);
   const resetUpload = () => {
     setUpload(NO_UPLOAD);
@@ -204,6 +213,7 @@ export function NoticeEditor({ item, timeZone, onSaved, onPublish, onClose }: Pr
       setBody(result.body);
       setPriority(result.priority);
       setExpiry(result.expires_at ? toLocalInput(result.expires_at, timeZone) : '');
+      setExpiryBad(false);
       setKept(result.attachment_file_id);
       resetUpload();
       setTried(false);
@@ -318,17 +328,25 @@ export function NoticeEditor({ item, timeZone, onSaved, onPublish, onClose }: Pr
               value={expiry}
               readOnly={busy}
               onChange={(event) => edit(setExpiry, 'expires_at')(event.target.value)}
+              // Not in onChange: React skips an input event whose value stays ''. And Chromium sends none at all for a
+              // segment typed into an empty field, so key-up and blur read the field again (review round 1 F2).
+              onInput={syncExpiry}
+              onKeyUp={syncExpiry}
+              onBlur={syncExpiry}
               aria-invalid={invalid('expires_at')}
               aria-describedby={describedBy('expires_at')}
               className={`${INPUT} sm:w-64`}
             />
             {/* The button removes itself, which would drop focus to <body> (CLAUDE.md lesson). */}
-            {expiry && (
+            {(expiry || expiryBad) && (
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => {
                   edit(setExpiry, 'expires_at')('');
+                  setExpiryBad(false);
+                  // React leaves a half-typed field's segments alone, since its value is already ''.
+                  if (expiryRef.current) expiryRef.current.value = '';
                   expiryRef.current?.focus();
                 }}
                 className="min-h-11 rounded border px-4 text-sm disabled:opacity-50"

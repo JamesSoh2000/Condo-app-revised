@@ -635,6 +635,87 @@ describe('the attachment (P6-02f criterion 5)', () => {
   });
 });
 
+describe('nothing unsaved hides behind Publish (P6-02f review round 1 F1)', () => {
+  it.each([['runs', false], ['failed', true]] as const)('a saved draft whose replacement upload %s offers no Publish and keeps Escape from closing', async (_, fail) => {
+    const server = serverWith(draft(1, { title: 'Pool', body: 'Closed.', attachment_file_id: FILE_OLD, attachment_content_type: 'application/pdf' }));
+    const fetchMock = manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    expect(inEditor().getByRole('button', { name: 'Publish' })).toBeTruthy();
+    choose(pdf());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    if (fail) FakeXHR.instances[0].fail();
+    await waitFor(() => expect(inEditor().queryByRole('button', { name: 'Publish' })).toBeNull());
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    if (fail) {
+      // Remove takes the saved attachment away too: a change to save, so still no Publish.
+      fireEvent.click(inEditor().getByRole('button', { name: 'Remove attachment' }));
+      expect(inEditor().queryByRole('button', { name: 'Publish' })).toBeNull();
+    }
+    expect(writes(fetchMock).filter((call) => call.includes('/notices'))).toEqual([]);
+  });
+});
+
+describe('a half-typed expiry (P6-02f review round 1 F2)', () => {
+  /** What Chromium does when one segment of a `datetime-local` is deleted: `value` is '' and `validity.badInput` true. */
+  function halfType(from: 'a value' | 'empty' = 'a value') {
+    const input = inEditor().getByLabelText<HTMLInputElement>(/^Expires/);
+    Object.defineProperty(input, 'validity', { configurable: true, get: () => ({ badInput: true, valid: false }) });
+    // From a value, Chromium sends an input event with ''. Into an empty field it sends none (the value stays ''),
+    // only the key's own events.
+    if (from === 'a value') fireEvent.input(input, { target: { value: '' } });
+    else fireEvent.keyUp(input, { key: '1' });
+    return input;
+  }
+
+  it('is refused on save with the field’s message, not sent as null; Remove expiry clears it and then sends null', async () => {
+    const server = serverWith(draft(1, { title: 'Pool', body: 'Closed.', expires_at: '2999-07-15T22:00:00Z' }));
+    const fetchMock = manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    const input = halfType();
+    save();
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect(document.getElementById(input.getAttribute('aria-describedby')!)!.textContent).toBe('Enter a date and time.');
+    await settle();
+    expect(writes(fetchMock)).toEqual([]);
+    fireEvent.click(inEditor().getByRole('button', { name: 'Remove expiry' }));
+    expect(document.activeElement).toBe(input);
+    save();
+    await saved();
+    expect(server.sent[0].body).toEqual({ expires_at: null });
+  });
+
+  it('on a draft with no expiry counts as unsaved: no Publish, and Save is refused', async () => {
+    const server = serverWith(draft(1, { title: 'Pool', body: 'Closed.' }));
+    const fetchMock = manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    halfType('empty');
+    expect(inEditor().queryByRole('button', { name: 'Publish' })).toBeNull();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    save();
+    expect(await inEditor().findByText('Enter a date and time.')).toBeTruthy();
+    await settle();
+    expect(writes(fetchMock)).toEqual([]);
+  });
+
+  it('a complete value typed after it is accepted', async () => {
+    const server = serverWith(draft(1, { title: 'Pool', body: 'Closed.' }));
+    manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    const input = halfType('empty');
+    Object.defineProperty(input, 'validity', { configurable: true, get: () => ({ badInput: false, valid: true }) });
+    fireEvent.input(input, { target: { value: '2999-07-15T18:00' } });
+    save();
+    await saved();
+    expect(server.sent[0].body).toEqual({ expires_at: '2999-07-15T22:00:00.000Z' });
+  });
+});
+
 describe('the legacy form is gone (P6-02f criterion 10)', () => {
   it('NoticeAttachmentUpload is deleted and the Dashboard has no notice form', () => {
     // Vitest runs from frontend/; `import.meta.url` isn't a file URL under jsdom.
