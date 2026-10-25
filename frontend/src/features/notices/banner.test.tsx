@@ -146,12 +146,13 @@ describe('acknowledging (criterion 2)', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const state = ONE();
     const routes = noticeMember(state);
-    let hold: Promise<void> | undefined;
+    let held = false;
     let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
     stubApi({
       ...routes,
       [`GET ${BASE}`]: async (request) => {
-        if (hold) await hold;
+        if (held) await gate;
         return routes[`GET ${BASE}`](request);
       },
     });
@@ -164,7 +165,7 @@ describe('acknowledging (criterion 2)', () => {
     await waitFor(noBanner);
 
     // A new urgent notice: the list's answer is held, and the cached "Urgent 2" must not show meanwhile.
-    hold = new Promise<void>((resolve) => (release = resolve));
+    held = true;
     state.notices = [urgent(3, { title: 'Second alert' }), ...state.notices];
     await poll();
     const region = await banner();
