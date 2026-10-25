@@ -100,6 +100,8 @@ export function NoticeEditor({ item, timeZone, onSaved, onPublish, onClose }: Pr
   const statusRef = useRef<HTMLParagraphElement>(null);
   const failureRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const expiryRef = useRef<HTMLInputElement>(null);
+  const attachmentRef = useRef<HTMLDivElement>(null);
   // State, so the effect runs after the commit that shows the field's error or the message (as P6-02c's page).
   const [focusTo, setFocusTo] = useState<{ target: Field | 'status' | 'failure' } | null>(null);
   const id = useId();
@@ -310,6 +312,7 @@ export function NoticeEditor({ item, timeZone, onSaved, onPublish, onClose }: Pr
           </label>
           <div className="flex flex-wrap gap-2">
             <input
+              ref={expiryRef}
               id={`${id}-expires_at`}
               type="datetime-local"
               value={expiry}
@@ -319,8 +322,17 @@ export function NoticeEditor({ item, timeZone, onSaved, onPublish, onClose }: Pr
               aria-describedby={describedBy('expires_at')}
               className={`${INPUT} sm:w-64`}
             />
+            {/* The button removes itself, which would drop focus to <body> (CLAUDE.md lesson). */}
             {expiry && (
-              <button type="button" disabled={busy} onClick={() => edit(setExpiry, 'expires_at')('')} className="min-h-11 rounded border px-4 text-sm disabled:opacity-50">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  edit(setExpiry, 'expires_at')('');
+                  expiryRef.current?.focus();
+                }}
+                className="min-h-11 rounded border px-4 text-sm disabled:opacity-50"
+              >
                 Remove expiry
               </button>
             )}
@@ -328,7 +340,7 @@ export function NoticeEditor({ item, timeZone, onSaved, onPublish, onClose }: Pr
           {fieldError('expires_at')}
         </div>
         {/* Focusable, so a refused file on save can move focus here. */}
-        <div id={`${id}-attachment_file_id`} tabIndex={-1} role="group" aria-labelledby={`${id}-attachment-label`} aria-describedby={describedBy('attachment_file_id')} className="flex min-w-0 flex-col gap-1">
+        <div ref={attachmentRef} id={`${id}-attachment_file_id`} tabIndex={-1} role="group" aria-labelledby={`${id}-attachment-label`} aria-describedby={describedBy('attachment_file_id')} className="flex min-w-0 flex-col gap-1">
           <span id={`${id}-attachment-label`} className="text-sm font-medium">
             Attachment (optional)
           </span>
@@ -352,6 +364,8 @@ export function NoticeEditor({ item, timeZone, onSaved, onPublish, onClose }: Pr
                 setKept(null);
                 resetUpload();
                 setErrors((current) => ({ ...current, attachment_file_id: undefined }));
+                // As Remove expiry: this button goes away.
+                attachmentRef.current?.focus();
               }}
               className="min-h-11 self-start rounded border px-4 text-sm disabled:opacity-50"
             >

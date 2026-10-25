@@ -246,8 +246,11 @@ describe('an existing draft (criterion 2)', () => {
     manager(server);
     renderApp([PAGE]);
     await openEdit('Pool');
+    // Each button removes itself: focus moves to what stays (CLAUDE.md lesson), the field or the attachment group.
     fireEvent.click(inEditor().getByRole('button', { name: 'Remove expiry' }));
+    expect(document.activeElement).toBe(inEditor().getByLabelText(/^Expires/));
     fireEvent.click(inEditor().getByRole('button', { name: 'Remove attachment' }));
+    expect(document.activeElement).toBe(inEditor().getByRole('group', { name: 'Attachment (optional)' }));
     expect(inEditor().queryByText('A PDF is attached.')).toBeNull();
     save();
     await saved();
@@ -572,6 +575,7 @@ describe('the attachment (P6-02f criterion 5)', () => {
     type('Body (Markdown)', 'None.');
     await upload();
     fireEvent.click(inEditor().getByRole('button', { name: 'Remove attachment' }));
+    expect(document.activeElement).toBe(inEditor().getByRole('group', { name: 'Attachment (optional)' }));
     expect(inEditor().queryByText('Uploaded rules.pdf.')).toBeNull();
     save();
     await saved();
