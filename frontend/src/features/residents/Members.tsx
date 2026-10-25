@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { ApiError } from '@/api/errors';
 import { useMe } from '@/app/AuthProvider';
 import { useBuildingId } from '@/app/BuildingProvider';
+import { useLoadMore } from '@/features/lists/useLoadMore';
 import { relationshipLabel, unitName } from '@/features/onboarding/api';
 import { MemberDialog } from '@/features/residents/MemberDialog';
 import { RolesDialog } from '@/features/residents/RolesDialog';
@@ -81,6 +82,7 @@ export function Members() {
   const [message, setMessage] = useState<string | null>(null);
   const messageRef = useRef<HTMLParagraphElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const more = useLoadMore(members, () => headingRef.current?.focus());
   const id = useId();
   // Where focus goes once the dialog has closed: state, so the effect runs after the commit that shows the message
   // (PendingRequests). Without a message, back to the opener, or to the tab's heading if its row went, not <body>.
@@ -134,9 +136,9 @@ export function Members() {
       <p>No members match.</p>
     ) : (
       members.data && (
-        <ul aria-label="Members" className="flex flex-col gap-3">
+        <ul ref={more.listRef} aria-label="Members" className="flex flex-col gap-3">
           {items.map((member) => (
-            <li key={member.membership_id} className="rounded border bg-white p-3 [overflow-wrap:anywhere]">
+            <li key={member.membership_id} tabIndex={-1} className="rounded border bg-white p-3 [overflow-wrap:anywhere]">
               <h3 className="font-medium">{member.full_name}</h3>
               <p className="text-sm text-slate-700">{member.email}</p>
               <p className="text-sm text-slate-700">
@@ -262,8 +264,9 @@ export function Members() {
         // error without repairing the first page (P4-08b review rounds 2 and 3).
         <button
           type="button"
+          ref={more.buttonRef}
           disabled={members.isFetching}
-          onClick={() => void members.fetchNextPage({ cancelRefetch: false })}
+          onClick={more.onClick}
           className="self-start rounded border px-4 py-2 text-sm disabled:opacity-50"
         >
           Show more

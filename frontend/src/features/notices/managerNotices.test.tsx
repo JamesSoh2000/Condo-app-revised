@@ -144,6 +144,29 @@ describe('the three lists (criterion 1)', () => {
     expect(within(await row('Archived', 'Old')).queryByRole('button')).toBeNull();
   });
 
+  it('P6-02e criterion 1: focus moves to the first new row once the last page has landed', async () => {
+    const more = notice(9, { title: 'Older draft', status: 'draft' });
+    stubApi(
+      manager(
+        { notices: [] },
+        {
+          [`GET ${BASE}`]: (request) =>
+            new URL(request.url).searchParams.get('cursor') === CURSOR
+              ? json({ items: [more], next_cursor: null })
+              : json({ items: [notice(8, { status: 'draft' })], next_cursor: CURSOR }),
+        },
+      ),
+    );
+    renderApp([PAGE]);
+
+    await list('Drafts');
+    const button = screen.getByRole('button', { name: 'Load more' });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(document.activeElement).toBe(within(screen.getByRole('list', { name: 'Drafts' })).getAllByRole('listitem')[1]));
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+  });
+
   it('loads more with the cursor, and says when a list is empty or fails', async () => {
     const more = notice(9, { title: 'Older draft', status: 'draft' });
     stubApi(

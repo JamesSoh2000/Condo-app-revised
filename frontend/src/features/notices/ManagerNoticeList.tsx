@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 import { useBuildingId } from '@/app/BuildingProvider';
 import { rateLimitMessage } from '@/features/auth/formErrors';
+import { useLoadMore } from '@/features/lists/useLoadMore';
 import { useManagedNotices, type ManagedStatus, type Notice, type NoticeAction } from '@/features/notices/api';
 import { NoticeBody } from '@/features/notices/NoticeBody';
 import { NoticeTimes } from '@/features/notices/NoticeList';
@@ -19,13 +20,17 @@ interface Props {
   onAction: (action: NoticeAction, item: Notice, opener: HTMLButtonElement) => void;
   /** Open the editor on a draft (P6-02d). */
   onEdit: (item: Notice, opener: HTMLButtonElement) => void;
-  /** Called when a refresh removes the row that holds focus, which a browser would drop to <body>. */
+  /**
+   * Focus the list's heading: a refresh removed the row that held focus, which a browser would drop to <body>, or Load
+   * more added no row (P6-02e).
+   */
   onFocusLost: () => void;
 }
 
 /** One of the manager's lists (P6-02c criterion 1): its notices in the API's order, 25 a page with Load more. */
 export function ManagerNoticeList({ status, label, empty, time, now, onAction, onEdit, onFocusLost }: Props) {
   const query = useManagedNotices(useBuildingId(), status);
+  const more = useLoadMore(query, onFocusLost);
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
 
   let body;
@@ -45,7 +50,7 @@ export function ManagerNoticeList({ status, label, empty, time, now, onAction, o
     (items.length === 0 ? (
       <p>{empty}</p>
     ) : (
-      <ul aria-label={label} className="flex flex-col gap-3">
+      <ul ref={more.listRef} aria-label={label} className="flex flex-col gap-3">
         {items.map((item) => (
           <Row key={item.id} item={item} time={time} now={now} onAction={onAction} onEdit={onEdit} onFocusLost={onFocusLost} />
         ))}
@@ -65,8 +70,9 @@ export function ManagerNoticeList({ status, label, empty, time, now, onAction, o
         // As the feed: not while any fetch is out, nor after a failed refresh.
         <button
           type="button"
+          ref={more.buttonRef}
           disabled={query.isFetching}
-          onClick={() => void query.fetchNextPage({ cancelRefetch: false })}
+          onClick={more.onClick}
           className="min-h-11 self-start rounded border px-4 text-sm disabled:opacity-50"
         >
           Load more
@@ -95,6 +101,7 @@ function Row({ item, time, now, onAction, onEdit, onFocusLost }: RowProps) {
   const expired = item.status === 'published' && item.expires_at !== null && Date.parse(item.expires_at) <= now;
   return (
     <li
+      tabIndex={-1}
       onFocus={() => (focused.current = true)}
       onBlur={() => (focused.current = false)}
       className="min-w-0 rounded border bg-white p-3 [overflow-wrap:anywhere]"

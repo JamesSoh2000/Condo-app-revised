@@ -66,7 +66,7 @@ function Notices({ buildingId }: { buildingId: string }) {
       <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-semibold">
         Notices
       </h1>
-      <NoticeList enabled={ready} time={time} />
+      <NoticeList enabled={ready} time={time} onFocusLost={() => headingRef.current?.focus()} />
       {noticeId !== undefined && <NoticeDetailDialog key={noticeId} noticeId={noticeId} time={time} onClose={close} />}
     </section>
   );

@@ -184,6 +184,47 @@ describe('the lists and the badge (criterion 1)', () => {
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
   });
 
+  it('P6-02e criterion 1: focus moves to the first new history row once the last page has landed', async () => {
+    const more = pickedUp(9, { carrier: 'Canada Post' });
+    stubApi(
+      resident(TWO_AND_THREE, {
+        [`GET ${BASE}`]: (request) => {
+          const url = new URL(request.url);
+          if (statuses(request) === 'received') return page(TWO_AND_THREE.waiting);
+          return url.searchParams.get('cursor') === 'c'.repeat(22) ? page([more]) : page(TWO_AND_THREE.history, 'c'.repeat(22));
+        },
+      }),
+    );
+    renderApp(['/packages']);
+
+    await historyList();
+    const button = screen.getByRole('button', { name: 'Load more' });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(async () => expect(document.activeElement).toBe(within(await historyList()).getAllByRole('listitem')[3]));
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+  });
+
+  it('P6-02e criterion 1: an empty last page of "Waiting for you" sends focus to its heading', async () => {
+    stubApi(
+      resident(TWO_AND_THREE, {
+        [`GET ${BASE}`]: (request) => {
+          const url = new URL(request.url);
+          if (statuses(request) !== 'received') return page(TWO_AND_THREE.history);
+          return url.searchParams.get('cursor') === 'w'.repeat(22) ? page([]) : page(TWO_AND_THREE.waiting, 'w'.repeat(22));
+        },
+      }),
+    );
+    renderApp(['/packages']);
+
+    await waitingList();
+    const button = screen.getByRole('button', { name: 'Load more' });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Waiting for you' })));
+  });
+
   it('shows plain "My packages" with nothing waiting, and over 99 as 99+', async () => {
     stubApi(resident({ waiting: [], history: [] }));
     renderApp(['/packages']);

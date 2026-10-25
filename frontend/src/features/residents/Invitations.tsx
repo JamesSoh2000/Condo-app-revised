@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useBuilding, useBuildingId } from '@/app/BuildingProvider';
 import { rateLimitMessage } from '@/features/auth/formErrors';
+import { useLoadMore } from '@/features/lists/useLoadMore';
 import { InvitationDialog, roleNames } from '@/features/residents/InvitationDialog';
 import { InviteForm } from '@/features/residents/InviteForm';
 import { invitationsListKey, useInvitations, useInviting, type Invitation, type InvitationAction, type ListedStatus } from '@/features/residents/api';
@@ -32,6 +33,7 @@ export function Invitations() {
   const [message, setMessage] = useState<string | null>(null);
   const messageRef = useRef<HTMLParagraphElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const more = useLoadMore(invitations, () => headingRef.current?.focus());
   // Where focus goes next: state, not a ref, so the effect runs after the commit that shows the message (as
   // `Members`). After a dialog without a message, back to its opener, or to the list's heading if its row went.
   const [focusTo, setFocusTo] = useState<{ target: HTMLElement | 'message' } | null>(null);
@@ -76,9 +78,9 @@ export function Invitations() {
       <p>No {status} invitations.</p>
     ) : (
       invitations.data && (
-        <ul aria-label={name} className="flex flex-col gap-3">
+        <ul ref={more.listRef} aria-label={name} className="flex flex-col gap-3">
           {items.map((invitation) => (
-            <li key={invitation.id} className="rounded border bg-white p-3 [overflow-wrap:anywhere]">
+            <li key={invitation.id} tabIndex={-1} className="rounded border bg-white p-3 [overflow-wrap:anywhere]">
               <h3 className="font-medium">{invitation.email}</h3>
               <p className="text-sm text-slate-700">
                 {roleNames(invitation.roles)} · {invitation.status === 'expired' ? 'Expired' : 'Expires'} {formatDate(invitation.expires_at)}
@@ -148,8 +150,9 @@ export function Invitations() {
         // pages), and not after a failed refresh (Try again first; P4-08b review rounds 2 and 3).
         <button
           type="button"
+          ref={more.buttonRef}
           disabled={invitations.isFetching}
-          onClick={() => void invitations.fetchNextPage({ cancelRefetch: false })}
+          onClick={more.onClick}
           className="self-start rounded border px-4 py-2 text-sm disabled:opacity-50"
         >
           Show more

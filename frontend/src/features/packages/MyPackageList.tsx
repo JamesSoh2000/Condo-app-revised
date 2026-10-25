@@ -1,9 +1,11 @@
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useBuildingId } from '@/app/BuildingProvider';
 import { pagePath } from '@/app/pages';
 import { rateLimitMessage } from '@/features/auth/formErrors';
 import { PrivateImage } from '@/features/files/PrivateImage';
+import { useLoadMore } from '@/features/lists/useLoadMore';
 import { useMyPackages, type MyList, type Package } from '@/features/packages/api';
 
 const TEXT: Record<MyList, { heading: string; name: string; empty: string; failed: string }> = {
@@ -48,6 +50,8 @@ export function MyPackageList({ list, enabled, time, onOpen }: Props) {
   const query = useMyPackages(useBuildingId(), list, enabled);
   const text = TEXT[list];
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const more = useLoadMore(query, () => headingRef.current?.focus());
 
   let body;
   if (query.isPending) body = <p role="status">Loading packages…</p>;
@@ -66,7 +70,7 @@ export function MyPackageList({ list, enabled, time, onOpen }: Props) {
     (items.length === 0 ? (
       <p>{text.empty}</p>
     ) : (
-      <ul aria-label={text.name} className="flex flex-col gap-3">
+      <ul ref={more.listRef} aria-label={text.name} className="flex flex-col gap-3">
         {items.map((item) => (
           <Item key={item.id} item={item} card={list === 'waiting'} time={time} onOpen={onOpen} />
         ))}
@@ -75,7 +79,9 @@ export function MyPackageList({ list, enabled, time, onOpen }: Props) {
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
-      <h2 className="text-lg font-semibold">{text.heading}</h2>
+      <h2 ref={headingRef} tabIndex={-1} className="text-lg font-semibold">
+        {text.heading}
+      </h2>
       {body}
       {shown}
       {query.isFetchNextPageError && (
@@ -87,8 +93,9 @@ export function MyPackageList({ list, enabled, time, onOpen }: Props) {
         // As the desk's list: not while any fetch is out, nor after a failed refresh.
         <button
           type="button"
+          ref={more.buttonRef}
           disabled={query.isFetching}
-          onClick={() => void query.fetchNextPage({ cancelRefetch: false })}
+          onClick={more.onClick}
           className="min-h-11 self-start rounded border px-4 text-sm disabled:opacity-50"
         >
           Load more
@@ -110,7 +117,7 @@ function Item({ item, card, time, onOpen }: ItemProps) {
   const when = time?.format(new Date(moment.at));
   const thumbnail = 'h-20 w-20 shrink-0 rounded object-cover';
   return (
-    <li className="flex gap-3 rounded border bg-white p-3 [overflow-wrap:anywhere]">
+    <li tabIndex={-1} className="flex gap-3 rounded border bg-white p-3 [overflow-wrap:anywhere]">
       {card &&
         (item.photo_file_id ? (
           <PrivateImage fileId={item.photo_file_id} alt={photoAlt(item)} className={thumbnail} />

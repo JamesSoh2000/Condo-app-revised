@@ -194,6 +194,24 @@ describe('the feed and the badge (criteria 1, 11)', () => {
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
   });
 
+  it('P6-02e criterion 1: focus moves to the first new card once the last page has landed', async () => {
+    const more = notice(9, { title: 'Older' });
+    stubApi(
+      member(THREE(), {
+        [`GET ${BASE}`]: (request) =>
+          new URL(request.url).searchParams.get('cursor') === 'c'.repeat(22) ? page([more]) : page(THREE().notices, 'c'.repeat(22)),
+      }),
+    );
+    renderApp(['/notices']);
+
+    await feed();
+    const button = screen.getByRole('button', { name: 'Load more' });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(async () => expect(document.activeElement).toBe((await cards())[3]));
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+  });
+
   it('shows the empty, failed and failed-"Load more" states', async () => {
     stubApi(member({ notices: [] }));
     renderApp(['/notices']);
@@ -307,6 +325,52 @@ describe('focus after "Mark as read" (P6-02c criterion 9)', () => {
     await within(failing).findByRole('alert');
     await waitFor(() => expect(document.activeElement).toBe(other));
     expect((other as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe('focus when a refresh removes a card (P6-02e criteria 2, 7)', () => {
+  it('criterion 2: focus in a card the refresh drops moves to the feed’s heading', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const state = THREE();
+    stubApi(member(state));
+    renderApp(['/notices']);
+    const card = (await cards())[2];
+    within(card).getByRole('link', { name: 'Open: Notice 1' }).focus();
+
+    state.notices = state.notices.filter((item) => item.id !== notice(1).id);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await waitFor(() => expect(card.isConnected).toBe(false));
+    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Notices' }));
+  });
+
+  it('criterion 2: a card the refresh drops without focus moves nothing', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const state = THREE();
+    stubApi(member(state));
+    renderApp(['/notices']);
+    const [first, , card] = await cards();
+    const open = within(first).getByRole('link', { name: 'Open: Notice 3' });
+    open.focus();
+
+    state.notices = state.notices.filter((item) => item.id !== notice(1).id);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    await waitFor(() => expect(card.isConnected).toBe(false));
+    expect(document.activeElement).toBe(open);
+  });
+
+  it('criterion 7: leaving the page with focus in a card focuses nothing on the next page', async () => {
+    stubApi(member(THREE()));
+    renderApp(['/notices']);
+    const card = (await cards())[0];
+    within(card).getByRole('link', { name: 'Open: Notice 3' }).focus();
+
+    fireEvent.click(await navLink(/^My packages/));
+    await waitFor(() => expect(card.isConnected).toBe(false));
+    expect(document.activeElement).toBe(document.body);
   });
 });
 
