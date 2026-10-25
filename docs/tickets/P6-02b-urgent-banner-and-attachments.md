@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-02a, P3-06 |
 | Replaces old | M6-T04 (banner part) |
-| Status | todo |
+| Status | in progress |
 
 Split from the P6-02 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-02a](./P6-02a-notices-feed-and-detail.md).
@@ -110,7 +110,76 @@ Moved from P6-02a's draft, unchanged:
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
-  also the alternatives considered and why they lost):
-- Split:
+  - **A** (sharpened): the notice opens as a dialog over the feed (`NoticeDetailDialog`, as `/packages/<id>`, P5-04
+    D2), with title, `NoticeBody`, an "Urgent" label, published and "Until" times in the building timezone, and the
+    attachment (criterion 6). Opening it sends no `notices_read`; its "Mark as read" button sends exactly one per
+    press, guarded against a double click in the same tick, and on success the dialog's own copy, the feed's card and
+    the nav badge show it read without a reload (every notices query is under `['b', id, 'notices']`).
+  - **B** (sharpened): "Notice not found" is the dialog's heading; the non-UUID segment sends no `GET …/notices/{id}`;
+    Close (and Escape) go back to the feed it came from, or replace the URL with `/notices` for a link from
+    elsewhere (the bell, a bookmark), as `/packages/<id>`. A manager sees what `notices_get` gives them (drafts and
+    archived ones too, labelled with their status); the criterion is about non-managers, as written.
+  - **1** (sharpened): the banner is a region named "Urgent notices", placed between the main navigation and the
+    page, in the normal flow (not fixed or overlaid). It lists the unread urgent notices from
+    `GET …/notices?live=true&priority=urgent&unread=true&limit=3` (decision 2), each title linking to
+    `/notices/<id>`. It shows within one 30 s summary poll of publication while the tab is visible, because
+    `urgent_unread` rising asks that list again.
+  - **2** (sharpened): "Acknowledge" on a banner row sends `notices_read` for that notice, once per press. Then
+    the summary, feed and list are asked again; the row leaves and the banner disappears once `urgent_unread` is 0.
+    After a reload, `urgent_unread` is 0, so no banner list request is made. A later urgent notice raises
+    `urgent_unread` and brings the banner back with that notice.
+  - **3** (sharpened): with two (or three) unread urgent notices the banner says "2 urgent notices" and lists each
+    with its own link and Acknowledge; with more than three it lists the newest three and adds "and N more", linked
+    to `/notices`.
+  - **5** (sharpened): no banner, and neither `notices/summary` nor the banner list is requested, when the
+    building has `notices` off, the building is denied, there is no selected building (session-only pages such as
+    `/403` or onboarding), or the user is signed out. With only normal unread notices (`urgent_unread` 0) there is no
+    banner and no banner list request.
+  - **7** (sharpened): measured in Chromium at 375 px with a 200-character unbroken title and three rows: no
+    horizontal scroll, and the nav's bottom edge is above the banner's top. The banner content sits in a
+    `role="status"` (polite) live region that is mounted before content arrives, so it is announced; focus doesn't
+    move when it appears.
+  - **8** (corrected, not loosened): `EmergencyAlertPopup.jsx` has no `base44.`/`@base44/` reference
+    (`scripts/base44-count.sh`: 247, baseline 247), so deleting it cannot lower the Base44 ratchet. The criterion
+    becomes: the file is deleted, nothing imports it, and `scripts/base44-count.sh` still passes at the baseline
+    (unchanged, 247). (Also added to the inbox's "Decisions to audit" in step 6.)
+  - **9** (added, the missed case): a banner row whose notice was archived or expired before Acknowledge
+    (`notices_read` 404) shows no error loop: the row leaves after the refresh, and the next summary decides whether
+    the banner stays.
+  - **10** (added, tenant table: building switch and denial): switching building A → B shows nothing of A's
+    banner in B (keyed by building), and B's banner comes from B's own summary; in a denied building the banner
+    is gone.
+  - **11** (added, API, decision 2): `GET …/notices` accepts `priority` and `unread=true`. `unread` keeps the
+    caller's own unread notices, `priority` narrows by priority, both inside `visible_notices`, and other members'
+    reads don't count. Backend tests: a resident's `priority=urgent&unread=true` returns only their unread urgent
+    live notices; another resident's read doesn't hide it; another building's notice never appears; a bad
+    `priority` is a 422.
+  - **6** (sharpened): the attachment is a "Download attachment (PDF)" button, not a link with an `href`. A click
+    opens a blank tab synchronously (so popup blockers allow it), asks
+    `GET …/files/{attachment_file_id}/download-url` at that moment (never cached: each click asks again), then points
+    the tab at the URL with its `opener` cleared. On 404 `file_not_found` (or any failure) the tab closes and the
+    dialog says "The attachment is not available." (or the rate-limit or generic message). The DOM never contains
+    the URL, the file id as a link, or an S3 key. Notice attachments are PDF only (`PURPOSE_RULES.notice_attachment`),
+    so no inline image.
+- Criteria loosened (with reason; also listed in the inbox): none. Criterion 8's "lower the ratchet" is a correction
+  of fact (above), not a loosened gate.
+- Decisions taken (with basis):
+  1. **Banner copy** (autonomous; no default written down): "Urgent building notice. This app is not an emergency
+     alert system: in an emergency, call 911." Basis: ADR-0012 (not emergency alerting); 911 covers the seeded
+     buildings (Canada, Toronto timezone). Alternatives: naming the front desk or security (not every building has
+     one, and the app doesn't hold their numbers), or a building-configurable line (new setting, out of scope).
+  2. **How the banner finds the notices**: a list filter on the API, `priority` + `unread`
+     (autonomous, simplest exact option). Alternatives: paging the live feed on the client until `urgent_unread`
+     notices are found (unbounded requests, and an older urgent notice can sit behind many pages), or a new
+     `/notices/urgent` endpoint (one more route for what is a filter on the existing list). Tradeoff: a small backend
+     change and an OpenAPI regeneration (`schema.d.ts`, a hot file) in a lane-B ticket.
+  3. **Opening `/notices/<id>` does not mark it read**; only its button does (P6-02a D4, kept; basis: convention).
+     A notification click or a prefetch shouldn't count as reading it.
+  4. **"Acknowledged" means marked read** (`notices_read`) (basis: simplest, and criterion 2 requires the summary
+     and the unread state to agree, which a separate dismissal would break). No new table or local storage.
+  5. **When the banner list is asked**: only while `urgent_unread > 0`, again whenever `urgent_unread` changes,
+     cancelled before invalidating (the CLAUDE.md lesson, as `NoticesPage`). It doesn't poll on its own (ADR-0012).
+     Accepted limitation: if within one poll one urgent notice is read on another device and another is published,
+     the count doesn't move and the banner keeps the old row until a focus, a mount or its own Acknowledge (a 204).
+- Split: none. Estimate about 360 non-test lines (backend filter ~20, `api.ts` ~35, `UrgentBanner.tsx` ~110,
+  `NoticeDetailDialog.tsx` ~110, `NoticeAttachment.tsx` ~55, page/route/shell wiring ~30).
