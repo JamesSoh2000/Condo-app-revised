@@ -104,7 +104,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P6-01b](./P6-01b-notice-authoring-api.md) | Notice authoring API (split from P6-01) | B | 2 | P6-01a, P2-04, P3-04b | done | — |
 | [P6-01c](./P6-01c-notice-reads-and-fan-out.md) | Notice reads, unread summary and publish fan-out (split from P6-01) | B | 2 | P6-01b, P3-03, P3-02 | done | — |
 | [P6-02a](./P6-02a-notices-feed-and-detail.md) | Notices feed (split from P6-02) | B | 2 | P6-01c, P5-05 | done | — |
-| [P6-02b](./P6-02b-urgent-banner-and-attachments.md) | One notice, urgent banner and attachments (split from P6-02) | B | 2 | P6-02a, P3-06 | todo | — |
+| [P6-02b](./P6-02b-urgent-banner-and-attachments.md) | One notice, urgent banner and attachments (split from P6-02) | B | 2 | P6-02a, P3-06 | in progress | — |
 | [P6-02c](./P6-02c-manager-notice-list-and-actions.md) | Manager notice list, publish and archive (split from P6-02) | B | 2 | P6-02a, P6-01b | todo | — |
 | [P6-02d](./P6-02d-notice-editor.md) | Notice editor with preview and attachment (split from P6-02) | B | 2 | P6-02c, P3-06 | todo | — |
 
