@@ -8,8 +8,10 @@
  * Read with the TypeScript checker, not text matching or name tables (CLAUDE.md lessons; P6-02a, the P5-05 round-3
  * follow-up): each call's callee is resolved to the function it names through the checker's symbols, following
  * imports, namespace members, `const` aliases, destructuring and wrappers (`memo(() => …)`), so scope, shadowing and
- * renames are the language's own. Only a binding that can't change earns the denial: an import or namespace member, a
- * `const` alias, a function declaration never reassigned, an inline function in React's `memo` or `forwardRef`. Any
+ * renames are the language's own. An import the program can't follow keeps the name it is exported by, as the P5-05
+ * inspector did. Only a binding that can't change earns the denial: an import or namespace member, a `const` alias, a
+ * function declaration never reassigned, an anonymous function (named ones go by their own name), or the one React's
+ * `memo` or `forwardRef` is given first. Any
  * other value (a `let`, an object's member or method, a call's result) earns nothing, and counts as `useBuilding` if
  * it may be it, by its name or its contents (fail-closed: it can only add a passive reader; P6-02a review rounds 1–2).
  * An argument it can't read counts as passive (fail-closed).
@@ -21,7 +23,6 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const SRC = join(__dirname, '..');
-const ROOTS = ['app', 'features'];
 /** Where the two hooks the rule is about are defined, by their path under src. */
 const PROVIDER = 'app/BuildingProvider.tsx';
 
@@ -146,7 +147,41 @@ function nameOf(expression: ts.Expression): string {
   return '<other>';
 }
 
-function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boolean) {
+/** The global object's names: written through, they can replace a global `memo`. */
+const GLOBALS = new Set(['globalThis', 'window', 'self', 'global']);
+const isWrapperName = (name: string) => name === 'memo' || name === 'forwardRef';
+
+/** True if `node` names a member or declares something (`x.self`, `{ self: 1 }`, `self: boolean`), not a reference to a binding. */
+function isMemberOrDeclarationName(node: ts.Identifier): boolean {
+  const parent = node.parent as ts.Node & { name?: ts.Node; propertyName?: ts.Node };
+  if (ts.isShorthandPropertyAssignment(parent)) return false;
+  if (ts.isQualifiedName(parent)) return parent.right === node;
+  return parent.name === node || parent.propertyName === node;
+}
+
+/** True if `node` is written, not only read: an assignment's target (destructuring included), `delete`, `++`, `--`. */
+function isWritten(node: ts.Node): boolean {
+  let at = node;
+  while (ts.isParenthesizedExpression(at.parent) || ts.isNonNullExpression(at.parent) || ts.isAsExpression(at.parent)) at = at.parent;
+  const parent = at.parent;
+  if (ts.isBinaryExpression(parent) && parent.left === at) {
+    const kind = parent.operatorToken.kind;
+    return kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
+  }
+  if (ts.isDeleteExpression(parent)) return true;
+  if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent)) {
+    return parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken;
+  }
+  // `({ memo: x.memo } = …)`, `[x.memo] = …`: a member inside a destructuring assignment's target.
+  for (let up: ts.Node = parent; up && !ts.isStatement(up); up = up.parent) {
+    if (ts.isBinaryExpression(up) && up.operatorToken.kind === ts.SyntaxKind.EqualsToken && up.left.pos <= at.pos && at.end <= up.left.end) {
+      return ts.isObjectLiteralExpression(up.left) || ts.isArrayLiteralExpression(up.left);
+    }
+  }
+  return false;
+}
+
+function resolver(checker: ts.TypeChecker, files: readonly ts.SourceFile[], isBuilding: (fn: FunctionNode) => boolean) {
   /**
    * The function a value expression is, through wrappers, aliases and the checker's symbols. `name` is what it goes by
    * if it is no function the checker can follow: a variable's own name for its value (`const navigate =
@@ -155,20 +190,20 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
    */
   const ofExpression = (expression: ts.Expression, seen: Set<ts.Symbol>, name = nameOf(expression)): Target => {
     const at = unwrap(expression);
-    if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) return { fn: at };
+    // A named function expression is known by its own name, as the P5-05 inspector knew it, so the variable or wrapper
+    // it is given to earns nothing from it (round 3: the fix's differential run).
+    if (ts.isArrowFunction(at) || (ts.isFunctionExpression(at) && !at.name)) return { fn: at };
     const unknown = (): Target => ({ unresolved: mayBeBuilding(at, seen) ? 'useBuilding' : name });
-    // A function wrapped by React's `memo` or `forwardRef`, which keep it: the first function written inside, however
-    // deep. Any other call may return anything, and a function only passed in by name may not be what it returns
-    // (review round 1, Codex F2; round 2, Codex F1): unknown.
+    // A function wrapped by React's `memo` or `forwardRef`, which keep it: their first argument, written inline or
+    // itself wrapped. `memo`'s second is its comparison, not what it returns (round 3, Codex F2). Any other call may
+    // return anything, and a function only passed in by name may not be what it returns (review round 1, Codex F2;
+    // round 2, Codex F1): unknown.
     if (ts.isCallExpression(at)) {
-      if (!isReactWrapper(unwrap(at.expression))) return unknown();
-      for (const arg of at.arguments) {
-        const inner = unwrap(arg);
-        if (!(ts.isArrowFunction(inner) || ts.isFunctionExpression(inner) || ts.isCallExpression(inner))) continue;
-        const found = ofExpression(inner, seen);
-        if ('fn' in found) return found;
-      }
-      return unknown();
+      const inner = at.arguments[0] && unwrap(at.arguments[0]);
+      if (!inner || !isReactWrapper(unwrap(at.expression))) return unknown();
+      if (!(ts.isArrowFunction(inner) || ts.isFunctionExpression(inner) || ts.isCallExpression(inner))) return unknown();
+      const found = ofExpression(inner, seen);
+      return 'fn' in found ? found : unknown();
     }
     if (!ts.isIdentifier(at) && !ts.isPropertyAccessExpression(at) && !ts.isElementAccessExpression(at)) return unknown();
     let node: ts.Node = at;
@@ -178,22 +213,76 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
     return symbol ? ofSymbol(symbol, seen, name) : unknown();
   };
 
-  /** True if `node`'s symbol is imported from `react` (`import { memo } from 'react'`, `import * as React …`). */
-  const fromReact = (node: ts.Node): boolean => {
-    const symbol = checker.getSymbolAtLocation(node);
-    let at: ts.Node | undefined = symbol?.declarations?.[0];
-    while (at && !ts.isImportDeclaration(at)) at = at.parent;
-    return !!at && ts.isStringLiteral(at.moduleSpecifier) && at.moduleSpecifier.text === 'react';
+  /** The import from `react` that declares `node`'s symbol (`{ memo }`, `* as React`, `React`), if it is one. */
+  const reactImport = (node: ts.Node): ts.ImportSpecifier | ts.NamespaceImport | ts.ImportClause | undefined => {
+    const declaration = checker.getSymbolAtLocation(node)?.declarations?.[0];
+    if (!declaration || !(ts.isImportSpecifier(declaration) || ts.isNamespaceImport(declaration) || ts.isImportClause(declaration))) return undefined;
+    let at: ts.Node = declaration;
+    while (!ts.isImportDeclaration(at)) at = at.parent;
+    return ts.isStringLiteral(at.moduleSpecifier) && at.moduleSpecifier.text === 'react' ? declaration : undefined;
   };
 
   /**
-   * React's `memo` or `forwardRef`: imported from `react` (by name or through its namespace), or a global of that name
-   * that nothing in the program declares (the inspector's cases; `noLib` leaves React's own types out).
+   * Whether React's functions, or a global `memo`, may have been replaced anywhere in the program (round 3, Codex F2):
+   * a write to a member named `memo` or `forwardRef` on anything, a write to a computed member of React or the global
+   * object, or React or the global object used other than read by name (`React.memo`, `typeof window`), which may
+   * reach a write the test can't see (`Object.assign(React, …)`, `const R = React`). React's named exports read its
+   * default export's object under the bundler's interop, so one write ends the trust in every form.
+   */
+  const patchable = files.some((file) => {
+    let found = false;
+    const visit = (node: ts.Node) => {
+      if (found) return;
+      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+        const member = nameOf(node);
+        if (isWritten(node) && (isWrapperName(member) || (member === '<computed>' && isReactOrGlobal(node.expression)))) found = true;
+      } else if (ts.isIdentifier(node) && isReactOrGlobal(node) && !isReadByName(node)) {
+        found = true;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    return found;
+  });
+
+  /**
+   * True if `node` is React's module object (a default or namespace import of `react`) or the global object: a
+   * reference to it, not a member or a declaration that shares its name (`variables.self`, `{ self: true }`).
+   */
+  function isReactOrGlobal(node: ts.Node): boolean {
+    if (!ts.isIdentifier(node)) return false;
+    const imported = reactImport(node);
+    if (imported) return !ts.isImportSpecifier(imported);
+    if (!GLOBALS.has(node.text) || isMemberOrDeclarationName(node)) return false;
+    const declarations = checker.getSymbolAtLocation(node)?.declarations ?? [];
+    return declarations.every((d) => !files.includes(d.getSourceFile()));
+  }
+
+  /** True if `node` is only read by name: `X.name` (not written), `typeof X`, a type, or its own import. */
+  function isReadByName(node: ts.Identifier): boolean {
+    const parent = node.parent;
+    if (ts.isPropertyAccessExpression(parent) && parent.expression === node) return !isWritten(parent);
+    if (ts.isTypeOfExpression(parent) || ts.isImportClause(parent) || ts.isNamespaceImport(parent)) return true;
+    for (let at: ts.Node = node; at.parent; at = at.parent) if (ts.isTypeNode(at) || ts.isQualifiedName(at)) return true;
+    return false;
+  }
+
+  /**
+   * React's `memo` or `forwardRef`, while nothing can have replaced it (`patchable`): imported from `react` by its name
+   * or through the namespace import, never its mutable default export (round 3, Codex F2), or a global of that name that
+   * nothing in the program declares (the inspector's cases; `noLib` leaves React's own types out).
    */
   const isReactWrapper = (callee: ts.Expression): boolean => {
-    const wrapper = (name: string) => name === 'memo' || name === 'forwardRef';
-    if (ts.isIdentifier(callee)) return wrapper(callee.text) && (checker.getSymbolAtLocation(callee) === undefined || fromReact(callee));
-    if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)) return wrapper(callee.name.text) && fromReact(callee.expression);
+    if (patchable) return false;
+    if (ts.isIdentifier(callee)) {
+      if (checker.getSymbolAtLocation(callee) === undefined) return isWrapperName(callee.text);
+      const imported = reactImport(callee);
+      return !!imported && ts.isImportSpecifier(imported) && isWrapperName((imported.propertyName ?? imported.name).text);
+    }
+    if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)) {
+      const imported = reactImport(callee.expression);
+      return isWrapperName(callee.name.text) && !!imported && ts.isNamespaceImport(imported);
+    }
     return false;
   };
 
@@ -262,12 +351,13 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
    */
   const ofSymbol = (start: ts.Symbol, seen: Set<ts.Symbol>, name: string): Target => {
     // An import, re-export or namespace member: the checker follows the whole chain; one it can't is its unknown symbol,
-    // with no declaration.
+    // with no declaration. That one goes by the last name the chain exports it as, not the local one (`useBuilding as
+    // read` is `useBuilding`), as the P5-05 inspector named imports (round 3, Codex F1).
     const symbol = start.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(start) : start;
     if (seen.has(symbol)) return { unresolved: name };
     seen.add(symbol);
     const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];
-    if (!declaration) return { unresolved: name };
+    if (!declaration) return { unresolved: start.flags & ts.SymbolFlags.Alias ? exportedName(start, name) : name };
     if (ts.isFunctionDeclaration(declaration)) {
       // A function declaration is a binding too: reassigned anywhere in its file, it may not be what runs (round 2, Codex F2).
       const values = assignedTo(symbol, declaration);
@@ -304,6 +394,18 @@ function resolver(checker: ts.TypeChecker, isBuilding: (fn: FunctionNode) => boo
     if (ts.isPropertyAssignment(declaration)) return changeable([declaration.initializer], seen, name);
     if (ts.isShorthandPropertyAssignment(declaration)) return changeable([declaration.name], seen, name);
     return { unresolved: name };
+  };
+
+  /** The name an import chain ending in a module the program can't read last exports its binding as. */
+  const exportedName = (start: ts.Symbol, name: string): string => {
+    let last = name;
+    for (let at: ts.Symbol | undefined = start; at && at.flags & ts.SymbolFlags.Alias; ) {
+      const declaration = at.declarations?.[0];
+      if (declaration && (ts.isImportSpecifier(declaration) || ts.isExportSpecifier(declaration))) last = (declaration.propertyName ?? declaration.name).text;
+      else if (declaration && ts.isImportClause(declaration)) last = 'default';
+      at = checker.getImmediateAliasedSymbol(at);
+    }
+    return last;
   };
 
   return (callee: ts.Expression) => ofExpression(callee, new Set());
@@ -343,7 +445,7 @@ export function analyze(files: Record<string, string>): { fns: Fn[]; denial: str
   };
   const denial = exported('useBuildingDenied');
   const building = exported('useBuilding');
-  const resolve = resolver(built.getTypeChecker(), (fn) => keyOf(fn) === building);
+  const resolve = resolver(built.getTypeChecker(), built.getSourceFiles(), (fn) => keyOf(fn) === building);
 
   const fns = new Map<string, Fn>();
   for (const tree of built.getSourceFiles()) {
@@ -398,16 +500,20 @@ export function unguarded({ fns, denial }: { fns: Fn[]; denial: string | undefin
   return fns.filter((fn) => fn.passive && ![...fn.calls].some((hook) => aware.has(hook))).map((fn) => fn.id);
 }
 
+/**
+ * Every TypeScript source under src (not the tests), so an import through a module outside app and features resolves
+ * and a passive reader anywhere counts (round 3, Codex F1). A `.js` module stays unread, named as above.
+ */
+const SCANNED = sourceFiles(SRC).map(underSrc);
+
 let cached: ReturnType<typeof analyze> | undefined;
 function inventory(): ReturnType<typeof analyze> {
-  cached ??= analyze(
-    Object.fromEntries(ROOTS.flatMap((root) => sourceFiles(join(SRC, root))).map((file) => [underSrc(file), readFileSync(file, 'utf8')])),
-  );
+  cached ??= analyze(Object.fromEntries(SCANNED.map((path) => [path, readFileSync(join(SRC, path), 'utf8')])));
   return cached;
 }
 
 describe('passive building readers also read the denial (P5-05 criterion 11, P3-05)', () => {
-  it('every passive reader under src/app and src/features reads useBuildingDenied, or is exempt with a reason', () => {
+  it('every passive reader under src reads useBuildingDenied, or is exempt with a reason', () => {
     expect(unguarded(inventory()).filter((id) => !(id in EXEMPT))).toEqual([]);
   });
 
@@ -685,5 +791,92 @@ describe('the inspector', () => {
     expect(check({ 'features/r/index.ts': REEXPORT, 'features/x/X.tsx': "import { useB } from '@/features/r';\nfunction A() { useB({ passive: true }); }" })).toEqual([
       'features/x/X.tsx::A',
     ]);
+  });
+
+  // P6-02a review round 3, Codex F1: an import the program can't follow (a module outside the scan, a `.js` barrel)
+  // kept only its local name, so a renamed `useBuilding` escaped. It keeps the name it is exported by, as the P5-05
+  // inspector did, and the scan reads all of src.
+  it('P6-02a R3-F1: a renamed import from a module the program cannot read keeps its exported name', () => {
+    const FLAGGED = ['features/x/X.tsx::A'];
+    expect(run("import { useBuilding as read } from '@/lib/building';\nfunction A() { return read({ passive: true }); }")).toEqual(FLAGGED);
+    expect(run("import { useBuilding as read } from './building.js';\nfunction A() { read({ passive: true }); }")).toEqual(FLAGGED);
+    // Through an alias of it, and through a barrel in the scan that re-exports from outside it.
+    expect(run("import { useBuilding as read } from '@/lib/building';\nlet r = read;\nfunction A() { r({ passive: true }); }")).toEqual(FLAGGED);
+    const OUT = { 'features/r/index.ts': "export { useBuilding as useB } from '@/lib/building';\n" };
+    expect(check({ ...OUT, 'features/x/X.tsx': "import { useB as read } from '@/features/r';\nfunction A() { read({ passive: true }); }" })).toEqual(FLAGGED);
+    const STAR = { 'features/r/index.ts': "export * from '@/lib/building';\n" };
+    expect(check({ ...STAR, 'features/x/X.tsx': "import { useBuilding as read } from '@/features/r';\nfunction A() { read({ passive: true }); }" })).toEqual(FLAGGED);
+    // The denial from a module it can't read earns nothing, renamed or not.
+    expect(run(`${IMPORT}import { useBuildingDenied as d } from '@/lib/building';\nfunction A() { useBuilding({ passive: true }); d(); }`)).toEqual(FLAGGED);
+    // A barrel under src/lib that the program reads is followed, renames included.
+    const LIB = { 'lib/building.ts': "export { useBuilding as useThing, useBuildingDenied as useSafe } from '@/app/BuildingProvider';\n" };
+    expect(check({ ...LIB, 'features/x/X.tsx': "import { useThing } from '@/lib/building';\nfunction A() { useThing({ passive: true }); }" })).toEqual(FLAGGED);
+    expect(check({ ...LIB, 'features/x/X.tsx': "import { useThing, useSafe } from '@/lib/building';\nfunction A() { useThing({ passive: true }); useSafe(); }" })).toEqual([]);
+    // And a passive reader outside app/features is the rule's too.
+    expect(check({ 'lib/X.tsx': `${IMPORT}function A() { useBuilding({ passive: true }); }` })).toEqual(['lib/X.tsx::A']);
+  });
+
+  it('P6-02a R3-F1: the inventory reads every source file under src, not only app and features', () => {
+    expect(SCANNED).toEqual(expect.arrayContaining(['api/client.ts', 'utils/index.ts', 'test/renderApp.tsx']));
+    expect(SCANNED.filter((path) => /\.test\.tsx?$/.test(path))).toEqual([]);
+  });
+
+  // P6-02a review round 3, Codex F2: `memo`'s comparison callback was taken as the function it wraps, and React's
+  // mutable default export was trusted though `React.memo` can be replaced. Only the first argument is the wrapped
+  // function, and only a named or namespace import of React (or the global) is trusted, while nothing can have
+  // replaced it.
+  it('P6-02a R3-F2: only the first argument of `memo` or `forwardRef` is the function it wraps', () => {
+    const FLAGGED = ['features/x/X.tsx::A'];
+    const REACT = "import { memo, forwardRef } from 'react';\n";
+    const NO_DENIAL = 'function NoDenial() { return null; }\n';
+    expect(run(`${REACT}${IMPORT}${NO_DENIAL}const useNoDenial = memo(NoDenial, function useCompare() { return useBuildingDenied(); });\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    expect(run(`${REACT}${IMPORT}${NO_DENIAL}const useNoDenial = memo(NoDenial, () => useBuildingDenied());\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}${NO_DENIAL}const useNoDenial = memo(NoDenial, () => useBuildingDenied());\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    expect(run(`${REACT}${IMPORT}${NO_DENIAL}const useNoDenial = memo(forwardRef(NoDenial), () => useBuildingDenied());\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    expect(run(`${REACT}${IMPORT}${NO_DENIAL}const useNoDenial = forwardRef(NoDenial, () => useBuildingDenied());\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    // Another of React's exports imported under the wrapper's name is not the wrapper.
+    expect(run(`import { useMemo as memo } from 'react';\n${IMPORT}const useCan = memo(() => !useBuildingDenied());\nfunction A() { useBuilding({ passive: true }); useCan(); }`)).toEqual(FLAGGED);
+    // A named function expression is known by its own name, as the P5-05 inspector knew it: given to a wrapper or
+    // bound to a `const`, it earns the variable nothing (found by the round-3 fix's differential run).
+    expect(run(`${REACT}${IMPORT}const useNoDenial = memo(function useInner() { return useBuildingDenied(); });\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    expect(run(`${REACT}${IMPORT}const useNoDenial = memo(forwardRef(function useInner() { return useBuildingDenied(); }));\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    expect(run(`${IMPORT}const useNoDenial = function useInner() { return useBuildingDenied(); };\nfunction A() { useBuilding({ passive: true }); useNoDenial(); }`)).toEqual(FLAGGED);
+    // The first argument still is, by name or namespace, however deep.
+    expect(run(`import { memo as m } from 'react';\n${IMPORT}const useCan = m(() => !useBuildingDenied(), () => true);\nfunction A() { useBuilding({ passive: true }); useCan(); }`)).toEqual([]);
+    expect(run(`import * as React from 'react';\n${IMPORT}const useCan = React.memo(React.forwardRef(() => !useBuildingDenied()));\nfunction A() { useBuilding({ passive: true }); useCan(); }`)).toEqual([]);
+  });
+
+  it('P6-02a R3-F2: React’s wrappers are trusted only while nothing in the program can have replaced them', () => {
+    const FLAGGED = ['features/x/X.tsx::A'];
+    const FACTORY = 'function makeHook(_ignored: unknown) { return () => false; }\n';
+    const USE = 'function A() { useBuilding({ passive: true }); useNoDenial(); }';
+    // React's default export is a mutable object: never trusted, replaced or not.
+    expect(run(`import React from 'react';\n${IMPORT}${FACTORY}React.memo = makeHook;\nconst useNoDenial = React.memo(function useDiscarded() { return useBuildingDenied(); });\n${USE}`)).toEqual(FLAGGED);
+    expect(run(`import React from 'react';\n${IMPORT}const useNoDenial = React.memo(function useDiscarded() { return useBuildingDenied(); });\n${USE}`)).toEqual(FLAGGED);
+    // Its named export reads that same object under the bundler's interop: a write there, in any file, ends the trust.
+    const SAFE = `import { memo } from 'react';\n${IMPORT}const useNoDenial = memo(() => useBuildingDenied());\n${USE}`;
+    expect(run(SAFE)).toEqual([]);
+    for (const patch of [
+      `import React from 'react';\n${FACTORY}React.memo = makeHook;`,
+      `import React from 'react';\n${FACTORY}React['memo'] = makeHook;`,
+      `import React from 'react';\n${FACTORY}const key = 'memo';\nReact[key] = makeHook;`,
+      `import React from 'react';\n${FACTORY}Object.assign(React, { memo: makeHook });`,
+      `import React from 'react';\nconst R = React;\nR.memo = () => () => false;`,
+      `import * as React from 'react';\n${FACTORY}React.memo = makeHook;`,
+      `import React from 'react';\ndelete React.memo;`,
+      `${FACTORY}({ memo: globalThis.memo } = { memo: makeHook });`,
+      `${FACTORY}globalThis.memo = makeHook;`,
+      `${FACTORY}window['forwardRef'] = makeHook;`,
+      `${FACTORY}const g = globalThis;\nconst key = 'memo';\ng[key] = makeHook;`,
+    ]) {
+      expect(check({ 'lib/patch.ts': patch, 'features/x/X.tsx': SAFE }), patch).toEqual(FLAGGED);
+    }
+    // Reading React or the global object by name leaves it trusted, and so does a member or a name that only shares
+    // the global's (`variables.self`, as features/residents/api.ts has).
+    const READS =
+      "import React from 'react';\nexport const f = React.Fragment;\nexport const w = typeof window === 'undefined' ? null : window.location.href;\n" +
+      'export function g<T extends { self: boolean }>(variables: T, o: { window: number }) { const { self } = variables; return [variables.self, self, o.window, { global: 1 }]; }\n' +
+      'export const h = (variables: unknown, k: string) => [(variables as never).self, (variables as never)[k]];\n';
+    expect(check({ 'lib/reads.ts': READS, 'features/x/X.tsx': SAFE })).toEqual([]);
   });
 });
