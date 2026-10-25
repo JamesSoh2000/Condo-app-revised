@@ -6,6 +6,8 @@ import { AccountMenu } from '@/app/AccountMenu';
 import { useLogout } from '@/app/AuthProvider';
 import { useBuilding, useBuildingContext, useBuildingDenied } from '@/app/BuildingProvider';
 import { MainNav } from '@/app/MainNav';
+import { hasFeature } from '@/app/pages';
+import { UrgentBanner } from '@/features/notices/UrgentBanner';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 
 /**
@@ -28,6 +30,8 @@ export function AppShell() {
         </div>
       </header>
       <MainNav />
+      {/* Mounted before the banner's content arrives, so a screen reader announces it, without moving focus (P6-02b). */}
+      <div aria-live="polite">{buildingId !== null && <LoadedBuildingBanner />}</div>
       {error && (
         <p role="alert" className="bg-red-50 px-4 py-2 text-sm text-red-800">
           Could not log out, try again.
@@ -59,4 +63,16 @@ function LoadedBuildingBell() {
   if (!building.data || denied) return null;
   // Keyed by building, so nothing of one building's panel (an open state, a failed mark-read) shows in the next.
   return <NotificationBell key={building.data.id} />;
+}
+
+/**
+ * The urgent banner (P6-02b), as the bell: only once the guards have loaded the selected building, never for a denied
+ * one or one with notices off, so none of those asks for the notices summary.
+ */
+function LoadedBuildingBanner() {
+  const building = useBuilding({ passive: true });
+  const denied = useBuildingDenied();
+  if (!building.data || denied || !hasFeature(building.data, 'notices')) return null;
+  // Keyed by building, so nothing of one building's banner shows in the next.
+  return <UrgentBanner key={building.data.id} buildingId={building.data.id} />;
 }

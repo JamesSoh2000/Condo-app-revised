@@ -142,6 +142,39 @@ describe('acknowledging (criterion 2)', () => {
     expect(within(region).queryByRole('link', { name: 'Urgent 2' })).toBeNull();
   });
 
+  it('never shows a row cached from before the count changed (read elsewhere, then a new one)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const state = ONE();
+    const routes = noticeMember(state);
+    let hold: Promise<void> | undefined;
+    let release: (() => void) | undefined;
+    stubApi({
+      ...routes,
+      [`GET ${BASE}`]: async (request) => {
+        if (hold) await hold;
+        return routes[`GET ${BASE}`](request);
+      },
+    });
+    renderApp(['/packages']);
+    expect(await within(await banner()).findByRole('link', { name: 'Urgent 2' })).toBeTruthy();
+
+    // Read on another device: the next poll's count is 0 and the banner goes, its list still cached.
+    state.notices = state.notices.map((item) => ({ ...item, read_at: item.read_at ?? '2026-10-22T10:00:00Z' }));
+    await poll();
+    await waitFor(noBanner);
+
+    // A new urgent notice: the list's answer is held, and the cached "Urgent 2" must not show meanwhile.
+    hold = new Promise<void>((resolve) => (release = resolve));
+    state.notices = [urgent(3, { title: 'Second alert' }), ...state.notices];
+    await poll();
+    const region = await banner();
+    expect(within(region).queryByRole('link', { name: 'Urgent 2' })).toBeNull();
+    expect(within(region).getByRole('link', { name: 'See the notices' })).toBeTruthy();
+    release!();
+    expect(await within(region).findByRole('link', { name: 'Second alert' })).toBeTruthy();
+    expect(within(region).queryByRole('link', { name: 'Urgent 2' })).toBeNull();
+  });
+
   it('a failed acknowledgement says so and keeps the row', async () => {
     stubApi(noticeMember(ONE(), { [`POST ${BASE}/${urgent(2).id}/read`]: () => problem(500, 'internal_error') }));
     renderApp(['/packages']);

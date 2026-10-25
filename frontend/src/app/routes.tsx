@@ -81,9 +81,9 @@ export function AppRoutes() {
               </RequirePageAccess>
             }
           />
-          {/* The notifications link to `/notices/<id>`; until P6-02b gives a notice its view, it is the feed. */}
+          {/* One route for the feed and a notice (P6-02b), so the feed stays mounted between them, as packages. */}
           <Route
-            path={`${PAGE_ACCESS.Notices.path}/*`}
+            path={`${PAGE_ACCESS.Notices.path}/:noticeId?`}
             element={
               <RequirePageAccess access={PAGE_ACCESS.Notices}>
                 <NoticesPage />
