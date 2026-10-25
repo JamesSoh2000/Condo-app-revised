@@ -24,7 +24,7 @@ afterEach(() => {
 const FILE_ID = '01929a4e-0000-7000-8000-0000000a7701';
 const DOWNLOAD = `/api/buildings/${MAPLE.id}/files/${FILE_ID}/download-url`;
 const KEY = `buildings/${MAPLE.id}/notice_attachment/${FILE_ID}`;
-const WITH_PDF = notice(1, { title: 'AGM minutes', attachment_file_id: FILE_ID });
+const WITH_PDF = notice(1, { title: 'AGM minutes', attachment_file_id: FILE_ID, attachment_content_type: 'application/pdf' });
 
 let urls = 0;
 const fresh: Handler = () => {
@@ -117,5 +117,59 @@ describe('the attachment (criterion 6)', () => {
     renderApp([`/notices/${notice(2).id}`]);
     const dialog = await screen.findByRole('dialog', { name: 'AGM minutes' });
     expect(within(dialog).queryByRole('button', { name: /attachment/ })).toBeNull();
+  });
+
+  it('shows an image attachment inline through a download URL, with no download button (review round 1, Codex F1)', async () => {
+    urls = 0;
+    const plan = notice(3, { title: 'Floor plan', attachment_file_id: FILE_ID, attachment_content_type: 'image/png' });
+    stubApi(noticeMember({ notices: [plan] }, { [`GET ${DOWNLOAD}`]: fresh }));
+    const { assign } = fakeLocation();
+    renderApp([`/notices/${plan.id}`]);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Floor plan' });
+    const image = await within(dialog).findByRole('img', { name: 'Attachment: Floor plan' });
+    expect(image.getAttribute('src')).toMatch(/^https:\/\/s3.test\/.*X-Amz-Signature=\d+$/);
+    expect(within(dialog).queryByRole('button', { name: /attachment/i })).toBeNull();
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('an image the member may not have shows "Image unavailable", not a broken image', async () => {
+    const plan = notice(3, { title: 'Floor plan', attachment_file_id: FILE_ID, attachment_content_type: 'image/jpeg' });
+    stubApi(noticeMember({ notices: [plan] }, { [`GET ${DOWNLOAD}`]: () => problem(404, 'file_not_found') }));
+    renderApp([`/notices/${plan.id}`]);
+    const dialog = await screen.findByRole('dialog', { name: 'Floor plan' });
+    expect(await within(dialog).findByText('Image unavailable')).toBeTruthy();
+    expect(within(dialog).queryByRole('img')).toBeNull();
+  });
+
+  it('an attachment of unknown type gets the in-place download, labelled without a type', async () => {
+    urls = 0;
+    const odd = notice(4, { title: 'AGM minutes', attachment_file_id: FILE_ID, attachment_content_type: null });
+    stubApi(noticeMember({ notices: [odd] }, { [`GET ${DOWNLOAD}`]: fresh }));
+    const { assign } = fakeLocation();
+    renderApp([`/notices/${odd.id}`]);
+    const dialog = await screen.findByRole('dialog', { name: 'AGM minutes' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Download attachment' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(expect.stringContaining('X-Amz-Signature=1')));
+  });
+
+  it('a HEIC attachment, which browsers can’t show, gets the download, not an image', async () => {
+    urls = 0;
+    const photo = notice(5, { title: 'Lobby photo', attachment_file_id: FILE_ID, attachment_content_type: 'image/heic' });
+    stubApi(noticeMember({ notices: [photo] }, { [`GET ${DOWNLOAD}`]: fresh }));
+    const { assign } = fakeLocation();
+    renderApp([`/notices/${photo.id}`]);
+    const dialog = await screen.findByRole('dialog', { name: 'Lobby photo' });
+    expect(within(dialog).queryByRole('img')).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Download attachment' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(expect.stringContaining('X-Amz-Signature=1')));
+  });
+
+  it.each(['image/jpeg', 'image/png', 'image/webp'])('shows %s inline', async (type) => {
+    const plan = notice(3, { title: 'Floor plan', attachment_file_id: FILE_ID, attachment_content_type: type });
+    stubApi(noticeMember({ notices: [plan] }, { [`GET ${DOWNLOAD}`]: fresh }));
+    renderApp([`/notices/${plan.id}`]);
+    const dialog = await screen.findByRole('dialog', { name: 'Floor plan' });
+    expect(await within(dialog).findByRole('img', { name: 'Attachment: Floor plan' })).toBeTruthy();
   });
 });

@@ -100,6 +100,8 @@ class Notice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     archived_by_membership_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
     # The caller's `notice_reads.read_at`, loaded only by `with_expression` (P6-01c), else None.
     read_at: Mapped[datetime | None] = query_expression()
+    # The attachment's `files.content_type`, loaded only by `with_expression` (P6-02b), else None.
+    attachment_content_type: Mapped[str | None] = query_expression()
 
 
 class NoticeRead(Base):

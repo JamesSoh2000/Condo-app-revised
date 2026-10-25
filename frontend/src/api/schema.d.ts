@@ -1567,6 +1567,8 @@ export interface components {
             expires_at: string | null;
             /** Attachment File Id */
             attachment_file_id: string | null;
+            /** Attachment Content Type */
+            attachment_content_type: string | null;
             /**
              * Author Membership Id
              * Format: uuid

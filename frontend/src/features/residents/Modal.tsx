@@ -22,7 +22,7 @@ export function Modal({ labelledBy, busy, onEscape, dialogRef, children }: Props
       return;
     }
     if (event.key !== 'Tab') return;
-    const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input:not(:disabled), textarea, button:not(:disabled)') ?? []);
+    const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('a[href], input:not(:disabled), textarea, button:not(:disabled)') ?? []);
     // A radio group is one tab stop, as the browser tabs: its checked radio, else its first (P5-03d R2 F1).
     const stop = (element: HTMLElement): HTMLElement => {
       if (!(element instanceof HTMLInputElement) || element.type !== 'radio' || !element.name) return element;

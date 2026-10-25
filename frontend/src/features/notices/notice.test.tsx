@@ -196,3 +196,32 @@ it('a notice in Maple is asked in Maple', async () => {
   await screen.findByRole('dialog', { name: 'Water shut-off' });
   expect(oneCalls(fetchMock)).toEqual([`GET /api/buildings/${MAPLE.id}/notices/${notice(2).id}`]);
 });
+
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  it('F2: a link in the body is a Tab stop inside the dialog, both ways', async () => {
+    stubApi(noticeMember({ notices: [notice(6, { body: '[Safety instructions](https://example.test/safety)' })] }));
+    renderApp([`/notices/${notice(6).id}`]);
+    const dialog = await screen.findByRole('dialog', { name: 'Notice 6' });
+    const link = within(dialog).getByRole('link', { name: 'Safety instructions' });
+    const close = within(dialog).getByRole('button', { name: 'Close' });
+
+    // From the dialog itself, Tab goes to the first stop: the link, which comes first.
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(link);
+    // Shift+Tab from the link wraps to the last stop, and Tab from the last comes back to the link.
+    fireEvent.keyDown(link, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: 'Tab' });
+    expect(document.activeElement).toBe(link);
+  });
+
+  it('F2: a body link without a safe URL (no href) is no Tab stop', async () => {
+    stubApi(noticeMember({ notices: [notice(6, { body: '[Bad](javascript:alert(1))' })] }));
+    renderApp([`/notices/${notice(6).id}`]);
+    const dialog = await screen.findByRole('dialog', { name: 'Notice 6' });
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Mark as read' }));
+  });
+});

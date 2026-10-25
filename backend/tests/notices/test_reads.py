@@ -23,7 +23,7 @@ from tests.helpers.tenancy import (
     assert_problem,
     without_request_id,
 )
-from tests.notices.conftest import archived, db_now, make_notice, published
+from tests.notices.conftest import archived, db_now, make_attachment, make_notice, published
 from tests.notifications.conftest import make_notification
 from tests.world import World
 
@@ -453,3 +453,59 @@ async def test_a_bad_filter_is_422(as_user: Any, world: World, query: str) -> No
     client = await as_user(world.a_resident1.user)
     response = await client.get(f"{_base(world)}?{query}")
     assert_problem(response, 422, "validation_error")
+
+
+# --- P6-02b review round 1, Codex F1: the attachment's type -----------------------------------
+
+
+async def test_every_answer_names_the_attachments_content_type(
+    db: AsyncSession, as_user: Any, world: World
+) -> None:
+    manager = world.a_manager
+    image = await make_attachment(db, world.a.id, manager.user.id, content_type="image/png")
+    with_image = await _live(db, world, attachment_file_id=image.id)
+    plain = await _live(db, world)
+    reader = await as_user(world.a_resident1.user)
+
+    listed = {
+        item["id"]: item["attachment_content_type"]
+        for item in (await reader.get(f"{_base(world)}?live=true")).json()["items"]
+    }
+    assert listed == {str(with_image.id): "image/png", str(plain.id): None}
+    got = (await reader.get(f"{_base(world)}/{with_image.id}")).json()
+    assert got["attachment_content_type"] == "image/png"
+    assert (await reader.get(f"{_base(world)}/{plain.id}")).json()[
+        "attachment_content_type"
+    ] is None
+
+    # The write answers too: a draft created with a PDF, then published.
+    pdf = await make_attachment(db, world.a.id, manager.user.id, content_type="application/pdf")
+    author = await as_user(manager.user)
+    created = await author.post(
+        _base(world),
+        json={"title": "Minutes", "body": "Attached.", "attachment_file_id": str(pdf.id)},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["attachment_content_type"] == "application/pdf"
+    published_ = await author.post(f"{_base(world)}/{created.json()['id']}/publish")
+    assert published_.json()["attachment_content_type"] == "application/pdf"
+
+
+async def test_an_edit_that_swaps_or_clears_the_attachment_answers_its_new_type(
+    db: AsyncSession, as_user: Any, world: World
+) -> None:
+    manager = world.a_manager
+    pdf = await make_attachment(db, world.a.id, manager.user.id, content_type="application/pdf")
+    image = await make_attachment(db, world.a.id, manager.user.id, content_type="image/webp")
+    author = await as_user(manager.user)
+    created = await author.post(
+        _base(world), json={"title": "Plan", "body": "See it.", "attachment_file_id": str(pdf.id)}
+    )
+    url = f"{_base(world)}/{created.json()['id']}"
+
+    swapped = await author.patch(url, json={"attachment_file_id": str(image.id)})
+    assert swapped.status_code == 200, swapped.text
+    assert swapped.json()["attachment_content_type"] == "image/webp"
+    cleared = await author.patch(url, json={"attachment_file_id": None})
+    assert cleared.json()["attachment_content_type"] is None
+    assert (await author.get(url)).json()["attachment_content_type"] is None

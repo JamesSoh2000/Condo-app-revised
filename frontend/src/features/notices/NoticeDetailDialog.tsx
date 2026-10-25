@@ -3,11 +3,15 @@ import { useEffect, useId, useRef } from 'react';
 import { ApiError } from '@/api/errors';
 import { useBuildingId } from '@/app/BuildingProvider';
 import { rateLimitMessage } from '@/features/auth/formErrors';
+import { PrivateImage } from '@/features/files/PrivateImage';
 import { useMarkReadOnce, useNotice, type Notice } from '@/features/notices/api';
 import { NoticeAttachment } from '@/features/notices/NoticeAttachment';
 import { NoticeBody } from '@/features/notices/NoticeBody';
 import { NoticeLabels, NoticeTimes } from '@/features/notices/NoticeList';
 import { Modal } from '@/features/residents/Modal';
+
+// The attachment types a browser shows (HEIC isn't one): shown in the dialog; any other is downloaded (R1 F1).
+const INLINE = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -77,7 +81,13 @@ function Detail({ item, time }: { item: Notice; time: Intl.DateTimeFormat | unde
       </div>
       <NoticeTimes item={item} time={time} />
       <NoticeBody markdown={item.body} />
-      {item.attachment_file_id && <NoticeAttachment fileId={item.attachment_file_id} />}
+      {item.attachment_file_id &&
+        (INLINE.has(item.attachment_content_type ?? '') ? (
+          // An image S3 serves inline is shown here, so going to its URL never replaces the app (R1 F1).
+          <PrivateImage fileId={item.attachment_file_id} alt={`Attachment: ${item.title}`} className="mt-3 max-h-96 w-full rounded object-contain" />
+        ) : (
+          <NoticeAttachment fileId={item.attachment_file_id} pdf={item.attachment_content_type === 'application/pdf'} />
+        ))}
       {item.read_at === null && (
         <button
           type="button"
