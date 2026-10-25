@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-02c, P3-06 |
 | Replaces old | M6-T04 (editor part) |
-| Status | todo |
+| Status | in progress |
 
 Split from the P6-02 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-02c](./P6-02c-manager-notice-list-and-actions.md).
@@ -117,8 +117,67 @@ upload, 292 lines).
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
-  also the alternatives considered and why they lost):
-- Split:
+- Criteria added or sharpened (the criteria above stay as written; these make them testable):
+  - **1.** The create sends `title`, `body` (both stripped as the server strips), `priority`, and no `expires_at` or
+    `attachment_file_id` key when there is none. On the 201 the drafts list is the one shown, asked again, and has the
+    new draft; the editor stays open on the saved draft (so it can be published, D3).
+  - **2.** "Changed" means different from the last saved version (the row's notice, or the latest 201/200), after the
+    strip: `notices_update` sends exactly the changed fields, `null` for a cleared expiry or attachment. A form with no
+    change sends nothing and says "No changes to save."
+  - **3.** The preview shows the title, the Urgent label and `NoticeBody` of the **stripped** body, the text the
+    server stores: an indented first line would be a code block in the preview of the unstripped text but not in the
+    feed.
+  - **4.** One `datetime-local` field, read and written in `building.timezone` (`useBuilding`), never the device's.
+    Toronto 2026-07-15 18:00 is `2026-07-15T22:00:00.000Z` (EDT), 2026-12-15 18:00 is `2026-12-15T23:00:00.000Z`
+    (EST); a time the DST change skips (2026-03-08 02:30) moves forward by the gap (03:30 EDT, `07:30Z`), a time it
+    repeats (2026-11-01 01:30) is the earlier one (EDT, `05:30Z`), Temporal's `compatible`. Proven for two zones
+    (Toronto and Tokyo), so one of them isn't the test machine's. An existing draft's expiry shows in building time.
+    A 422 `notice_expired`, or a validation error on `expires_at` (`datetime_range`), shows on the expiry field.
+  - **5.** The purpose's rule is the server's, per type: PDF up to 20 MB, JPEG, PNG, WebP or HEIC up to 10 MB (the
+    P6-02b carry): an 11 MB PNG is refused, a 15 MB PDF accepted, before any request. Save is refused while the upload
+    runs or after it failed. An existing attachment is shown with a Remove (sends `null`); a 422 `invalid_file` or
+    404 `file_not_found` on save shows on the attachment field and asks for a new upload.
+  - **6.** Lengths in code points (`formErrors.ts::codePoints`) after the strip of Python's `str.strip()` (its
+    whitespace set, not JavaScript's `trim`, which also strips U+FEFF): title 1–200, body 1–10 000; no control
+    character (`Cc`) in the title, none but tab, line feed and carriage return in the body, no lone surrogate in
+    either (pydantic refuses those as `json_invalid`, which has no field). A blank title or body is refused too.
+    The API's 422 `errors[]` on `title`, `body`, `priority`, `expires_at`, `attachment_file_id` map to their fields
+    (`serverFieldErrors`); one that can't be placed shows a form message.
+  - **7.** On the 409 every field keeps its value, the message says the notice is no longer a draft, and the editor
+    doesn't offer Publish.
+  - **8.** The entry points ("New notice", and "Edit" on draft rows only) are on `/manage/notices`, which only
+    property management opens (P6-02c; others get `/403`). The editor has no route of its own (D2).
+- Cases added (the ticket missed them):
+  - **11. One request per press**: a double click on Save sends one request; Save and Publish are refused while a
+    save is out.
+  - **12. Unsaved work**: Escape doesn't close the editor while it has unsaved changes or a save is out (Cancel
+    does, and discards them).
+  - **13. Building switch** (tenant table row "another building"): switching building with the editor open removes
+    it; nothing is sent, to either building.
+  - **14. Publish from the editor** (D3): offered only on a saved draft with no unsaved change; it closes the editor
+    and opens P6-02c's confirm dialog for that draft, with P6-02c's outcomes and messages.
+- Tenant table (docs/ENGINEERING_PRACTICES.md §7): the endpoints are P6-01b's and tested there. In the UI: the role
+  row is criterion 8, the other-building row is case 13; IDs in the body are only the `file_id` the upload returned.
+- Criteria loosened: none.
+- Decisions taken:
+  - **D1 Markdown aids** (open decision 1): a plain textarea with a Write / Preview switch, no toolbar. Basis: the
+    stub's "rich text limited to Markdown"; the simplest option, reversible. A toolbar is more code and no criterion
+    asks for it.
+  - **D2 Placement** (open decision 2): a dialog over P6-02c's page (`residents/Modal.tsx`, made wider for it).
+    Alternative: its own route (`/manage/notices/<id>/edit`): it needs the draft loaded by id, a 404 and a "no longer
+    a draft" page, and the Back/Forward cases of the CLAUDE.md lesson; the dialog gets the notice from its row, as
+    P6-02c's action dialog does. Tradeoff: no link to an editor; a reload loses unsaved text (it would on a route too).
+    Basis: existing pattern, autonomous.
+  - **D3 Publish with unsaved changes** (open decision 3): refused until saved. Publish shows only on a saved draft
+    without unsaved changes; otherwise a hint says to save first. Alternative: save then publish in one press: two
+    requests whose partial outcomes (saved but not published, published from an older save) each need a message and
+    tests. Basis: simplest, reversible, autonomous.
+  - **D4 P6-02b carry**: `purposes.ts` gets per-type limits (`limits: Record<type, bytes>`), as the server's
+    `PurposeRule.limits`, and `notice_attachment` is PDF or image. Basis: the carry, ADR-0007 "Limits".
+  - **D5 P6-02c carries** ("Load more" focus in five lists, the feed card's focus): moved to the new
+    [P6-02e](./P6-02e-list-focus-fixes.md), see Split. Basis: size; they touch other features' lists.
+  - **D6 DST**: Temporal's `compatible` resolution (criterion 4), the browser's and Temporal's default for a wall time.
+    Basis: convention, autonomous.
+- Split: the estimate with the carries was ~490 non-test lines (editor ~280, the building-time conversion ~35, hooks
+  ~35, page and row ~45, purposes ~20, Modal ~5, focus carries ~70). The two P6-02c focus carries go to
+  [P6-02e](./P6-02e-list-focus-fixes.md); P6-02d keeps criteria 1–14 and the P6-02b carry, ~420 lines.
