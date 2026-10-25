@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-02c |
 | Replaces old | — |
-| Status | in progress |
+| Status | done |
 
 Split from [P6-02d](./P6-02d-notice-editor.md) while framing (its D5): the two carries from
 [P6-02c](./P6-02c-manager-notice-list-and-actions.md)'s review, which touch other features' lists.
@@ -69,3 +69,10 @@ focusable with `tabIndex={-1}` where it is not yet).
   - D3: out of scope, recorded as follow-ups: a "Load more" that is disabled by a background refresh (a focus
     refetch) while it holds focus, and the notifications panel's "Load more" (not named in the ticket's scope).
 - Split: none. Estimate ~120 non-test lines (hook ~45, seven lists ~8–12 each).
+
+## Follow-ups
+
+- A "Load more" disabled by a background refresh (a focus refetch) while it holds focus still drops focus to `<body>`
+  in Chromium; no press is involved, so `useLoadMore` does not see it (PR #133 Frame notes D3).
+- The notifications panel's "Load more" (`frontend/src/features/notifications`) has the same shape and does not use
+  `useLoadMore` yet (not in this ticket's scope).
