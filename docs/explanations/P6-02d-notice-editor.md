@@ -10,10 +10,10 @@
 > This is a snapshot: before the merge it is edited to match the PR head; once merged, write a new
 > explanation for later changes and do not update this one. Lasting decisions live in ADRs.
 > **Reality check:** at `b1aee2a`, re-read `git diff --stat origin/main...HEAD` (11 paths). Read whole:
-> `NoticeEditor.tsx`. Read as patches: `ManagerNoticesPage.tsx`, `ManagerNoticeList.tsx`, `api.ts`,
-> `api/client.ts` and `residents/Modal.tsx`. Also re-read the ticket diffs (P6-02d Frame notes, P6-02e, P6-02f,
+> `frontend/src/features/notices/NoticeEditor.tsx`. Read as patches: `frontend/src/features/notices/ManagerNoticesPage.tsx`, `frontend/src/features/notices/ManagerNoticeList.tsx`, `api.ts`,
+> `frontend/src/api/client.ts` and `frontend/src/features/residents/Modal.tsx`. Also re-read the ticket diffs (P6-02d Frame notes, P6-02e, P6-02f,
 > the index), the assertions of the tests cited below, the backend `backend/app/notices/schemas.py` and
-> `service.py::update_notice` it relies on (unchanged), and the PR body (no PR comments or reviews exist). Ran
+> `backend/app/notices/service.py::update_notice` it relies on (unchanged), and the PR body (no PR comments or reviews exist). Ran
 > `npx vitest run src/features/notices` (7 files, `162 passed`). CI was green on `b1aee2a` (5 checks). This pass
 > found one defect (a server error on `priority` was placed but never shown). It was fixed test-first in `d8d00a3`
 > and reviewed in round 2 (§6). Differences from the plan: the second split, see §2 "Plan versus final code".
@@ -107,26 +107,26 @@ fieldset (§6). Nothing else differs from the written plan.
 
 ### Overview
 
-- `ManagerNoticesPage.tsx::ManagerNotices` holds `editing` (the notice, or null for a new one, plus the button that
+- `frontend/src/features/notices/ManagerNoticesPage.tsx::ManagerNotices` holds `editing` (the notice, or null for a new one, plus the button that
   opened it) and renders the editor. On a create it switches to the Drafts list. On Publish it swaps the editor for
   `NoticeActionDialog`. On close, focus goes back to the opener, or to the list heading if the opener's row is gone.
-- `ManagerNoticeList.tsx::Row` shows **Edit** on draft rows only.
-- `NoticeEditor.tsx::NoticeEditor` holds the form, the last saved notice (`saved`), the checks, the change set and
+- `frontend/src/features/notices/ManagerNoticeList.tsx::Row` shows **Edit** on draft rows only.
+- `frontend/src/features/notices/NoticeEditor.tsx::NoticeEditor` holds the form, the last saved notice (`saved`), the checks, the change set and
   the error mapping.
-- `api.ts::useSaveNotice` posts or patches, then cancels and re-asks every notices query.
-- `api/client.ts::createApiClient` gains `patch`; the CSRF header middleware already covers every method.
+- `frontend/src/features/notices/api.ts::useSaveNotice` posts or patches, then cancels and re-asks every notices query.
+- `frontend/src/api/client.ts::createApiClient` gains `patch`; the CSRF header middleware already covers every method.
 
 ### Walkthrough: the manager edits a draft's body and saves
 
-1. **The action.** On a draft row the manager presses "Edit: Pool" (`ManagerNoticeList.tsx::Row` calls
+1. **The action.** On a draft row the manager presses "Edit: Pool" (`frontend/src/features/notices/ManagerNoticeList.tsx::Row` calls
    `onEdit(item, button)`). The page stores `{ item, opener }`, and the editor mounts with the title input focused.
 2. **Form state.** `title`, `body` and `priority` start from the row's notice; `saved` is that notice. On every
    render, the editor strips the text (`pyStrip`) and builds `changes`, the fields that differ from `saved`. `dirty`
    is whether `changes` is empty (for a new notice: any text, or a priority other than Normal). While `dirty`, the
    dialog ignores Escape (`Modal busy={busy || dirty}`) and the close button reads Cancel.
-3. **Checks before sending** (`problems`), as `app/notices/schemas.py` checks: a control character (title: any `Cc`;
+3. **Checks before sending** (`problems`), as `backend/app/notices/schemas.py` checks: a control character (title: any `Cc`;
    body: any `Cc` but tab, LF, CR) or a lone surrogate; blank after the strip; over 200 / 10 000 code points
-   (`formErrors.ts::codePoints`). On a problem, Save shows each field's message (`aria-invalid`,
+   (`frontend/src/features/auth/formErrors.ts::codePoints`). On a problem, Save shows each field's message (`aria-invalid`,
    `aria-describedby`), returns to Write if Preview was on, focuses the first bad field, and sends nothing. With no
    change it says "No changes to save." and sends nothing.
 4. **The request.** The `inFlight` ref is checked and set first, so a second press in the same tick returns. Then
@@ -362,7 +362,7 @@ Only Codex reviewed, with no Claude reviewer: James's instruction for this run.
 
 Not verified:
 - **Backend pytest locally**: not run. Docker isn't reachable in this WSL distro, and the scratch Postgres listens on a
-  socket, which `tests/conftest.py` refuses. No backend file changed; CI's backend job passed on `b1aee2a`.
+  socket, which `backend/tests/conftest.py` refuses. No backend file changed; CI's backend job passed on `b1aee2a`.
 - **`make up` / `make prodlike`**: not run (Docker). The journey ran on uvicorn and Vite over a scratch Postgres 16
   instead; CI's prod-like smoke and E2E jobs passed. No E2E journey covers the editor.
 - **Screen readers**: names, roles and focus were checked in jsdom and Chromium, not with a screen reader.
@@ -382,7 +382,7 @@ criteria 4, 5, 10) and [P6-02e](../tickets/P6-02e-list-focus-fixes.md) (P6-02c's
   `${id}-<field>` and a `fieldError(<field>)`, add its diff to `changes`, its server messages to `SERVER_MESSAGES`,
   and its check to `problems`. The priority bug in §6 is what happens when a field is in `FIELDS` without the
   element. The criterion-6 tests and `a body change sends only body…` tell you if the diff or the mapping broke.
-- **Changing a server limit** in `app/notices/schemas.py`: change `TITLE_MAX` / `BODY_MAX` / the patterns here
+- **Changing a server limit** in `backend/app/notices/schemas.py`: change `TITLE_MAX` / `BODY_MAX` / the patterns here
   too. Nothing links them automatically; the criterion-6 table is the check.
 - **Another dialog on this page**: route its focus through the page's `focusTo`, as `closeEditor` does, and test
   `document.activeElement` after closing.
