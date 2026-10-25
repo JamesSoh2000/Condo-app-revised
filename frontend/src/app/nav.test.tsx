@@ -92,7 +92,7 @@ describe('navigation from the page table (criterion 1)', () => {
       '/notices',
       '/Maintenance',
     ]);
-    for (const staffItem of ['Residents', 'Package log', 'Daily notices', 'Maintenance']) {
+    for (const staffItem of ['Residents', 'Package log', 'Manage notices', 'Maintenance']) {
       expect(within(nav()!).queryByRole('link', { name: staffItem })).toBeNull();
     }
   });
@@ -114,10 +114,10 @@ describe('navigation from the page table (criterion 1)', () => {
       'property management',
       ['property_management'],
       undefined,
-      ['Dashboard', 'My profile', 'Contacts', 'Residents', 'Package log', 'Notices', 'Daily notices', 'Maintenance'],
+      ['Dashboard', 'My profile', 'Contacts', 'Residents', 'Package log', 'Notices', 'Manage notices', 'Maintenance'],
     ],
     ['a resident in a building without features', ['resident'], [], COMMON_ITEMS],
-    ['council (Management view by default)', ['council'], undefined, [...COMMON_ITEMS, 'Notices', 'Daily notices', 'Maintenance']],
+    ['council (Management view by default)', ['council'], undefined, [...COMMON_ITEMS, 'Notices', 'Maintenance']],
   ] as const)('shows %s only what roles and features allow (1b)', async (_label, roles, features, expected) => {
     stubApi(persona([...roles], features ? [...features] : undefined));
 
@@ -248,7 +248,7 @@ describe('council "view as" (criterion 3)', () => {
   it('changes only the nav, making no request (3b, 3c)', async () => {
     const fetchMock = stubApi(COUNCIL_RESIDENT);
     renderApp(['/']);
-    expect(await findNavItems()).toEqual([...COMMON_ITEMS, 'Notices', 'Daily notices', 'Maintenance']);
+    expect(await findNavItems()).toEqual([...COMMON_ITEMS, 'Notices', 'Maintenance']);
     await settle();
     const before = calls(fetchMock);
 
@@ -256,7 +256,7 @@ describe('council "view as" (criterion 3)', () => {
     viewAs('Resident');
     expect(navItems()).toEqual(RESIDENT_ITEMS);
     viewAs('Management');
-    expect(navItems()).toEqual([...COMMON_ITEMS, 'Notices', 'Daily notices', 'Maintenance']);
+    expect(navItems()).toEqual([...COMMON_ITEMS, 'Notices', 'Maintenance']);
     viewAs('Resident');
     await settle();
 
@@ -289,9 +289,10 @@ describe('council "view as" (criterion 3)', () => {
 
     openAccountMenu();
     viewAs('Resident');
-    act(() => app.navigate()('/ManagementNotices'));
-    expect(await screen.findByRole('heading', { name: /management notices/i })).toBeTruthy();
-    expect(location()).toBe('/ManagementNotices');
+    // /ManagementNotices until P6-02c made it property management's: any unmigrated staff page.
+    act(() => app.navigate()('/ManagementMaintenance'));
+    expect(await screen.findByRole('heading', { name: /management maintenance/i })).toBeTruthy();
+    expect(location()).toBe('/ManagementMaintenance');
   });
 
   it('stores the view per tab and keeps it across a reload (3e)', async () => {
@@ -478,7 +479,7 @@ describe('review round 1 (Claude F1–F3, Codex M1 and L1)', () => {
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'DevPassword!2026' } });
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
-    expect(await findNavItems()).toEqual([...COMMON_ITEMS, 'Notices', 'Daily notices', 'Maintenance']);
+    expect(await findNavItems()).toEqual([...COMMON_ITEMS, 'Notices', 'Maintenance']);
     expect(sessionStorage.getItem(VIEW_KEY)).toBeNull();
   });
 

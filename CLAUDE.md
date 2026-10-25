@@ -157,3 +157,6 @@ Everything a command prints is re-read on every later turn, so don't print the s
 - Measure every new control, fieldset and message in Chromium at 375 px with the longest values the API allows
   (`max_length`, a 255-character file name), not realistic text: a `<fieldset>` and unbroken words grow past the
   viewport (P4-08a, P4-08c, P5-03b R1 F1, P5-03c R1 F3; 2026-10-23).
+- A control that disables or removes itself (a submit, "Mark as read", a dialog's last button) drops focus to `<body>`
+  in a browser: move focus first to something that stays mounted (the dialog, the card, a message), and assert
+  `document.activeElement` after the action in the test (P2-06c, P4-07a, P4-08b, P5-03d, P6-02b R2 F1; 2026-10-25).

@@ -91,7 +91,7 @@ const titles = async (name: string) =>
     .map((row) => within(row).getByRole('heading', { level: 3 }).textContent);
 const row = async (name: string, title: string) =>
   within(await list(name)).getAllByRole('listitem').find((item) => within(item).getByRole('heading', { level: 3 }).textContent === title)!;
-const show = (name: 'Drafts' | 'Published' | 'Archived') => fireEvent.click(screen.getByRole('button', { name }));
+const show = async (name: 'Drafts' | 'Published' | 'Archived') => fireEvent.click(await screen.findByRole('button', { name }));
 const dialog = () => screen.findByRole('dialog');
 const confirm = async (name: 'Publish' | 'Archive') => fireEvent.click(within(await dialog()).getByRole('button', { name }));
 const message = () => screen.queryByTestId('notice-message');
@@ -107,14 +107,14 @@ describe('the three lists (criterion 1)', () => {
     expect(screen.getByRole('button', { name: 'Drafts' }).getAttribute('aria-pressed')).toBe('true');
     expect(await titles('Drafts')).toEqual(['Draft B', 'Draft A']);
 
-    show('Published');
+    await show('Published');
     expect(screen.getByRole('button', { name: 'Published' }).getAttribute('aria-pressed')).toBe('true');
     expect(await titles('Published')).toEqual(['Live', 'Gone stale', 'Later']);
     expect(within(await row('Published', 'Gone stale')).getByText('Expired')).toBeTruthy();
     expect(within(await row('Published', 'Later')).queryByText('Expired')).toBeNull();
     expect(within(await row('Published', 'Live')).getByText('Urgent')).toBeTruthy();
 
-    show('Archived');
+    await show('Archived');
     expect(await titles('Archived')).toEqual(['Old']);
 
     const asked = fetchMock.mock.calls.map(([request]) => new URL(request.url)).filter((url) => url.pathname === BASE);
@@ -135,12 +135,12 @@ describe('the three lists (criterion 1)', () => {
     expect(within(draft).getByRole('button', { name: 'Publish: Notice 1' })).toBeTruthy();
     expect(within(draft).getByRole('button', { name: 'Archive: Notice 1' })).toBeTruthy();
 
-    show('Published');
+    await show('Published');
     const stale = await row('Published', 'Gone stale');
     expect(within(stale).queryByRole('button', { name: /^Publish/ })).toBeNull();
     expect(within(stale).getByRole('button', { name: 'Archive: Gone stale' })).toBeTruthy();
 
-    show('Archived');
+    await show('Archived');
     expect(within(await row('Archived', 'Old')).queryByRole('button')).toBeNull();
   });
 
@@ -166,9 +166,9 @@ describe('the three lists (criterion 1)', () => {
     await waitFor(async () => expect(await titles('Drafts')).toEqual(['Notice 8', 'Older draft']));
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
 
-    show('Published');
+    await show('Published');
     expect(await screen.findByText('No published notices.')).toBeTruthy();
-    show('Archived');
+    await show('Archived');
     expect((await screen.findByRole('alert')).textContent).toContain('Could not load the notices.');
   });
 });
@@ -192,7 +192,7 @@ describe('publish (criterion 2)', () => {
     expect(actionCalls(fetchMock, 'publish')).toEqual([`POST ${BASE}/${notice(2).id}/publish`]);
     expect(message()?.textContent).toBe('“Draft A” was published.');
     await waitFor(async () => expect(await titles('Drafts')).toEqual(['Draft B']));
-    show('Published');
+    await show('Published');
     expect(await titles('Published')).toEqual(['Live', 'Gone stale', 'Draft A', 'Later']);
     // The nav's polled badge is asked again, and the feed's cache is stale for its next mount.
     await waitFor(() => expect(calls(fetchMock).filter((call) => call === `GET ${BASE}/summary`).length).toBeGreaterThan(summaries));
@@ -237,7 +237,7 @@ describe('archive (criterion 3)', () => {
   ] as const)('moves a notice from %s to Archived', async (from, title, id) => {
     const fetchMock = stubApi(manager({ notices: EVERY() }));
     renderApp([PAGE]);
-    if (from === 'Published') show('Published');
+    if (from === 'Published') await show('Published');
 
     fireEvent.click(within(await row(from, title)).getByRole('button', { name: `Archive: ${title}` }));
     await confirm('Archive');
@@ -245,7 +245,7 @@ describe('archive (criterion 3)', () => {
     await waitFor(() => expect(message()?.textContent).toBe(`“${title}” was archived.`));
     expect(actionCalls(fetchMock, 'archive')).toEqual([`POST ${BASE}/${id}/archive`]);
     await waitFor(async () => expect(await titles(from)).not.toContain(title));
-    show('Archived');
+    await show('Archived');
     expect(await titles('Archived')).toContain(title);
   });
 
@@ -276,7 +276,7 @@ describe('two managers publish the same draft (criterion 4, tenant row 10)', () 
     expect((await within(await dialog()).findByRole('alert')).textContent).toBe('This notice is no longer a draft: it was published or archived elsewhere.');
     fireEvent.click(within(await dialog()).getByRole('button', { name: 'Cancel' }));
     await waitFor(async () => expect(await titles('Drafts')).toEqual(['Draft B']));
-    show('Published');
+    await show('Published');
     expect(await titles('Published')).toEqual(['Live', 'Gone stale', 'Draft A', 'Later']);
   });
 });
