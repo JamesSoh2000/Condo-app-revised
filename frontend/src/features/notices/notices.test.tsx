@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { components } from '@/api/schema';
 import { writeSelectedBuilding } from '@/app/buildingStorage';
+import { noticeFeedKey } from '@/features/notices/api';
 import {
   BIRCH,
   MAPLE,
@@ -360,6 +361,32 @@ describe('focus when a refresh removes a card (P6-02e criteria 2, 7)', () => {
     });
     await waitFor(() => expect(card.isConnected).toBe(false));
     expect(document.activeElement).toBe(open);
+  });
+
+  it('review round 1 F1: a card whose focused button went earlier does not take focus from another card', async () => {
+    const state = THREE();
+    stubApi(member(state));
+    const app = renderApp(['/notices']);
+    const [other, , card] = await cards();
+    const button = within(card).getByRole('button', { name: 'Mark as read: Notice 1' });
+    button.focus();
+
+    // Another tab marks the notice read: the refresh removes only the focused button, and no blur fires.
+    state.notices = state.notices.map((item) => (item.id === notice(1).id ? { ...item, read_at: '2026-10-25T12:00:00Z' } : item));
+    await act(async () => {
+      await app.queryClient.refetchQueries({ queryKey: noticeFeedKey(MAPLE.id), exact: true });
+    });
+    await waitFor(() => expect(button.isConnected).toBe(false));
+    expect(card.isConnected).toBe(true);
+
+    const elsewhere = within(other).getByRole('link', { name: 'Open: Notice 3' });
+    elsewhere.focus();
+    state.notices = state.notices.filter((item) => item.id !== notice(1).id);
+    await act(async () => {
+      await app.queryClient.refetchQueries({ queryKey: noticeFeedKey(MAPLE.id), exact: true });
+    });
+    await waitFor(() => expect(card.isConnected).toBe(false));
+    expect(document.activeElement).toBe(elsewhere);
   });
 
   it('criterion 7: leaving the page with focus in a card focuses nothing on the next page', async () => {

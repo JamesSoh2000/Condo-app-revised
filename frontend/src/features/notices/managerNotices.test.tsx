@@ -509,3 +509,31 @@ describe('the selected building only (criterion 11, tenant row 3)', () => {
     await waitFor(() => expect(app.queryClient.getQueryData(['b', MAPLE.id, 'denied'])).toEqual(expect.any(Number)));
   });
 });
+
+describe('P6-02e review round 1 F1 neighbour: a row whose focused child went earlier', () => {
+  it('does not take focus from another row when it is removed later', async () => {
+    const state = { notices: [notice(2, { title: 'Draft B', status: 'draft' }), notice(1, { title: 'Draft A', status: 'draft', body: 'See [the plan](https://example.test/plan).' })] };
+    stubApi(manager(state));
+    const app = renderApp([PAGE]);
+    const card = await row('Drafts', 'Draft A');
+    const link = within(card).getByRole('link', { name: 'the plan' });
+    link.focus();
+
+    // Another manager edits the body: the refresh removes only the focused link.
+    state.notices = state.notices.map((item) => (item.id === notice(1).id ? { ...item, body: 'No link now.' } : item));
+    await act(async () => {
+      await app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'notices'] });
+    });
+    await waitFor(() => expect(link.isConnected).toBe(false));
+    expect(card.isConnected).toBe(true);
+
+    const elsewhere = within(await row('Drafts', 'Draft B')).getByRole('button', { name: 'Edit: Draft B' });
+    elsewhere.focus();
+    state.notices = state.notices.filter((item) => item.id !== notice(1).id);
+    await act(async () => {
+      await app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'notices'] });
+    });
+    await waitFor(() => expect(card.isConnected).toBe(false));
+    expect(document.activeElement).toBe(elsewhere);
+  });
+});

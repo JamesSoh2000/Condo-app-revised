@@ -94,10 +94,12 @@ interface RowProps {
 function Row({ item, time, now, onAction, onEdit, onFocusLost }: RowProps) {
   // Whether focus is inside the row. A removed node gets no blur, so a row that unmounts while this is true held focus:
   // any refresh that drops it (a 409's late refetch after Cancel, a focus refetch) hands focus on (review round 1 F1).
+  // The flag outlives a focused child that a refresh removed (no blur either), so focus is handed on only if it is on
+  // <body> now, not taken from where the user has moved it since (P6-02e review round 1 F1).
   const focused = useRef(false);
   const lost = useRef(onFocusLost);
   lost.current = onFocusLost;
-  useEffect(() => () => void (focused.current && lost.current()), []);
+  useEffect(() => () => void (focused.current && document.activeElement === document.body && lost.current()), []);
   const expired = item.status === 'published' && item.expires_at !== null && Date.parse(item.expires_at) <= now;
   return (
     <li

@@ -99,11 +99,12 @@ function Card({ item, time, onGone, onFocusLost }: CardProps) {
     if (refocus && read.isError) buttonRef.current?.focus();
   }, [refocus, read.isError]);
   // As `ManagerNoticeList.tsx::Row`: a removed node gets no blur, so a card that unmounts while this is true held
-  // focus, and a refresh that drops it hands focus to the heading (P6-02e criterion 2).
+  // focus, and a refresh that drops it hands focus to the heading (P6-02e criterion 2); only if focus is on <body>
+  // now, since the flag outlives a focused child a refresh removed (review round 1 F1).
   const focused = useRef(false);
   const lost = useRef(onFocusLost);
   lost.current = onFocusLost;
-  useEffect(() => () => void (focused.current && lost.current()), []);
+  useEffect(() => () => void (focused.current && document.activeElement === document.body && lost.current()), []);
   return (
     <li
       ref={cardRef}
