@@ -643,6 +643,9 @@ export interface paths {
          * List
          * @description The notices you may see in this building, newest written first: published ones that
          *     haven't expired, and for the manager drafts, expired and archived ones too.
+         *
+         *     `live=true` keeps only published notices that haven't expired, for every role: the feed, and
+         *     what the unread summary counts (P6-02a).
          */
         get: operations["notices_list"];
         put?: never;
@@ -3773,6 +3776,7 @@ export interface operations {
         parameters: {
             query?: {
                 status?: components["schemas"]["NoticeStatus"] | null;
+                live?: boolean;
                 limit?: number;
                 cursor?: string | null;
             };

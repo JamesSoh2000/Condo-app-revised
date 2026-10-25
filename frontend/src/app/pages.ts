@@ -19,7 +19,7 @@ export interface PageAccess {
 }
 
 /** The demo's legacy pages and the migrated ones that took a legacy page's place (P4-08b). */
-export type Page = DemoPage | 'Residents';
+export type Page = DemoPage | 'Residents' | 'Notices';
 
 const STAFF: readonly Role[] = ['security', 'property_management', 'council'];
 
@@ -41,6 +41,8 @@ export const PAGE_ACCESS: Record<Page, PageAccess> = {
     label: 'Package log',
     path: '/security/packages',
   },
+  // Every member reads the building's notices (P6-02a); `visible_notices` decides which.
+  Notices: { feature: 'notices', label: 'Notices', path: '/notices' },
   ManagementNotices: { roles: STAFF, feature: 'notices', label: 'Daily notices' },
   Maintenance: { roles: ['resident'], feature: 'maintenance', label: 'Maintenance requests' },
   ManagementMaintenance: { roles: STAFF, feature: 'maintenance', label: 'Maintenance' },

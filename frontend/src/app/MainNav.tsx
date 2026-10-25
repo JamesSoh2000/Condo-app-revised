@@ -4,6 +4,7 @@ import { useBuilding, useBuildingContext, useBuildingDenied } from '@/app/Buildi
 import { navPages, PAGE_ACCESS, pagePath, type Page } from '@/app/pages';
 import type { components } from '@/api/schema';
 import type { ViewAs } from '@/app/buildingStorage';
+import { NoticesNavLabel } from '@/features/notices/NoticesNavLabel';
 import { PackagesNavLabel } from '@/features/packages/PackagesNavLabel';
 import { ResidentsNavLabel } from '@/features/residents/PendingBadge';
 
@@ -37,11 +38,12 @@ export function MainNav() {
   return buildingId === null ? null : <BuildingNav />;
 }
 
-/** A page's nav label; the pages with a count show it (P4-08d, P5-04). */
+/** A page's nav label; the pages with a count show it (P4-08d, P5-04, P6-02a). */
 function NavLabel({ page }: { page: Page }) {
   const label = PAGE_ACCESS[page].label!;
   if (page === 'Residents') return <ResidentsNavLabel label={label} />;
   if (page === 'Packages') return <PackagesNavLabel label={label} />;
+  if (page === 'Notices') return <NoticesNavLabel label={label} />;
   return <>{label}</>;
 }
 

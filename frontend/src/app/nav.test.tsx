@@ -66,7 +66,7 @@ function persona(roles: Role[], features?: components['schemas']['Feature'][]): 
   };
 }
 
-const RESIDENT_ITEMS = ['Dashboard', 'My profile', 'Contacts', 'My packages', 'Maintenance requests'];
+const RESIDENT_ITEMS = ['Dashboard', 'My profile', 'Contacts', 'My packages', 'Notices', 'Maintenance requests'];
 /** The resident's "My packages" item asks for its waiting count when it shows (P5-04); nothing else in the nav asks. */
 const PACKAGES_SUMMARY = `GET /api/buildings/${MAPLE.id}/packages/summary`;
 /** The requests made since `before`, other than that count. */
@@ -89,6 +89,7 @@ describe('navigation from the page table (criterion 1)', () => {
       '/Profile',
       '/Contacts',
       '/packages',
+      '/notices',
       '/Maintenance',
     ]);
     for (const staffItem of ['Residents', 'Package log', 'Daily notices', 'Maintenance']) {
@@ -113,10 +114,10 @@ describe('navigation from the page table (criterion 1)', () => {
       'property management',
       ['property_management'],
       undefined,
-      ['Dashboard', 'My profile', 'Contacts', 'Residents', 'Package log', 'Daily notices', 'Maintenance'],
+      ['Dashboard', 'My profile', 'Contacts', 'Residents', 'Package log', 'Notices', 'Daily notices', 'Maintenance'],
     ],
     ['a resident in a building without features', ['resident'], [], COMMON_ITEMS],
-    ['council (Management view by default)', ['council'], undefined, [...COMMON_ITEMS, 'Daily notices', 'Maintenance']],
+    ['council (Management view by default)', ['council'], undefined, [...COMMON_ITEMS, 'Notices', 'Daily notices', 'Maintenance']],
   ] as const)('shows %s only what roles and features allow (1b)', async (_label, roles, features, expected) => {
     stubApi(persona([...roles], features ? [...features] : undefined));
 
@@ -207,12 +208,14 @@ describe('navigation from the page table (criterion 1)', () => {
     await findNavItems();
     await settle();
 
-    // The bell's summary is the only other request (P3-05); the nav adds only its "My packages" count (P5-04).
+    // The bell's summary is the only other request (P3-05); the nav adds only its "My packages" (P5-04) and "Notices"
+    // (P6-02a) counts.
     expect(calls(fetchMock)).toEqual([
       'GET /api/auth/me',
       `GET /api/buildings/${MAPLE.id}`,
       `GET /api/buildings/${MAPLE.id}/notifications/summary`,
       PACKAGES_SUMMARY,
+      `GET /api/buildings/${MAPLE.id}/notices/summary`,
     ]);
   });
 });
@@ -245,7 +248,7 @@ describe('council "view as" (criterion 3)', () => {
   it('changes only the nav, making no request (3b, 3c)', async () => {
     const fetchMock = stubApi(COUNCIL_RESIDENT);
     renderApp(['/']);
-    expect(await findNavItems()).toEqual([...COMMON_ITEMS, 'Daily notices', 'Maintenance']);
+    expect(await findNavItems()).toEqual([...COMMON_ITEMS, 'Notices', 'Daily notices', 'Maintenance']);
     await settle();
     const before = calls(fetchMock);
 
@@ -253,7 +256,7 @@ describe('council "view as" (criterion 3)', () => {
     viewAs('Resident');
     expect(navItems()).toEqual(RESIDENT_ITEMS);
     viewAs('Management');
-    expect(navItems()).toEqual([...COMMON_ITEMS, 'Daily notices', 'Maintenance']);
+    expect(navItems()).toEqual([...COMMON_ITEMS, 'Notices', 'Daily notices', 'Maintenance']);
     viewAs('Resident');
     await settle();
 
@@ -269,8 +272,8 @@ describe('council "view as" (criterion 3)', () => {
     openAccountMenu();
     viewAs('Resident');
 
-    // No resident item: My packages and Maintenance requests need the resident role.
-    expect(navItems()).toEqual(COMMON_ITEMS);
+    // No resident item: My packages and Maintenance requests need the resident role. Notices is for every member.
+    expect(navItems()).toEqual([...COMMON_ITEMS, 'Notices']);
   });
 
   it('keeps the guards: a page the real roles allow opens by URL in either view (3d)', async () => {
@@ -475,7 +478,7 @@ describe('review round 1 (Claude F1–F3, Codex M1 and L1)', () => {
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'DevPassword!2026' } });
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
-    expect(await findNavItems()).toEqual([...COMMON_ITEMS, 'Daily notices', 'Maintenance']);
+    expect(await findNavItems()).toEqual([...COMMON_ITEMS, 'Notices', 'Daily notices', 'Maintenance']);
     expect(sessionStorage.getItem(VIEW_KEY)).toBeNull();
   });
 

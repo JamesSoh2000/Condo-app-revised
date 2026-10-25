@@ -12,7 +12,6 @@ import NoticeAttachmentUpload from '@/components/NoticeAttachmentUpload';
 import { motion } from 'framer-motion';
 import { createPageUrl } from '@/utils';
 import { Link } from 'react-router-dom';
-import BuildingUpdatesFeed from '@/components/BuildingUpdatesFeed';
 import PullToRefresh from '@/components/PullToRefresh';
 import { toast } from 'sonner';
 import { isDemoPage, isDemoViewRole } from '@/app/routeScope';
@@ -34,7 +33,7 @@ export default function Dashboard() {
   const alertsFeedRef = React.useRef(null);
   const queryClient = useQueryClient();
 
-  // mobileAlertsCount is now driven by BuildingUpdatesFeed via onCountChange callback
+  // mobileAlertsCount was driven by the legacy BuildingUpdatesFeed, removed in P6-02a (the page is not routed)
   // (removed the stale independent fetch that didn't account for archiving)
 
   React.useEffect(() => {
@@ -348,13 +347,11 @@ export default function Dashboard() {
 
         {/* Updates & Alerts Feed — mobile only, below main content */}
          <div className="lg:hidden" ref={alertsFeedRef}>
-           <BuildingUpdatesFeed onCountChange={setMobileAlertsCount} />
          </div>
         </div>
 
         {/* Right Column - Building Updates Feed (desktop only) */}
         <div className="hidden lg:block w-80 flex-shrink-0">
-         <BuildingUpdatesFeed onCountChange={setMobileAlertsCount} />
         </div>
         </div>
       </PullToRefresh>
@@ -455,13 +452,11 @@ export default function Dashboard() {
 
           {/* Updates & Alerts — mobile only (below send notice) */}
           <div className="lg:hidden">
-            <BuildingUpdatesFeed />
           </div>
         </div>
 
         {/* Right column: Updates & Alerts feed (desktop) */}
         <div className="hidden lg:block w-80 flex-shrink-0">
-          <BuildingUpdatesFeed />
         </div>
       </div>
     );
@@ -524,7 +519,6 @@ export default function Dashboard() {
 
           {/* ── Updates & Alerts (mobile only) ── */}
           <div className="lg:hidden">
-            <BuildingUpdatesFeed />
           </div>
 
           {/* ── Communications ── */}
@@ -579,7 +573,6 @@ export default function Dashboard() {
         </div>
 
         <div className="hidden lg:block w-80 flex-shrink-0">
-          <BuildingUpdatesFeed />
         </div>
       </div>
     );
@@ -606,12 +599,10 @@ export default function Dashboard() {
             </div>
             {/* Updates & Alerts on mobile */}
             <div className="lg:hidden">
-              <BuildingUpdatesFeed />
             </div>
           </div>
 
           <div className="hidden lg:block w-80 flex-shrink-0">
-            <BuildingUpdatesFeed />
           </div>
         </div>
     );

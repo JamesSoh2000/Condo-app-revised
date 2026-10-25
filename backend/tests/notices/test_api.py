@@ -619,6 +619,44 @@ async def test_the_list_pages_with_the_cursor(db: AsyncSession, as_user: Any, wo
     assert second.json()["next_cursor"] is None
 
 
+async def test_live_lists_only_published_unexpired_notices_for_the_manager(
+    db: AsyncSession, as_user: Any, world: World
+) -> None:
+    """P6-02a criterion 9: `live=true` is what the unread summary counts, for every role."""
+    notices = await _notices(db, world)
+    client = await as_user(world.a_manager.user)
+
+    assert _ids(await client.get(_base(world), params={"live": "true"})) == [
+        str(notices["live2"].id),
+        str(notices["live"].id),
+    ]
+    both = await client.get(_base(world), params={"live": "true", "status": "published"})
+    assert _ids(both) == [str(notices["live2"].id), str(notices["live"].id)]
+    assert _ids(await client.get(_base(world), params={"live": "true", "status": "draft"})) == []
+    # Without it, or `false`, the manager's list is as before.
+    assert len(_ids(await client.get(_base(world), params={"live": "false"}))) == 5
+
+
+@pytest.mark.parametrize("persona", ["a_security", "a_resident1", "a_council"])
+async def test_live_gives_other_members_the_list_they_already_see(
+    db: AsyncSession, as_user: Any, world: World, persona: str
+) -> None:
+    await _notices(db, world)
+    client = await as_user(getattr(world, persona).user)
+
+    assert _ids(await client.get(_base(world), params={"live": "true"})) == _ids(
+        await client.get(_base(world))
+    )
+
+
+async def test_live_through_another_building_is_404(as_user: Any, world: World) -> None:
+    client = await as_user(world.a_resident1.user)
+
+    assert_problem(
+        await client.get(_base(world, world.b), params={"live": "true"}), 404, "building_not_found"
+    )
+
+
 async def test_another_buildings_notice_is_404_through_this_building(
     db: AsyncSession, as_user: Any, world: World
 ) -> None:
