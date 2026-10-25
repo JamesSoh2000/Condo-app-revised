@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-02d, P3-06 |
 | Replaces old | M6-T04 (editor part) |
-| Status | todo |
+| Status | in progress |
 
 Split from [P6-02d](./P6-02d-notice-editor.md) after implementing (its Frame notes, "Split again"): P6-02d measured 570
 added non-test lines with these fields. The criteria below are P6-02d's, moved word for word, with P6-02d's framing.
@@ -79,6 +79,25 @@ The editor gets an optional expiry, entered in building time, and one optional a
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+  - **2** also: an upload that replaces a draft's attachment sends the new `file_id`; Remove on a finished upload of a
+    new draft sends no `attachment_file_id`; sending back the saved attachment or expiry unchanged sends neither (only
+    what differs, P6-02d criterion 2).
+  - **4** also: an existing draft's expiry shows in building time (Toronto and Tokyo), and a `datetime_range` 422 on
+    `expires_at` shows on the field (both from the carried framing, now testable lines of the criterion).
+  - **5** also (missed case): after a 422 `invalid_file` / 404 `file_not_found` the refused `file_id` is dropped, so the
+    next save doesn't send it again; a new upload is needed.
+  - **11** (new, from the P6-02d follow-up): every entry of `NoticeEditor.tsx`'s `FIELDS` has a rendered element with id
+    `${id}-<field>` that a server error on it focuses, and an error slot linked by `aria-describedby`. Written before the
+    expiry and attachment are added, so it fails if either is listed without its element.
+  - Tenant table (`ENGINEERING_PRACTICES.md` §7): no new endpoint; the client sends only a `file_id` and the server's
+    P6-01 tests cover another building's file (404 `file_not_found`). Rows n/a here; criterion 5 covers the client half.
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken:
-- Split:
+  - **D1 start from P6-02d's reverted commits** (`383daa1`, `8cba241`, `620779a` editor part, `0fcc09c`), re-applied on
+    today's editor, which P6-02d changed after them (priority errors, Preview on a body error). Basis: the ticket.
+  - **D2 the follow-up as a test, not a lesson**: criterion 11. A test fails on the exact mistake; a lesson only asks to
+    remember it. Basis: playbook "prefer a check over a rule", autonomous.
+  - **D3 no time-zone library**: `expiry.ts` converts with `Intl.DateTimeFormat` (no dependency), Temporal's
+    `compatible` as D6. Basis: CLAUDE.md "no dependency without a reason"; `Intl` is enough for one wall time.
+- Split: none. Estimate ~210 added non-test lines (editor ~100, `purposes.ts` ~30, `expiry.ts` 60, page ~5, legacy
+  deletion is removals only), under ~400.
