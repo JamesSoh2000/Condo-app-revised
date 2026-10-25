@@ -690,6 +690,59 @@ describe('criterion 6: keyboard and announcements', () => {
   });
 });
 
+describe('focus stays in the widget when its focused control is disabled or removed (P6-02f review round 2 F1)', () => {
+  const button = (name: RegExp) => screen.getByRole('button', { name });
+
+  it('Choose file → Cancel while it uploads; Cancel → Choose file', async () => {
+    uploadServer();
+    wrap(<FileUpload purpose="package_photo" onUploaded={() => {}} />);
+    button(/choose file/i).focus();
+    choose(jpeg());
+    await waitFor(() => expect(document.activeElement).toBe(button(/cancel/i)));
+    fireEvent.click(button(/cancel/i));
+    await waitFor(() => expect(document.activeElement).toBe(button(/choose file/i)));
+  });
+
+  it('an upload that finishes with Cancel focused → Choose file', async () => {
+    uploadServer();
+    wrap(<FileUpload purpose="package_photo" onUploaded={() => {}} />);
+    button(/choose file/i).focus();
+    choose(jpeg());
+    await waitFor(() => expect(document.activeElement).toBe(button(/cancel/i)));
+    lastXhr().respond(204);
+    await screen.findByText('Uploaded parcel.jpg.');
+    expect(document.activeElement).toBe(button(/choose file/i));
+  });
+
+  it('an upload that fails with Cancel focused → Retry; Retry → Cancel', async () => {
+    uploadServer();
+    wrap(<FileUpload purpose="package_photo" onUploaded={() => {}} />);
+    button(/choose file/i).focus();
+    choose(jpeg());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    lastXhr().fail();
+    await waitFor(() => expect(document.activeElement).toBe(button(/retry/i)));
+    fireEvent.click(button(/retry/i));
+    await waitFor(() => expect(document.activeElement).toBe(button(/cancel/i)));
+  });
+
+  it('doesn’t take focus from outside the widget (a drop while focus is elsewhere)', async () => {
+    uploadServer();
+    wrap(
+      <>
+        <button type="button">Elsewhere</button>
+        <FileUpload purpose="package_photo" onUploaded={() => {}} />
+      </>,
+    );
+    button(/elsewhere/i).focus();
+    fireEvent.drop(screen.getByTestId('file-drop-zone'), { dataTransfer: { files: [jpeg()] } });
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    lastXhr().respond(204);
+    await screen.findByText('Uploaded parcel.jpg.');
+    expect(document.activeElement).toBe(button(/elsewhere/i));
+  });
+});
+
 describe('criterion 7: cancel and unmount abort the upload', () => {
   it('cancel aborts the XHR, never completes, never reports', async () => {
     const fetchMock = uploadServer();

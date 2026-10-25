@@ -39,12 +39,28 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
   const [chosen, setChosen] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const chooseRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const retryRef = useRef<HTMLButtonElement>(null);
+  // Choose file is disabled while uploading, and Cancel and Retry go away, which drops focus to <body>. When one of
+  // them had focus, the next status's control takes it (P6-02f review round 2 F1). A removed Cancel gets no blur, so
+  // `cancelFocused` stays true until then.
+  const refocus = useRef(false);
+  const cancelFocused = useRef(false);
   const preview = useObjectUrl(chosen && PREVIEWABLE.includes(contentTypeOf(chosen)) ? chosen : null);
   const busy = status === 'uploading';
   const locked = busy || disabled;
   const onStatusChangeRef = useRef(onStatusChange);
   onStatusChangeRef.current = onStatusChange;
   useEffect(() => onStatusChangeRef.current?.(status), [status]);
+  useEffect(() => {
+    if (!refocus.current && !cancelFocused.current) return;
+    refocus.current = false;
+    cancelFocused.current = false;
+    (status === 'uploading' ? cancelRef : status === 'error' && retryRef.current ? retryRef : chooseRef).current?.focus();
+  }, [status]);
+  const focusInside = () => root.current?.contains(document.activeElement) ?? false;
   const percent = Math.round(progress * 100);
 
   function start(file: File) {
@@ -53,7 +69,10 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
     setCheckError(problem);
     setChosen(problem ? null : file);
     if (problem) cancel();
-    else upload(file);
+    else {
+      refocus.current = focusInside();
+      upload(file);
+    }
   }
 
   function onDrop(event: DragEvent) {
@@ -71,7 +90,7 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
 
   return (
     // Wraps anywhere: a file name has no spaces to break at, and would widen a phone's page (P5-03c R1 F3).
-    <div className="flex min-w-0 flex-col gap-2 [overflow-wrap:anywhere]">
+    <div ref={root} className="flex min-w-0 flex-col gap-2 [overflow-wrap:anywhere]">
       <div
         data-testid="file-drop-zone"
         onDragOver={(event) => {
@@ -83,6 +102,7 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
         className={`flex flex-wrap items-center gap-2 rounded border-2 border-dashed p-3 ${dragging ? 'border-blue-600 bg-blue-50' : 'border-slate-300'}`}
       >
         <button
+          ref={chooseRef}
           type="button"
           disabled={locked}
           onClick={() => input.current?.click()}
@@ -122,7 +142,17 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
           >
             <div className="h-full bg-blue-600" style={{ width: `${percent}%` }} />
           </div>
-          <button type="button" onClick={cancel} className="rounded border px-2 py-0.5 text-xs">
+          <button
+            ref={cancelRef}
+            type="button"
+            onFocus={() => (cancelFocused.current = true)}
+            onBlur={() => (cancelFocused.current = false)}
+            onClick={() => {
+              refocus.current = true;
+              cancel();
+            }}
+            className="rounded border px-2 py-0.5 text-xs"
+          >
             Cancel
           </button>
         </div>
@@ -133,7 +163,16 @@ function FileUploadFor({ purpose, onUploaded, accept, maxBytes, capture, label =
             {message}
           </p>
           {checkError === null && status === 'error' && (
-            <button type="button" disabled={disabled} onClick={retry} className="rounded border px-2 py-0.5 text-xs">
+            <button
+              ref={retryRef}
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                refocus.current = focusInside();
+                retry();
+              }}
+              className="rounded border px-2 py-0.5 text-xs"
+            >
               Retry
             </button>
           )}
