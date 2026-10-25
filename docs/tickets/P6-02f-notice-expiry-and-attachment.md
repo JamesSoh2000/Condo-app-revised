@@ -63,6 +63,14 @@ The editor gets an optional expiry, entered in building time, and one optional a
   copy match before the editor's upload uses it (P6-02b review round 1 F1). The notice view already handles both:
   `NoticeOut.attachment_content_type`, JPEG/PNG/WebP shown inline, others downloaded.
 
+## Follow-ups carried from P6-02d (PR #132)
+
+- **First: promote a mistake pattern** (it appeared twice in P6-02d, `docs/AGENT_MISTAKES_LOG.md`): focusing an error's
+  field when the element isn't rendered (a body error from Preview, review round 1 F1; `priority` in `FIELDS` with
+  no element, the reality pass). Before adding the expiry and attachment fields, add a test that every entry of
+  `NoticeEditor.tsx`'s `FIELDS` has an element with its id and an error slot, or a `CLAUDE.md` lesson.
+- Adding a field: follow the explanation's §8 (`docs/explanations/P6-02d-notice-editor.md`).
+
 ## Test plan
 
 - `frontend/src/features/notices/editor.test.tsx` (criteria 2, 4, 5, 10), `expiry.test.ts` (criterion 4),

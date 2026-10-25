@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-02c, P3-06 |
 | Replaces old | M6-T04 (editor part) |
-| Status | in progress |
+| Status | done |
 
 Split from the P6-02 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-02c](./P6-02c-manager-notice-list-and-actions.md).
@@ -110,7 +110,7 @@ upload, 292 lines).
   copy match before the editor's upload uses it (P6-02b review round 1 F1). The notice view already handles both:
   `NoticeOut.attachment_content_type`, JPEG/PNG/WebP shown inline, others downloaded.
 
-## Carried from P6-02c (decide while framing)
+## Carried from P6-02c (decide while framing; moved to P6-02e)
 
 - **"Load more" drops focus** (P6-02c review round 2 F1, Low): a "Load more" that fetches the last page removes
   itself, and keyboard focus falls to `<body>`. The same `hasNextPage && <button>` shape is in
