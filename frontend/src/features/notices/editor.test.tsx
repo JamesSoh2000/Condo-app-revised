@@ -304,6 +304,29 @@ describe('the schema’s limits before sending (criterion 6)', () => {
   });
 });
 
+describe('a server error on priority (criterion 6, found in the explanation’s reality pass)', () => {
+  it.each([
+    ['enum', 'Choose Normal or Urgent.'],
+    ['missing', 'This field is required.'],
+  ])('%s shows on the priority group and focuses it', async (kind, message) => {
+    manager(serverWith(), {
+      [`POST ${BASE}`]: () =>
+        json({ type: 'about:blank', title: 'Unprocessable', status: 422, code: 'validation_error', errors: [{ loc: ['body', 'priority'], type: kind, msg: 'x' }] }, 422),
+    });
+    renderApp([PAGE]);
+    await openNew();
+    type('Title', 'T');
+    type('Body (Markdown)', 'B');
+    save();
+    const group = await inEditor().findByRole('group', { name: 'Priority' });
+    await waitFor(() => expect(document.activeElement).toBe(group));
+    expect(document.getElementById(group.getAttribute('aria-describedby')!)!.textContent).toBe(message);
+    fireEvent.click(inEditor().getByRole('radio', { name: 'Urgent' }));
+    expect(group.getAttribute('aria-describedby')).toBeNull();
+    expect(inEditor().queryByText(message)).toBeNull();
+  });
+});
+
 describe('a refused field while Preview is shown (criterion 6, review round 1 F1)', () => {
   const refuse = (field: string, type: string) =>
     json({ type: 'about:blank', title: 'Unprocessable', status: 422, code: 'validation_error', errors: [{ loc: ['body', field], type, msg: 'x' }] }, 422);

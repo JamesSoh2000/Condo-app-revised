@@ -26,6 +26,7 @@ const M = {
   body: 'Enter the notice text.',
   bodyLong: 'Use at most 10 000 characters.',
   bodyBad: 'Use visible characters, tabs and line breaks only.',
+  priority: 'Choose Normal or Urgent.',
   moved: 'This notice is no longer a draft: it was published or archived elsewhere. Your text is kept here to copy.',
 };
 // The expiry and the attachment come in P6-02f; a draft's own are kept, since an update sends only what changed.
@@ -35,6 +36,7 @@ const FIELDS: readonly Field[] = ['title', 'body', 'priority'];
 const SERVER_MESSAGES: Partial<Record<Field, Record<string, string>>> = {
   title: { missing: M.title, string_too_short: M.title, string_too_long: M.titleLong, control_characters: M.titleBad },
   body: { missing: M.body, string_too_short: M.body, string_too_long: M.bodyLong, control_characters: M.bodyBad },
+  priority: { missing: 'This field is required.', enum: M.priority },
 };
 const INPUT = 'w-full min-w-0 rounded border px-3 py-2';
 
@@ -242,16 +244,18 @@ export function NoticeEditor({ item, onSaved, onPublish, onClose }: Props) {
           )}
           {fieldError('body')}
         </div>
-        <fieldset className="min-w-0">
+        {/* Focusable, so a server error on priority can move focus here. */}
+        <fieldset id={`${id}-priority`} tabIndex={-1} aria-describedby={describedBy('priority')} className="min-w-0">
           <legend className="mb-1 text-sm font-medium">Priority</legend>
           <div className="flex flex-wrap gap-2">
             {(['normal', 'urgent'] as const).map((value) => (
               <label key={value} className="flex min-h-11 items-center gap-2 rounded border bg-white px-3">
-                <input type="radio" name={`${id}-priority`} checked={priority === value} disabled={busy} onChange={() => edit(setPriority)(value)} />
+                <input type="radio" name={`${id}-priority`} checked={priority === value} disabled={busy} onChange={() => edit(setPriority, 'priority')(value)} />
                 {value === 'normal' ? 'Normal' : 'Urgent'}
               </label>
             ))}
           </div>
+          {fieldError('priority')}
         </fieldset>
         {failure && (
           <div ref={failureRef} role="alert" tabIndex={-1} className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
