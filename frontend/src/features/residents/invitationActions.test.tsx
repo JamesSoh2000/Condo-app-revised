@@ -161,6 +161,16 @@ describe('shown: pending or expired (criterion 2)', () => {
     expect(await screen.findByText('No expired invitations.')).toBeTruthy();
   });
 
+  it('P6-02e criterion 1: focus moves to the first new row once the last page has landed', async () => {
+    stubApi(manager({ [list()]: (request) => (new URL(request.url).searchParams.get('cursor') === null ? page([GUARD], 'c1') : page([BOSS])) }));
+    renderApp([PAGE]);
+    const button = await screen.findByRole('button', { name: 'Show more' });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+  });
+
   it('each change starts from the first page: going back to Pending after Show more asks one page again', async () => {
     const fetchMock = stubApi(
       manager({

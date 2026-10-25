@@ -446,6 +446,18 @@ describe('the list’s states (criterion 7)', () => {
     expect(rows()).toHaveLength(2);
   });
 
+  it('P6-02e criterion 1: focus moves to the first new row once the last page has landed', async () => {
+    stubApi(desk({ [list()]: (request) => (new URL(request.url).searchParams.get('cursor') ? page([pkg(2)]) : page([pkg(1)], 'c1')) }));
+    renderApp([PAGE]);
+    await waiting();
+
+    const button = screen.getByRole('button', { name: 'Show more' });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+  });
+
   it('wraps long names, descriptions and carriers instead of widening the row', async () => {
     stubApi(desk({ [list()]: () => page([pkg(1, { recipient_name: 'N'.repeat(120), description: 'D'.repeat(200) })]) }));
     renderApp([PAGE]);

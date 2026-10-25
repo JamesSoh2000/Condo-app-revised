@@ -284,6 +284,16 @@ describe('list states (criterion 6)', () => {
     expect(cursors).toEqual([null, 'next-1']);
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
   });
+
+  it('P6-02e criterion 1: focus moves to the first new row once the last page has landed', async () => {
+    stubApi(manager({ [list()]: (req) => (new URL(req.url).searchParams.get('cursor') === null ? page([ROBIN], 'next-1') : page([SAM])) }));
+    renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Pending requests' });
+
+    press(screen.getByRole('button', { name: 'Show more' }));
+    await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+  });
 });
 
 describe('approve (criteria 1, 7)', () => {

@@ -184,6 +184,17 @@ describe('the list (criterion 3)', () => {
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
   });
 
+  it('P6-02e criterion 1: focus moves to the first new row once the last page has landed', async () => {
+    stubApi(manager({ [list()]: (req) => (new URL(req.url).searchParams.get('cursor') === null ? page([ROBIN], 'next-1') : page([SAM])) }));
+    renderApp([PAGE]);
+    await screen.findByRole('list', { name: 'Members' });
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Show more' }).disabled).toBe(false));
+
+    press(screen.getByRole('button', { name: 'Show more' }));
+    await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+  });
+
   it('wraps a long name and a 254-character email instead of overflowing (criterion 2, jsdom part)', async () => {
     const email = `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(56)}.test`;
     stubApi(manager({ [list()]: () => page([member(1, { full_name: 'X'.repeat(120), email })]) }));

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { ApiError } from '@/api/errors';
 import { useBuildingId } from '@/app/BuildingProvider';
 import { rateLimitMessage } from '@/features/auth/formErrors';
+import { useLoadMore } from '@/features/lists/useLoadMore';
 import { useMarkReadOnce, useNoticeFeed, type Notice } from '@/features/notices/api';
 import { NoticeBody } from '@/features/notices/NoticeBody';
 
@@ -11,11 +12,14 @@ interface Props {
   /** False until the page may ask for the feed (it waits for the unread count, criterion 5). */
   enabled: boolean;
   time: Intl.DateTimeFormat | undefined;
+  /** Focus the feed's heading: a refresh removed the card that held focus, or Load more added no card (P6-02e). */
+  onFocusLost: () => void;
 }
 
 /** The feed (P6-02a): one card per live notice, in the API's order (D5), paged with Load more. */
-export function NoticeList({ enabled, time }: Props) {
+export function NoticeList({ enabled, time, onFocusLost }: Props) {
   const query = useNoticeFeed(useBuildingId(), enabled);
+  const more = useLoadMore(query, onFocusLost);
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   // A notice that left the feed while being marked read (404) takes its card with it on the refresh, so the list says
   // so, not the card (criterion 2).
@@ -38,9 +42,9 @@ export function NoticeList({ enabled, time }: Props) {
     (items.length === 0 ? (
       <p>No notices right now.</p>
     ) : (
-      <ul aria-label="Notices" className="flex flex-col gap-3">
+      <ul ref={more.listRef} aria-label="Notices" className="flex flex-col gap-3">
         {items.map((item) => (
-          <Card key={item.id} item={item} time={time} onGone={setGone} />
+          <Card key={item.id} item={item} time={time} onGone={setGone} onFocusLost={onFocusLost} />
         ))}
       </ul>
     ));
@@ -63,8 +67,9 @@ export function NoticeList({ enabled, time }: Props) {
         // As the packages lists: not while any fetch is out, nor after a failed refresh.
         <button
           type="button"
+          ref={more.buttonRef}
           disabled={query.isFetching}
-          onClick={() => void query.fetchNextPage({ cancelRefetch: false })}
+          onClick={more.onClick}
           className="min-h-11 self-start rounded border px-4 text-sm disabled:opacity-50"
         >
           Load more
@@ -78,9 +83,10 @@ interface CardProps {
   item: Notice;
   time: Intl.DateTimeFormat | undefined;
   onGone: (title: string) => void;
+  onFocusLost: () => void;
 }
 
-function Card({ item, time, onGone }: CardProps) {
+function Card({ item, time, onGone, onFocusLost }: CardProps) {
   const { read, markRead } = useMarkReadOnce(useBuildingId());
   const unread = item.read_at === null;
   const gone = read.error instanceof ApiError && read.error.status === 404;
@@ -92,8 +98,20 @@ function Card({ item, time, onGone }: CardProps) {
   useEffect(() => {
     if (refocus && read.isError) buttonRef.current?.focus();
   }, [refocus, read.isError]);
+  // As `ManagerNoticeList.tsx::Row`: a removed node gets no blur, so a card that unmounts while this is true held
+  // focus, and a refresh that drops it hands focus to the heading (P6-02e criterion 2); only if focus is on <body>
+  // now, since the flag outlives a focused child a refresh removed (review round 1 F1).
+  const focused = useRef(false);
+  const lost = useRef(onFocusLost);
+  lost.current = onFocusLost;
+  useEffect(() => () => void (focused.current && document.activeElement === document.body && lost.current()), []);
   return (
-    <li ref={cardRef} tabIndex={-1} className="min-w-0 rounded border bg-white p-3 [overflow-wrap:anywhere]">
+    <li
+      ref={cardRef}
+      tabIndex={-1}
+      onFocus={() => (focused.current = true)}
+      onBlur={() => (focused.current = false)}
+      className="min-w-0 rounded border bg-white p-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 font-medium">{item.title}</h2>
         <NoticeLabels item={item} />

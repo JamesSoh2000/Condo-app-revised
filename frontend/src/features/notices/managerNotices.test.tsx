@@ -144,6 +144,29 @@ describe('the three lists (criterion 1)', () => {
     expect(within(await row('Archived', 'Old')).queryByRole('button')).toBeNull();
   });
 
+  it('P6-02e criterion 1: focus moves to the first new row once the last page has landed', async () => {
+    const more = notice(9, { title: 'Older draft', status: 'draft' });
+    stubApi(
+      manager(
+        { notices: [] },
+        {
+          [`GET ${BASE}`]: (request) =>
+            new URL(request.url).searchParams.get('cursor') === CURSOR
+              ? json({ items: [more], next_cursor: null })
+              : json({ items: [notice(8, { status: 'draft' })], next_cursor: CURSOR }),
+        },
+      ),
+    );
+    renderApp([PAGE]);
+
+    await list('Drafts');
+    const button = screen.getByRole('button', { name: 'Load more' });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(document.activeElement).toBe(within(screen.getByRole('list', { name: 'Drafts' })).getAllByRole('listitem')[1]));
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+  });
+
   it('loads more with the cursor, and says when a list is empty or fails', async () => {
     const more = notice(9, { title: 'Older draft', status: 'draft' });
     stubApi(
@@ -484,5 +507,33 @@ describe('the selected building only (criterion 11, tenant row 3)', () => {
     fireEvent.click(within(await row('Drafts', 'Draft A')).getByRole('button', { name: `${name}: Draft A` }));
     await confirm(name);
     await waitFor(() => expect(app.queryClient.getQueryData(['b', MAPLE.id, 'denied'])).toEqual(expect.any(Number)));
+  });
+});
+
+describe('P6-02e review round 1 F1 neighbour: a row whose focused child went earlier', () => {
+  it('does not take focus from another row when it is removed later', async () => {
+    const state = { notices: [notice(2, { title: 'Draft B', status: 'draft' }), notice(1, { title: 'Draft A', status: 'draft', body: 'See [the plan](https://example.test/plan).' })] };
+    stubApi(manager(state));
+    const app = renderApp([PAGE]);
+    const card = await row('Drafts', 'Draft A');
+    const link = within(card).getByRole('link', { name: 'the plan' });
+    link.focus();
+
+    // Another manager edits the body: the refresh removes only the focused link.
+    state.notices = state.notices.map((item) => (item.id === notice(1).id ? { ...item, body: 'No link now.' } : item));
+    await act(async () => {
+      await app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'notices'] });
+    });
+    await waitFor(() => expect(link.isConnected).toBe(false));
+    expect(card.isConnected).toBe(true);
+
+    const elsewhere = within(await row('Drafts', 'Draft B')).getByRole('button', { name: 'Edit: Draft B' });
+    elsewhere.focus();
+    state.notices = state.notices.filter((item) => item.id !== notice(1).id);
+    await act(async () => {
+      await app.queryClient.refetchQueries({ queryKey: ['b', MAPLE.id, 'notices'] });
+    });
+    await waitFor(() => expect(card.isConnected).toBe(false));
+    expect(document.activeElement).toBe(elsewhere);
   });
 });

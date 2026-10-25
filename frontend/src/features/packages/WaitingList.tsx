@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useBuilding, useBuildingId } from '@/app/BuildingProvider';
 import { rateLimitMessage } from '@/features/auth/formErrors';
 import { PrivateImage } from '@/features/files/PrivateImage';
+import { useLoadMore } from '@/features/lists/useLoadMore';
 import { unitName } from '@/features/onboarding/api';
 import { CARRIERS, useWaitingPackages, type Package } from '@/features/packages/api';
 import { PickupDialog } from '@/features/packages/PickupDialog';
@@ -39,6 +40,7 @@ export function WaitingList() {
   const [message, setMessage] = useState<string | null>(null);
   const messageRef = useRef<HTMLParagraphElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const more = useLoadMore(waiting, () => headingRef.current?.focus());
   // Where focus goes once the dialog has closed: the message (the row is leaving), or back to the opener, or to the
   // heading if a refresh took the opener's row (the empty message is hidden: R2 F2). State, so the effect runs after
   // the commit that shows the message (as the residents' PendingRequests).
@@ -79,7 +81,7 @@ export function WaitingList() {
       <p>{filtered ? 'No waiting packages match.' : 'No packages are waiting.'}</p>
     ) : (
       waiting.data && (
-        <ul aria-label="Waiting packages" className="flex flex-col gap-3">
+        <ul ref={more.listRef} aria-label="Waiting packages" className="flex flex-col gap-3">
           {items.map((item) => (
             <Row key={item.id} item={item} now={now} time={time} onAction={act} />
           ))}
@@ -143,8 +145,9 @@ export function WaitingList() {
           // As the members list: not while any fetch is out, nor after a failed refresh (P4-08b review rounds 2, 3).
           <button
             type="button"
+            ref={more.buttonRef}
             disabled={waiting.isFetching}
-            onClick={() => void waiting.fetchNextPage({ cancelRefetch: false })}
+            onClick={more.onClick}
             className="min-h-11 self-start rounded border px-4 text-sm disabled:opacity-50"
           >
             Show more
@@ -167,7 +170,7 @@ interface RowProps {
 function Row({ item, now, time, onAction }: RowProps) {
   const unit = unitName(item.unit_tower, item.unit_label);
   return (
-    <li className="flex gap-3 rounded border bg-white p-3 [overflow-wrap:anywhere]">
+    <li tabIndex={-1} className="flex gap-3 rounded border bg-white p-3 [overflow-wrap:anywhere]">
       {item.photo_file_id ? (
         <PrivateImage fileId={item.photo_file_id} alt={`Package photo for unit ${unit}`} className={THUMBNAIL} />
       ) : (
