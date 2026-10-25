@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-02d, P3-06 |
 | Replaces old | M6-T04 (editor part) |
-| Status | in progress |
+| Status | done |
 
 Split from [P6-02d](./P6-02d-notice-editor.md) after implementing (its Frame notes, "Split again"): P6-02d measured 570
 added non-test lines with these fields. The criteria below are P6-02d's, moved word for word, with P6-02d's framing.
