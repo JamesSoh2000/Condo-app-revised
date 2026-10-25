@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-02a, P3-06 |
 | Replaces old | M6-T04 (banner part) |
-| Status | in progress |
+| Status | done |
 
 Split from the P6-02 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-02a](./P6-02a-notices-feed-and-detail.md).

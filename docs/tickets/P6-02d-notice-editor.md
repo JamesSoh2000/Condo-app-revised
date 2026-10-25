@@ -98,6 +98,13 @@ upload, 292 lines).
 2. **Editor placement**: a dialog over P6-02c's page or its own route.
 3. **Whether publish from the editor saves first** when there are unsaved changes, or refuses until saved.
 
+## Carried from P6-02b (decide while framing)
+
+- `frontend/src/features/files/purposes.ts::PURPOSE_RULES.notice_attachment` allows PDF only, but the server's
+  registry (`backend/app/files/purposes.py::PURPOSES`) accepts PDF **or** images (JPEG, PNG, WebP, HEIC). Make the
+  copy match before the editor's upload uses it (P6-02b review round 1 F1). The notice view already handles both:
+  `NoticeOut.attachment_content_type`, JPEG/PNG/WebP shown inline, others downloaded.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

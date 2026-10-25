@@ -84,6 +84,15 @@ ArchiveDialog.tsx,api.ts}`, `frontend/src/app/{pages.ts,routes.tsx,routeScope.ts
    every staff role. Framing decides whether security and council get the page read-only or not at all.
 2. **The page's path** (a migrated `path`, as `Residents` has, or the legacy name).
 
+## Carried from P6-02b (decide while framing)
+
+- **First follow-up (step 8 promotion):** "a control that removes or disables itself drops focus to `<body>`" is
+  in `docs/AGENT_MISTAKES_LOG.md` again (P2-06c, P4-07a, P4-08b, P5-03d, P6-02b R2 F1). Promote it: a `CLAUDE.md`
+  lesson, or a fitness/test helper that asserts focus after an action that removes its own button.
+- The feed card's "Mark as read" (`frontend/src/features/notices/NoticeList.tsx`, P6-02a) still drops focus to
+  `<body>` when it disappears after a read. It's outside any dialog, so Low. Fix it with this ticket's list work, as
+  the dialog and banner do (focus a container that stays mounted).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
