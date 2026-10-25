@@ -174,3 +174,30 @@ export function useNoticeAction(buildingId: string) {
     },
   });
 }
+
+export type NoticeCreate = components['schemas']['NoticeCreate'];
+export type NoticeUpdate = components['schemas']['NoticeUpdate'];
+
+/**
+ * Write a new draft (`notices_create`) or change a draft's fields (`notices_update`, only the fields sent; P6-02d).
+ * However it ends, every notices query is cancelled, then asked again, as `useNoticeAction`: the drafts list shows the
+ * new draft, and a lost answer may have been applied.
+ */
+export function useSaveNotice(buildingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
+    mutationKey: [...noticesKey(buildingId), 'save'],
+    mutationFn: (save: { id: null; body: NoticeCreate } | { id: string; body: NoticeUpdate }) =>
+      save.id === null
+        ? api.post('/api/buildings/{building_id}/notices', { params: { path: { building_id: buildingId } }, body: save.body })
+        : api.patch('/api/buildings/{building_id}/notices/{notice_id}', {
+            params: { path: { building_id: buildingId, notice_id: save.id } },
+            body: save.body,
+          }),
+    onSettled: () => {
+      const filters = { queryKey: noticesKey(buildingId) };
+      void queryClient.cancelQueries(filters).then(() => queryClient.invalidateQueries(filters));
+    },
+  });
+}

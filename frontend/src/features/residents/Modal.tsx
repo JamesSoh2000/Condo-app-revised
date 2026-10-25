@@ -6,6 +6,8 @@ interface Props {
   busy: boolean;
   onEscape: () => void;
   dialogRef: RefObject<HTMLDivElement>;
+  /** Wider than the default, for a form with long text (the notice editor, P6-02d). */
+  wide?: boolean;
   children: ReactNode;
 }
 
@@ -14,7 +16,7 @@ interface Props {
  * while busy) and Tab stays inside; the dialog element itself is focusable, so a dialog can hold focus while its
  * buttons are disabled.
  */
-export function Modal({ labelledBy, busy, onEscape, dialogRef, children }: Props) {
+export function Modal({ labelledBy, busy, onEscape, dialogRef, wide = false, children }: Props) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.stopPropagation();
@@ -50,7 +52,7 @@ export function Modal({ labelledBy, busy, onEscape, dialogRef, children }: Props
         aria-labelledby={labelledBy}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="max-h-full w-full max-w-md overflow-y-auto rounded bg-white p-4 shadow-lg [overflow-wrap:anywhere]"
+        className={`max-h-full w-full ${wide ? 'max-w-2xl' : 'max-w-md'} overflow-y-auto rounded bg-white p-4 shadow-lg [overflow-wrap:anywhere]`}
       >
         {children}
       </div>

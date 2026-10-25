@@ -4,6 +4,7 @@ import { useBuilding, useBuildingId } from '@/app/BuildingProvider';
 import type { ManagedStatus, Notice, NoticeAction } from '@/features/notices/api';
 import { ManagerNoticeList } from '@/features/notices/ManagerNoticeList';
 import { NoticeActionDialog } from '@/features/notices/NoticeActionDialog';
+import { NoticeEditor } from '@/features/notices/NoticeEditor';
 import { buildingTime, useNow } from '@/features/packages/time';
 
 const LISTS: { status: ManagedStatus; label: string; empty: string }[] = [
@@ -15,6 +16,12 @@ const LISTS: { status: ManagedStatus; label: string; empty: string }[] = [
 interface Open {
   action: NoticeAction;
   item: Notice;
+  opener: HTMLButtonElement;
+}
+
+interface Editing {
+  /** Null for a new notice. */
+  item: Notice | null;
   opener: HTMLButtonElement;
 }
 
@@ -30,10 +37,12 @@ export function ManagerNoticesPage() {
 
 function ManagerNotices() {
   // Under the page's guards, which render it only once the building has loaded.
-  const time = buildingTime(useBuilding({ passive: true }).data);
+  const building = useBuilding({ passive: true }).data;
+  const time = buildingTime(building);
   const now = useNow();
   const [status, setStatus] = useState<ManagedStatus>('draft');
   const [open, setOpen] = useState<Open | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const messageRef = useRef<HTMLParagraphElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -55,11 +64,29 @@ function ManagerNotices() {
     setMessage(null);
     setOpen({ action, item, opener });
   };
+  const edit = (item: Notice | null, opener: HTMLButtonElement) => {
+    setMessage(null);
+    setEditing({ item, opener });
+  };
+  const closeEditor = () => {
+    const back = editing?.opener.isConnected ? editing.opener : headingRef.current;
+    if (back) setFocusTo({ target: back });
+    setEditing(null);
+  };
   const list = LISTS.find((each) => each.status === status)!;
 
   return (
     <section className="flex min-w-0 flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Manage notices</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-semibold">Manage notices</h1>
+        <button
+          type="button"
+          onClick={(event) => edit(null, event.currentTarget)}
+          className="min-h-11 rounded bg-slate-900 px-4 text-sm font-medium text-white"
+        >
+          New notice
+        </button>
+      </div>
       <div role="group" aria-label="Show" className="flex flex-wrap gap-2">
         {LISTS.map((each) => (
           <button
@@ -82,8 +109,21 @@ function ManagerNotices() {
       <h2 ref={headingRef} tabIndex={-1} className="text-lg font-semibold">
         {list.label}
       </h2>
-      <ManagerNoticeList key={status} {...list} time={time} now={now} onAction={act} onFocusLost={() => headingRef.current?.focus()} />
+      <ManagerNoticeList key={status} {...list} time={time} now={now} onAction={act} onEdit={edit} onFocusLost={() => headingRef.current?.focus()} />
       {open && <NoticeActionDialog action={open.action} item={open.item} onClose={close} />}
+      {editing && building && (
+        <NoticeEditor
+          item={editing.item}
+          timeZone={building.timezone}
+          onSaved={(_, created) => created && setStatus('draft')}
+          // P6-02c's confirm dialog takes over; focus goes back to the editor's opener after it (D3).
+          onPublish={(item) => {
+            setEditing(null);
+            setOpen({ action: 'publish', item, opener: editing.opener });
+          }}
+          onClose={closeEditor}
+        />
+      )}
     </section>
   );
 }
