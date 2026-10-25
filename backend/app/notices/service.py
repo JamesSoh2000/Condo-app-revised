@@ -214,12 +214,19 @@ async def list_notices(
     *,
     status: NoticeStatus | None,
     live_only: bool = False,
+    priority: NoticePriority | None = None,
+    unread_only: bool = False,
 ) -> Page[NoticeOut]:
     stmt = visible_notices(ctx).options(with_expression(Notice.read_at, _read_at(ctx)))
     if status is not None:
         stmt = stmt.where(Notice.status == status)
     if live_only:
         stmt = stmt.where(live())
+    if priority is not None:
+        stmt = stmt.where(Notice.priority == priority)
+    if unread_only:
+        # The caller's own reads, as the summary counts them.
+        stmt = stmt.where(_read_at(ctx).is_(None))
     return await paginate(db, stmt, Notice.id, params, NoticeOut.model_validate)
 
 

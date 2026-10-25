@@ -8,7 +8,7 @@ from app.core.errors import problem_responses
 from app.core.pagination import CursorParams, Page
 from app.memberships.enums import Role
 from app.notices import service
-from app.notices.enums import NoticeStatus
+from app.notices.enums import NoticePriority, NoticeStatus
 from app.notices.schemas import NoticeCreate, NoticeOut, NoticeSummary, NoticeUpdate
 from app.tenancy.deps import Ctx, DbSession, require_feature, require_roles
 from app.tenancy.router import building_router
@@ -42,14 +42,20 @@ async def list(
     params: Annotated[CursorParams, Depends()],
     status: NoticeStatus | None = None,
     live: bool = False,
+    priority: NoticePriority | None = None,
+    unread: bool = False,
 ) -> Page[NoticeOut]:
     """The notices you may see in this building, newest written first: published ones that
     haven't expired, and for the manager drafts, expired and archived ones too.
 
     `live=true` keeps only published notices that haven't expired, for every role: the feed, and
-    what the unread summary counts (P6-02a).
+    what the unread summary counts (P6-02a). `priority` keeps one priority, and `unread=true` the
+    notices you haven't read yourself: with `live=true&priority=urgent`, the urgent banner's
+    notices (P6-02b).
     """
-    return await service.list_notices(db, ctx, params, status=status, live_only=live)
+    return await service.list_notices(
+        db, ctx, params, status=status, live_only=live, priority=priority, unread_only=unread
+    )
 
 
 @router.get("/notices/summary", dependencies=[_FEATURE], responses=problem_responses(401, 403, 404))

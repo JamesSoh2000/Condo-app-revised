@@ -385,3 +385,71 @@ async def test_the_table_refuses_a_read_across_buildings(
 
     target = "notice_id_notices" if reference == "notice" else "membership_id_building_memberships"
     await assert_integrity_error(db, insert(), constraint=f"fk_notice_reads_building_id_{target}")
+
+
+# --- P6-02b criterion 11: the banner's filters on the list ------------------------------------
+
+
+async def test_priority_and_unread_keep_the_callers_own_unread_urgent_live_notices(
+    db: AsyncSession, as_user: Any, world: World
+) -> None:
+    urgent = {"priority": NoticePriority.URGENT}
+    wanted = await _live(db, world, **urgent)
+    read = await _live(db, world, **urgent)
+    await _live(db, world)  # normal and unread
+    await _live(db, world, expires_at=LONG_AGO + timedelta(days=1), **urgent)  # expired
+    manager = world.a_manager.membership
+    await make_notice(db, manager, priority=NoticePriority.URGENT)  # a draft
+    await make_notice(
+        db, world.b_manager.membership, **published(world.b_manager.membership, LONG_AGO, **urgent)
+    )
+    reader = await as_user(world.a_resident1.user)
+    other = await as_user(world.a_resident2.user)
+    assert (await reader.post(_read_url(world, read))).status_code == 204
+    # Another member's read hides nothing from the reader.
+    assert (await other.post(_read_url(world, wanted))).status_code == 204
+
+    query = "?live=true&priority=urgent&unread=true"
+    response = await reader.get(f"{_base(world)}{query}")
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()["items"]] == [str(wanted.id)]
+    assert (await _summary(reader, world))["urgent_unread"] == 1
+    # The other resident read `wanted` and not `read`.
+    others = (await other.get(f"{_base(world)}{query}")).json()["items"]
+    assert [item["id"] for item in others] == [str(read.id)]
+
+
+async def test_each_filter_narrows_on_its_own(db: AsyncSession, as_user: Any, world: World) -> None:
+    normal = await _live(db, world)
+    urgent = await _live(db, world, priority=NoticePriority.URGENT)
+    reader = await as_user(world.a_resident1.user)
+    assert (await reader.post(_read_url(world, urgent))).status_code == 204
+
+    def ids(response: Any) -> set[str]:
+        assert response.status_code == 200, response.text
+        return {item["id"] for item in response.json()["items"]}
+
+    assert ids(await reader.get(f"{_base(world)}?priority=urgent")) == {str(urgent.id)}
+    assert ids(await reader.get(f"{_base(world)}?priority=normal")) == {str(normal.id)}
+    assert ids(await reader.get(f"{_base(world)}?unread=true")) == {str(normal.id)}
+    assert ids(await reader.get(f"{_base(world)}?unread=false")) == {str(normal.id), str(urgent.id)}
+
+
+async def test_the_manager_filters_inside_everything_they_see(
+    db: AsyncSession, as_user: Any, world: World
+) -> None:
+    manager = world.a_manager.membership
+    draft = await make_notice(db, manager, priority=NoticePriority.URGENT)
+    client = await as_user(world.a_manager.user)
+    items = (await client.get(f"{_base(world)}?priority=urgent&unread=true")).json()["items"]
+    assert [item["id"] for item in items] == [str(draft.id)]
+    # `live=true` still drops the draft.
+    live = (await client.get(f"{_base(world)}?priority=urgent&unread=true&live=true")).json()
+    assert live["items"] == []
+
+
+@pytest.mark.parametrize("query", ["priority=high", "priority=", "unread=maybe"])
+async def test_a_bad_filter_is_422(as_user: Any, world: World, query: str) -> None:
+    client = await as_user(world.a_resident1.user)
+    response = await client.get(f"{_base(world)}?{query}")
+    assert_problem(response, 422, "validation_error")
