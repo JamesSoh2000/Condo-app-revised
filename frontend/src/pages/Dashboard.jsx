@@ -1,15 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Package, ShieldAlert, Wrench, Bell, Gamepad2, Wine, CalendarDays, AlertCircle, UserCheck, ChevronDown } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Package, ShieldAlert, Wrench, Bell, Gamepad2, Wine, CalendarDays, Send, Megaphone, AlertCircle, UserCheck, ChevronDown } from 'lucide-react';
 import { useLanguage } from '@/lib/LanguageContext';
 import Financials from './Financials';
+import NoticeAttachmentUpload from '@/components/NoticeAttachmentUpload';
 import { motion } from 'framer-motion';
 import { createPageUrl } from '@/utils';
 import { Link } from 'react-router-dom';
 import PullToRefresh from '@/components/PullToRefresh';
+import { toast } from 'sonner';
 import { isDemoPage, isDemoViewRole } from '@/app/routeScope';
 
 // Renders its children only if `page` is in the demo scope (src/app/routeScope.ts), so the dashboard
@@ -22,6 +26,8 @@ export default function Dashboard() {
   const [displayUser, setDisplayUser] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [profileLoading, setProfileLoading] = React.useState(true);
+  const [announcement, setAnnouncement] = useState({ title: '', message: '', noticeType: '' });
+  const [noticeAttachment, setNoticeAttachment] = useState(null);
   const [unreadBoardReportsCount, setUnreadBoardReportsCount] = React.useState(0);
   const [mobileAlertsCount, setMobileAlertsCount] = React.useState(0);
   const alertsFeedRef = React.useRef(null);
@@ -117,6 +123,35 @@ export default function Dashboard() {
       setProfileLoading(false);
     });
   }, []);
+
+  const handleSendAnnouncement = async () => {
+    if (!announcement.title || !announcement.message) return;
+    if (!announcement.noticeType) {
+      toast.error("Please select a notice type (Update or Emergency)");
+      return;
+    }
+    try {
+        // Create ONLY a new record — never touch or re-activate old ones
+        await base44.entities.BuildingUpdate.create({
+            title: announcement.title,
+            message: announcement.message,
+            type: announcement.noticeType,
+            priority: announcement.noticeType === 'emergency' ? 'important' : 'normal',
+            isActive: true,
+            is_deleted: false,
+            postedByUserId: user?.id,
+            postedByName: user?.full_name,
+            ...(noticeAttachment || {})
+        });
+        // Invalidate the active-only query key so feed refetches fresh
+        queryClient.invalidateQueries({ queryKey: ['building-updates', 'active'] });
+        toast.success("Notice sent to all residents");
+        setAnnouncement({ title: '', message: '', noticeType: '' });
+        setNoticeAttachment(null);
+    } catch (e) {
+        toast.error("Failed to send notice");
+    }
+  };
 
   if (loading) return null;
 
@@ -371,6 +406,49 @@ export default function Dashboard() {
             </InScope>
           </div>
 
+          <Card className="bg-white">
+            <CardContent className="p-6 space-y-4">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Megaphone className="w-4 h-4" /> Send Notice
+              </h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAnnouncement({...announcement, noticeType: 'update'})}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all ${announcement.noticeType === 'update' ? 'border-zinc-800 bg-zinc-800 text-white' : 'border-zinc-200 text-zinc-600 hover:border-zinc-400'}`}
+                >
+                  <picture><source srcSet="https://fonts.gstatic.com/s/e/notoemoji/latest/270f_fe0f/512.webp" type="image/webp" /><img src="https://fonts.gstatic.com/s/e/notoemoji/latest/270f_fe0f/512.gif" alt="✏" width="22" height="22" className="inline-block flex-shrink-0" /></picture> Update
+                </button>
+                <button
+                  onClick={() => setAnnouncement({...announcement, noticeType: 'emergency'})}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all ${announcement.noticeType === 'emergency' ? 'border-red-600 bg-red-600 text-white' : 'border-zinc-200 text-zinc-600 hover:border-red-300'}`}
+                >
+                  <picture><source srcSet="https://fonts.gstatic.com/s/e/notoemoji/latest/1f6a8/512.webp" type="image/webp" /><img src="https://fonts.gstatic.com/s/e/notoemoji/latest/1f6a8/512.gif" alt="🚨" width="22" height="22" className="inline-block flex-shrink-0" /></picture> Emergency
+                </button>
+              </div>
+              {!announcement.noticeType && (
+                <p className="text-xs text-amber-600">⚠ Notice type is required</p>
+              )}
+              <Input
+                placeholder="Title"
+                value={announcement.title}
+                onChange={(e) => setAnnouncement({...announcement, title: e.target.value})}
+              />
+              <Textarea
+                placeholder="Message to all residents..."
+                className="resize-none"
+                value={announcement.message}
+                onChange={(e) => setAnnouncement({...announcement, message: e.target.value})}
+              />
+              <NoticeAttachmentUpload attachment={noticeAttachment} onChange={setNoticeAttachment} />
+              <Button
+                className="w-full"
+                onClick={handleSendAnnouncement}
+                disabled={!announcement.title || !announcement.message || !announcement.noticeType}
+              >
+                <Send className="w-4 h-4 mr-2" /> Send Notice
+              </Button>
+            </CardContent>
+          </Card>
 
           {/* Updates & Alerts — mobile only (below send notice) */}
           <div className="lg:hidden">
@@ -443,6 +521,55 @@ export default function Dashboard() {
           <div className="lg:hidden">
           </div>
 
+          {/* ── Communications ── */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-3">Communications</p>
+            <Card className="bg-white border-zinc-200/60">
+              <CardContent className="p-6">
+                <h3 className="font-semibold flex items-center gap-2 mb-4">
+                  <Megaphone className="w-4 h-4" /> Send Notice
+                </h3>
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => setAnnouncement({...announcement, noticeType: 'update'})}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all ${announcement.noticeType === 'update' ? 'border-zinc-800 bg-zinc-800 text-white' : 'border-zinc-200 text-zinc-600 hover:border-zinc-400'}`}
+                  >
+                    <picture><source srcSet="https://fonts.gstatic.com/s/e/notoemoji/latest/270f_fe0f/512.webp" type="image/webp" /><img src="https://fonts.gstatic.com/s/e/notoemoji/latest/270f_fe0f/512.gif" alt="✏" width="22" height="22" className="inline-block flex-shrink-0" /></picture> Update
+                  </button>
+                  <button
+                    onClick={() => setAnnouncement({...announcement, noticeType: 'emergency'})}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all ${announcement.noticeType === 'emergency' ? 'border-red-600 bg-red-600 text-white' : 'border-zinc-200 text-zinc-600 hover:border-red-300'}`}
+                  >
+                    <picture><source srcSet="https://fonts.gstatic.com/s/e/notoemoji/latest/1f6a8/512.webp" type="image/webp" /><img src="https://fonts.gstatic.com/s/e/notoemoji/latest/1f6a8/512.gif" alt="🚨" width="22" height="22" className="inline-block flex-shrink-0" /></picture> Emergency
+                  </button>
+                </div>
+                {!announcement.noticeType && (
+                  <p className="text-xs text-amber-600 mb-3">⚠ Notice type is required</p>
+                )}
+                <div className="space-y-3">
+                  <Input
+                    placeholder="Title"
+                    value={announcement.title}
+                    onChange={(e) => setAnnouncement({...announcement, title: e.target.value})}
+                  />
+                  <Textarea
+                    placeholder="Message to all residents..."
+                    className="resize-none"
+                    value={announcement.message}
+                    onChange={(e) => setAnnouncement({...announcement, message: e.target.value})}
+                  />
+                  <NoticeAttachmentUpload attachment={noticeAttachment} onChange={setNoticeAttachment} />
+                  <Button
+                    className="w-full"
+                    onClick={handleSendAnnouncement}
+                    disabled={!announcement.title || !announcement.message || !announcement.noticeType}
+                  >
+                    <Send className="w-4 h-4 mr-2" /> Send Notice
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         <div className="hidden lg:block w-80 flex-shrink-0">
