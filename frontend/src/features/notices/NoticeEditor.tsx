@@ -92,7 +92,7 @@ export function NoticeEditor({ item, onSaved, onPublish, onClose }: Props) {
   if (values.title !== saved?.title) changes.title = values.title;
   if (values.body !== saved?.body) changes.body = values.body;
   if (priority !== (saved?.priority ?? 'normal') || !saved) changes.priority = priority;
-  const dirty = saved ? Object.keys(changes).length > 0 : Boolean(title || body);
+  const dirty = saved ? Object.keys(changes).length > 0 : Boolean(title || body || priority !== 'normal');
 
   const problems: Partial<Record<Field, string>> = {
     title: TITLE_BAD.test(title) ? M.titleBad : !values.title ? M.title : codePoints(values.title) > TITLE_MAX ? M.titleLong : undefined,
@@ -114,6 +114,8 @@ export function NoticeEditor({ item, onSaved, onPublish, onClose }: Props) {
     else if (code === 'notice_not_editable') setMoved(true);
     const first = FIELDS.find((field) => next[field]);
     setErrors(next);
+    // The body's textarea isn't there in Preview (review round 1 F1).
+    if (next.body) setPreview(false);
     if (first) return setFocusTo({ target: first });
     setFailure(
       code === 'notice_not_editable'

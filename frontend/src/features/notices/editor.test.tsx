@@ -304,6 +304,54 @@ describe('the schema’s limits before sending (criterion 6)', () => {
   });
 });
 
+describe('a refused field while Preview is shown (criterion 6, review round 1 F1)', () => {
+  const refuse = (field: string, type: string) =>
+    json({ type: 'about:blank', title: 'Unprocessable', status: 422, code: 'validation_error', errors: [{ loc: ['body', field], type, msg: 'x' }] }, 422);
+  async function fromPreview(answer?: Handler) {
+    const server = serverWith();
+    manager(server, answer ? { [`POST ${BASE}`]: answer } : {});
+    renderApp([PAGE]);
+    await openNew();
+    type('Title', 'Pool');
+    type('Body (Markdown)', 'Closed.');
+    fireEvent.click(inEditor().getByRole('button', { name: 'Preview' }));
+    return server;
+  }
+
+  it('a server error on body goes back to Write and focuses the body', async () => {
+    await fromPreview(() => refuse('body', 'control_characters'));
+    save();
+    await waitFor(() => expect(document.activeElement).toBe(inEditor().getByLabelText('Body (Markdown)')));
+    expect(inEditor().getByRole('button', { name: 'Write' }).getAttribute('aria-pressed')).toBe('true');
+    expect(inEditor().getByText('Use visible characters, tabs and line breaks only.')).toBeTruthy();
+  });
+
+  it('a server error on title focuses the title and leaves the preview shown', async () => {
+    await fromPreview(() => refuse('title', 'string_too_long'));
+    save();
+    await waitFor(() => expect(document.activeElement).toBe(inEditor().getByLabelText('Title')));
+    expect(inEditor().getByTestId('notice-preview')).toBeTruthy();
+  });
+
+  it('an error that fits no field focuses the form message and leaves the preview shown', async () => {
+    await fromPreview(() => refuse('nothing', 'value_error'));
+    save();
+    await waitFor(() => expect(document.activeElement).toBe(inEditor().getByRole('alert')));
+    expect(inEditor().getByTestId('notice-preview')).toBeTruthy();
+  });
+
+  it('a client refusal of the body goes back to Write and focuses it, with no request', async () => {
+    const server = await fromPreview();
+    fireEvent.click(inEditor().getByRole('button', { name: 'Write' }));
+    type('Body (Markdown)', 'x'.repeat(10_001));
+    fireEvent.click(inEditor().getByRole('button', { name: 'Preview' }));
+    save();
+    await waitFor(() => expect(document.activeElement).toBe(inEditor().getByLabelText('Body (Markdown)')));
+    await settle();
+    expect(server.sent).toEqual([]);
+  });
+});
+
 describe('published elsewhere meanwhile (criterion 7)', () => {
   it('409 notice_not_editable: the message shows, every field keeps its value, and Publish isn’t offered', async () => {
     const server = serverWith(draft(1, { title: 'Pool', body: 'Closed.' }));
@@ -369,6 +417,38 @@ describe('unsaved work (case 12)', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New notice' }));
   });
 
+  it('a priority chosen on an empty new notice counts as unsaved; set back to Normal, it doesn’t (review round 1 F2)', async () => {
+    manager(serverWith());
+    renderApp([PAGE]);
+    await openNew();
+    fireEvent.click(inEditor().getByRole('radio', { name: 'Urgent' }));
+    expect(inEditor().getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(inEditor().getByRole<HTMLInputElement>('radio', { name: 'Urgent' }).checked).toBe(true);
+    fireEvent.click(inEditor().getByRole('radio', { name: 'Normal' }));
+    expect(inEditor().getByRole('button', { name: 'Close' })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('Escape doesn’t close while a save is out, even with nothing else unsaved', async () => {
+    let answer: (response: Response) => void = () => {};
+    manager(serverWith(draft(1, { title: 'Pool', body: 'Closed.' })), {
+      [`PATCH ${BASE}/${draft(1).id}`]: () => new Promise<Response>((resolve) => (answer = resolve)),
+    });
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    type('Body (Markdown)', 'Open.');
+    save();
+    await settle();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    answer(json(draft(1, { title: 'Pool', body: 'Open.' })));
+    await saved();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
   it('Escape closes an editor with nothing unsaved', async () => {
     manager(serverWith(draft(1, { title: 'Pool' })));
     renderApp([PAGE]);
@@ -403,6 +483,42 @@ describe('switching building (case 13)', () => {
     await screen.findByText('No drafts.');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(writes(fetchMock).filter((call) => call.includes('/notices'))).toEqual([]);
+  });
+});
+
+describe('switching building with a save out (case 13, review round 1 neighbour)', () => {
+  it('removes the editor; the late answer changes nothing in the new building and sends nothing more', async () => {
+    const birch = noticesBase(BIRCH.id);
+    let answer: (response: Response) => void = () => {};
+    const fetchMock = stubApi({
+      'GET /api/auth/me': () =>
+        json({ ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: ['property_management'] }), membership(BIRCH, { roles: ['property_management'] })] }),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, ['property_management'])),
+      [`GET /api/buildings/${BIRCH.id}`]: () => json(buildingOut(BIRCH, ['property_management'])),
+      [`GET /api/buildings/${BIRCH.id}/notifications/summary`]: () => json({ unread_count: 0 }),
+      ...noticesApi(serverWith()),
+      [`POST ${BASE}`]: () => new Promise<Response>((resolve) => (answer = resolve)),
+      [`GET ${birch}`]: () => json({ items: [], next_cursor: null }),
+      [`GET ${birch}/summary`]: () => json({ unread: 0, urgent_unread: 0 }),
+    });
+    writeSelectedBuilding(MAPLE.id);
+    const app = renderApp([PAGE]);
+    await openNew();
+    type('Title', 'For Maple');
+    type('Body (Markdown)', 'Text');
+    save();
+    await settle();
+    openAccountMenu();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Building' }), { target: { value: BIRCH.id } });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    act(() => app.navigate()(PAGE));
+    await screen.findByText('No drafts.');
+    answer(json(draft(99, { id: NEW_ID, title: 'For Maple', body: 'Text' }), 201));
+    await settle();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByText('For Maple')).toBeNull();
+    expect(screen.getByText('No drafts.')).toBeTruthy();
+    expect(writes(fetchMock).filter((call) => call.includes('/notices'))).toEqual([`POST ${BASE}`]);
   });
 });
 
