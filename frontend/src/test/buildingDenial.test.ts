@@ -853,6 +853,7 @@ describe('the inspector', () => {
     // React's default export is a mutable object: never trusted, replaced or not.
     expect(run(`import React from 'react';\n${IMPORT}${FACTORY}React.memo = makeHook;\nconst useNoDenial = React.memo(function useDiscarded() { return useBuildingDenied(); });\n${USE}`)).toEqual(FLAGGED);
     expect(run(`import React from 'react';\n${IMPORT}const useNoDenial = React.memo(function useDiscarded() { return useBuildingDenied(); });\n${USE}`)).toEqual(FLAGGED);
+    expect(run(`import React from 'react';\n${IMPORT}const useNoDenial = React.memo(() => useBuildingDenied());\n${USE}`)).toEqual(FLAGGED);
     // Its named export reads that same object under the bundler's interop: a write there, in any file, ends the trust.
     const SAFE = `import { memo } from 'react';\n${IMPORT}const useNoDenial = memo(() => useBuildingDenied());\n${USE}`;
     expect(run(SAFE)).toEqual([]);
