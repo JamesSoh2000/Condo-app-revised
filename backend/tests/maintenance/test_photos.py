@@ -1,4 +1,4 @@
-"""P6-03a criteria 9–11: a maintenance photo is downloadable by exactly its request's viewers."""
+"""P6-03a criteria 9, 10 and 11: a maintenance photo is downloadable by its request's viewers."""
 
 import subprocess
 import sys
@@ -16,6 +16,7 @@ from app.files.models import File, FilePurpose
 from app.files.service import claim_file
 from app.maintenance.models import MAINTENANCE_REQUEST_ATTACHED_TYPE, MaintenanceRequest
 from app.maintenance.photos import can_view_maintenance_photo
+from app.memberships.enums import Role
 from app.memberships.models import BuildingMembership
 from app.units.models import Unit
 from tests.helpers.tenancy import assert_not_visible, assert_problem, without_request_id
@@ -24,7 +25,6 @@ from tests.maintenance.conftest import (
     make_maintenance_photo,
     make_maintenance_request,
 )
-from app.memberships.enums import Role
 from tests.packages.conftest import ctx_of, persona_ctx
 from tests.world import World
 
@@ -133,9 +133,7 @@ async def test_a_photo_row_whose_file_is_attached_to_another_request_is_refused(
     await _refused_for_everyone(as_user, world, file.id)
 
 
-async def test_a_file_of_another_attached_type_is_refused(
-    as_user, db: AsyncSession, world: World
-):
+async def test_a_file_of_another_attached_type_is_refused(as_user, db: AsyncSession, world: World):
     # Listed in the request's photo rows and attached to its id, but as another record type.
     _, file = await photographed(db, world.a_resident1.membership, world.a_101)
     await db.execute(update(File).where(File.id == file.id).values(attached_type="package"))
@@ -146,9 +144,7 @@ async def test_a_file_of_another_attached_type_is_refused(
 async def test_the_hook_refuses_another_attached_type_directly(db: AsyncSession, world: World):
     _, file = await photographed(db, world.a_resident1.membership, world.a_101)
     for attached_type in ("package", "maintenance_comment", "notice"):
-        await db.execute(
-            update(File).where(File.id == file.id).values(attached_type=attached_type)
-        )
+        await db.execute(update(File).where(File.id == file.id).values(attached_type=attached_type))
         await db.refresh(file)
         manager = persona_ctx(world, "a_manager")
 

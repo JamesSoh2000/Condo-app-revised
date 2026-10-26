@@ -13,10 +13,8 @@ from app.memberships.models import BuildingMembership
 from app.units.models import Unit
 
 
-def status_columns(
-    status: MaintenanceStatus, at: datetime, by: uuid.UUID
-) -> dict[str, Any]:
-    """The columns a row of `status` must carry (P6-03a D3), each `*_at` an hour apart after `at`."""
+def status_columns(status: MaintenanceStatus, at: datetime, by: uuid.UUID) -> dict[str, Any]:
+    """The columns a row of `status` must carry (P6-03a D3), its `*_at` 1-2 h after `at`."""
     started = {"started_at": at + timedelta(hours=1), "started_by_membership_id": by}
     match status:
         case MaintenanceStatus.SUBMITTED:
@@ -47,8 +45,8 @@ async def make_maintenance_request(
     """A request by `requester` for `unit` (a common-area one if `unit` is None), with `status`'s
     columns set by `acted_by` (the requester if omitted); flushed, never committed.
 
-    `submitted_at` None means the database's `now()`; the status columns then hang off `now()` from
-    Python's clock, so pass `submitted_at` when the order of times matters. Builds the row inside the
+    `submitted_at` None means the database's `now()`; the status columns then hang off Python's
+    clock, so pass `submitted_at` when the order of times matters. Builds the row inside the
     coroutine, so `assert_integrity_error` sees the violation.
     """
     at = submitted_at or datetime.now().astimezone()
@@ -97,7 +95,11 @@ async def make_maintenance_file(
 
 
 async def make_maintenance_photo(
-    db: AsyncSession, request: MaintenanceRequest, file_id: uuid.UUID, position: int = 0, **overrides: Any
+    db: AsyncSession,
+    request: MaintenanceRequest,
+    file_id: uuid.UUID,
+    position: int = 0,
+    **overrides: Any,
 ) -> MaintenanceRequestPhoto:
     """A photo row listing `file_id` on `request`; flushed, never committed."""
     values: dict[str, Any] = {

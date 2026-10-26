@@ -1,4 +1,4 @@
-"""P6-03a criteria 1–5 and 12–14: what the maintenance tables refuse."""
+"""P6-03a criteria 1 to 5 and 12 to 14: what the maintenance tables refuse."""
 
 import asyncio
 import uuid
@@ -26,7 +26,7 @@ from tests.world import World
 pytestmark = pytest.mark.anyio
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-P6_03A_REVISION = "REVISION_ID"
+P6_03A_REVISION = "2cb174aca098"
 P6_03A_DOWN_REVISION = "b006d25a3f56"
 TABLES = {"maintenance_requests", "maintenance_request_photos"}
 
@@ -50,7 +50,7 @@ OWN: dict[MaintenanceStatus, tuple[str, ...]] = {
 ALL_STATUS_COLUMNS = tuple(column for group in _COLUMNS.values() for column in group)
 
 
-# --- criterion 1: the migration round-trips --------------------------------------------------------
+# --- criterion 1: the migration round-trips -------------------------------------------------------
 
 
 async def _table_names(url: str) -> set[str]:
@@ -70,7 +70,7 @@ def test_migration_downgrades_and_upgrades(scratch_database_url: str):
 
     # Pinned revisions, so later migrations stacked on top don't change what this tests.
     command.upgrade(cfg, P6_03A_REVISION)
-    assert TABLES <= asyncio.run(_table_names(scratch_database_url))
+    assert asyncio.run(_table_names(scratch_database_url)) >= TABLES
 
     command.downgrade(cfg, P6_03A_DOWN_REVISION)
     tables = asyncio.run(_table_names(scratch_database_url))
@@ -78,7 +78,7 @@ def test_migration_downgrades_and_upgrades(scratch_database_url: str):
     assert "notices" in tables  # only this revision was undone
 
     command.upgrade(cfg, "head")
-    assert TABLES <= asyncio.run(_table_names(scratch_database_url))
+    assert asyncio.run(_table_names(scratch_database_url)) >= TABLES
     command.check(cfg)  # raises if the models and the migrated schema differ
 
 
@@ -157,7 +157,7 @@ async def test_a_photo_of_another_buildings_file_is_refused(db: AsyncSession, wo
     )
 
 
-# --- criteria 3 and 14: the location ---------------------------------------------------------------
+# --- criteria 3 and 14: the location --------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -172,7 +172,9 @@ async def test_a_photo_of_another_buildings_file_is_refused(db: AsyncSession, wo
 async def test_the_location_check_refuses_a_mismatched_row(
     db: AsyncSession, world: World, unit: bool, overrides: dict[str, Any]
 ):
-    resolved = {k: getattr(world, v).id if k == "unit_id" and v else v for k, v in overrides.items()}
+    resolved = {
+        k: getattr(world, v).id if k == "unit_id" and v else v for k, v in overrides.items()
+    }
 
     await assert_integrity_error(
         db,
@@ -198,7 +200,7 @@ async def test_a_blank_common_area_is_refused(db: AsyncSession, world: World, bl
     )
 
 
-# --- criterion 4: each status's columns, text and enums --------------------------------------------
+# --- criterion 4: each status's columns, text and enums -------------------------------------------
 
 
 def _status_cases() -> list[Any]:
@@ -308,7 +310,7 @@ async def test_record_times_are_timestamptz(db: AsyncSession):
     assert types == dict.fromkeys(columns, "timestamp with time zone")
 
 
-# --- criterion 5: times follow the submission ------------------------------------------------------
+# --- criterion 5: times follow the submission -----------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -324,6 +326,7 @@ async def test_record_times_are_timestamptz(db: AsyncSession):
 async def test_a_time_before_submitted_at_is_refused(
     db: AsyncSession, world: World, status: MaintenanceStatus, column: str, constraint: str
 ):
+    early: dict[str, Any] = {column: T - timedelta(microseconds=1)}
     await assert_integrity_error(
         db,
         make_maintenance_request(
@@ -332,7 +335,7 @@ async def test_a_time_before_submitted_at_is_refused(
             world.a_101,
             submitted_at=T,
             status=status,
-            **{column: T - timedelta(microseconds=1)},
+            **early,
         ),
         constraint=f"ck_maintenance_requests_{constraint}",
     )
@@ -344,7 +347,7 @@ async def test_a_time_before_submitted_at_is_refused(
 async def test_a_time_before_started_at_is_refused(
     db: AsyncSession, world: World, status: MaintenanceStatus, column: str
 ):
-    started_at = T + timedelta(hours=1)
+    early: dict[str, Any] = {column: T + timedelta(hours=1) - timedelta(microseconds=1)}
     await assert_integrity_error(
         db,
         make_maintenance_request(
@@ -353,7 +356,7 @@ async def test_a_time_before_started_at_is_refused(
             world.a_101,
             submitted_at=T,
             status=status,
-            **{column: started_at - timedelta(microseconds=1)},
+            **early,
         ),
         constraint=f"ck_maintenance_requests_{column.removesuffix('_at')}_after_started",
     )
@@ -361,16 +364,17 @@ async def test_a_time_before_started_at_is_refused(
 
 async def test_times_equal_to_their_bound_are_accepted(db: AsyncSession, world: World):
     me = world.a_resident1.membership
+    cases: list[tuple[MaintenanceStatus, dict[str, Any]]] = [
+        (S.IN_PROGRESS, {"started_at": T}),
+        (S.ON_HOLD, {"started_at": T, "on_hold_at": T}),
+        (S.RESOLVED, {"started_at": T, "resolved_at": T}),
+        (S.CANCELLED, {"cancelled_at": T}),
+    ]
     rows = [
         await make_maintenance_request(
             db, me, world.a_101, submitted_at=T, status=status, **overrides
         )
-        for status, overrides in [
-            (S.IN_PROGRESS, {"started_at": T}),
-            (S.ON_HOLD, {"started_at": T, "on_hold_at": T}),
-            (S.RESOLVED, {"started_at": T, "resolved_at": T}),
-            (S.CANCELLED, {"cancelled_at": T}),
-        ]
+        for status, overrides in cases
     ]
 
     assert [r.status for r in rows] == [S.IN_PROGRESS, S.ON_HOLD, S.RESOLVED, S.CANCELLED]

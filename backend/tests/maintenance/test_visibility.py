@@ -113,7 +113,7 @@ async def test_the_query_never_leaves_the_contexts_building(
     assert requests["b"] not in await seen(db, visible_maintenance(ctx))
 
 
-# --- criterion 8: the occupancy window -------------------------------------------------------------
+# --- criterion 8: the occupancy window ------------------------------------------------------------
 
 
 async def _for_101(db: AsyncSession, world: World, at) -> uuid.UUID:

@@ -10,6 +10,7 @@ import app.buildings.models
 import app.files.models
 import app.invitations.models
 import app.jobs.models
+import app.maintenance.models
 import app.memberships.models
 import app.notices.models
 import app.notifications.models
