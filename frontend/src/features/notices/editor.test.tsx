@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
 /**
- * P6-02d: the notice editor on `/manage/notices`: a new draft and an existing one, preview, expiry in building time,
- * and publish (the expiry and the attachment are P6-02f's). Each `describe` names the criteria it proves (docs/tickets/P6-02d-notice-editor.md).
- * `fetch` is stubbed; the browser at 375 px is in the PR's Chromium transcript.
+ * P6-02d and P6-02f: the notice editor on `/manage/notices`: a new draft and an existing one, preview, expiry in building
+ * time, one attachment, and publish. Each `describe` names the criteria it proves (docs/tickets/P6-02d-notice-editor.md,
+ * and "P6-02f" for docs/tickets/P6-02f-notice-expiry-and-attachment.md). `fetch` and `XMLHttpRequest` are stubbed; the
+ * browser at 375 px is in the PRs' Chromium transcripts.
  */
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { components } from '@/api/schema';
 import { writeSelectedBuilding } from '@/app/buildingStorage';
 import { NoticeBody } from '@/features/notices/NoticeBody';
+import { FIELDS, SERVER_MESSAGES } from '@/features/notices/NoticeEditor';
 import { BIRCH, MAPLE, RESIDENT_ME, buildingOut, calls, json, membership, openAccountMenu, problem, renderApp, stubApi, type Handler } from '@/test/renderApp';
 import { notice, noticesBase, type Notice } from '@/test/notices';
 import { render } from '@testing-library/react';
@@ -25,6 +29,33 @@ const BASE = noticesBase();
 const PAGE = '/manage/notices';
 const FILE_OLD = '01929a4e-0000-7000-8000-0000000fa0ff';
 const NEW_ID = '01929a4e-0000-7000-8000-0000000f0099';
+const FILES = `/api/buildings/${MAPLE.id}/files`;
+const FILE_A = '01929a4e-0000-7000-8000-0000000fa001';
+const MiB = 1024 * 1024;
+
+/** A test double for the browser's XHR (the S3 POST): the test answers it. */
+class FakeXHR {
+  static instances: FakeXHR[] = [];
+  status = 0;
+  upload: { onprogress: ((event: ProgressEvent) => void) | null } = { onprogress: null };
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onabort: (() => void) | null = null;
+  open() {}
+  send() {
+    FakeXHR.instances.push(this);
+  }
+  abort() {
+    this.onabort?.();
+  }
+  respond(status: number) {
+    this.status = status;
+    act(() => this.onload?.());
+  }
+  fail() {
+    act(() => this.onerror?.());
+  }
+}
 
 const draft = (n: number, fields: Partial<Notice> = {}) =>
   notice(n, { status: 'draft', published_at: null, published_by_membership_id: null, ...fields });
@@ -35,7 +66,7 @@ interface Server {
   sent: { method: string; path: string; body: Record<string, unknown> }[];
 }
 
-/** The manager's notices API over `server`: lists by status, create, update and publish. */
+/** The manager's notices API over `server`: lists by status, create, update, publish, and one upload. */
 function noticesApi(server: Server): Record<string, Handler> {
   const record = async (request: Request) => {
     const body = (await request.clone().json()) as Record<string, unknown>;
@@ -48,6 +79,10 @@ function noticesApi(server: Server): Record<string, Handler> {
       return json({ items: server.notices.filter((item) => !status || item.status === status), next_cursor: null });
     },
     [`GET ${BASE}/summary`]: () => json({ unread: 0, urgent_unread: 0 }),
+    [`POST ${FILES}`]: () =>
+      json({ file_id: FILE_A, upload: { url: 'http://localhost:4566/files', fields: { key: 'k', policy: 'p' } }, expires_at: new Date(Date.now() + 300_000).toISOString() }, 201),
+    [`POST ${FILES}/${FILE_A}/complete`]: () =>
+      json({ id: FILE_A, purpose: 'notice_attachment', status: 'ready', content_type: 'application/pdf', size_bytes: 2048, original_name: 'rules.pdf', created_at: '2026-10-25T12:00:00Z' }),
     [`POST ${BASE}`]: async (request) => {
       const body = await record(request);
       const created = draft(99, {
@@ -68,7 +103,7 @@ function noticesApi(server: Server): Record<string, Handler> {
       const body = await record(request);
       const now = server.notices.find((item) => item.id === id)!;
       if (now.status !== 'draft') return problem(409, 'notice_not_editable');
-      const changed: Notice = { ...now, ...body };
+      const changed = { ...now, ...body, ...('attachment_file_id' in body && { attachment_content_type: body.attachment_file_id ? 'application/pdf' : null }) };
       server.notices = server.notices.map((item) => (item.id === id ? changed : item));
       return json(changed);
     };
@@ -114,6 +149,25 @@ async function openEdit(title: string) {
 async function saved() {
   await waitFor(() => expect(inEditor().getByTestId('editor-status').textContent).toBe('Draft saved.'));
 }
+function choose(file: File) {
+  fireEvent.change(screen.getByRole('dialog').querySelector<HTMLInputElement>('input[type="file"]')!, { target: { files: [file] } });
+}
+const pdf = (size = 2048, name = 'rules.pdf', type = 'application/pdf') => {
+  const file = new File(['x'], name, { type });
+  Object.defineProperty(file, 'size', { value: size });
+  return file;
+};
+async function upload() {
+  choose(pdf());
+  await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+  FakeXHR.instances[0].respond(204);
+  await inEditor().findByText('Uploaded rules.pdf.');
+}
+
+beforeEach(() => {
+  FakeXHR.instances = [];
+  vi.stubGlobal('XMLHttpRequest', FakeXHR);
+});
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -164,16 +218,18 @@ describe('a new draft (criterion 1)', () => {
 describe('an existing draft (criterion 2)', () => {
   const existing = () => draft(1, { title: 'Pool', body: 'Closed.', expires_at: '2999-07-15T22:00:00Z', attachment_file_id: FILE_OLD, attachment_content_type: 'application/pdf' });
 
-  it('opens with the saved values', async () => {
+  it('opens with the saved values, the expiry in building time (P6-02f criterion 4)', async () => {
     manager(serverWith(existing()));
     renderApp([PAGE]);
     await openEdit('Pool');
     expect(inEditor().getByLabelText<HTMLInputElement>('Title').value).toBe('Pool');
     expect(inEditor().getByLabelText<HTMLTextAreaElement>('Body (Markdown)').value).toBe('Closed.');
     expect(inEditor().getByRole<HTMLInputElement>('radio', { name: 'Normal' }).checked).toBe(true);
+    expect(inEditor().getByLabelText<HTMLInputElement>(/^Expires/).value).toBe('2999-07-15T18:00');
+    expect(inEditor().getByText('A PDF is attached.')).toBeTruthy();
   });
 
-  it('a body change sends only body, and keeps the draft’s expiry and attachment (P6-02f edits them)', async () => {
+  it('a body change sends only body, and keeps the draft’s expiry and attachment', async () => {
     const server = serverWith(existing());
     manager(server);
     renderApp([PAGE]);
@@ -183,6 +239,57 @@ describe('an existing draft (criterion 2)', () => {
     await saved();
     expect(server.sent).toEqual([{ method: 'PATCH', path: `${BASE}/${existing().id}`, body: { body: 'Closed until Friday.' } }]);
     expect(server.notices[0]).toMatchObject({ expires_at: '2999-07-15T22:00:00Z', attachment_file_id: FILE_OLD });
+  });
+
+  it('clearing the expiry and removing the attachment send null for them (P6-02f criterion 2)', async () => {
+    const server = serverWith(existing());
+    manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    // Each button removes itself: focus moves to what stays (CLAUDE.md lesson), the field or the attachment group.
+    fireEvent.click(inEditor().getByRole('button', { name: 'Remove expiry' }));
+    expect(document.activeElement).toBe(inEditor().getByLabelText(/^Expires/));
+    fireEvent.click(inEditor().getByRole('button', { name: 'Remove attachment' }));
+    expect(document.activeElement).toBe(inEditor().getByRole('group', { name: 'Attachment (optional)' }));
+    expect(inEditor().queryByText('A PDF is attached.')).toBeNull();
+    save();
+    await saved();
+    expect(server.sent[0].body).toEqual({ expires_at: null, attachment_file_id: null });
+    expect(inEditor().queryByRole('button', { name: 'Remove attachment' })).toBeNull();
+  });
+
+  it('an emptied expiry field sends null too (P6-02f criterion 2)', async () => {
+    const server = serverWith(existing());
+    manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    type(/^Expires/, '');
+    save();
+    await saved();
+    expect(server.sent[0].body).toEqual({ expires_at: null });
+  });
+
+  it('a new upload replaces the draft’s attachment: the save sends only the new file_id (P6-02f criterion 2)', async () => {
+    const server = serverWith(existing());
+    manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    await upload();
+    save();
+    await saved();
+    expect(server.sent[0].body).toEqual({ attachment_file_id: FILE_A });
+  });
+
+  it('the saved expiry typed again, or a removed attachment uploaded back unchanged, sends nothing (P6-02f criterion 2)', async () => {
+    const server = serverWith(existing());
+    const fetchMock = manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    type(/^Expires/, '2999-07-16T09:00');
+    type(/^Expires/, '2999-07-15T18:00');
+    save();
+    expect(await inEditor().findByText('No changes to save.')).toBeTruthy();
+    expect(writes(fetchMock)).toEqual([]);
   });
 
   it('a change undone, or only spaces added around the text, sends nothing and says so', async () => {
@@ -372,6 +479,249 @@ describe('a refused field while Preview is shown (criterion 6, review round 1 F1
     await waitFor(() => expect(document.activeElement).toBe(inEditor().getByLabelText('Body (Markdown)')));
     await settle();
     expect(server.sent).toEqual([]);
+  });
+});
+
+describe('every field that can hold an error has its element (P6-02f criterion 11)', () => {
+  it.each(FIELDS.map((field) => [field]))('a server error on %s focuses its element and shows in its error slot', async (field) => {
+    // A type the field's own messages place, else one the shared messages do.
+    const kind = Object.keys(SERVER_MESSAGES[field] ?? {})[0] ?? 'missing';
+    manager(serverWith(), {
+      [`POST ${BASE}`]: () => json({ type: 'about:blank', title: 'Unprocessable', status: 422, code: 'validation_error', errors: [{ loc: ['body', field], type: kind, msg: 'x' }] }, 422),
+    });
+    renderApp([PAGE]);
+    await openNew();
+    type('Title', 'T');
+    type('Body (Markdown)', 'B');
+    const prefix = inEditor().getByLabelText('Title').id.replace(/-title$/, '');
+    save();
+    await waitFor(() => expect(document.activeElement?.id).toBe(`${prefix}-${field}`));
+    const slot = document.getElementById(document.activeElement!.getAttribute('aria-describedby') ?? '');
+    expect(slot?.textContent).toBeTruthy();
+    expect(inEditor().queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('expiry in building time (P6-02f criterion 4)', () => {
+  it('sends 18:00 Toronto time as its instant, DST included', async () => {
+    const server = serverWith();
+    manager(server);
+    renderApp([PAGE]);
+    await openNew();
+    type('Title', 'Summer');
+    type('Body (Markdown)', 'Text');
+    type(/^Expires/, '2999-07-15T18:00');
+    save();
+    await saved();
+    type(/^Expires/, '2999-12-15T18:00');
+    save();
+    await waitFor(() => expect(server.sent).toHaveLength(2));
+    expect(server.sent.map((each) => each.body.expires_at)).toEqual(['2999-07-15T22:00:00.000Z', '2999-12-15T23:00:00.000Z']);
+  });
+
+  it('reads and writes the building’s zone, not a fixed one: a Tokyo building', async () => {
+    const server = serverWith(draft(1, { title: 'Pool', expires_at: '2999-07-14T15:00:00Z' }));
+    manager(server, { [`GET /api/buildings/${MAPLE.id}`]: () => json({ ...buildingOut(MAPLE, ['property_management']), timezone: 'Asia/Tokyo' }) });
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    expect(inEditor().getByLabelText<HTMLInputElement>(/^Expires/).value).toBe('2999-07-15T00:00');
+    type(/^Expires/, '2999-07-15T18:00');
+    save();
+    await saved();
+    expect(server.sent[0].body).toEqual({ expires_at: '2999-07-15T09:00:00.000Z' });
+  });
+
+  it('shows the API’s 422 notice_expired on the expiry field, and the field’s own validation error there too', async () => {
+    const answers = [problem(422, 'notice_expired'), json({ type: 'about:blank', title: 'Unprocessable', status: 422, code: 'validation_error', errors: [{ loc: ['body', 'expires_at'], type: 'datetime_range', msg: 'x' }] }, 422)];
+    manager(serverWith(), { [`POST ${BASE}`]: () => answers.shift()! });
+    renderApp([PAGE]);
+    await openNew();
+    type('Title', 'T');
+    type('Body (Markdown)', 'B');
+    type(/^Expires/, '2020-01-01T10:00');
+    save();
+    const field = inEditor().getByLabelText(/^Expires/);
+    await waitFor(() => expect(field.getAttribute('aria-invalid')).toBe('true'));
+    expect(document.getElementById(field.getAttribute('aria-describedby')!)!.textContent).toBe('This time has passed. Choose a later one.');
+    expect(document.activeElement).toBe(field);
+    save();
+    await waitFor(() => expect(document.getElementById(field.getAttribute('aria-describedby')!)!.textContent).toBe('Choose a time before the year 9999.'));
+  });
+});
+
+describe('the attachment (P6-02f criterion 5)', () => {
+  it('uploads with purpose notice_attachment and the save carries only its file_id', async () => {
+    const server = serverWith();
+    const fetchMock = manager(server);
+    renderApp([PAGE]);
+    await openNew();
+    type('Title', 'Rules');
+    type('Body (Markdown)', 'Attached.');
+    await upload();
+    const uploadBody: unknown = await fetchMock.mock.calls.map(([request]) => request).find((request) => request.url.endsWith(FILES))!.clone().json();
+    expect(uploadBody).toMatchObject({ purpose: 'notice_attachment', content_type: 'application/pdf' });
+    save();
+    await saved();
+    expect(server.sent[0].body).toEqual({ title: 'Rules', body: 'Attached.', priority: 'normal', attachment_file_id: FILE_A });
+    expect(inEditor().getByText('A PDF is attached.')).toBeTruthy();
+  });
+
+  it('Remove on a new draft’s finished upload sends no attachment (P6-02f criterion 2)', async () => {
+    const server = serverWith();
+    manager(server);
+    renderApp([PAGE]);
+    await openNew();
+    type('Title', 'Rules');
+    type('Body (Markdown)', 'None.');
+    await upload();
+    fireEvent.click(inEditor().getByRole('button', { name: 'Remove attachment' }));
+    expect(document.activeElement).toBe(inEditor().getByRole('group', { name: 'Attachment (optional)' }));
+    expect(inEditor().queryByText('Uploaded rules.pdf.')).toBeNull();
+    save();
+    await saved();
+    expect(server.sent[0].body).toEqual({ title: 'Rules', body: 'None.', priority: 'normal' });
+  });
+
+  it('accepts an image too, and refuses a wrong type or an image over 10 MB before any request', async () => {
+    const fetchMock = manager(serverWith());
+    renderApp([PAGE]);
+    await openNew();
+    expect(inEditor().getByText(/PDF up to 20 MB, or JPEG, PNG, WebP or HEIC up to 10 MB/)).toBeTruthy();
+    choose(pdf(MiB, 'notes.txt', 'text/plain'));
+    expect((await inEditor().findByRole('alert')).textContent).toBe('This file must be a PDF, JPEG, PNG, WebP or HEIC file.');
+    choose(pdf(11 * MiB, 'big.png', 'image/png'));
+    expect((await inEditor().findByRole('alert')).textContent).toBe('This file is larger than 10 MB.');
+    expect(calls(fetchMock).filter((call) => call.includes('/files'))).toEqual([]);
+    choose(pdf(15 * MiB, 'rules.pdf'));
+    await waitFor(() => expect(calls(fetchMock)).toContain(`POST ${FILES}`));
+  });
+
+  it('refuses to save while the upload runs, and after it failed', async () => {
+    const fetchMock = manager(serverWith());
+    renderApp([PAGE]);
+    await openNew();
+    type('Title', 'T');
+    type('Body (Markdown)', 'B');
+    choose(pdf());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    save();
+    expect(await inEditor().findByText('Wait for the attachment to finish uploading.')).toBeTruthy();
+    FakeXHR.instances[0].fail();
+    save();
+    expect(await inEditor().findByText('The attachment didn’t upload. Retry it or remove it.')).toBeTruthy();
+    await settle();
+    expect(writes(fetchMock).filter((call) => call.includes('/notices'))).toEqual([]);
+  });
+
+  it.each([
+    ['422 invalid_file', () => problem(422, 'invalid_file')],
+    ['404 file_not_found', () => problem(404, 'file_not_found')],
+  ])('%s on save shows on the attachment, asks for a new upload and doesn’t resend the refused file', async (_, answer) => {
+    const server = serverWith();
+    const answers = [answer()];
+    manager(server, { [`POST ${BASE}`]: async (request) => answers.shift() ?? noticesApi(server)[`POST ${BASE}`](request) });
+    renderApp([PAGE]);
+    await openNew();
+    type('Title', 'T');
+    type('Body (Markdown)', 'B');
+    await upload();
+    save();
+    expect(await inEditor().findByText('This file can’t be attached. Upload it again.')).toBeTruthy();
+    expect(inEditor().queryByText('Uploaded rules.pdf.')).toBeNull();
+    expect(inEditor().getByLabelText<HTMLInputElement>('Title').value).toBe('T');
+    save();
+    await saved();
+    expect(server.sent.at(-1)!.body).toEqual({ title: 'T', body: 'B', priority: 'normal' });
+  });
+});
+
+describe('nothing unsaved hides behind Publish (P6-02f review round 1 F1)', () => {
+  it.each([['runs', false], ['failed', true]] as const)('a saved draft whose replacement upload %s offers no Publish and keeps Escape from closing', async (_, fail) => {
+    const server = serverWith(draft(1, { title: 'Pool', body: 'Closed.', attachment_file_id: FILE_OLD, attachment_content_type: 'application/pdf' }));
+    const fetchMock = manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    expect(inEditor().getByRole('button', { name: 'Publish' })).toBeTruthy();
+    choose(pdf());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    if (fail) FakeXHR.instances[0].fail();
+    await waitFor(() => expect(inEditor().queryByRole('button', { name: 'Publish' })).toBeNull());
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    if (fail) {
+      // Remove takes the saved attachment away too: a change to save, so still no Publish.
+      fireEvent.click(inEditor().getByRole('button', { name: 'Remove attachment' }));
+      expect(inEditor().queryByRole('button', { name: 'Publish' })).toBeNull();
+    }
+    expect(writes(fetchMock).filter((call) => call.includes('/notices'))).toEqual([]);
+  });
+});
+
+describe('a half-typed expiry (P6-02f review round 1 F2)', () => {
+  /** What Chromium does when one segment of a `datetime-local` is deleted: `value` is '' and `validity.badInput` true. */
+  function halfType(from: 'a value' | 'empty' = 'a value') {
+    const input = inEditor().getByLabelText<HTMLInputElement>(/^Expires/);
+    Object.defineProperty(input, 'validity', { configurable: true, get: () => ({ badInput: true, valid: false }) });
+    // From a value, Chromium sends an input event with ''. Into an empty field it sends none (the value stays ''),
+    // only the key's own events.
+    if (from === 'a value') fireEvent.input(input, { target: { value: '' } });
+    else fireEvent.keyUp(input, { key: '1' });
+    return input;
+  }
+
+  it('is refused on save with the field’s message, not sent as null; Remove expiry clears it and then sends null', async () => {
+    const server = serverWith(draft(1, { title: 'Pool', body: 'Closed.', expires_at: '2999-07-15T22:00:00Z' }));
+    const fetchMock = manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    const input = halfType();
+    save();
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect(document.getElementById(input.getAttribute('aria-describedby')!)!.textContent).toBe('Enter a date and time.');
+    await settle();
+    expect(writes(fetchMock)).toEqual([]);
+    fireEvent.click(inEditor().getByRole('button', { name: 'Remove expiry' }));
+    expect(document.activeElement).toBe(input);
+    save();
+    await saved();
+    expect(server.sent[0].body).toEqual({ expires_at: null });
+  });
+
+  it('on a draft with no expiry counts as unsaved: no Publish, and Save is refused', async () => {
+    const server = serverWith(draft(1, { title: 'Pool', body: 'Closed.' }));
+    const fetchMock = manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    halfType('empty');
+    expect(inEditor().queryByRole('button', { name: 'Publish' })).toBeNull();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    save();
+    expect(await inEditor().findByText('Enter a date and time.')).toBeTruthy();
+    await settle();
+    expect(writes(fetchMock)).toEqual([]);
+  });
+
+  it('a complete value typed after it is accepted', async () => {
+    const server = serverWith(draft(1, { title: 'Pool', body: 'Closed.' }));
+    manager(server);
+    renderApp([PAGE]);
+    await openEdit('Pool');
+    const input = halfType('empty');
+    Object.defineProperty(input, 'validity', { configurable: true, get: () => ({ badInput: false, valid: true }) });
+    fireEvent.input(input, { target: { value: '2999-07-15T18:00' } });
+    save();
+    await saved();
+    expect(server.sent[0].body).toEqual({ expires_at: '2999-07-15T22:00:00.000Z' });
+  });
+});
+
+describe('the legacy form is gone (P6-02f criterion 10)', () => {
+  it('NoticeAttachmentUpload is deleted and the Dashboard has no notice form', () => {
+    // Vitest runs from frontend/; `import.meta.url` isn't a file URL under jsdom.
+    expect(existsSync(join(process.cwd(), 'src/components/NoticeAttachmentUpload.jsx'))).toBe(false);
+    const dashboard = readFileSync(join(process.cwd(), 'src/pages/Dashboard.jsx'), 'utf8');
+    expect(dashboard).not.toMatch(/NoticeAttachmentUpload|BuildingUpdate\.create|Send Notice/);
   });
 });
 

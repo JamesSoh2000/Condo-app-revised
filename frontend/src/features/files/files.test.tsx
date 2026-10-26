@@ -235,6 +235,49 @@ describe('criterion 2: client-side checks, and the server detail when bypassed',
   });
 });
 
+describe('P6-02d criterion 5: a notice attachment is a PDF up to 20 MB or an image up to 10 MB, as the server', () => {
+  it('says both limits', () => {
+    uploadServer();
+    wrap(<FileUpload purpose="notice_attachment" onUploaded={() => {}} />);
+    expect(screen.getByText('or drop it here (PDF up to 20 MB, or JPEG, PNG, WebP or HEIC up to 10 MB)')).toBeTruthy();
+    expect(document.querySelector('input[type="file"]')!.getAttribute('accept')).toBe('application/pdf,image/jpeg,image/png,image/webp,image/heic,.heic');
+  });
+
+  it.each([
+    ['a 15 MB PDF', jpeg(15 * MiB, 'rules.pdf', 'application/pdf'), 'application/pdf'],
+    ['a 9 MB PNG', jpeg(9 * MiB, 'map.png', 'image/png'), 'image/png'],
+  ])('uploads %s', async (_, file, contentType) => {
+    const fetchMock = uploadServer();
+    wrap(<FileUpload purpose="notice_attachment" onUploaded={() => {}} />);
+    choose(file);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect((await bodyOf(fetchMock)).content_type).toBe(contentType);
+  });
+
+  it.each([
+    ['an 11 MB PNG', jpeg(11 * MiB, 'map.png', 'image/png'), 'This file is larger than 10 MB.'],
+    ['a 21 MB PDF', jpeg(21 * MiB, 'rules.pdf', 'application/pdf'), 'This file is larger than 20 MB.'],
+    ['a text file', jpeg(MiB, 'notes.txt', 'text/plain'), 'This file must be a PDF, JPEG, PNG, WebP or HEIC file.'],
+  ])('refuses %s before any request', async (_, file, message) => {
+    const fetchMock = uploadServer();
+    wrap(<FileUpload purpose="notice_attachment" onUploaded={() => {}} />);
+    choose(file);
+    expect((await screen.findByRole('alert')).textContent).toBe(message);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a narrower maxBytes applies to each type, and accept narrows the types', async () => {
+    const fetchMock = uploadServer();
+    wrap(<FileUpload purpose="notice_attachment" maxBytes={12 * MiB} accept={['application/pdf']} onUploaded={() => {}} />);
+    expect(screen.getByText('or drop it here (PDF, up to 12 MB)')).toBeTruthy();
+    choose(jpeg(13 * MiB, 'rules.pdf', 'application/pdf'));
+    expect((await screen.findByRole('alert')).textContent).toBe('This file is larger than 12 MB.');
+    choose(jpeg(MiB, 'map.png', 'image/png'));
+    expect((await screen.findByRole('alert')).textContent).toBe('This file must be a PDF file.');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('criterion 3: retry after a network drop', () => {
   it('retries with the same file while the form is valid', async () => {
     const fetchMock = uploadServer();
@@ -644,6 +687,59 @@ describe('criterion 6: keyboard and announcements', () => {
     wrap(<FileUpload purpose="package_photo" onUploaded={() => {}} />);
     fireEvent.drop(screen.getByTestId('file-drop-zone'), { dataTransfer: { files: [jpeg()] } });
     await waitFor(() => expect(calls(fetchMock)).toEqual([`POST ${files()}`]));
+  });
+});
+
+describe('focus stays in the widget when its focused control is disabled or removed (P6-02f review round 2 F1)', () => {
+  const button = (name: RegExp) => screen.getByRole('button', { name });
+
+  it('Choose file → Cancel while it uploads; Cancel → Choose file', async () => {
+    uploadServer();
+    wrap(<FileUpload purpose="package_photo" onUploaded={() => {}} />);
+    button(/choose file/i).focus();
+    choose(jpeg());
+    await waitFor(() => expect(document.activeElement).toBe(button(/cancel/i)));
+    fireEvent.click(button(/cancel/i));
+    await waitFor(() => expect(document.activeElement).toBe(button(/choose file/i)));
+  });
+
+  it('an upload that finishes with Cancel focused → Choose file', async () => {
+    uploadServer();
+    wrap(<FileUpload purpose="package_photo" onUploaded={() => {}} />);
+    button(/choose file/i).focus();
+    choose(jpeg());
+    await waitFor(() => expect(document.activeElement).toBe(button(/cancel/i)));
+    lastXhr().respond(204);
+    await screen.findByText('Uploaded parcel.jpg.');
+    expect(document.activeElement).toBe(button(/choose file/i));
+  });
+
+  it('an upload that fails with Cancel focused → Retry; Retry → Cancel', async () => {
+    uploadServer();
+    wrap(<FileUpload purpose="package_photo" onUploaded={() => {}} />);
+    button(/choose file/i).focus();
+    choose(jpeg());
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    lastXhr().fail();
+    await waitFor(() => expect(document.activeElement).toBe(button(/retry/i)));
+    fireEvent.click(button(/retry/i));
+    await waitFor(() => expect(document.activeElement).toBe(button(/cancel/i)));
+  });
+
+  it('doesn’t take focus from outside the widget (a drop while focus is elsewhere)', async () => {
+    uploadServer();
+    wrap(
+      <>
+        <button type="button">Elsewhere</button>
+        <FileUpload purpose="package_photo" onUploaded={() => {}} />
+      </>,
+    );
+    button(/elsewhere/i).focus();
+    fireEvent.drop(screen.getByTestId('file-drop-zone'), { dataTransfer: { files: [jpeg()] } });
+    await waitFor(() => expect(FakeXHR.instances).toHaveLength(1));
+    lastXhr().respond(204);
+    await screen.findByText('Uploaded parcel.jpg.');
+    expect(document.activeElement).toBe(button(/elsewhere/i));
   });
 });
 
