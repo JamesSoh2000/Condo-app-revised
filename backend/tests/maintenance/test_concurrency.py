@@ -181,3 +181,273 @@ def test_two_concurrent_creates_of_one_key_with_two_bodies_give_one_409(
         assert await _count(sessions, MaintenanceRequest) == 2
 
     _run(scratch_database_url, body)
+
+
+# Review round 1 (Codex): F1 the turnover clock, F2 the replay between two key reads, F3 the
+# photo order.
+
+
+async def _pause_after_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[asyncio.Event, asyncio.Event]:
+    """Hold every create between its occupancy check and its insert."""
+    checked, release = asyncio.Event(), asyncio.Event()
+    check_unit = service._check_unit
+
+    async def paused(*args: Any, **kwargs: Any) -> str:
+        result = await check_unit(*args, **kwargs)
+        checked.set()
+        await release.wait()
+        return result
+
+    monkeypatch.setattr(service, "_check_unit", paused)
+    return checked, release
+
+
+def test_an_incoming_household_does_not_inherit_the_outgoing_ones_request(
+    scratch_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # R1 F1: a create holds the requester's membership; a transfer moving them out of 101 and one
+    # moving a_resident2 in both start meanwhile and wait. Stamped on the create's transaction start
+    # (ADR-0016's one clock), the request falls in the outgoing occupancy only.
+    from app.maintenance.queries import visible_maintenance
+    from app.memberships.enums import OccupancyRelationship
+    from app.memberships.models import UnitOccupancy
+    from app.memberships.schemas import MemberTransferIn
+    from app.memberships.service import transfer_member
+
+    async def body(sessions: Sessions, world: World, _request: MaintenanceRequest) -> None:
+        checked, release = await _pause_after_check(monkeypatch)
+        manager = persona_ctx(world, "a_manager")
+        async with sessions() as creator, sessions() as old, sessions() as new:
+            creating = asyncio.create_task(
+                service.create_request(
+                    creator, persona_ctx(world, "a_resident1"), _data(world), KEY
+                )
+            )
+            await asyncio.wait_for(checked.wait(), 10)
+            leaving = asyncio.create_task(
+                transfer_member(
+                    old,
+                    manager,
+                    world.a_resident1.membership.id,
+                    MemberTransferIn(
+                        unit_id=world.a_102.id, relationship=OccupancyRelationship.TENANT
+                    ),
+                )
+            )
+            await asyncio.sleep(0.5)
+            assert not leaving.done(), "the move-out did not wait for the create's lock"
+            arriving = asyncio.create_task(
+                transfer_member(
+                    new,
+                    manager,
+                    world.a_resident2.membership.id,
+                    MemberTransferIn(
+                        unit_id=world.a_101.id, relationship=OccupancyRelationship.TENANT
+                    ),
+                )
+            )
+            await asyncio.sleep(0.5)
+            release.set()
+            created = await asyncio.wait_for(creating, 10)
+            await asyncio.wait_for(leaving, 10)
+            await asyncio.wait_for(arriving, 10)
+
+        async with sessions() as db:
+            ended = await db.scalar(
+                select(UnitOccupancy.ended_at).where(
+                    UnitOccupancy.membership_id == world.a_resident1.membership.id,
+                    UnitOccupancy.unit_id == world.a_101.id,
+                )
+            )
+            assert ended is not None and created.request.submitted_at < ended
+            seen = await db.scalar(
+                visible_maintenance(persona_ctx(world, "a_resident2")).where(
+                    MaintenanceRequest.id == created.request.id
+                )
+            )
+            assert seen is None
+
+    _run(scratch_database_url, body)
+
+
+def test_a_move_out_starting_during_a_create_ends_after_the_request(
+    scratch_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # R1 F1's neighbour, the plain move-out (deactivate's path): it reads its clock while the create
+    # is between check and insert, waits, then ends the occupancy after the request's time.
+    async def body(sessions: Sessions, world: World, _request: MaintenanceRequest) -> None:
+        checked, release = await _pause_after_check(monkeypatch)
+        async with sessions() as creator, sessions() as mover:
+            creating = asyncio.create_task(
+                service.create_request(
+                    creator, persona_ctx(world, "a_resident1"), _data(world), KEY
+                )
+            )
+            await asyncio.wait_for(checked.wait(), 10)
+
+            async def move_out() -> None:
+                await end_occupancy(
+                    mover, building_id=world.a.id, membership_id=world.a_resident1.membership.id
+                )
+                await mover.commit()
+
+            moving = asyncio.create_task(move_out())
+            await _waits(moving)  # type: ignore[arg-type]
+            release.set()
+            created = await asyncio.wait_for(creating, 10)
+            await asyncio.wait_for(moving, 10)
+
+        async with sessions() as db:
+            from app.memberships.models import UnitOccupancy
+
+            ended = await db.scalar(
+                select(UnitOccupancy.ended_at).where(
+                    UnitOccupancy.membership_id == world.a_resident1.membership.id,
+                    UnitOccupancy.unit_id == world.a_101.id,
+                )
+            )
+        assert ended is not None and created.request.submitted_at < ended
+
+    _run(scratch_database_url, body)
+
+
+def test_a_move_in_committed_after_the_create_began_is_occupancy_changed(
+    scratch_database_url: str,
+) -> None:
+    # R1 F1's other side: a_resident2 is moved into 101 after the create's transaction began. Its
+    # `now()` would put the request before the occupancy, in 101's previous occupant's time; the
+    # create answers 409 `occupancy_changed` (retry) instead, writing nothing.
+    from app.memberships.enums import OccupancyRelationship
+    from app.memberships.occupancy import transfer_occupancy
+    from app.memberships.service import OccupancyChanged
+
+    async def body(sessions: Sessions, world: World, _request: MaintenanceRequest) -> None:
+        async with sessions() as creator:
+            await creator.execute(select(func.now()))  # the transaction starts here
+            await asyncio.sleep(0.05)
+            async with sessions() as mover:
+                await transfer_occupancy(
+                    mover,
+                    building_id=world.a.id,
+                    membership_id=world.a_resident2.membership.id,
+                    new_unit_id=world.a_101.id,
+                    relationship=OccupancyRelationship.TENANT,
+                )
+                await mover.commit()
+            with pytest.raises(OccupancyChanged):
+                await service.create_request(
+                    creator, persona_ctx(world, "a_resident2"), _data(world), KEY
+                )
+        assert await _count(sessions, MaintenanceRequest) == 1  # the fixture's
+
+    _run(scratch_database_url, body)
+
+
+def test_a_retry_whose_original_commits_between_the_two_key_reads_replays(
+    scratch_database_url: str,
+) -> None:
+    # R1 F2: the first read (the caller's own) misses the uncommitted original; it commits; the
+    # second read (anyone's) then finds the key. Same caller, key and body: a replay, not a 409.
+    async def body(sessions: Sessions, world: World, _request: MaintenanceRequest) -> None:
+        ctx, data = persona_ctx(world, "a_resident1"), _data(world)
+        async with sessions() as first, sessions() as retry:
+            at_commit, release = asyncio.Event(), asyncio.Event()
+            commit = first.commit
+
+            async def hold_commit() -> None:
+                at_commit.set()
+                await release.wait()
+                await commit()
+
+            first.commit = hold_commit  # type: ignore[method-assign]
+            creating = asyncio.create_task(service.create_request(first, ctx, data, KEY))
+            await asyncio.wait_for(at_commit.wait(), 10)
+            scalar, reads = retry.scalar, 0
+
+            async def commit_after_first_read(*args: Any, **kwargs: Any) -> Any:
+                nonlocal reads
+                result = await scalar(*args, **kwargs)
+                reads += 1
+                if reads == 1:
+                    assert result is None  # the original isn't committed yet
+                    release.set()
+                    await asyncio.wait_for(creating, 10)
+                return result
+
+            retry.scalar = commit_after_first_read  # type: ignore[method-assign]
+            result = await service.create_request(retry, ctx, data, KEY)
+        assert result.replayed
+
+    _run(scratch_database_url, body)
+
+
+def test_two_creates_claiming_the_same_photos_in_opposite_orders_give_one_422(
+    scratch_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # R1 F3: [A, B] and [B, A] at once, each paused after its first claim. Claimed in opposite
+    # orders they deadlock (a 500); claimed in one order, one waits and gets 422 `invalid_file`.
+    from app.files.service import InvalidFile
+    from tests.maintenance.conftest import make_maintenance_file
+
+    async def body(sessions: Sessions, world: World, _request: MaintenanceRequest) -> None:
+        async with sessions() as db:
+            photos = [
+                await make_maintenance_file(db, world.a.id, world.a_resident1.user.id)
+                for _ in range(2)
+            ]
+            await db.commit()
+        from app.files.service import claim_file as claim
+
+        seen = set()
+
+        async def pause_after_first_claim(*args: Any, **kwargs: Any) -> Any:
+            result = await claim(*args, **kwargs)
+            task = asyncio.current_task()
+            if task not in seen:
+                seen.add(task)
+                await asyncio.sleep(0.5)
+            return result
+
+        monkeypatch.setattr(service, "claim_file", pause_after_first_claim)
+
+        async def create(ids: list[Any], key: str) -> str:
+            async with sessions() as db:
+                data = _data(world).model_copy(update={"photo_file_ids": ids})
+                try:
+                    await service.create_request(db, persona_ctx(world, "a_resident1"), data, key)
+                except InvalidFile:
+                    return "422"
+                return "created"
+
+        outcomes = await asyncio.wait_for(
+            asyncio.gather(
+                create([p.id for p in photos], "photo-order-0001"),
+                create([p.id for p in reversed(photos)], "photo-order-0002"),
+            ),
+            15,
+        )
+        assert sorted(outcomes) == ["422", "created"]
+
+    _run(scratch_database_url, body)
+
+
+def test_photos_keep_the_order_sent_whatever_the_claim_order(scratch_database_url: str) -> None:
+    # R1 F3's neighbour: claiming in id order must not reorder the photo rows.
+    from tests.maintenance.conftest import make_maintenance_file
+
+    async def body(sessions: Sessions, world: World, _request: MaintenanceRequest) -> None:
+        async with sessions() as db:
+            photos = [
+                await make_maintenance_file(db, world.a.id, world.a_resident1.user.id)
+                for _ in range(3)
+            ]
+            await db.commit()
+        ids = sorted((p.id for p in photos), reverse=True)
+        async with sessions() as db:
+            data = _data(world).model_copy(update={"photo_file_ids": ids})
+            created = await service.create_request(db, persona_ctx(world, "a_resident1"), data, KEY)
+        assert created.request.photo_file_ids == ids
+
+    _run(scratch_database_url, body)

@@ -137,16 +137,14 @@ async def test_resident_files_a_request_for_their_unit(
     assert positions == [(photos[1].id, 0), (photos[0].id, 1)]
     for photo in photos:
         assert await attached(db, photo.id) == row.id
-    # The database clock, after the transaction started (clock_timestamp, not now()).
-    now = await db.scalar(select(func.clock_timestamp()))
-    assert now is not None
-    assert now - timedelta(minutes=1) < row.submitted_at <= now
+    # The database clock: the transaction's now() (ADR-0016).
+    assert row.submitted_at == await db.scalar(select(func.now()))
 
 
-async def test_submitted_at_is_taken_after_the_transaction_start(
+async def test_submitted_at_is_the_transactions_now(
     as_user: Any, world: World, db: AsyncSession
 ) -> None:
-    # The test's transaction began before the request: now() is older than the insert's clock.
+    # ADR-0016's one clock (review round 1, F1): the request runs in the test's transaction.
     started = await db.scalar(select(func.now()))
     client = await as_user(world.a_resident1.user)
     response = await create(client, world, unit_body(world.a_101))
@@ -156,8 +154,8 @@ async def test_submitted_at_is_taken_after_the_transaction_start(
             MaintenanceRequest.id == response.json()["id"]
         )
     )
-    assert started is not None and row is not None
-    assert row > started
+    assert started is not None
+    assert row == started
 
 
 async def test_any_resident_files_a_common_area_request(
