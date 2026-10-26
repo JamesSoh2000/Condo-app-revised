@@ -25,30 +25,13 @@ order) and the legacy files it replaces are carried into those tickets; its "Ste
 for a time check) is for a backend ticket and moved to P6-03 below.
 
 ### P6-03 — Maintenance backend · Lane A · Tier 2
-- **Goal:** residents submit requests (category, description, location: unit or common area, photos). Managers
-  transition them through `submitted → in_progress → on_hold → resolved` (or `cancelled` by the resident
-  while `submitted`). Comments are public or **internal**.
-- **Interfaces:**
-  - tables `maintenance_requests` and `maintenance_comments`
-  - action endpoints `/start`, `/hold`, `/resolve`, `/cancel`, `/reopen` (manager, within 14 days)
-  - `visible_maintenance(ctx)`: residents see their own requests plus their unit's requests during their
-    occupancy window, **never** internal comments
-  - notify on status changes and public comments; audit
-- **Decide while framing:**
-  - Can security see or act on maintenance? (default: read and comment only)
-  - Emergency category behaviour: show the building's emergency phone, and never rely on the app.
-- **Step 8, moved from the P6-02 stub when it was drafted (from P6-01c R1, the 3rd "time check before a later
-  wait"):** the `CLAUDE.md` lesson didn't stop it. For the next backend ticket with a time check
-  (P6-03's reopen window): a test helper that holds a row lock (a membership, a file, the record) across a
-  request, used for every statement after the check, as
-  `tests/notices/test_concurrency.py::test_a_notice_expiring_while_its_fan_out_waits_is_not_published` does by hand.
-- **From the P5-05 recipe check** (a fresh agent planned this ticket from `docs/SLICE_RECIPE.md` and this stub only,
-  PR #121): decide while framing what the recipe can't say: a "common area" location (a table, a fixed list, free
-  text?) and who sees a common-area request; whether `cancel` is the requester only or any occupant who can see it;
-  what `reopen` leads to (`in_progress`?) and whether it clears `resolved_at`; which `*_at` column each status has;
-  who is notified for each kind (requester, occupants, managers on a new request or a resident's comment) and which
-  send email; several photos per request (a join table, a limit) and whether comments take photos; whether a moved-out
-  resident still sees later comments on a request from their occupancy.
+Drafted and split into [P6-03a](./P6-03a-maintenance-schema-and-visibility.md) (schema, photos, state machine,
+`visible_maintenance`, photo hook), [P6-03b](./P6-03b-maintenance-submit-and-read-api.md) (submit, list, read,
+cancel, the emergency phone), [P6-03c](./P6-03c-maintenance-manager-actions.md) (start, hold, resolve, reopen
+within 14 days, status notifications, and the stub's "Step 8" row-lock test helper) and
+[P6-03d](./P6-03d-maintenance-comments.md) (public and internal comments, comment notifications). The stub's
+"Decide while framing" items and its P5-05 recipe-check questions are each carried into the ticket whose table,
+query or endpoint they shape.
 
 ### P6-04 — Maintenance frontend · Lane A · Tier 2
 - **Goal:** resident pages for submit (with photos), list and detail with a timeline. A manager board or list
