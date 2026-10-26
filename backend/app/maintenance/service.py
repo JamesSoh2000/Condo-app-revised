@@ -33,6 +33,7 @@ from app.maintenance.schemas import (
 )
 from app.memberships.enums import MembershipStatus, Role
 from app.memberships.models import BuildingMembership, UnitOccupancy
+from app.memberships.service import OccupancyChanged
 from app.notifications.service import notify, staff_user_ids
 from app.packages.service import (
     IdempotencyKeyReused,
@@ -102,9 +103,9 @@ async def create_request(
             category=data.category,
             description=data.description,
             status=MaintenanceStatus.SUBMITTED,
-            # After the occupancy check's lock, not the transaction's start (`now()`): the time
-            # falls inside the occupancy the check found (the CLAUDE.md lesson).
-            submitted_at=func.clock_timestamp(),
+            # `submitted_at` is the column default, the transaction's `now()`: the clock occupancy
+            # writes use (ADR-0016). A move-out waiting on the lock below ends at its own `now()`,
+            # after this one when it began after this transaction (review round 1, F1).
             idempotency_key=key,
             request_hash=digest,
         )
@@ -120,8 +121,10 @@ async def create_request(
         return await _replay(db, ctx, existing, digest)
 
     # Both sides (the file's attachment and the photo row) must agree for the photo hook to grant
-    # it (app.maintenance.photos); positions 0..n-1 in the order sent.
-    for file_id in data.photo_file_ids:
+    # it (app.maintenance.photos); positions 0..n-1 in the order sent. Claimed in id order: two
+    # creates sharing files then lock them in one order, and the second waits for a 422 instead of
+    # deadlocking (review round 1, F3).
+    for file_id in sorted(data.photo_file_ids):
         await claim_file(
             db,
             ctx,
@@ -201,9 +204,20 @@ async def _by_key(db: AsyncSession, ctx: TenantContext, key: str) -> Maintenance
             MaintenanceRequest.idempotency_key == key,
         )
     )
-    if taken is not None:
+    if taken is None:
+        return None
+    # The caller's own may have committed between the two reads (review round 1, F2).
+    own = await db.scalar(
+        visible_maintenance(ctx)
+        .where(
+            MaintenanceRequest.id == taken,
+            MaintenanceRequest.requester_membership_id == ctx.membership_id,
+        )
+        .execution_options(populate_existing=True)
+    )
+    if own is None:
         raise IdempotencyKeyReused(detail="This Idempotency-Key was used with a different request.")
-    return None
+    return own
 
 
 async def _replay(
@@ -242,8 +256,8 @@ async def _check_unit(db: AsyncSession, ctx: TenantContext, unit_id: UUID) -> st
         )
         .with_for_update(read=True)
     )
-    lives_there = await db.scalar(
-        select(UnitOccupancy.id)
+    started_at = await db.scalar(
+        select(UnitOccupancy.started_at)
         .join(
             BuildingMembership,
             (BuildingMembership.id == UnitOccupancy.membership_id)
@@ -258,8 +272,12 @@ async def _check_unit(db: AsyncSession, ctx: TenantContext, unit_id: UUID) -> st
             BuildingMembership.status == MembershipStatus.ACTIVE,
         )
     )
-    if lives_there is None:
+    if started_at is None:
         raise UnitNotOccupied(detail="You can file a request only for the unit you live in.")
+    if started_at > (await db.execute(select(func.now()))).scalar_one():
+        # Moved in after this transaction began: its `now()` would stamp the request in the unit's
+        # previous occupancy (ADR-0016's retry case; review round 1, F1).
+        raise OccupancyChanged(detail="Your unit changed while you were filing; try again.")
     return f"{unit.tower} {unit.label}" if unit.tower else unit.label
 
 
