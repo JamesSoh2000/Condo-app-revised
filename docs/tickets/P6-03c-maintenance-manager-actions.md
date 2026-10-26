@@ -4,7 +4,7 @@
 |---|---|
 | Phase / lane | P6 / A |
 | Risk tier | 2 |
-| Depends on | P6-03b, P3-03, P3-02 |
+| Depends on | P6-03b, P6-03e, P3-03, P3-02 |
 | Replaces old | M8-T01 (management actions part), M8-T04 (status-change part) |
 | Status | todo |
 
@@ -73,7 +73,7 @@ Operation ids `maintenance_start`, `maintenance_hold`, `maintenance_resolve`, `m
 2. **Columns.** **Given** each allowed move, **then** the row has exactly P6-03a's columns for the new status,
    set from the database clock (`statement_timestamp()`, as `app/notices/service.py::_NOW`) and
    `ctx.membership_id`, and P6-03a's check constraints never refuse a request the API accepted (no 500).
-3. **Races.** **Given** a `submitted` request, **when** the requester cancels (P6-03b) and the manager starts at
+3. **Races.** **Given** a `submitted` request, **when** the requester cancels (P6-03e) and the manager starts at
    once, **then** exactly one wins and the other gets 409 `invalid_transition`; likewise hold vs resolve, and
    resolve vs reopen. Each loser writes no audit row and no notification.
 4. **Reopen window.** **Given** a request resolved 14 days minus one minute ago (by the database clock), **then**

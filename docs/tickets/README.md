@@ -110,12 +110,13 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P6-02e](./P6-02e-list-focus-fixes.md) | List focus fixes: "Load more" and the feed card (split from P6-02d) | B | 2 | P6-02c | done | — |
 | [P6-02f](./P6-02f-notice-expiry-and-attachment.md) | Notice editor: expiry and attachment (split from P6-02d) | B | 2 | P6-02d, P3-06 | done | — |
 | [P6-03a](./P6-03a-maintenance-schema-and-visibility.md) | Maintenance request schema, state machine and visibility (split from P6-03) | A | 2 | P3-04b, P2-03, P1-03 | done | — |
-| [P6-03b](./P6-03b-maintenance-submit-and-read-api.md) | Maintenance submit, read and cancel API (split from P6-03) | A | 2 | P6-03a, P2-04, P3-03, P3-04b | in progress | — |
-| [P6-03c](./P6-03c-maintenance-manager-actions.md) | Maintenance manager actions: start, hold, resolve, reopen (split from P6-03) | A | 2 | P6-03b, P3-03, P3-02 | todo | — |
+| [P6-03b](./P6-03b-maintenance-submit-and-read-api.md) | Maintenance submit and read API (split from P6-03) | A | 2 | P6-03a, P2-04, P3-03, P3-04b | in progress | — |
+| [P6-03e](./P6-03e-maintenance-cancel-and-emergency-phone.md) | Maintenance cancel and the emergency phone (split from P6-03b) | A | 2 | P6-03b | todo | — |
+| [P6-03c](./P6-03c-maintenance-manager-actions.md) | Maintenance manager actions: start, hold, resolve, reopen (split from P6-03) | A | 2 | P6-03b, P6-03e, P3-03, P3-02 | todo | — |
 | [P6-03d](./P6-03d-maintenance-comments.md) | Maintenance comments: public and internal (split from P6-03) | A | 2 | P6-03b, P3-03 | todo | — |
 | [P6-04a](./P6-04a-resident-maintenance-list.md) | Maintenance hooks and the resident's request list (split from P6-04) | A | 2 | P6-03b | todo | — |
-| [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) | Maintenance submit form with photos, and cancel (split from P6-04) | A | 2 | P6-04a, P6-03b, P3-06 | todo | — |
-| [P6-04c](./P6-04c-maintenance-request-view.md) | One maintenance request: timeline and comments (split from P6-04) | A | 2 | P6-04a, P6-04b, P6-03c, P6-03d | todo | — |
+| [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) | Maintenance submit form with photos, and cancel (split from P6-04) | A | 2 | P6-04a, P6-03b, P6-03e, P3-06 | todo | — |
+| [P6-04c](./P6-04c-maintenance-request-view.md) | One maintenance request: timeline and comments (split from P6-04) | A | 2 | P6-04a, P6-04b, P6-03c, P6-03d, P6-03e | todo | — |
 | [P6-04d](./P6-04d-manager-maintenance-list-and-actions.md) | Manager maintenance list, filters and transitions (split from P6-04) | A | 2 | P6-04c, P6-03c | todo | — |
 | [P6-05a](./P6-05a-dashboard-summary-api.md) | Dashboard summary API (split from P6-05) | A | 2 | P6-03b, P6-03c, P6-03d, P5-02a, P6-01c, P4-05b | todo | — |
 | [P6-05b](./P6-05b-role-landing-pages.md) | Role landing pages (split from P6-05) | A | 2 | P6-05a, P6-04b, P6-04d, P5-04, P6-02a, P4-08b | todo | — |
