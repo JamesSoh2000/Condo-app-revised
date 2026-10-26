@@ -451,3 +451,184 @@ def test_photos_keep_the_order_sent_whatever_the_claim_order(scratch_database_ur
         assert created.request.photo_file_ids == ids
 
     _run(scratch_database_url, body)
+
+
+def test_a_retry_replays_even_if_the_unit_check_would_now_refuse(
+    scratch_database_url: str,
+) -> None:
+    # Review round 2 (Codex) F2: the retry's key reads miss the uncommitted original; the original
+    # commits and the requester moves out before the retry's unit check, which would say 422. The
+    # retry of a request that exists replays it.
+    async def body(sessions: Sessions, world: World, _fixture: MaintenanceRequest) -> None:
+        ctx, data = persona_ctx(world, "a_resident1"), _data(world)
+        async with sessions() as first, sessions() as mover, sessions() as retry:
+            at_commit, release = asyncio.Event(), asyncio.Event()
+            commit = first.commit
+
+            async def hold_commit() -> None:
+                at_commit.set()
+                await release.wait()
+                await commit()
+
+            first.commit = hold_commit  # type: ignore[method-assign]
+            creating = asyncio.create_task(
+                service.create_request(first, ctx, data, "r2-retry-0001")
+            )
+            await asyncio.wait_for(at_commit.wait(), 10)
+
+            async def move_out() -> None:
+                await end_occupancy(
+                    mover, building_id=world.a.id, membership_id=world.a_resident1.membership.id
+                )
+                await mover.commit()
+
+            # Both key reads miss the uncommitted original. Before the retry checks its unit,
+            # the first request commits and a manager ends the occupancy. A context switch here
+            # is enough; it need not happen inside _by_key's two-read window (R1 F2).
+            scalar, reads = retry.scalar, 0
+
+            async def finish_original_after_key_miss(*args: Any, **kwargs: Any) -> Any:
+                nonlocal reads
+                result = await scalar(*args, **kwargs)
+                reads += 1
+                if reads == 2:
+                    assert result is None
+                    release.set()
+                    await asyncio.wait_for(creating, 10)
+                    await move_out()
+                return result
+
+            retry.scalar = finish_original_after_key_miss  # type: ignore[method-assign]
+            replay = await service.create_request(retry, ctx, data, "r2-retry-0001")
+            created = await creating
+            assert replay.replayed
+            assert replay.request.id == created.request.id
+
+    _run(scratch_database_url, body)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Open, review round 2 F1: transfers whose transactions began before the create end and "
+        "start the occupancies at their earlier now(); fixing it changes ADR-0016 (inbox, blocked)"
+    ),
+)
+def test_earlier_manager_transactions_do_not_expose_an_outgoing_request(
+    scratch_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.memberships.enums import OccupancyRelationship
+    from app.memberships.models import UnitOccupancy
+    from app.memberships.schemas import MemberTransferIn
+    from app.memberships.service import transfer_member
+
+    async def body(sessions: Sessions, world: World, _fixture: MaintenanceRequest) -> None:
+        checked, release = asyncio.Event(), asyncio.Event()
+        check_unit = service._check_unit
+
+        async def pause_after_check(*args: Any, **kwargs: Any) -> str:
+            name = await check_unit(*args, **kwargs)
+            checked.set()
+            await release.wait()
+            return name
+
+        monkeypatch.setattr(service, "_check_unit", pause_after_check)
+        manager = persona_ctx(world, "a_manager")
+        async with sessions() as outgoing, sessions() as incoming, sessions() as creator:
+            # In HTTP these transactions begin during auth/tenant-context queries, before the
+            # service gets the membership lock. Both manager requests precede the resident's.
+            outgoing_time = await outgoing.scalar(select(func.now()))
+            incoming_time = await incoming.scalar(select(func.now()))
+            await asyncio.sleep(0.05)
+            creating = asyncio.create_task(
+                service.create_request(
+                    creator, persona_ctx(world, "a_resident1"), _data(world), "r2-clock-0001"
+                )
+            )
+            await asyncio.wait_for(checked.wait(), 10)
+            leaving = asyncio.create_task(
+                transfer_member(
+                    outgoing,
+                    manager,
+                    world.a_resident1.membership.id,
+                    MemberTransferIn(
+                        unit_id=world.a_102.id, relationship=OccupancyRelationship.TENANT
+                    ),
+                )
+            )
+            await asyncio.sleep(0.2)
+            assert not leaving.done(), "outgoing transfer must wait for the create's lock"
+            arriving = asyncio.create_task(
+                transfer_member(
+                    incoming,
+                    manager,
+                    world.a_resident2.membership.id,
+                    MemberTransferIn(
+                        unit_id=world.a_101.id, relationship=OccupancyRelationship.TENANT
+                    ),
+                )
+            )
+            await asyncio.sleep(0.2)
+            assert not arriving.done(), "incoming transfer must wait for the building lock"
+            release.set()
+            created = await asyncio.wait_for(creating, 10)
+            await asyncio.wait_for(leaving, 10)
+            await asyncio.wait_for(arriving, 10)
+        async with sessions() as db:
+            ended = await db.scalar(
+                select(UnitOccupancy.ended_at).where(
+                    UnitOccupancy.membership_id == world.a_resident1.membership.id,
+                    UnitOccupancy.unit_id == world.a_101.id,
+                )
+            )
+            assert ended == outgoing_time
+            assert incoming_time is not None and incoming_time < created.request.submitted_at
+            # The public read service must refuse the incoming household. Currently it returns
+            # the outgoing resident's description, and the photo hook uses the same visibility.
+            with pytest.raises(service.MaintenanceRequestNotFound):
+                await service.get_request(db, persona_ctx(world, "a_resident2"), created.request.id)
+
+    _run(scratch_database_url, body)
+
+
+def test_a_retry_waiting_behind_a_move_out_replays(scratch_database_url: str) -> None:
+    # Review round 2 F2's neighbour: the move-out holds the membership; the retry waits on its
+    # unit check, then finds the occupancy ended and the original committed: a replay.
+
+    async def body(sessions: Sessions, world: World, _fixture: MaintenanceRequest) -> None:
+        ctx, data = persona_ctx(world, "a_resident1"), _data(world)
+        async with sessions() as first, sessions() as mover, sessions() as retry:
+            at_commit, release = asyncio.Event(), asyncio.Event()
+            commit = first.commit
+
+            async def hold_commit() -> None:
+                at_commit.set()
+                await release.wait()
+                await commit()
+
+            first.commit = hold_commit  # type: ignore[method-assign]
+            creating = asyncio.create_task(
+                service.create_request(first, ctx, data, "r2-retry-0001")
+            )
+            await asyncio.wait_for(at_commit.wait(), 10)
+
+            async def move_out() -> None:
+                await end_occupancy(
+                    mover, building_id=world.a.id, membership_id=world.a_resident1.membership.id
+                )
+                await mover.commit()
+
+            moving = asyncio.create_task(move_out())
+            await asyncio.sleep(0.2)
+            assert not moving.done()
+            replaying = asyncio.create_task(
+                service.create_request(retry, ctx, data, "r2-retry-0001")
+            )
+            await asyncio.sleep(0.2)
+            assert not replaying.done()
+            release.set()
+            created = await asyncio.wait_for(creating, 10)
+            await asyncio.wait_for(moving, 10)
+            replay = await asyncio.wait_for(replaying, 10)
+            assert replay.replayed
+            assert replay.request.id == created.request.id
