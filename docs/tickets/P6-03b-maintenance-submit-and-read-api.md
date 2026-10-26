@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-03a, P2-04, P3-03, P3-04b |
 | Replaces old | M8-T01 (resident API part), M8-T04 (new-request part) |
-| Status | todo |
+| Status | in progress |
 
 Split from the P6-03 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); the schema is
 [P6-03a](./P6-03a-maintenance-schema-and-visibility.md), the manager's actions
@@ -75,8 +75,9 @@ Operation ids `maintenance_create`, `maintenance_list`, `maintenance_get`, `main
      read every request of A;
    - row 2: signed out 401 on every route;
    - row 3: `b_manager` 404 `building_not_found` on A's URLs;
-   - row 4: `a_security` and `a_manager` (unless framing lets the manager file) get 403 `forbidden_role` on
-     create; `a_security` and `a_manager` 403 on cancel (or as framing decides);
+   - row 4: `a_security` and `a_manager` get 403 `forbidden_role` on create and on cancel (only residents
+     file and cancel, D2/D3), and `a_council` (council + resident) is let through as a resident; council alone
+     lists an empty page;
    - row 5: `a_resident2` gets 404 `maintenance_request_not_found` on `a_resident1`'s request (`GET` and
      `cancel`), the same body (minus `request_id`) as a random id;
    - row 6: `a_pending` and `a_suspended` 404 `building_not_found` on every route;
@@ -84,14 +85,25 @@ Operation ids `maintenance_create`, `maintenance_list`, `maintenance_get`, `main
      `file_not_found`), with no request, photo row, claim, notification or audit row written; a B request id
      on A's URL is 404 `maintenance_request_not_found`;
    - row 8: cancelling a request that isn't `submitted` gives 409 `invalid_transition`;
-   - row 9: if framing takes `Idempotency-Key`, a retry with the same key and body returns the original (201,
-     same id, no second claim), and the same key with another body 422 `idempotency_key_reused`;
+   - row 9: `Idempotency-Key` is required (D7): a retry with the same key and body returns the original (201,
+     same id, `Idempotent-Replayed: true`, no second claim, photo row, notification or audit row), and the same
+     key with another body 409 `idempotency_key_reused` (as `app/packages`, D7; the draft said 422); a missing
+     key 400 `idempotency_key_required`, a malformed one 400 `invalid_idempotency_key`; **another resident's
+     key** (the key is unique per building, not per requester) gives 409 `idempotency_key_reused`, never their
+     request and never a 500;
    - row 10: two cancels at once give one 200 and one 409, with one audit row.
 2. **Unit check.** **Given** `a_resident1` (tenant in 101), **when** they submit for 101, **then** 201; for 102
-   (a unit of A they don't occupy) **then** 422 and nothing written; `a_former` can't file for 101 (a past
-   occupancy) but can for 102; a resident with no current occupancy can file only a common-area request (if
-   framing allows those for them). The check reads the occupancy in the same transaction as the insert, `FOR KEY
-   SHARE`, so a move-out committing meanwhile can't leave a request on a unit its requester just left.
+   (a unit of A they don't occupy) **then** 422 `unit_not_occupied` and nothing written; `a_former` can't file
+   for 101 (a past occupancy) but can for 102; `a_council` (resident in 201) can file for 201; `multi_in_a`
+   (household in A-201) can file for A-201, from A's context; a resident with no current occupancy can file
+   only a common-area request (any resident may, D4); a deactivated unit gives 409 `unit_inactive` (as
+   `app/packages`, whose `UnitInactive` is a 409; the draft said 422). The check runs in the same transaction as
+   the insert, after locking the caller's membership row `FOR SHARE`: every occupancy write first locks that
+   row `FOR NO KEY UPDATE` (`app/memberships/occupancy.py::_prepare`), which `FOR SHARE` blocks and the
+   draft's `FOR KEY SHARE` would not, so a move-out committing meanwhile waits for the insert's commit (or the
+   check reads the ended occupancy) and can't leave a request on a unit its requester just left. A test holds a
+   move-out open in a second session and shows the create waits, then answers 422. `submitted_at` is the
+   insert's `clock_timestamp()`, taken after that lock, so it falls inside the occupancy the check found.
 3. **Location shape.** `location = unit` without `unit_id`, or `common_area` with one or without its detail,
    gives 422 from the schema, never a 500 from P6-03a's check constraint.
 4. **Photos.** Each photo is claimed and listed in order; more than the limit, a duplicate id, a file of another
@@ -101,19 +113,30 @@ Operation ids `maintenance_create`, `maintenance_list`, `maintenance_get`, `main
 5. **Visibility through the API.** `GET /maintenance-requests` and `GET …/{id}` return exactly what P6-03a's
    criterion 7 and 8 say per persona, including `a_former` after the move and `multi_in_a`; `?status=` takes
    one status; an unknown one is 422; the cursor pages without skipping or repeating a row when two requests
-   share a `submitted_at`.
+   share a `submitted_at` (the order is `id DESC`, D6, so a shared time can't tie); `requester_name` is the
+   requester's current full name for `a_manager` and `a_security`, and null for every resident, a co-occupant's
+   request included (D8).
 6. **Cancel.** **Given** a `submitted` request, **when** its requester cancels, **then** it is `cancelled` with
    its cancel columns set by the database clock and the caller, and one `maintenance.cancelled` audit row; the
    requester check is in the conditional `UPDATE`'s `WHERE` (SLICE_RECIPE step 4), so a co-occupant who can see
-   the request gets the answer framing decides (404 or 403), never a cancel. **Given** a request a manager
+   the request (`a_former`, in 102 since T1, on `a_resident2`'s 102 request) gets 403 `not_requester` (D3),
+   never a cancel, and the row and audit log are unchanged. **Given** a request a manager
    started at the same time, **then** exactly one of start (P6-03c) and cancel wins; here, with a raw `UPDATE` to
    `in_progress` in a second session, the cancel gets 409.
 7. **Emergency.** **Given** `category = emergency`, **then** the 201 and every read of that request include the
-   building's `emergency_phone`; no other category does. The request is still created and handled like any
-   other: the app never claims to have alerted anyone (stub: "never rely on the app"); P6-04 shows the copy.
-8. **New-request notification** (as framing decides): the recipients, the kind and whether it emails are each a
-   test; the requester is never notified of their own request; the notification's title is fixed and its body
-   holds no description text a recipient couldn't see on the request.
+   building's `emergency_phone` (the maintenance feature's `building_features.config`, D1), in the list too; no
+   other category does; an emergency request in a building with no phone set gives `emergency_phone: null`.
+   The seed sets Maple's; `bootstrap-building --emergency-phone` sets a new building's (refused without the
+   `maintenance` feature, and validated: printable, at most 32 characters). The request is still created and
+   handled like any other: the app never claims to have alerted anyone (stub: "never rely on the app"); P6-04
+   shows the copy.
+8. **New-request notification** (D5): every active `property_management` member of A gets one, kind
+   `maintenance.submitted` (in-app only), or `maintenance.submitted_emergency` for an emergency (in-app and an
+   `email.send` job each, template `notification`); security, council and residents get none; the requester is
+   never notified of their own request (a resident who is also the manager); the title is fixed ("New
+   maintenance request" / "Emergency maintenance request") and the body holds only the category and the unit's
+   name, or "a common area", never the description or the common-area text; a retry (row 9) notifies no one.
+   Each of these is a test.
 9. **Feature off.** **Given** `maintenance` disabled for A, **then** every endpoint gives 403
    `feature_disabled` and writes nothing.
 10. **Atomicity.** **Given** a forced failure after the insert and the photo claims and before commit, **then** no
@@ -185,7 +208,68 @@ Left open by the stub:
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
-  also the alternatives considered and why they lost):
-- Split:
+  - 1 row 4 (who files and cancels, D2/D3); row 9 (required key, its 400s, and the case the draft missed:
+    **another resident's key** — the key is unique per building, so a lookup through `visible_maintenance`
+    would miss the other's row and the `ON CONFLICT DO NOTHING` path would find nothing, a 500; the create
+    answers 409 `idempotency_key_reused`).
+  - 2: the code `unit_not_occupied`; `a_council` and `multi_in_a` cases; common-area for any resident (D4);
+    the lock mode corrected from `FOR KEY SHARE` to `FOR SHARE` on the caller's membership (the stronger lock:
+    `FOR KEY SHARE` does not conflict with the occupancy writes' `FOR NO KEY UPDATE`, so it would not stop the
+    race the criterion names), with a two-session test; `submitted_at` from `clock_timestamp()` after the lock
+    (the CLAUDE.md lesson on values read before a wait).
+  - 5: `requester_name` (D8); order `id DESC` (D6). 6: the co-occupant case is `a_former` on `a_resident2`'s 102
+    request, 403 `not_requester` (D3). 7: where the phone lives and how it is set (D1). 8: recipients, kinds,
+    email, fixed text (D5).
+- Criteria changed, not loosened (also added to the inbox's "Decisions to audit" in step 6):
+  - 1 row 9: `idempotency_key_reused` is 409, not 422, and 2: `unit_inactive` is 409, not 422. The draft's
+    Interfaces say both work "as `app/packages`", whose classes are `Conflict`s (`IdempotencyKeyReused`,
+    `UnitInactive` in `app/packages/service.py`); the code is the truth for what exists, and one code with two
+    statuses across the API would confuse every client. Each is still refused, with the same code and nothing
+    written.
+- Decisions taken:
+  - **D1 Emergency phone** lives in the `maintenance` row of `building_features.config`, key
+    `emergency_phone` (a string, at most 32 characters, printable), read by the maintenance service; set by the
+    seed (Maple) and `bootstrap-building --emergency-phone`; no API edits it (scope "Out"). Alternatives: a
+    `buildings.emergency_phone` column (a migration, and by the ticket's own rule it would move cancel to
+    P6-03c; it is a maintenance setting, and `config` exists for per-feature settings and holds nothing yet).
+    Tradeoff: JSONB has no column type, so the service reads it defensively (a non-string or blank value reads
+    as none). Reversible: a later column can be backfilled from it. Basis: decision rule 3 (simplest,
+    reversible, uses the existing `config`). Lasting (first use of `config`, a convention): ADR-0021 and an
+    inbox line in step 6. Emergency requests email the managers (D5); they are otherwise handled like any
+    other (stub default: never rely on the app).
+  - **D2 Who files:** residents only (`require_roles(Role.RESIDENT)`). Property management filing for a common
+    area or on a resident's behalf is left out: on-behalf filing needs a "for whom" field and changes who sees
+    the request (`visible_maintenance` grants by requester), a decision for a later ticket. Security doesn't
+    file (stub default). Basis: rule 2 (stub default for security), rule 3 (smallest reversible scope for
+    property management). Follow-up in step 6.
+  - **D3 Who cancels:** the requester only (stub: "cancelled by the resident"), `require_roles(Role.RESIDENT)`
+    then `requester_membership_id = ctx.membership_id` in the `UPDATE`'s `WHERE`. A co-occupant who sees the
+    request gets **403 `not_requester`**, not 404 (they can `GET` it, so "not found" would contradict the read)
+    and not `forbidden_role` (they hold the right role; the reason is ownership, and a distinct code lets the
+    client explain it). A non-visible request stays 404. Basis: rule 3.
+  - **D4 Common-area requests:** any resident may file one, with or without a current occupancy (a former
+    owner still in the building, a household member between units). Basis: rule 3 (the location check is a
+    schema check; no rule says otherwise).
+  - **D5 New-request notification:** the building's active `property_management` members, minus the caller's
+    own user; `maintenance.submitted` in-app only; `maintenance.submitted_emergency` also emails (the existing
+    `notification` template), two kinds as `notice.published(_urgent)` (P6-01c D2: the kind fixes the email).
+    Security isn't notified (they see requests, but don't run maintenance: PRODUCT_SCOPE roles). Body: the
+    category and the unit's name or "a common area", so no resident free text reaches an email. Basis: rule 3,
+    following the notices convention.
+  - **D6 List order:** `paginate` on `id DESC` (uuid7: creation order; the existing
+    `ix_maintenance_requests_building_id_status_id` index serves the status filter). `submitted_at` ties can't
+    skip or repeat a row. Basis: convention (`paginate`, P6-03a's index comment).
+  - **D7 `Idempotency-Key`** required on create (P6-03a's NOT NULL columns), with `app/packages`'
+    `check_idempotency_key`, errors and replay header reused. The replay looks the key up in the building
+    (not through `visible_maintenance`) and replays only the caller's own request with the same body hash.
+  - **D8 Requester name:** staff only (`sees_requester_names`, the `sees_recipient_names` pattern). A resident
+    sees a co-occupant's request but not who filed it; that matches packages, and nothing in the scope asks
+    for more. Basis: convention.
+  - **D9** 422 `unit_not_occupied` for a unit of A the resident doesn't currently live in; 404
+    `unit_not_found` for another building's or none (rule 2). Photos: `photo_file_ids` 0–5 (P6-03a's
+    `MAX_PHOTOS`), distinct, positions 0..n-1 in order.
+- Estimate: schemas ~110, service ~220, router ~80, kinds/actions ~15, phone (config read, bootstrap option,
+  seed) ~30: ~455, over ~400 by the idempotency path the draft didn't cost. Not split: cancel is ~40 lines and
+  P6-03c's races are written against it here (criterion 6); moving it would leave P6-04b's cancel on two
+  tickets. Recorded as a deviation in the PR.
+- Split: none.
