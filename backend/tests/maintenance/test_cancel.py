@@ -173,3 +173,31 @@ async def test_a_body_is_refused(as_user: Any, world: World, db: AsyncSession) -
     assert (await _row(db, request.id)).cancelled_by_membership_id == (
         world.a_resident1.membership.id
     )
+
+
+async def test_the_update_itself_refuses_someone_elses_request(
+    as_user: Any, world: World, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Criterion 6: the requester is in the UPDATE's WHERE, not only in the early check. Skip the
+    # early check once; the UPDATE must still match nothing, and the re-read answers 403.
+    from app.maintenance import service
+
+    request = await make_maintenance_request(db, world.a_resident2.membership, world.a_102)
+    real = service._for_cancel
+    calls: list[uuid.UUID] = []
+
+    async def skip_first(db: AsyncSession, ctx: Any, request_id: uuid.UUID) -> Any:
+        calls.append(request_id)
+        if len(calls) == 1:
+            return await service._visible(db, ctx, request_id)
+        return await real(db, ctx, request_id)
+
+    monkeypatch.setattr(service, "_for_cancel", skip_first)
+    client = await as_user(world.a_former.user)
+    before = await counts(db)
+
+    assert_problem(await client.post(f"{base(world)}/{request.id}/cancel"), 403, "not_requester")
+
+    assert len(calls) == 2
+    assert await counts(db) == before
+    assert (await _row(db, request.id)).status == MaintenanceStatus.SUBMITTED
