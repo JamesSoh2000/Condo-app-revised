@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P3-04b, P2-03, P1-03 |
 | Replaces old | M8-T01 (schema part) |
-| Status | in progress |
+| Status | done |
 
 Drafted from the P6-03 stub in [P6-P7-backlog.md](./P6-P7-backlog.md) and split four ways, as notices were
 (P6-01a → b → c). Measured against what the notices slice took (`app/notices/*` 760 lines, its two migrations

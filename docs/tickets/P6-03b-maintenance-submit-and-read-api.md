@@ -155,6 +155,12 @@ P6-03c.
 
 ## Open decisions (resolve while framing)
 
+Carried from P6-03a (PR #137): the schema does not tie a `maintenance_request_photos` row to a `maintenance_photo`
+file, and does not force positions to be dense. The create must claim each photo with
+`FilePurpose.MAINTENANCE_PHOTO` (a `package_photo` or `notice_attachment` file id gives `claim_file`'s 422, with a
+test) and write positions 0..n-1 in the order given. The `Idempotency-Key` columns are NOT NULL, so the create
+requires the header.
+
 From the stub ("Decide while framing"):
 - **Emergency category behaviour.** Stub default: **show the building's emergency phone, and never rely on the
   app.** Left open: where the phone lives (a `buildings.emergency_phone` column set by the bootstrap CLI and the
