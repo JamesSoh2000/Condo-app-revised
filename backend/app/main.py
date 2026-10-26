@@ -9,14 +9,15 @@ from app.core.config import settings
 from app.core.csrf import CSRFMiddleware
 from app.core.errors import install_error_handlers
 from app.logging_config import configure_logging
+
+# The domains' file `can_view` hooks register on import (app/files/purposes.py).
+from app.maintenance import photos as _maintenance_photos  # noqa: F401
 from app.middleware.cache_control import NoStoreMiddleware
 from app.middleware.request_logging import RequestLoggingMiddleware
 
 # Every model, so relationships can resolve their targets in the server process (the tests import
 # them all anyway; tests/test_app_imports.py checks the app alone).
 from app.models import registry as _registry  # noqa: F401
-
-# The domains' file `can_view` hooks register on import (app/files/purposes.py).
 from app.notices import attachments as _notice_attachments  # noqa: F401
 from app.packages import photos as _package_photos  # noqa: F401
 

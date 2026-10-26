@@ -167,7 +167,7 @@ async def current_occupants(db: AsyncSession, building_id: UUID, unit_id: UUID) 
 
 def occupancy_window_clause(
     membership_id: UUID | SQLColumnExpression[UUID],
-    record_unit_col: SQLColumnExpression[UUID],
+    record_unit_col: SQLColumnExpression[UUID] | SQLColumnExpression[UUID | None],
     record_time_col: SQLColumnExpression[datetime],
 ) -> ColumnElement[bool]:
     """True when the membership occupied the record's unit at the record's time.

@@ -140,6 +140,12 @@ Estimate: ~300 non-test lines (service 170, router 60, kinds, template and actio
 
 ## Open decisions (resolve while framing)
 
+Carried from P6-03a (PR #137, ADR-0020): the row holds only the current state, so reopen leads to `in_progress`
+and clears `resolved_*`, resume clears `on_hold_*`, and `started_*` is kept. This ticket adds
+`maintenance_status_events` (building, request, status, at, by membership; composite FKs) and writes one in the
+same transaction as each conditional `UPDATE`, for P6-04c's timeline. The reopen window reads `resolved_at`.
+`cancelled` is final, so reopen doesn't apply to it.
+
 From the stub ("Decide while framing"):
 - **Can security act on maintenance?** Stub default: **no** (read and comment only), so every action here is
   property management only.
