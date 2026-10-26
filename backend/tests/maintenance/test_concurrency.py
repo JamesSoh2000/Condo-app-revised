@@ -507,20 +507,14 @@ def test_a_retry_replays_even_if_the_unit_check_would_now_refuse(
     _run(scratch_database_url, body)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Open, review round 2 F1: transfers whose transactions began before the create end and "
-        "start the occupancies at their earlier now(); fixing it changes ADR-0016 (inbox, blocked)"
-    ),
-)
 def test_earlier_manager_transactions_do_not_expose_an_outgoing_request(
     scratch_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Review round 2 F1 (inbox B-10): both transfers began before the create but lock after it.
     from app.memberships.enums import OccupancyRelationship
     from app.memberships.models import UnitOccupancy
     from app.memberships.schemas import MemberTransferIn
-    from app.memberships.service import transfer_member
+    from app.memberships.service import OccupancyChanged, transfer_member
 
     async def body(sessions: Sessions, world: World, _fixture: MaintenanceRequest) -> None:
         checked, release = asyncio.Event(), asyncio.Event()
@@ -572,8 +566,15 @@ def test_earlier_manager_transactions_do_not_expose_an_outgoing_request(
             assert not arriving.done(), "incoming transfer must wait for the building lock"
             release.set()
             created = await asyncio.wait_for(creating, 10)
-            await asyncio.wait_for(leaving, 10)
-            await asyncio.wait_for(arriving, 10)
+            # The record fence (ADR-0021): each transfer would move a window edge of 101 behind
+            # the request, so each is refused: the outgoing one first, then the incoming one once
+            # the building lock passes to it.
+            with pytest.raises(OccupancyChanged):
+                await asyncio.wait_for(leaving, 10)
+            # As the HTTP request's session would on the error: releases the building lock.
+            await outgoing.rollback()
+            with pytest.raises(OccupancyChanged):
+                await asyncio.wait_for(arriving, 10)
         async with sessions() as db:
             ended = await db.scalar(
                 select(UnitOccupancy.ended_at).where(
@@ -581,10 +582,11 @@ def test_earlier_manager_transactions_do_not_expose_an_outgoing_request(
                     UnitOccupancy.unit_id == world.a_101.id,
                 )
             )
-            assert ended == outgoing_time
+            assert ended is None
+            assert outgoing_time is not None and outgoing_time < created.request.submitted_at
             assert incoming_time is not None and incoming_time < created.request.submitted_at
-            # The public read service must refuse the incoming household. Currently it returns
-            # the outgoing resident's description, and the photo hook uses the same visibility.
+            # The read service and the photo hook share the visibility: the incoming household
+            # sees neither.
             with pytest.raises(service.MaintenanceRequestNotFound):
                 await service.get_request(db, persona_ctx(world, "a_resident2"), created.request.id)
 
