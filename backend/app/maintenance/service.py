@@ -88,7 +88,15 @@ async def create_request(
     existing = await _by_key(db, ctx, key)
     if existing is not None:
         return await _replay(db, ctx, existing, digest)
-    unit_name = await _check_unit(db, ctx, data.unit_id) if data.unit_id is not None else None
+    try:
+        unit_name = await _check_unit(db, ctx, data.unit_id) if data.unit_id is not None else None
+    except UnitNotFound, UnitInactive, UnitNotOccupied, OccupancyChanged:
+        # The original may have committed while this waited on the check's locks (review round 2,
+        # F2): a retry of a request that exists replays it.
+        existing = await _by_key(db, ctx, key)
+        if existing is None:
+            raise
+        return await _replay(db, ctx, existing, digest)
 
     # DO NOTHING: a concurrent first request with this key waits here for the other to finish, then
     # finds its row. The photos are claimed below, by the request whose insert won.
