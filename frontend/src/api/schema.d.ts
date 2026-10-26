@@ -284,7 +284,8 @@ export interface paths {
          * Accept
          * @description Accept: the membership becomes active with the invited roles. A new email needs
          *     `full_name` and `password` and is logged in (session cookie); an existing account must be
-         *     logged in as itself (409 `login_required`, 403 `invitation_email_mismatch`).
+         *     logged in as itself (409 `login_required`, 403 `invitation_email_mismatch`). 409
+         *     `occupancy_changed`: retry.
          */
         post: operations["invitations_accept"];
         delete?: never;
@@ -981,7 +982,8 @@ export interface paths {
         /**
          * Approve
          * @description Approve a pending join request: the member becomes an active resident of the request's unit
-         *     and is notified. 409 `already_decided`, `membership_not_pending` or `unit_inactive`.
+         *     and is notified. 409 `already_decided`, `membership_not_pending`, `unit_inactive` or
+         *     `occupancy_changed` (retry).
          */
         post: operations["onboarding_approve"];
         delete?: never;

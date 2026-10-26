@@ -23,7 +23,7 @@ from app.core.errors import Conflict, NotFound
 from app.core.pagination import CursorParams, Page, paginate
 from app.memberships.enums import MembershipStatus, Role
 from app.memberships.models import BuildingMembership, MembershipRole
-from app.memberships.occupancy import start_occupancy
+from app.memberships.occupancy import OccupancyTimeError, start_occupancy
 from app.notifications.service import notify, staff_user_ids
 from app.onboarding.models import OnboardingRequest, OnboardingStatus
 from app.onboarding.schemas import (
@@ -342,6 +342,10 @@ class UnitInactive(Conflict):
     code = "unit_inactive"
 
 
+class OccupancyChanged(Conflict):
+    code = "occupancy_changed"
+
+
 class _Details(NamedTuple):
     full_name: str
     email: str
@@ -514,6 +518,8 @@ async def approve_request(
     relationship, the resident notified in-app and by email, and two audit events, in one commit.
 
     409 `unit_inactive` if the unit was deactivated since the request: the manager denies it then.
+    409 `occupancy_changed` if a record of the unit was stamped after this transaction began (the
+    record fence, ADR-0021): a retry starts the occupancy after it.
     """
     request, user_id = await _decide(db, ctx, request_id, OnboardingStatus.APPROVED, None)
     # FOR KEY SHARE (the P4-01a carry), as the submission: `deactivate_unit` locks the unit FOR
@@ -526,13 +532,18 @@ async def approve_request(
     )
     if not unit_active:
         raise UnitInactive(detail="This unit is deactivated: deny the request instead.")
-    await start_occupancy(
-        db,
-        building_id=ctx.building_id,
-        membership_id=request.membership_id,
-        unit_id=request.unit_id,
-        relationship=request.relationship,
-    )
+    try:
+        await start_occupancy(
+            db,
+            building_id=ctx.building_id,
+            membership_id=request.membership_id,
+            unit_id=request.unit_id,
+            relationship=request.relationship,
+        )
+    except OccupancyTimeError as exc:
+        raise OccupancyChanged(
+            detail="This unit changed while you were approving; try again."
+        ) from exc
     out, details, building_name = await _decided_out(db, ctx, request)
     await notify(
         db,

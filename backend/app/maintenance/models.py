@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.maintenance.enums import MaintenanceCategory, MaintenanceLocation, MaintenanceStatus
+from app.memberships.occupancy import register_unit_record
 from app.models.base import Base
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.types import database_enum
@@ -147,6 +148,13 @@ class MaintenanceRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     idempotency_key: Mapped[str] = mapped_column(String(80))
     # sha256 of the create request's canonical body (P6-03b), hex.
     request_hash: Mapped[str] = mapped_column(String(64))
+
+
+# The record fence (ADR-0021): an occupancy write that began before a request of its unit was
+# submitted is refused. Here, not in a module the server imports, so scripts and tests have it too.
+register_unit_record(
+    MaintenanceRequest.building_id, MaintenanceRequest.unit_id, MaintenanceRequest.submitted_at
+)
 
 
 class MaintenanceRequestPhoto(Base):

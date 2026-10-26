@@ -95,7 +95,8 @@ async def accept(
 ) -> InvitationAcceptedOut:
     """Accept: the membership becomes active with the invited roles. A new email needs
     `full_name` and `password` and is logged in (session cookie); an existing account must be
-    logged in as itself (409 `login_required`, 403 `invitation_email_mismatch`)."""
+    logged in as itself (409 `login_required`, 403 `invitation_email_mismatch`). 409
+    `occupancy_changed`: retry."""
     result = await service.accept_invitation(
         db,
         limiter,

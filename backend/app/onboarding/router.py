@@ -137,7 +137,8 @@ async def summary(ctx: Manager, db: DbSession) -> OnboardingSummary:
 )
 async def approve(request_id: UUID, ctx: Manager, db: DbSession) -> OnboardingRequestManagerOut:
     """Approve a pending join request: the member becomes an active resident of the request's unit
-    and is notified. 409 `already_decided`, `membership_not_pending` or `unit_inactive`."""
+    and is notified. 409 `already_decided`, `membership_not_pending`, `unit_inactive` or
+    `occupancy_changed` (retry)."""
     return await service.approve_request(db, ctx, request_id)
 
 

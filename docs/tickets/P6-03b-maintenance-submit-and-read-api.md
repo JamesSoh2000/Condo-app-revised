@@ -108,7 +108,10 @@ names are the verbs); `maintenance_cancel` is P6-03e's.
    the create and waited on its lock ends the occupancy after the request, so the incoming household never
    sees it; an occupancy that started after the create's `now()` gives 409 `occupancy_changed` (retry), so a
    request is never stamped in the unit's previous occupancy. (Review round 1, F1: framing first said
-   `clock_timestamp()` after the lock, which put the request after a waiting transfer's end.)
+   `clock_timestamp()` after the lock, which put the request after a waiting transfer's end.) A move-out,
+   transfer, approval or invitation accept that began **before** the create but locks after it would end or
+   start the occupancy behind the request; it gets 409 `occupancy_changed` instead (the record fence,
+   ADR-0021; review round 2 F1, inbox B-10, option A).
 3. **Location shape.** `location = unit` without `unit_id`, or `common_area` with one or without its detail,
    gives 422 from the schema, never a 500 from P6-03a's check constraint.
 4. **Photos.** Each photo is claimed and listed in order; more than the limit, a duplicate id, a file of another
