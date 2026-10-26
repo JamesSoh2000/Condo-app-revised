@@ -26,6 +26,7 @@ from app.audit.service import record_audit
 from app.buildings.models import Building
 from app.core.errors import BadRequest, Conflict, NotFound, UnprocessableContent
 from app.core.pagination import CursorParams, Page, paginate
+from app.core.schemas import InputModel
 from app.files.models import FilePurpose
 from app.files.service import claim_file
 from app.memberships.enums import MembershipStatus
@@ -98,7 +99,7 @@ def check_idempotency_key(key: str | None) -> str:
     return key
 
 
-def request_hash(data: PackageCreate) -> str:
+def request_hash(data: InputModel) -> str:
     """sha256 of the validated body: every field, keys sorted, so a retry that spells the same
     request differently (key order, spacing, an explicit null) is the same request."""
     canonical = json.dumps(data.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))

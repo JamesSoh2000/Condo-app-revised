@@ -42,3 +42,9 @@ def _grant(ctx: TenantContext) -> ColumnElement[bool]:
             ),
         )
     return false()
+
+
+def sees_requester_names(ctx: TenantContext) -> bool:
+    """True if the caller is shown who filed each request: staff only, as packages' recipients
+    (P6-03b D8). A resident sees a co-occupant's request but not who filed it."""
+    return ctx.has_any(*_SEE_ALL)

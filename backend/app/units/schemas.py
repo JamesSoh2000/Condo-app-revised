@@ -29,6 +29,21 @@ def printable_before_strip(value: Any) -> Any:
     return printable(value) if isinstance(value, str) else value
 
 
+# Multi-line text (a notice's Markdown, a maintenance description) keeps its line breaks and tab
+# indents; any other control character is refused.
+_MULTILINE_CONTROLS = frozenset("\t\n\r")
+
+
+def multiline_before_strip(value: Any) -> Any:
+    """As `printable_before_strip`, but allowing tabs and line breaks: NUL and the rest of `Cc`
+    would fail at flush or hide text (the CLAUDE.md lesson)."""
+    if isinstance(value, str) and any(
+        unicodedata.category(char) == "Cc" and char not in _MULTILINE_CONTROLS for char in value
+    ):
+        raise PydanticCustomError("control_characters", "must not contain control characters")
+    return value
+
+
 def _blank_to_none(value: Any) -> Any:
     # A blank tower is no tower (and a CSV's empty cell, P4-01b, means the same). Checked first, so
     # a tab or newline isn't taken for blank.
