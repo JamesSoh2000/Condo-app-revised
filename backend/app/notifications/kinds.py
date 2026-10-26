@@ -36,5 +36,12 @@ KINDS: dict[str, NotificationKind] = {
         NotificationKind(
             "notice.published_urgent", "The manager published an urgent notice", "notification"
         ),
+        # Managers only, never the requester (P6-03b D5); an emergency also emails.
+        NotificationKind("maintenance.submitted", "A resident filed a maintenance request", None),
+        NotificationKind(
+            "maintenance.submitted_emergency",
+            "A resident filed an emergency maintenance request",
+            "notification",
+        ),
     )
 }

@@ -4,7 +4,7 @@
 |---|---|
 | Phase / lane | P6 / A |
 | Risk tier | 2 |
-| Depends on | P6-04a, P6-03b, P3-06 |
+| Depends on | P6-04a, P6-03b, P6-03e, P3-06 |
 | Replaces old | M8-T02 (submit part) |
 | Status | todo |
 

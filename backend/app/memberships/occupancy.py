@@ -10,6 +10,14 @@ transaction share it. A future `at` is refused. A past `at` is for seeds, tests 
 it decides what a person may see: a start backdated into a previous occupant's time shows the
 newcomer that occupant's records. Never take `at` from a client.
 
+One clock leaves one gap, closed by the record fence (ADR-0021): a transaction's `now()` is when it
+began, so a write that began before a unit's record was stamped but reaches the occupancy after it
+committed would put the window edge behind the record (the outgoing household's request inside the
+incoming one's window). Called without `at`, the helpers refuse with `OccupancyTimeError` when a
+registered record of a unit they end or start was stamped after their `at`; the caller retries in a
+new transaction, whose `now()` is later. Domains register their unit-addressed records with
+`register_unit_record`.
+
 These are building blocks for services: they flush but never commit (CLAUDE.md rule 5), and they
 don't check membership status, roles or `Unit.is_active`, or record audit events. The services that
 call them (P4-02, P4-05, P4-06) do.
@@ -26,7 +34,39 @@ from app.memberships.models import BuildingMembership, UnitOccupancy
 
 
 class OccupancyTimeError(ValueError):
-    """The time would make a membership's occupancies overlap, or end one before it started."""
+    """The time would make a membership's occupancies overlap, end one before it started, or move a
+    window edge behind a unit's record stamped since (the record fence)."""
+
+
+# (building, unit, time) columns of each unit-addressed record type that the record fence checks.
+_unit_records: list[
+    tuple[
+        SQLColumnExpression[UUID],
+        SQLColumnExpression[UUID] | SQLColumnExpression[UUID | None],
+        SQLColumnExpression[datetime],
+    ]
+] = []
+
+
+def register_unit_record(
+    building_col: SQLColumnExpression[UUID],
+    unit_col: SQLColumnExpression[UUID] | SQLColumnExpression[UUID | None],
+    time_col: SQLColumnExpression[datetime],
+) -> None:
+    """Fence a unit-addressed record type: the columns its `occupancy_window_clause` reads, and its
+    building. Called where the model is defined, so every process that loads the models has it."""
+    _unit_records.append((building_col, unit_col, time_col))
+
+
+async def _fence(db: AsyncSession, building_id: UUID, unit_id: UUID, at: datetime) -> None:
+    """Refuse when a record of the unit was stamped after `at`. Runs after the membership lock: a
+    create that held it has committed, and READ COMMITTED shows its row to this statement."""
+    for building_col, unit_col, time_col in _unit_records:
+        later = await db.scalar(
+            select(exists().where(building_col == building_id, unit_col == unit_id, time_col > at))
+        )
+        if later:
+            raise OccupancyTimeError("a record of the unit was stamped after `at`")
 
 
 async def _prepare(
@@ -70,9 +110,13 @@ async def start_occupancy(
 
     Raises `IntegrityError` if the membership already has a current occupancy, or if the unit or the
     membership isn't in `building_id`; `OccupancyTimeError` if one of the membership's earlier
-    occupancies ends after `at` (a person's history can't overlap).
+    occupancies ends after `at` (a person's history can't overlap), or, without `at`, if a record of
+    `unit_id` was stamped after this transaction began (the record fence).
     """
+    fenced = at is None
     at = await _prepare(db, building_id, membership_id, at)
+    if fenced:
+        await _fence(db, building_id, unit_id, at)
     overlapping = await db.scalar(
         select(UnitOccupancy.id)
         .where(
@@ -103,8 +147,10 @@ async def end_occupancy(
 ) -> UnitOccupancy | None:
     """End the membership's current occupancy at `at` and return it; `None` if there is none.
 
-    Raises `OccupancyTimeError` if the current occupancy started after `at`.
+    Raises `OccupancyTimeError` if the current occupancy started after `at`, or, without `at`, if a
+    record of its unit was stamped after this transaction began (the record fence).
     """
+    fenced = at is None
     at = await _prepare(db, building_id, membership_id, at)
     current = (
         UnitOccupancy.building_id == building_id,
@@ -119,6 +165,8 @@ async def end_occupancy(
     )
     if ended is None and await db.scalar(select(exists().where(*current))):
         raise OccupancyTimeError("the current occupancy starts after `at`")
+    if fenced and ended is not None:
+        await _fence(db, building_id, ended.unit_id, at)
     return ended
 
 
@@ -134,9 +182,16 @@ async def transfer_occupancy(
     """End the membership's current occupancy (if any) and start one of `new_unit_id`, both at `at`.
 
     Atomic only as part of the caller's transaction: on any error the caller rolls back both.
+    Without `at`, the record fence checks both units.
     """
+    fenced = at is None
     at = await _prepare(db, building_id, membership_id, at)
-    await end_occupancy(db, building_id=building_id, membership_id=membership_id, at=at)
+    # The inner calls get `at`, so they don't fence: the fence is for the implicit `now()` only.
+    ended = await end_occupancy(db, building_id=building_id, membership_id=membership_id, at=at)
+    if fenced:
+        if ended is not None:
+            await _fence(db, building_id, ended.unit_id, at)
+        await _fence(db, building_id, new_unit_id, at)
     return await start_occupancy(
         db,
         building_id=building_id,

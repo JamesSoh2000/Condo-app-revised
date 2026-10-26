@@ -1,6 +1,6 @@
 # ADR-0016: Occupancy windows: half-open, on the database clock, tested in a database function; writes serialize per membership
 
-- Status: Accepted
+- Status: Accepted; extended by [ADR-0021](./0021-occupancy-record-fence.md) (the record fence)
 - Date: 2026-10-15
 - Deciders: agent (autonomous) in P1-03; the database-function decision by James (in session, P1-03 review round 4)
 

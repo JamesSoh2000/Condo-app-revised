@@ -41,3 +41,5 @@ NOTICE_CREATED = "notice.created"
 NOTICE_UPDATED = "notice.updated"
 NOTICE_PUBLISHED = "notice.published"
 NOTICE_ARCHIVED = "notice.archived"
+
+MAINTENANCE_SUBMITTED = "maintenance.submitted"

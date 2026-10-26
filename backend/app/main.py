@@ -70,6 +70,7 @@ def create_app() -> FastAPI:
     from app.buildings import router as buildings
     from app.files import router as files
     from app.invitations import router as invitations
+    from app.maintenance import router as maintenance
     from app.memberships import router as memberships
     from app.notices import router as notices
     from app.notifications import router as notifications
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(buildings.router)
     app.include_router(files.router)
     app.include_router(invitations.router)
+    app.include_router(maintenance.router)
     app.include_router(memberships.router)
     app.include_router(notices.router)
     app.include_router(notifications.router)

@@ -46,7 +46,7 @@ from app.invitations.schemas import (
 )
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
 from app.memberships.models import BuildingMembership, MembershipRole
-from app.memberships.occupancy import end_occupancy, transfer_occupancy
+from app.memberships.occupancy import OccupancyTimeError, end_occupancy, transfer_occupancy
 from app.memberships.service import read_caller, refuse_stale
 from app.rate_limits.service import RateLimiter, ip_key
 from app.tenancy.context import TenantContext
@@ -363,6 +363,10 @@ class MembershipExists(Conflict):
     code = "membership_exists"
 
 
+class OccupancyChanged(Conflict):
+    code = "occupancy_changed"
+
+
 class _Pending(NamedTuple):
     """A pending invitation as `_find_valid` reads it."""
 
@@ -648,17 +652,24 @@ async def _activate_membership(
             for role in invitation.roles
         ],
     )
-    if invitation.unit_id is not None:
-        assert invitation.relationship is not None  # noqa: S101 (ck_invitations_unit_with_relationship)
-        # Moves a reactivated membership's leftover occupancy, if any, to the invited unit.
-        await transfer_occupancy(
-            db,
-            building_id=invitation.building_id,
-            membership_id=membership_id,
-            new_unit_id=invitation.unit_id,
-            relationship=invitation.relationship,
-        )
-    elif reactivated and Role.RESIDENT not in invitation.roles:
-        # An occupancy belongs to a resident membership (ADR-0010).
-        await end_occupancy(db, building_id=invitation.building_id, membership_id=membership_id)
+    try:
+        if invitation.unit_id is not None:
+            assert invitation.relationship is not None  # noqa: S101 (ck_invitations_unit_with_relationship)
+            # Moves a reactivated membership's leftover occupancy, if any, to the invited unit.
+            await transfer_occupancy(
+                db,
+                building_id=invitation.building_id,
+                membership_id=membership_id,
+                new_unit_id=invitation.unit_id,
+                relationship=invitation.relationship,
+            )
+        elif reactivated and Role.RESIDENT not in invitation.roles:
+            # An occupancy belongs to a resident membership (ADR-0010).
+            await end_occupancy(db, building_id=invitation.building_id, membership_id=membership_id)
+    except OccupancyTimeError as exc:
+        # A record of the unit was stamped after this transaction began, or a concurrent write
+        # moved the membership's occupancy (ADR-0016, ADR-0021): a retry acts after it.
+        raise OccupancyChanged(
+            detail="This unit changed while you were accepting; try again."
+        ) from exc
     return membership_id

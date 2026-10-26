@@ -1,6 +1,5 @@
-import unicodedata
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import (
@@ -15,21 +14,7 @@ from pydantic_core import PydanticCustomError
 
 from app.core.schemas import APIModel, InputModel
 from app.notices.enums import NoticePriority, NoticeStatus
-from app.units.schemas import printable_before_strip
-
-# Markdown keeps its line breaks and tab indents; any other control character is refused.
-_BODY_CONTROLS = frozenset("\t\n\r")
-
-
-def _markdown_before_strip(value: Any) -> Any:
-    """As `printable_before_strip`, but allowing tabs and line breaks: NUL and the rest of `Cc`
-    would fail at flush or hide text (the CLAUDE.md lesson)."""
-    if isinstance(value, str) and any(
-        unicodedata.category(char) == "Cc" and char not in _BODY_CONTROLS for char in value
-    ):
-        raise PydanticCustomError("control_characters", "must not contain control characters")
-    return value
-
+from app.units.schemas import multiline_before_strip, printable_before_strip
 
 # The column lengths (`notices.title` varchar(200), `body` varchar(10000)). Stripped and required:
 # `''` would pass the NOT NULLs, and the blank checks only trim spaces (the P6-01a carry). The
@@ -42,7 +27,7 @@ Title = Annotated[
 Body = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=10_000),
-    BeforeValidator(_markdown_before_strip),
+    BeforeValidator(multiline_before_strip),
 ]
 
 

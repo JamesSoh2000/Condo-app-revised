@@ -284,7 +284,8 @@ export interface paths {
          * Accept
          * @description Accept: the membership becomes active with the invited roles. A new email needs
          *     `full_name` and `password` and is logged in (session cookie); an existing account must be
-         *     logged in as itself (409 `login_required`, 403 `invitation_email_mismatch`).
+         *     logged in as itself (409 `login_required`, 403 `invitation_email_mismatch`). 409
+         *     `occupancy_changed`: retry.
          */
         post: operations["invitations_accept"];
         delete?: never;
@@ -500,6 +501,54 @@ export interface paths {
          * @description A new link and a new 7-day expiry, emailed again; the old link stops working.
          */
         post: operations["invitations_resend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/maintenance-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List
+         * @description The requests you may see in this building, newest first.
+         */
+        get: operations["maintenance_list"];
+        put?: never;
+        /**
+         * Create
+         * @description File a request for the unit you live in now, or a common area, and tell the managers.
+         *
+         *     A retry with the same `Idempotency-Key` and body answers 201 with the same request and
+         *     `Idempotent-Replayed: true`, writing nothing; the key with another body, or another member's
+         *     key, is 409 `idempotency_key_reused`.
+         */
+        post: operations["maintenance_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/maintenance-requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get
+         * @description One request you may see; anyone else's is a 404.
+         */
+        get: operations["maintenance_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -933,7 +982,8 @@ export interface paths {
         /**
          * Approve
          * @description Approve a pending join request: the member becomes an active resident of the request's unit
-         *     and is notified. 409 `already_decided`, `membership_not_pending` or `unit_inactive`.
+         *     and is notified. 409 `already_decided`, `membership_not_pending`, `unit_inactive` or
+         *     `occupancy_changed` (retry).
          */
         post: operations["onboarding_approve"];
         delete?: never;
@@ -1397,6 +1447,83 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * MaintenanceCategory
+         * @description The trade a request needs (P6-03a D6). Adding a value is an expand-only migration.
+         * @enum {string}
+         */
+        MaintenanceCategory: "plumbing" | "electrical" | "heating_cooling" | "appliance" | "doors_windows" | "pest_control" | "other" | "emergency";
+        /**
+         * MaintenanceLocation
+         * @enum {string}
+         */
+        MaintenanceLocation: "unit" | "common_area";
+        /** MaintenanceRequestCreate */
+        MaintenanceRequestCreate: {
+            location: components["schemas"]["MaintenanceLocation"];
+            /** Unit Id */
+            unit_id?: string | null;
+            /** Common Area */
+            common_area?: string | null;
+            category: components["schemas"]["MaintenanceCategory"];
+            /** Description */
+            description: string;
+            /** Photo File Ids */
+            photo_file_ids?: string[];
+        };
+        /** MaintenanceRequestOut */
+        MaintenanceRequestOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Requester Membership Id
+             * Format: uuid
+             */
+            requester_membership_id: string;
+            location: components["schemas"]["MaintenanceLocation"];
+            /** Unit Id */
+            unit_id: string | null;
+            /** Common Area */
+            common_area: string | null;
+            category: components["schemas"]["MaintenanceCategory"];
+            /** Description */
+            description: string;
+            status: components["schemas"]["MaintenanceStatus"];
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** On Hold At */
+            on_hold_at: string | null;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /** Photo File Ids */
+            photo_file_ids: string[];
+            /** Unit Tower */
+            unit_tower: string | null;
+            /** Unit Label */
+            unit_label: string | null;
+            /**
+             * Requester Name
+             * @description The requester's current full name, for security and property management only; null for every other caller.
+             */
+            requester_name: string | null;
+        };
+        /**
+         * MaintenanceStatus
+         * @description Where a request is (`maintenance_requests.status`); `app.maintenance.state` says how it may
+         *     move.
+         * @enum {string}
+         */
+        MaintenanceStatus: "submitted" | "in_progress" | "on_hold" | "resolved" | "cancelled";
         /** MeBuildingOut */
         MeBuildingOut: {
             /**
@@ -1883,6 +2010,13 @@ export interface components {
         Page_InvitationOut_: {
             /** Items */
             items: components["schemas"]["InvitationOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[MaintenanceRequestOut] */
+        Page_MaintenanceRequestOut_: {
+            /** Items */
+            items: components["schemas"]["MaintenanceRequestOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -3328,6 +3462,219 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    maintenance_list: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["MaintenanceStatus"] | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_MaintenanceRequestOut_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    maintenance_create: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 8-80 visible ASCII characters; repeat it to retry the same request. */
+                "idempotency-key"?: string | null;
+            };
+            path: {
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRequestOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    maintenance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
