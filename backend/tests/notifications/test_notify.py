@@ -513,8 +513,10 @@ async def test_a_user_with_several_matching_roles_is_listed_once(
 def test_only_the_in_app_kinds_have_no_email() -> None:
     # P3-03's kinds all email; P4-05a adds the first in-app-only one (the ticket: managers are
     # notified in-app), P5-02b the pickup (its ticket: in-app only), P6-01c a normal notice (only
-    # urgent ones email). A new kind without a template must be added here on purpose.
+    # urgent ones email), P6-03b a normal maintenance request (only emergencies email). A new kind
+    # without a template must be added here on purpose.
     assert sorted(k for k, spec in KINDS.items() if spec.email_template is None) == [
+        "maintenance.submitted",
         "notice.published",
         "onboarding.submitted",
         "package.picked_up",
