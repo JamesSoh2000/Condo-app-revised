@@ -110,7 +110,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P6-02e](./P6-02e-list-focus-fixes.md) | List focus fixes: "Load more" and the feed card (split from P6-02d) | B | 2 | P6-02c | done | — |
 | [P6-02f](./P6-02f-notice-expiry-and-attachment.md) | Notice editor: expiry and attachment (split from P6-02d) | B | 2 | P6-02d, P3-06 | done | — |
 | [P6-03a](./P6-03a-maintenance-schema-and-visibility.md) | Maintenance request schema, state machine and visibility (split from P6-03) | A | 2 | P3-04b, P2-03, P1-03 | done | — |
-| [P6-03b](./P6-03b-maintenance-submit-and-read-api.md) | Maintenance submit and read API (split from P6-03) | A | 2 | P6-03a, P2-04, P3-03, P3-04b | in progress | — |
+| [P6-03b](./P6-03b-maintenance-submit-and-read-api.md) | Maintenance submit and read API (split from P6-03) | A | 2 | P6-03a, P2-04, P3-03, P3-04b | done | — |
 | [P6-03e](./P6-03e-maintenance-cancel-and-emergency-phone.md) | Maintenance cancel and the emergency phone (split from P6-03b) | A | 2 | P6-03b | todo | — |
 | [P6-03c](./P6-03c-maintenance-manager-actions.md) | Maintenance manager actions: start, hold, resolve, reopen (split from P6-03) | A | 2 | P6-03b, P6-03e, P3-03, P3-02 | todo | — |
 | [P6-03d](./P6-03d-maintenance-comments.md) | Maintenance comments: public and internal (split from P6-03) | A | 2 | P6-03b, P3-03 | todo | — |

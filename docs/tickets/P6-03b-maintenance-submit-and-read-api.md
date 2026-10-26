@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-03a, P2-04, P3-03, P3-04b |
 | Replaces old | M8-T01 (resident API part), M8-T04 (new-request part) |
-| Status | in progress |
+| Status | done |
 
 Split from the P6-03 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); the schema is
 [P6-03a](./P6-03a-maintenance-schema-and-visibility.md), the manager's actions
@@ -277,3 +277,16 @@ Left open by the stub:
   (unreviewed) as P6-03e's starting point. What stays here: create, list, get, photos, idempotency, the
   move-out race, the managers' notification (emergency e-mail included) — 547 non-test lines (~422 without
   comments and blank lines), the size P5-02a merged at (506 / ~390), recorded as a deviation in the PR.
+
+## Follow-ups
+
+From PR #138 (explanation §7):
+- [P6-03e](./P6-03e-maintenance-cancel-and-emergency-phone.md): cancel and the emergency phone; its code waits
+  on the local branch `p6-03e-start` (unreviewed).
+- Register packages with the record fence (ADR-0021): `register_unit_record` in `app/packages/models.py`, plus a
+  lock a move-out also takes, since a staff create holds no recipient membership.
+- Property management filing a request, on a resident's behalf or for a common area (D2): undecided.
+- Shared idempotency helpers under `app/core/` if a third domain needs `Idempotency-Key`.
+- Security isn't told of an emergency request (D5); revisit with P6-04b's emergency copy.
+- How each screen shows onboarding approve's and invitation accept's new 409 `occupancy_changed` (P6-04 or a
+  frontend ticket touching those screens).

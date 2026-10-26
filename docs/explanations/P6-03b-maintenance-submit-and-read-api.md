@@ -462,7 +462,7 @@ Not verified:
 - No load test of the fence's extra `EXISTS` per occupancy write (indexed).
 - The fence closes the gap only for **registered** records. Packages (`received_at = now()`) still have it.
 
-Accepted risks and follow-ups (each reaches the inbox or the index in the bookkeeping commit):
+Accepted risks and follow-ups (tracked in the ticket's Follow-ups section, added in the bookkeeping commit):
 - **P6-03e**: cancel and the emergency phone (ticket file in this PR; code on the local branch `p6-03e-start`).
 - Register packages with the record fence (ADR-0021's "Negative").
 - Property management filing requests, on a resident's behalf or for a common area (D2).
