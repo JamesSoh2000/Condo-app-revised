@@ -104,7 +104,11 @@ names are the verbs); `maintenance_cancel` is P6-03e's.
    draft's `FOR KEY SHARE` would not, so a move-out committing meanwhile waits for the insert's commit (or the
    check reads the ended occupancy) and can't leave a request on a unit its requester just left. A test holds a
    move-out open in a second session and shows the create waits, then answers 422. `submitted_at` is the
-   insert's `clock_timestamp()`, taken after that lock, so it falls inside the occupancy the check found.
+   transaction's `now()`, the clock occupancy writes use (ADR-0016): a move-out or transfer that began during
+   the create and waited on its lock ends the occupancy after the request, so the incoming household never
+   sees it; an occupancy that started after the create's `now()` gives 409 `occupancy_changed` (retry), so a
+   request is never stamped in the unit's previous occupancy. (Review round 1, F1: framing first said
+   `clock_timestamp()` after the lock, which put the request after a waiting transfer's end.)
 3. **Location shape.** `location = unit` without `unit_id`, or `common_area` with one or without its detail,
    gives 422 from the schema, never a 500 from P6-03a's check constraint.
 4. **Photos.** Each photo is claimed and listed in order; more than the limit, a duplicate id, a file of another
@@ -206,8 +210,8 @@ Left open by the stub:
   - 2: the code `unit_not_occupied`; `a_council` and `multi_in_a` cases; common-area for any resident (D4);
     the lock mode corrected from `FOR KEY SHARE` to `FOR SHARE` on the caller's membership (the stronger lock:
     `FOR KEY SHARE` does not conflict with the occupancy writes' `FOR NO KEY UPDATE`, so it would not stop the
-    race the criterion names), with a two-session test; `submitted_at` from `clock_timestamp()` after the lock
-    (the CLAUDE.md lesson on values read before a wait).
+    race the criterion names), with a two-session test; `submitted_at` on the transaction's `now()` (ADR-0016)
+    with 409 `occupancy_changed` for a later move-in (review round 1 replaced the framed `clock_timestamp()`).
   - 5: `requester_name` (D8); order `id DESC` (D6). 6: the co-occupant case is `a_former` on `a_resident2`'s 102
     request, 403 `not_requester` (D3). 7: where the phone lives and how it is set (D1). 8: recipients, kinds,
     email, fixed text (D5).
