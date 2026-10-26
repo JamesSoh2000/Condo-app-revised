@@ -53,8 +53,6 @@ class SeedBuilding:
     floors: int
     units_per_floor: int
     features: tuple[Feature, ...]
-    # The maintenance feature's `config["emergency_phone"]` (ADR-0021).
-    emergency_phone: str | None = None
 
 
 @dataclass(frozen=True)
@@ -77,8 +75,6 @@ BUILDINGS = (
         floors=10,
         units_per_floor=4,
         features=(Feature.PACKAGES, Feature.NOTICES, Feature.MAINTENANCE),
-        # A 555 number: fictional, never dialled.
-        emergency_phone="416-555-0199",
     ),
     SeedBuilding(
         "birch",
@@ -313,10 +309,7 @@ async def _building(db: AsyncSession, spec: SeedBuilding) -> Building:
             building_id=building.id,
             feature=feature,
         )
-        config = {}
-        if feature == Feature.MAINTENANCE and spec.emergency_phone is not None:
-            config = {"emergency_phone": spec.emergency_phone}
-        _set(row, enabled=True, config=config)
+        _set(row, enabled=True)
     return building
 
 

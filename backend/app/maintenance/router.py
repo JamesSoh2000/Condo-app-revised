@@ -15,8 +15,8 @@ from app.tenancy.router import building_router
 
 router = building_router(tags=["maintenance"])
 _FEATURE = Depends(require_feature(Feature.MAINTENANCE))
-# Residents file and cancel their own requests (P6-03b D2, D3); property management runs them
-# (P6-03c). Reads are open to every member; `visible_maintenance` decides what each one sees.
+# Residents file requests (P6-03b D2); property management runs them (P6-03c). Reads are open to
+# every member; `visible_maintenance` decides what each one sees.
 _RESIDENT = [_FEATURE, Depends(require_roles(Role.RESIDENT))]
 
 
@@ -38,8 +38,7 @@ async def create(
 ) -> MaintenanceRequestOut:
     """File a request for the unit you live in now, or a common area, and tell the managers.
 
-    An `emergency` request answers with the building's `emergency_phone`: call it, the app alerts
-    no one. A retry with the same `Idempotency-Key` and body answers 201 with the same request and
+    A retry with the same `Idempotency-Key` and body answers 201 with the same request and
     `Idempotent-Replayed: true`, writing nothing; the key with another body, or another member's
     key, is 409 `idempotency_key_reused`.
     """
@@ -72,17 +71,3 @@ async def list(
 async def get(request_id: UUID, ctx: Ctx, db: DbSession) -> MaintenanceRequestOut:
     """One request you may see; anyone else's is a 404."""
     return await service.get_request(db, ctx, request_id)
-
-
-@router.post(
-    "/maintenance-requests/{request_id}/cancel",
-    dependencies=_RESIDENT,
-    responses=problem_responses(401, 403, 404, 409),
-)
-async def cancel(request_id: UUID, ctx: Ctx, db: DbSession) -> MaintenanceRequestOut:
-    """Withdraw your own request before work starts.
-
-    403 `not_requester` for a request you see but didn't file; 409 `invalid_transition` unless it
-    is `submitted`; of two at once, one wins.
-    """
-    return await service.cancel_request(db, ctx, request_id)

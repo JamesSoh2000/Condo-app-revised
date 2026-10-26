@@ -1,5 +1,4 @@
-"""Maintenance races (P6-03b criterion 1 rows 9 and 10, criterion 2's move-out, criterion 6's
-start).
+"""Maintenance races (P6-03b criterion 1 row 9, criterion 2's move-out).
 
 On real connections, as `tests/packages/test_concurrency.py`: a scratch database of its own,
 migrated here and dropped after the test, and one session per request.
@@ -10,15 +9,13 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.audit.models import AuditEvent
 from app.maintenance import service
-from app.maintenance.enums import MaintenanceLocation, MaintenanceStatus
+from app.maintenance.enums import MaintenanceLocation
 from app.maintenance.models import MaintenanceRequest
 from app.maintenance.schemas import MaintenanceRequestCreate
-from app.maintenance.state import InvalidTransition
 from app.memberships.occupancy import end_occupancy
 from app.notifications.models import Notification
 from app.packages.service import IdempotencyKeyReused
@@ -72,15 +69,6 @@ async def _create(sessions: Sessions, world: World, data: MaintenanceRequestCrea
         return "replayed" if result.replayed else "created"
 
 
-async def _cancel(sessions: Sessions, world: World, request: MaintenanceRequest) -> str:
-    async with sessions() as db:
-        try:
-            await service.cancel_request(db, persona_ctx(world, "a_resident1"), request.id)
-        except InvalidTransition:
-            return "409"
-        return "200"
-
-
 async def _count(sessions: Sessions, model: Any, *where: Any) -> int:
     async with sessions() as db:
         return await db.scalar(select(func.count()).select_from(model).where(*where)) or 0
@@ -89,48 +77,6 @@ async def _count(sessions: Sessions, model: Any, *where: Any) -> int:
 async def _waits(task: asyncio.Task[str]) -> None:
     await asyncio.sleep(1.0)
     assert not task.done(), "the second session did not wait for the first's lock"
-
-
-def test_two_concurrent_cancels_have_one_winner(scratch_database_url: str) -> None:
-    async def body(sessions: Sessions, world: World, request: MaintenanceRequest) -> None:
-        outcomes = await asyncio.gather(
-            _cancel(sessions, world, request), _cancel(sessions, world, request)
-        )
-
-        assert sorted(outcomes) == ["200", "409"]
-        assert await _count(sessions, AuditEvent, AuditEvent.action == "maintenance.cancelled") == 1
-        cancelled = MaintenanceRequest.status == MaintenanceStatus.CANCELLED
-        assert await _count(sessions, MaintenanceRequest, cancelled) == 1
-
-    _run(scratch_database_url, body)
-
-
-def test_a_cancel_waiting_on_a_start_gets_409(scratch_database_url: str) -> None:
-    # P6-03c's start, as a raw conditional UPDATE in a second session held open.
-    async def body(sessions: Sessions, world: World, request: MaintenanceRequest) -> None:
-        async with sessions() as manager:
-            await manager.execute(
-                update(MaintenanceRequest)
-                .where(
-                    MaintenanceRequest.id == request.id,
-                    MaintenanceRequest.status == MaintenanceStatus.SUBMITTED,
-                )
-                .values(
-                    status=MaintenanceStatus.IN_PROGRESS,
-                    started_at=func.clock_timestamp(),
-                    started_by_membership_id=world.a_manager.membership.id,
-                )
-            )
-            task = asyncio.create_task(_cancel(sessions, world, request))
-            await _waits(task)
-            await manager.commit()
-            assert await asyncio.wait_for(task, timeout=10) == "409"
-
-        started = MaintenanceRequest.status == MaintenanceStatus.IN_PROGRESS
-        assert await _count(sessions, MaintenanceRequest, started) == 1
-        assert await _count(sessions, AuditEvent, AuditEvent.action == "maintenance.cancelled") == 0
-
-    _run(scratch_database_url, body)
 
 
 @pytest.mark.parametrize("move_out_commits", [True, False], ids=["commits", "rolls-back"])

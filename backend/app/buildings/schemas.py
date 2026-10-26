@@ -2,13 +2,7 @@ import json
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import (
-    AfterValidator,
-    BeforeValidator,
-    StringConstraints,
-    ValidationInfo,
-    field_validator,
-)
+from pydantic import AfterValidator, BeforeValidator, StringConstraints
 from pydantic_core import PydanticCustomError
 
 from app.audit.service import MAX_VALUE_BYTES
@@ -91,13 +85,3 @@ class BootstrapInput(InputModel):
     # The operator's own words and name, for the audit event; `record_audit` caps a value at 1 KiB.
     reason: Annotated[LongText, AfterValidator(_fits_audit_value)]
     operator: Operator
-    # The maintenance feature's `config["emergency_phone"]` (ADR-0021), as long as `users.phone`.
-    emergency_phone: Annotated[str, _stripped(32), _printable] | None = None
-
-    @field_validator("emergency_phone")
-    @classmethod
-    def _phone_needs_maintenance(cls, value: str | None, info: ValidationInfo) -> str | None:
-        # A field error, so the CLI names `--emergency-phone`; `features` is validated first.
-        if value is not None and Feature.MAINTENANCE not in info.data.get("features", ()):
-            raise ValueError("needs the maintenance feature")
-        return value

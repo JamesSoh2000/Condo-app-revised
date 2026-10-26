@@ -43,4 +43,3 @@ NOTICE_PUBLISHED = "notice.published"
 NOTICE_ARCHIVED = "notice.archived"
 
 MAINTENANCE_SUBMITTED = "maintenance.submitted"
-MAINTENANCE_CANCELLED = "maintenance.cancelled"

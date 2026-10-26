@@ -1,5 +1,5 @@
-"""One commit per write (P6-03b criterion 10, CLAUDE.md rule 5): a failure before it leaves nothing,
-and the photos unattached again."""
+"""One commit per create (P6-03b criterion 10, CLAUDE.md rule 5): a failure before it leaves
+nothing, and the photos unattached again."""
 
 from typing import Any
 
@@ -9,10 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.files.models import File
 from app.maintenance import service
-from app.maintenance.enums import MaintenanceStatus
-from app.maintenance.models import MaintenanceRequest
-from tests.maintenance.conftest import make_maintenance_file, make_maintenance_request
-from tests.maintenance.test_api import base, counts, create, unit_body
+from tests.maintenance.conftest import make_maintenance_file
+from tests.maintenance.test_api import counts, create, unit_body
 from tests.world import World
 
 pytestmark = pytest.mark.anyio
@@ -53,24 +51,3 @@ async def test_a_failure_after_the_insert_and_claims_leaves_nothing(
             .execution_options(populate_existing=True)
         )
         assert attached is None
-
-
-async def test_a_failure_after_the_cancel_update_leaves_it_submitted(
-    as_user: Any, world: World, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    request = await make_maintenance_request(db, world.a_resident1.membership, world.a_101)
-    client = await as_user(world.a_resident1.user)
-    before = await counts(db)
-    monkeypatch.setattr(service, "record_audit", _fail)
-
-    with pytest.raises(RuntimeError, match="simulated failure"):
-        await client.post(f"{base(world)}/{request.id}/cancel")
-
-    assert await counts(db) == before
-    row = await db.scalar(
-        select(MaintenanceRequest)
-        .where(MaintenanceRequest.id == request.id)
-        .execution_options(populate_existing=True)
-    )
-    assert row is not None
-    assert (row.status, row.cancelled_at) == (MaintenanceStatus.SUBMITTED, None)

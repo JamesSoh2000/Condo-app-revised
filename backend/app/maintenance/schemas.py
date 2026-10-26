@@ -87,9 +87,3 @@ class MaintenanceRequestOut(MaintenanceRequestColumns):
             "for every other caller."
         )
     )
-    emergency_phone: str | None = Field(
-        description=(
-            "The building's emergency phone on an `emergency` request; null for every other "
-            "category, or if the building has none. Call it: the app alerts no one."
-        )
-    )

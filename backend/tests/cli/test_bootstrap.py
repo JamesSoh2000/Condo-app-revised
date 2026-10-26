@@ -533,22 +533,6 @@ def test_cli_features_and_locale_options(fake_session, calls):
     assert calls[0]["data"].locale == "fr"
 
 
-def test_cli_emergency_phone_option(fake_session, calls):
-    # P6-03b: the maintenance feature's `config["emergency_phone"]` (ADR-0021).
-    result = _run(*ARGS, "--emergency-phone", " 416-555-0100 ")
-
-    assert result.exit_code == 0, result.output
-    assert calls[0]["data"].emergency_phone == "416-555-0100"
-
-
-def test_cli_emergency_phone_without_maintenance_names_the_option(fake_session, calls):
-    result = _run(*ARGS, "--features", "packages", "--emergency-phone", "416-555-0100")
-
-    assert result.exit_code == 1
-    assert "--emergency-phone" in result.stderr
-    assert calls == []
-
-
 def test_cli_empty_features_means_none(fake_session, calls):
     result = _run(*ARGS, "--features", "")
 

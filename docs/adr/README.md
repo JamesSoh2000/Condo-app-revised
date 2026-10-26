@@ -31,6 +31,5 @@ himself. Reading them is a core learning activity, because they state the trade-
 | [0018](./0018-file-deletion-state.md) | Files are deleted through a committed `deleting` status: `files.cleanup` marks, `files.purge` deletes (agent, P3-04c) | Accepted; amends 0007 |
 | [0019](./0019-sql-parameters-hidden-from-errors.md) | The engine hides SQL parameters from database error messages, so emailed tokens reach no log (agent, P4-04) | Accepted |
 | [0020](./0020-maintenance-request-shape.md) | A maintenance request row holds its current state (history in P6-03c's status events); common areas are free text (agent, P6-03a) | Accepted |
-| [0021](./0021-feature-settings-in-building-features-config.md) | A feature's per-building settings live in `building_features.config`; the emergency phone first (agent, P6-03b) | Accepted |
 
 Template: [../templates/ADR.md](../templates/ADR.md).

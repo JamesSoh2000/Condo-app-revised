@@ -278,9 +278,6 @@ def bootstrap_building_command(
     ),
     manager_email: str = typer.Option(..., "--manager-email"),
     manager_name: str | None = typer.Option(None, "--manager-name", help="Shown in the summary."),
-    emergency_phone: str | None = typer.Option(
-        None, "--emergency-phone", help="Shown with emergency maintenance requests."
-    ),
     reason: str = typer.Option(..., "--reason", help="Why; recorded in the audit event."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan; write nothing."),
 ) -> None:
@@ -305,7 +302,6 @@ def bootstrap_building_command(
             features=[item.strip() for item in features.split(",")] if features.strip() else [],
             manager_email=manager_email,
             manager_name=manager_name,
-            emergency_phone=emergency_phone,
             reason=reason,
             operator=operator,
         )
