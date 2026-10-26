@@ -4,7 +4,7 @@
 |---|---|
 | Phase / lane | P6 / B |
 | Risk tier | 2 |
-| Depends on | P6-04a–d, P6-07a |
+| Depends on | P6-04a, P6-04b, P6-04c, P6-04d, P6-07a |
 | Replaces old | M9-T05 (maintenance part) |
 | Status | todo |
 
@@ -84,7 +84,8 @@ Estimate: ~20 non-test lines (README); the spec and helpers are test code.
 ## Open decisions (resolve while framing)
 
 Left open by the stub:
-- each project's resident and unit (default: two seeded residents of different units, as J4's personas)
+- each project's resident and unit (default: `resident1` in 101 for one project and `resident5` in 503 for the
+  other, units no other seeded resident shares; `resident2` stays the "another resident" of the privacy step)
 - whether the hold/resume steps stay in the journey (default: yes, they are "the states"; they cost two dialogs)
 
 ## Frame notes (filled by the agent in step 1)

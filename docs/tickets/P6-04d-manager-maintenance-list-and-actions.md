@@ -34,14 +34,17 @@ request per confirm, a 409 as a message; CLAUDE.md rule 7, `features/notices/Not
     with `aria-pressed`, as `ManagerNoticesPage`, "Open" = `submitted`, `in_progress`, `on_hold` by default, plus
     each status and "All"); each row with status, category, location, the requester's name, the submit time and
     the comment count if the API returns one
+  - **API:** `maintenance_list`'s `status` becomes repeatable (`?status=submitted&status=in_progress&…`, as
+    `app/packages/router.py`'s `Statuses`), so "Open" is one paged query; one value keeps P6-03b's behaviour, an
+    unknown one stays 422. Additive, ~10 lines, tested
   - other filters only where the API filters (category, location); a filter the API lacks is either added to
     `maintenance_list` here (small, additive, tested) or left as a follow-up, as framing decides; the browser never
     filters a page it was given
   - **transition dialog** on the request view for property management: the actions `ALLOWED` gives from the
     current status (start, hold, resume as P6-03a named it, resolve, reopen while P6-03c's window is open), one
     request per confirm; 409 `invalid_transition` and the window error turned into messages, the dialog staying
-    open; afterwards the list, the view, the resident's list key and the dashboard summary refreshed (cancel, then
-    invalidate)
+    open; afterwards the list, the view and the resident's list key refreshed (cancel, then invalidate; P6-05b
+    adds the dashboard key)
   - focus: Cancel and Escape return to the opener; after a success focus goes to the view's status line (it stays
     mounted), as P6-02c sharpened
   - delete `src/pages/ManagementMaintenance.jsx`, `/ManagementMaintenance` redirects (`LegacyRedirect`); the
@@ -52,7 +55,7 @@ request per confirm, a 409 as a message; CLAUDE.md rule 7, `features/notices/Not
 
 ## Interfaces
 
-Consumes `maintenance_list` (with `status`, and the filters framing adds), `maintenance_get`,
+Consumes `maintenance_list` (with `status`, repeatable from this ticket, and the filters framing adds), `maintenance_get`,
 `maintenance_start`, `maintenance_hold`, `maintenance_resolve`, `maintenance_reopen` (and resume if separate), as
 P6-03c merged them; 403 `forbidden_role` for non-managers, 409 `invalid_transition`, the window error's code.
 
@@ -84,7 +87,8 @@ P6-03c merged them; 403 `forbidden_role` for non-managers, 409 `invalid_transiti
 - `frontend/src/features/maintenance/managerMaintenance.test.tsx`: criteria 1, 5, 6, 8
 - `frontend/src/features/maintenance/transitions.test.tsx`: criteria 2–4
 - `frontend/src/app/{shell,building,nav}.test.tsx` updated (criterion 8)
-- `backend/tests/maintenance/test_api.py` for a filter added to `maintenance_list`, if any (10-case rows 1, 3)
+- `backend/tests/maintenance/test_api.py`: the repeated `status` (several, one, an unknown one 422, cursor paging
+  across statuses), and any other filter added to `maintenance_list` (10-case rows 1, 3)
 - Chromium check at 375 px and focus after a transition (criteria 2, 7), output in the PR
 - `make check DB_PORT=55432`; on `make up`, a request moved through every state, transcript in the PR
 
@@ -96,8 +100,8 @@ api.ts,RequestView.tsx}`, `frontend/src/app/{pages.ts,routes.tsx,shell.test.tsx,
 `features/notices/{ManagerNoticesPage,ManagerNoticeList,NoticeActionDialog}.tsx`.
 
 Estimate: ~390 non-test lines (page ~110 against `ManagerNoticesPage.tsx` 129, list ~150 against
-`ManagerNoticeList.tsx` 148, dialog ~100 against `NoticeActionDialog.tsx` 108, hooks and routes ~30). A backend
-filter adds ~30; if framing adds more than one, it is a follow-up.
+`ManagerNoticeList.tsx` 148, dialog ~100 against `NoticeActionDialog.tsx` 108, hooks and routes ~30), plus ~10 for
+the repeatable `status`. Another backend filter adds ~30; if framing adds more than one, it is a follow-up.
 
 ## Must explain (learning checkpoint)
 

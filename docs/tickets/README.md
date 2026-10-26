@@ -115,14 +115,14 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P6-03d](./P6-03d-maintenance-comments.md) | Maintenance comments: public and internal (split from P6-03) | A | 2 | P6-03b, P3-03 | todo | — |
 | [P6-04a](./P6-04a-resident-maintenance-list.md) | Maintenance hooks and the resident's request list (split from P6-04) | A | 2 | P6-03b | todo | — |
 | [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) | Maintenance submit form with photos, and cancel (split from P6-04) | A | 2 | P6-04a, P6-03b, P3-06 | todo | — |
-| [P6-04c](./P6-04c-maintenance-request-view.md) | One maintenance request: timeline and comments (split from P6-04) | A | 2 | P6-04a, P6-03c, P6-03d | todo | — |
+| [P6-04c](./P6-04c-maintenance-request-view.md) | One maintenance request: timeline and comments (split from P6-04) | A | 2 | P6-04a, P6-04b, P6-03c, P6-03d | todo | — |
 | [P6-04d](./P6-04d-manager-maintenance-list-and-actions.md) | Manager maintenance list, filters and transitions (split from P6-04) | A | 2 | P6-04c, P6-03c | todo | — |
-| [P6-05a](./P6-05a-dashboard-summary-api.md) | Dashboard summary API (split from P6-05) | A | 2 | P6-03b, P5-02a, P6-01c, P4-05b | todo | — |
-| [P6-05b](./P6-05b-role-landing-pages.md) | Role landing pages (split from P6-05) | A | 2 | P6-05a, P6-04d, P5-04, P6-02a, P4-08b | todo | — |
+| [P6-05a](./P6-05a-dashboard-summary-api.md) | Dashboard summary API (split from P6-05) | A | 2 | P6-03b, P6-03c, P6-03d, P5-02a, P6-01c, P4-05b | todo | — |
+| [P6-05b](./P6-05b-role-landing-pages.md) | Role landing pages (split from P6-05) | A | 2 | P6-05a, P6-04b, P6-04d, P5-04, P6-02a, P4-08b | todo | — |
 | [P6-06a](./P6-06a-minimal-profile.md) | Minimal profile: `PATCH /api/auth/me` and the profile page (split from P6-06) | B | 2 | P2-01b, P2-06c | todo | — |
 | [P6-06b](./P6-06b-staff-contacts.md) | Staff contacts directory (split from P6-06) | B | 2 | P6-06a, P2-04 | todo | — |
-| [P6-07a](./P6-07a-notices-e2e.md) | Notices E2E (J5) (split from P6-07) | B | 2 | P6-02a–f, P5-05 | todo | — |
-| [P6-07b](./P6-07b-maintenance-e2e.md) | Maintenance E2E (J6) with the internal-note privacy check (split from P6-07) | B | 2 | P6-04a–d, P6-07a | todo | — |
+| [P6-07a](./P6-07a-notices-e2e.md) | Notices E2E (J5) (split from P6-07) | B | 2 | P6-02a, P6-02b, P6-02c, P6-02d, P6-02e, P6-02f, P5-05 | todo | — |
+| [P6-07b](./P6-07b-maintenance-e2e.md) | Maintenance E2E (J6) with the internal-note privacy check (split from P6-07) | B | 2 | P6-04a, P6-04b, P6-04c, P6-04d, P6-07a | todo | — |
 | [P6-07c](./P6-07c-dashboard-e2e-and-smoke-list.md) | Dashboard E2E (J8) and the staging smoke list (split from P6-07) | B | 2 | P6-05b, P6-07b | todo | — |
 
 ### Milestone D — deployment (after week 8)

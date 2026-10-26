@@ -9,7 +9,8 @@
 | Status | todo |
 
 Split from the P6-04 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
-[P6-04a](./P6-04a-resident-maintenance-list.md), alongside [P6-04c](./P6-04c-maintenance-request-view.md).
+[P6-04a](./P6-04a-resident-maintenance-list.md), before [P6-04c](./P6-04c-maintenance-request-view.md), which reuses
+its emergency copy.
 
 ## Goal
 
@@ -36,9 +37,10 @@ the app must say to call, never imply that submitting alerted anyone (P6-03b cri
     disabled while a photo uploads
   - errors as messages on the form: 422 field errors (`features/auth/formErrors.ts`), the unit-not-occupied code,
     `invalid_file`, `file_not_found`, 429, any other failure; the form keeps what was typed and the photos
-  - **emergency copy**: choosing `emergency` shows the building's emergency phone (from P6-03b's response, or
-    the source it settles) and a fixed text that the request does not alert anyone; after the 201, the same
-    text with the phone stays on screen until dismissed
+  - **emergency copy**: choosing `emergency` shows a fixed text before submit: the request does not alert anyone,
+    call the emergency services or building staff now. After the 201, the same text with the building's
+    `emergency_phone` from the response (P6-03b returns it only on an emergency request) stays on screen until
+    dismissed. Showing the phone before submit needs a source P6-03b doesn't define (see "Open decisions")
   - **cancel**: a confirm dialog on a `submitted` request the caller may cancel (P6-03b's rule), one
     `maintenance_cancel` per confirm, 409 `invalid_transition` turned into a message ("It was already started or
     cancelled"), then the list refreshed (cancel, then invalidate the domain key `onSettled`)
@@ -67,9 +69,9 @@ merged ones (`frontend/src/api/schema.d.ts`).
    photos remain.
 5. **Given** a resident with no current occupancy (P6-03b criterion 2), **then** the unit choice is absent and
    only a common-area request can be filed (or the form says why none can, as P6-03b decides).
-6. **Emergency.** **Given** `emergency` chosen, **then** the phone and the fixed text show before submit and after
-   the 201; with no phone set for the building, the text says to call the emergency services and building staff
-   directly; nothing on screen says the building was notified.
+6. **Emergency.** **Given** `emergency` chosen, **then** the fixed text shows before submit, and after the 201 the
+   text with the response's `emergency_phone`; with no phone set for the building (`null`), the text says to call
+   the emergency services and building staff directly; nothing on screen says the building was notified.
 7. **Cancel.** **Given** a `submitted` request of the caller, **when** they confirm cancel, **then** one request is
    sent and it shows as cancelled; a 409 (a manager started it meanwhile) shows the message, keeps the dialog open
    and refreshes the list; Cancel and Escape return focus to the opener; a request the caller may not cancel has no
@@ -95,7 +97,7 @@ api.ts,categoryLabel.ts}`, `frontend/src/features/maintenance/pages/MyMaintenanc
 
 Estimate: ~390 non-test lines (form ~200 against `LogPackageForm.tsx` 292 without its unit search, photo list
 ~60, emergency copy ~30, cancel dialog ~70 against `ReturnDialog.tsx` 63, hooks ~30). If the photo list needs its
-own upload queue, move cancel to P6-04c.
+own upload queue, move cancel to a ticket of its own (P6-04c is at its limit).
 
 ## Must explain (learning checkpoint)
 
@@ -107,7 +109,9 @@ own upload queue, move cancel to P6-04c.
 
 From the stub ("Decide while framing", carried through P6-03b):
 - **Emergency category behaviour.** Stub default: **show the building's emergency phone, and never rely on the
-  app.** The exact copy is decided here (fixed text, no promise of an alert).
+  app.** The exact copy is decided here (fixed text, no promise of an alert). Default: the phone after the 201 (the
+  only place P6-03b returns it). Showing it **before** submit needs P6-03b (or a small API change here) to expose
+  it on the building (`BuildingOut` or the feature's config); if framing takes that, it is in scope and costed.
 
 Left open by the stub:
 - the form as a panel on the page (as `LogPackageForm`) or a dialog

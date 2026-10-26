@@ -4,14 +4,15 @@
 |---|---|
 | Phase / lane | P6 / A |
 | Risk tier | 2 |
-| Depends on | P6-03b, P5-02a, P6-01c, P4-05b |
+| Depends on | P6-03b, P6-03c, P6-03d, P5-02a, P6-01c, P4-05b |
 | Replaces old | M9-T01 (API part) |
 | Status | todo |
 
 Drafted from the P6-05 stub in [P6-P7-backlog.md](./P6-P7-backlog.md) and split in two: this ticket is the API;
 [P6-05b](./P6-05b-role-landing-pages.md) the landing pages. Measured against what exists (`package_summary`,
 `notice_summary` and `pending_summary` are 4–11 lines each; `MyPackagesPage.tsx` 83, `ManagerNoticesPage.tsx` 129),
-the stub is about 470 non-test lines: ~170 here, ~300 in P6-05b.
+the stub is about 470 non-test lines: ~170 here, ~300 in P6-05b. It adds `maintenance_summary` to
+`app/maintenance/service.py`, which P6-03c and P6-03d also edit, so it follows them (CLAUDE.md hot files).
 
 ## Goal
 

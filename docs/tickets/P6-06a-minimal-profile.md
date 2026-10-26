@@ -20,10 +20,11 @@ A signed-in user edits their full name, phone and locale on a "My profile" page,
 
 ## Why
 
-Residents and staff need to correct the name managers and the desk see (packages, onboarding, members), and the
-phone and locale the later slices read (P6-06b's directory, email templates under `app/email/templates/<locale>/`).
-It is the first write to the `users` row outside sign-up and password reset, so it must keep the account
-boundaries: the email, password, roles and memberships are not editable here (ADR-0003).
+Residents and staff need to correct the name managers and the desk see (packages, onboarding, members), their
+contact phone, and the locale emails are rendered in (`app/email/templates/<locale>/`). The phone here is the
+person's own; P6-06b's directory shows a separate per-building work phone, never this one. It is the first write to
+the `users` row outside sign-up and password reset, so it keeps the account boundaries: the email, password, roles
+and memberships are not editable here, and it is a session route under the CSRF middleware (ADR-0003).
 
 ## Scope
 

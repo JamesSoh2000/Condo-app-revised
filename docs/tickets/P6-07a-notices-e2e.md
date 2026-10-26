@@ -4,7 +4,7 @@
 |---|---|
 | Phase / lane | P6 / B |
 | Risk tier | 2 |
-| Depends on | P6-02a–f, P5-05 |
+| Depends on | P6-02a, P6-02b, P6-02c, P6-02d, P6-02e, P6-02f, P5-05 |
 | Replaces old | M9-T05 (notices part) |
 | Status | todo |
 

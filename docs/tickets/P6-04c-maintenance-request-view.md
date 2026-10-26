@@ -4,12 +4,13 @@
 |---|---|
 | Phase / lane | P6 / A |
 | Risk tier | 2 |
-| Depends on | P6-04a, P6-03c, P6-03d |
+| Depends on | P6-04a, P6-04b, P6-03c, P6-03d |
 | Replaces old | M8-T02 (detail part), M8-T03 (comments part) |
 | Status | todo |
 
 Split from the P6-04 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
-[P6-04a](./P6-04a-resident-maintenance-list.md). [P6-04d](./P6-04d-manager-maintenance-list-and-actions.md) opens
+[P6-04a](./P6-04a-resident-maintenance-list.md) and [P6-04b](./P6-04b-maintenance-submit-and-cancel.md), whose
+`EmergencyNotice` it reuses (both also edit `api.ts` and `MyMaintenancePage.tsx`, so they don't run at once). [P6-04d](./P6-04d-manager-maintenance-list-and-actions.md) opens
 the same view from the manager's list.
 
 ## Goal
