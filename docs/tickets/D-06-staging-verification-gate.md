@@ -4,7 +4,7 @@
 |---|---|
 | Phase / lane | D / both |
 | Risk tier | 1 |
-| Depends on | D-03, D-04, D-05, P5-05, P6-07 |
+| Depends on | D-03, D-04, D-05, P5-05, P6-07c |
 | Replaces old | M7-T10 (staging part), the staging parts of the first draft's P5-05 |
 | Status | todo |
 
@@ -32,7 +32,7 @@ list explicit, instead of discovering it during the pilot.
   - **Staging smoke** (`e2e/tests/smoke-staging.spec.ts`, run with `E2E_BASE_URL=https://<domain>`, using
     the seeded staging accounts). There is no email reading.
     - J4: log in, log a package with a photo, the resident sees it, pickup
-    - J5/J6/J8 (from P6-07): publish a notice and see the badge, submit a maintenance request, and check the
+    - J5/J6/J8 (from P6-07a–c): publish a notice and see the badge, submit a maintenance request, and check the
       dashboard counts
     - a building-B user gets 404 on a building-A package URL
   - **`.github/workflows/staging-smoke.yml`:** runs after `deploy` succeeds, and on `workflow_dispatch`.

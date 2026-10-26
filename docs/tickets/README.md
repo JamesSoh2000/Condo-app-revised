@@ -113,6 +113,17 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P6-03b](./P6-03b-maintenance-submit-and-read-api.md) | Maintenance submit, read and cancel API (split from P6-03) | A | 2 | P6-03a, P2-04, P3-03, P3-04b | todo | — |
 | [P6-03c](./P6-03c-maintenance-manager-actions.md) | Maintenance manager actions: start, hold, resolve, reopen (split from P6-03) | A | 2 | P6-03b, P3-03, P3-02 | todo | — |
 | [P6-03d](./P6-03d-maintenance-comments.md) | Maintenance comments: public and internal (split from P6-03) | A | 2 | P6-03b, P3-03 | todo | — |
+| [P6-04a](./P6-04a-resident-maintenance-list.md) | Maintenance hooks and the resident's request list (split from P6-04) | A | 2 | P6-03b | todo | — |
+| [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) | Maintenance submit form with photos, and cancel (split from P6-04) | A | 2 | P6-04a, P6-03b, P3-06 | todo | — |
+| [P6-04c](./P6-04c-maintenance-request-view.md) | One maintenance request: timeline and comments (split from P6-04) | A | 2 | P6-04a, P6-03c, P6-03d | todo | — |
+| [P6-04d](./P6-04d-manager-maintenance-list-and-actions.md) | Manager maintenance list, filters and transitions (split from P6-04) | A | 2 | P6-04c, P6-03c | todo | — |
+| [P6-05a](./P6-05a-dashboard-summary-api.md) | Dashboard summary API (split from P6-05) | A | 2 | P6-03b, P5-02a, P6-01c, P4-05b | todo | — |
+| [P6-05b](./P6-05b-role-landing-pages.md) | Role landing pages (split from P6-05) | A | 2 | P6-05a, P6-04d, P5-04, P6-02a, P4-08b | todo | — |
+| [P6-06a](./P6-06a-minimal-profile.md) | Minimal profile: `PATCH /api/auth/me` and the profile page (split from P6-06) | B | 2 | P2-01b, P2-06c | todo | — |
+| [P6-06b](./P6-06b-staff-contacts.md) | Staff contacts directory (split from P6-06) | B | 2 | P6-06a, P2-04 | todo | — |
+| [P6-07a](./P6-07a-notices-e2e.md) | Notices E2E (J5) (split from P6-07) | B | 2 | P6-02a–f, P5-05 | todo | — |
+| [P6-07b](./P6-07b-maintenance-e2e.md) | Maintenance E2E (J6) with the internal-note privacy check (split from P6-07) | B | 2 | P6-04a–d, P6-07a | todo | — |
+| [P6-07c](./P6-07c-dashboard-e2e-and-smoke-list.md) | Dashboard E2E (J8) and the staging smoke list (split from P6-07) | B | 2 | P6-05b, P6-07b | todo | — |
 
 ### Milestone D — deployment (after week 8)
 
@@ -123,7 +134,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [D-03](./D-03-cicd-deploy-staging.md) | CI/CD: build, push and deploy to staging | B | 1 | D-02, P1-08 | todo | — |
 | [D-04](./D-04-logs-errors-uptime.md) | Logs, error tracking and uptime | A | 2 | D-03 | todo | — |
 | [D-05](./D-05-nightly-backups-to-s3.md) | Nightly backups to S3 and the staging restore test | A | 1 | D-02, P7-01, D-04 | todo | — |
-| [D-06](./D-06-staging-verification-gate.md) | Staging verification gate | both | 1 | D-03, D-04, D-05, P5-05, P6-07 | todo | — |
+| [D-06](./D-06-staging-verification-gate.md) | Staging verification gate | both | 1 | D-03, D-04, D-05, P5-05, P6-07c | todo | — |
 
 ## Critical path
 

@@ -34,30 +34,27 @@ within 14 days, status notifications, and the stub's "Step 8" row-lock test help
 query or endpoint they shape.
 
 ### P6-04 — Maintenance frontend · Lane A · Tier 2
-- **Goal:** resident pages for submit (with photos), list and detail with a timeline. A manager board or list
-  with filters, a transition dialog and comments with an "internal" toggle.
-- Replace the legacy `Maintenance` and `ManagementMaintenance` pages.
+Drafted and split into [P6-04a](./P6-04a-resident-maintenance-list.md) (hooks and the resident's list),
+[P6-04b](./P6-04b-maintenance-submit-and-cancel.md) (submit with photos, the emergency copy, cancel, the legacy
+`Maintenance` page), [P6-04c](./P6-04c-maintenance-request-view.md) (one request, its timeline, comments and the
+"internal" toggle) and [P6-04d](./P6-04d-manager-maintenance-list-and-actions.md) (the manager's list, filters,
+transition dialog, the legacy `ManagementMaintenance` page). The stub's "board or list" is an open decision in
+P6-04d.
 
 ### P6-05 — Dashboard summary API and role landing pages · Lane A · Tier 2
-- **Goal:** `GET /dashboard` returns counts per role, reusing the existing summary queries (packages waiting,
-  pending onboarding, open maintenance by status, unread and urgent notices). Each role gets a landing page
-  with cards linking to the slices.
-- Show only enabled features, and only domains that exist. No cards for deferred domains.
-- Replace the legacy `Dashboard` and `Home` pages.
-- Carried from P2-06c: council "view as" (`useBuildingContext().viewAs`, applied only when
-  `useCanViewAs(building)` is true) changes only the nav today. The landing page may use it to pick the council
-  member's cards; it must never reach the API or a guard (PR #65 D3).
+Drafted and split into [P6-05a](./P6-05a-dashboard-summary-api.md) (`GET /dashboard`, reusing the summary
+queries, enabled features only) and [P6-05b](./P6-05b-role-landing-pages.md) (the landing pages, the legacy
+`Dashboard` and `Home` pages). The P2-06c council "view as" carry is in P6-05b.
 
 ### P6-06 — Minimal profile and staff contacts · Lane B · Tier 2
-- **Goal:** `PATCH /api/auth/me` (full_name, phone, locale) with a profile page, plus
-  `GET /api/buildings/{b}/contacts`: the staff directory with name, role and work phone, visible to all
-  active members. Residents are **not** listed by default.
-- Replace the legacy `Profile` (minimal) and `Contacts` pages.
+Drafted and split into [P6-06a](./P6-06a-minimal-profile.md) (`PATCH /api/auth/me`, the profile page, the legacy
+`Profile` page) and [P6-06b](./P6-06b-staff-contacts.md) (the staff directory, the work phone, the legacy
+`Contacts` page; residents not listed).
 
 ### P6-07 — E2E for notices, maintenance and dashboard · Lane B · Tier 2
-- **Goal:** Playwright journeys J5 (notices, including the urgent banner), J6 (maintenance, including the
-  internal-note privacy check) and J8 (dashboard counts per role) pass locally and in CI, including on the
-  prod-like stack. List the smoke steps for these journeys so D-06 can add them to the staging smoke.
+Drafted and split by journey, since each waits for a different slice: [P6-07a](./P6-07a-notices-e2e.md) (J5),
+[P6-07b](./P6-07b-maintenance-e2e.md) (J6, with the internal-note privacy check) and
+[P6-07c](./P6-07c-dashboard-e2e-and-smoke-list.md) (J8, and the completed staging smoke list for D-06).
 
 ## P7 — Demo hardening (week 8)
 
