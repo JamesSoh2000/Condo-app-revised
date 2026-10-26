@@ -22,8 +22,17 @@ have the same gap.
 - **A fence in the occupancy helpers.** Called without `at`, `start_occupancy` checks the unit it starts,
   `end_occupancy` the unit it ended, and `transfer_occupancy` both. If a registered unit-addressed record of
   that unit was stamped after `at`, the helper raises `OccupancyTimeError`, so the caller's transaction rolls
-  back. The check runs after the membership lock: a create that held the membership has committed, and READ
-  COMMITTED shows its row. The caller retries in a new transaction, whose `now()` is later than the record.
+  back. The caller retries in a new transaction, whose `now()` is later than the record.
+- **The end side is what closes R2 F1, and it is complete.** A create locks its requester's membership
+  `FOR SHARE` until it commits, and ending that membership's occupancy locks the same row first: the fence
+  runs after the create committed, and READ COMMITTED shows its row. So a requester's window never ends
+  before their own request.
+- **The start side is conservative, not required.** A newcomer's start locks the newcomer's membership,
+  which the create doesn't hold, so it sees only records already committed. When it misses an uncommitted
+  one, the result is the same as the serial order "move in, then the request": the newcomer was a
+  co-occupant when the request was filed, and `visible_maintenance` shows a co-occupant's unit requests by
+  design (review round 3 raised this case; the serial run gives the same answer). Every outcome is then one
+  that some serial order of the same operations gives, which is the property R2 F1 broke.
 - **Domains register their records.** `register_unit_record(building_col, unit_col, time_col)` in
   `app/memberships/occupancy.py`, called next to the model (`app/maintenance/models.py`), so every process
   that loads the models has the fence and `memberships` never imports a record domain. Maintenance requests

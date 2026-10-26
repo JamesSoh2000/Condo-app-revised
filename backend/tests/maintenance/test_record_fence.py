@@ -26,8 +26,8 @@ from app.maintenance.schemas import MaintenanceRequestCreate, MaintenanceRequest
 from app.memberships.enums import MembershipStatus, OccupancyRelationship, Role
 from app.memberships.models import UnitOccupancy
 from app.memberships.occupancy import end_occupancy, transfer_occupancy
-from app.memberships.schemas import MemberDeactivateIn
-from app.memberships.service import deactivate_member
+from app.memberships.schemas import MemberDeactivateIn, MemberTransferIn
+from app.memberships.service import deactivate_member, transfer_member
 from app.onboarding import service as onboarding
 from app.onboarding.models import OnboardingRequest
 from app.rate_limits.service import RateLimiter
@@ -144,7 +144,8 @@ def test_an_explicit_time_is_not_fenced(scratch_database_url: str) -> None:
 
 
 def test_an_approval_that_began_before_a_request_is_refused(scratch_database_url: str) -> None:
-    # The start side: the newcomer's window would open before the request, and show it to them.
+    # The start side, conservative (ADR-0021): a backdated start that can see a committed request
+    # of the unit is refused, though "move in, then the request" would also show it to them.
     async def body(sessions: Sessions, world: World, _fixture: MaintenanceRequest) -> None:
         async with sessions() as db:
             user = await make_user(db)
@@ -231,5 +232,34 @@ def test_an_invitation_accept_that_began_before_a_request_is_refused(
                 )
                 == 1
             )
+
+    _run(scratch_database_url, body)
+
+
+def test_a_newcomer_who_moved_in_before_a_request_keeps_it_after_the_requester_leaves(
+    scratch_database_url: str,
+) -> None:
+    # Review round 3's case run serially: an uncommitted request the start-side fence can't see
+    # ends the same way, so it is the co-occupant rule (`visible_maintenance`), not a leak.
+    async def body(sessions: Sessions, world: World, _fixture: MaintenanceRequest) -> None:
+        manager = persona_ctx(world, "a_manager")
+        async with sessions() as db:
+            await transfer_member(
+                db,
+                manager,
+                world.a_resident2.membership.id,
+                MemberTransferIn(unit_id=world.a_101.id, relationship=OccupancyRelationship.TENANT),
+            )
+        request = await _submit(sessions, world, _data(world))
+        async with sessions() as db:
+            await transfer_member(
+                db,
+                manager,
+                world.a_resident1.membership.id,
+                MemberTransferIn(unit_id=world.a_102.id, relationship=OccupancyRelationship.TENANT),
+            )
+        async with sessions() as db:
+            seen = await service.get_request(db, persona_ctx(world, "a_resident2"), request.id)
+        assert seen.id == request.id
 
     _run(scratch_database_url, body)

@@ -594,8 +594,10 @@ def test_earlier_manager_transactions_do_not_expose_an_outgoing_request(
 
 
 def test_a_retry_waiting_behind_a_move_out_replays(scratch_database_url: str) -> None:
-    # Review round 2 F2's neighbour: the move-out holds the membership; the retry waits on its
-    # unit check, then finds the occupancy ended and the original committed: a replay.
+    # Review round 2 F2's neighbour: a move-out and a retry both wait on the original's membership
+    # lock. Whichever Postgres wakes first, the retry replays: before the move-out, its insert
+    # meets the committed original; after it, its unit check would refuse but the original is found
+    # first (review round 3 found this test never ran: `_run` was missing).
 
     async def body(sessions: Sessions, world: World, _fixture: MaintenanceRequest) -> None:
         ctx, data = persona_ctx(world, "a_resident1"), _data(world)
@@ -630,7 +632,11 @@ def test_a_retry_waiting_behind_a_move_out_replays(scratch_database_url: str) ->
             assert not replaying.done()
             release.set()
             created = await asyncio.wait_for(creating, 10)
-            await asyncio.wait_for(moving, 10)
             replay = await asyncio.wait_for(replaying, 10)
+            # As the HTTP request's session would at its end: a replay holds the lock until then.
+            await retry.rollback()
+            await asyncio.wait_for(moving, 10)
             assert replay.replayed
             assert replay.request.id == created.request.id
+
+    _run(scratch_database_url, body)
