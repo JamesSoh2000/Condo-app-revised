@@ -43,4 +43,5 @@ reviewer can check the code against it, and the explanation is later compared ag
    block if it is external.
 6. Before the first review, fill the PR's "Known failure cases" table in "Independent review": one row per changed
    control, field or wait point, with the CLAUDE.md lesson that applies and its test (`expectFocusKept` in
-   `frontend/src/test/focus.ts` and `e2e/helpers/focus.ts` for the focus rows) or `n/a: why`.
+   `frontend/src/test/focus.ts` and `e2e/helpers/focus.ts` for the focus rows; `act_blocked_on_lock` in
+   `backend/tests/helpers/lock_wait.py` for the lock-wait rows) or `n/a: why`.
