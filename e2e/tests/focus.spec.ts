@@ -162,6 +162,45 @@ test.describe('the helper on pages of its own', () => {
     await save.focus();
     await expect(expectFocusKept(page, () => save.click(), { control: save })).rejects.toThrow(/call trackRequests\(page\)/);
   });
+
+  // A page whose clock is not the runner's (`page.clock`, a date-sensitive view) still gets 300 ms of its own time
+  // (WF-02a review round 1, Codex: page and runner timestamps were subtracted from each other).
+  test('a page clock a day ahead of the runner still waits 300 ms of page time', async ({ page }) => {
+    await page.clock.install({ time: new Date(Date.now() + 86_400_000) });
+    trackRequests(page);
+    await page.setContent('<button>Save</button>');
+    const save = page.getByRole('button', { name: 'Save' });
+    await save.focus();
+    const started = await page.evaluate(() => performance.now());
+    await expectFocusKept(page, async () => {}, { control: save });
+    const elapsed = (await page.evaluate(() => performance.now())) - started;
+    expect(elapsed, 'the helper must see 300 ms of unchanged focus').toBeGreaterThanOrEqual(300);
+  });
+
+  test('a page clock a day ahead of the runner cannot hide a drop 225 ms after the action', async ({ page }) => {
+    await page.clock.install({ time: new Date(Date.now() + 86_400_000) });
+    trackRequests(page);
+    await page.setContent('<button>Save</button>');
+    const save = page.getByRole('button', { name: 'Save' });
+    await save.focus();
+    const removeAfter225ms = () =>
+      page.evaluate(() => {
+        const until = performance.now() + 225;
+        const tick = () => (performance.now() >= until ? document.querySelector('button')!.remove() : requestAnimationFrame(tick));
+        requestAnimationFrame(tick);
+      });
+    await expect(expectFocusKept(page, removeAfter225ms, { control: save })).rejects.toThrow(/focus is lost at the end/);
+  });
+
+  test('a paused page clock never counts as settled', async ({ page }) => {
+    await page.clock.install();
+    await page.clock.pauseAt(new Date(Date.now() + 86_400_000));
+    trackRequests(page);
+    await page.setContent('<button>Save</button>');
+    const save = page.getByRole('button', { name: 'Save' });
+    await save.focus();
+    await expect(expectFocusKept(page, async () => {}, { control: save })).rejects.toThrow(/never settled/);
+  });
 });
 
 /**

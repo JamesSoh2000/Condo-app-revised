@@ -10,10 +10,13 @@ import { expect, type Locator, type Page, type Request } from './test';
 /** Bad frames in a row tolerated after the action: one is the browser's own fix-up; two is what a keyboard or
  *  screen-reader user notices. Fixed here: never raised to make a test pass. */
 const BAD_FRAMES_ALLOWED = 1;
-/** The page counts as settled when no request is in flight and nothing changed for this long. */
+/** The page counts as settled when no request is in flight and nothing changed for this long. Focus is timed on the
+ *  page's clock and the network on the runner's, never one against the other: a page's clock may not be the runner's
+ *  (`page.clock`), and subtracting them made 300 ms as short as 122 (WF-02a review round 1, Codex). */
 const STABLE_MS = 300;
 
 interface Frame {
+  /** The page's `performance.now()`. */
   at: number;
   bad: boolean;
   /** Which element: two with the same tag and name are still two (review round 1, Codex). */
@@ -30,6 +33,7 @@ declare global {
 
 interface Network {
   inFlight: Set<Request>;
+  /** The runner's `performance.now()` at the last request event. */
   last: number;
 }
 
@@ -42,15 +46,15 @@ const tracked = new WeakMap<Page, Network>();
  */
 export function trackRequests(page: Page): void {
   if (tracked.has(page)) return;
-  const network: Network = { inFlight: new Set(), last: Date.now() };
+  const network: Network = { inFlight: new Set(), last: performance.now() };
   tracked.set(page, network);
   const started = (request: Request) => {
     network.inFlight.add(request);
-    network.last = Date.now();
+    network.last = performance.now();
   };
   const ended = (request: Request) => {
     network.inFlight.delete(request);
-    network.last = Date.now();
+    network.last = performance.now();
   };
   page.on('request', started);
   page.on('requestfinished', ended);
@@ -93,7 +97,7 @@ export async function expectFocusKept(
       let frame = 0;
       const tick = () => {
         const active = document.activeElement;
-        window.__focusFrames!.push({ at: Date.now(), bad: lost(active), element: idOf(active), focused: describe(active) });
+        window.__focusFrames!.push({ at: performance.now(), bad: lost(active), element: idOf(active), focused: describe(active) });
         frame = requestAnimationFrame(tick);
       };
       frame = requestAnimationFrame(tick);
@@ -102,7 +106,8 @@ export async function expectFocusKept(
     }, region);
     expect(inside, 'before the action, focus must be inside `within`').toBe(true);
 
-    const actionStarted = Date.now();
+    // Frames from here on are the action's, counted by position: no clock is compared across page and runner.
+    const { first, startedAt } = await page.evaluate(() => ({ first: window.__focusFrames!.length, startedAt: performance.now() }));
     await action();
 
     // Settled: no request in flight, at least two frames recorded after the action, and no change of focus or
@@ -112,20 +117,22 @@ export async function expectFocusKept(
         async () => {
           if (network.inFlight.size > 0) return 'a request is in flight';
           const frames = await page.evaluate(() => window.__focusFrames ?? []);
-          const after = frames.filter((frame) => frame.at >= actionStarted);
+          const after = frames.slice(first);
           if (after.length < 2) return 'too few frames after the action';
-          let changed = actionStarted;
+          let changed = startedAt;
           for (let i = 1; i < after.length; i++) {
             if (after[i].element !== after[i - 1].element || after[i].bad !== after[i - 1].bad) changed = after[i].at;
           }
-          const quiet = after[after.length - 1].at - Math.max(changed, network.last);
-          return quiet >= STABLE_MS ? 'settled' : `changed ${quiet} ms ago`;
+          const focusQuiet = after[after.length - 1].at - changed;
+          const networkQuiet = performance.now() - network.last;
+          if (focusQuiet < STABLE_MS) return `focus changed ${Math.round(focusQuiet)} ms ago (page clock)`;
+          return networkQuiet >= STABLE_MS ? 'settled' : `a request ended ${Math.round(networkQuiet)} ms ago`;
         },
         { message: 'the page never settled after the action' },
       )
       .toBe('settled');
 
-    const frames = (await page.evaluate(() => window.__focusFrames ?? [])).filter((frame) => frame.at >= actionStarted);
+    const frames = (await page.evaluate(() => window.__focusFrames ?? [])).slice(first);
     let run = 0;
     let worst = 0;
     let lastGood = 'the control';
