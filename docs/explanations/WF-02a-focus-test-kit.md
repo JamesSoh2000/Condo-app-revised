@@ -10,7 +10,7 @@
 > This is a snapshot: before the merge it is edited to match the PR head; once merged, write a new
 > explanation for later changes and do not update this one. Lasting decisions live in ADRs.
 > **Reality check:** re-read at `bbbd000` the diff (`git diff --stat origin/main...HEAD`), `frontend/src/test/focus.ts`
-> and `e2e/helpers/focus.ts` in full, `LogPackageForm.tsx::submit`, the test names and the assertions of the tests
+> and `e2e/helpers/focus.ts` in full, `frontend/src/features/packages/LogPackageForm.tsx::submit`, the test names and the assertions of the tests
 > cited below; ran `npx vitest run` (41 files, 1363 passed), the Chromium helper's own cases with `--repeat-each=3`
 > (84 passed), `make e2e DB_PORT=55432 args="tests/focus.spec.ts tests/j4-packages.spec.ts tests/packages-desk.spec.ts"`
 > (45 passed), the MF4 and sampler mutations, and criteria 9–11's commands (no output where none is expected). Differences from the plan: see §2.
@@ -102,7 +102,7 @@ the split). The backend helpers are WF-02b.
 
 | Decision | Alternative rejected | Why | Basis | Source |
 |---|---|---|---|---|
-| `trackRequests(page)` before load; `expectFocusKept` refuses an untracked page | Listeners added by the helper; tracking inside the shared `helpers/test.ts` fixture | Late listeners miss a request already out; editing the shared fixture edits an existing test helper (criterion 10) | review finding (WF-02 R2 F2) | recorded |
+| `trackRequests(page)` before load; `expectFocusKept` refuses an untracked page | Listeners added by the helper; tracking inside the shared `e2e/helpers/test.ts` fixture | Late listeners miss a request already out; editing the shared fixture edits an existing test helper (criterion 10) | review finding (WF-02 R2 F2) | recorded |
 | Frames compared by element identity (`WeakMap` id) | By tag and name | Two "Edit" buttons alternating looked stable | review finding (WF-02 R1 F3) | recorded |
 | Focus quiet on the page's `performance.now()`, network quiet on the runner's; frames cut by position | One clock (`Date.now()` on both sides) | The clocks differ under `page.clock`; 300 ms shrank to ~140 | review finding (round 1) | recorded |
 | A control in a disabled `<fieldset>` (outside its first legend) is `<body>`; a link there is not | Only `[disabled]` | HTML disables form controls through a fieldset, not links | ticket frame note (criterion 1) | recorded |
@@ -139,7 +139,7 @@ criterion 4 allows.
    POST (`hold`).
 2. **The helper** checks the submit is focused, installs the per-frame recorder, and reads the frame count and page
    time just before the action.
-3. **The action** clicks "Log package". `LogPackageForm.tsx::submit` runs: if validation passes, it focuses
+3. **The action** clicks "Log package". `frontend/src/features/packages/LogPackageForm.tsx::submit` runs: if validation passes, it focuses
    `statusRef` (the `role="status"` line, now "Logging…"), then calls `create.mutate`; React re-renders with `busy`,
    which disables the submit. Focus is already on the status line, so no frame is bad.
 4. **The hold** releases the POST three frames later; the 201 handler moves focus to the unit search (unchanged
@@ -393,7 +393,7 @@ Quiz:
 
 1. Why does `expectFocusKept` (jsdom) check focus on `control` *before* running the action?
 2. In the Chromium poll, why is `inFlight` checked both before and after the frame read?
-3. What would break if `LogPackageForm.tsx::submit` focused the status line *before* the validation check?
+3. What would break if `frontend/src/features/packages/LogPackageForm.tsx::submit` focused the status line *before* the validation check?
 4. What would break if the Chromium helper went back to `changed = startedAt`?
 5. How would you extend the Chromium helper to also fail when focus lands on an element with `aria-hidden="true"`?
 
