@@ -117,6 +117,8 @@ export async function expectFocusKept(
         async () => {
           if (network.inFlight.size > 0) return 'a request is in flight';
           const frames = await page.evaluate(() => window.__focusFrames ?? []);
+          // Again: a request can start while the read above is out (WF-02a review round 3, Codex).
+          if (network.inFlight.size > 0) return 'a request is in flight';
           const after = frames.slice(first);
           if (after.length < 2) return 'too few frames after the action';
           // From the first frame seen, not the read before the action: time no frame ran (a blocked main thread) is

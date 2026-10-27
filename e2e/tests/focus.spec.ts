@@ -214,6 +214,59 @@ test.describe('the helper on pages of its own', () => {
     await expect(expectFocusKept(page, blockThenHandOffToARemovedStatus, { control: save })).rejects.toThrow(/focus is lost/);
   });
 
+  // The network is checked again after the frame read: a request can start while it is out (WF-02a review round 3,
+  // Codex). The read is delayed by wrapping `page.evaluate`, the only way to place a request inside it.
+  test('a request that starts during the frame read still keeps the page from settling', async ({ page }) => {
+    trackRequests(page);
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let arrived!: () => void;
+    const requested = new Promise<void>((resolve) => (arrived = resolve));
+    await page.route('https://focus.test/', (route) => route.fulfill({ contentType: 'text/html', body: '<button>Save</button>' }));
+    await page.route('https://focus.test/refresh', async (route) => {
+      arrived();
+      await released;
+      await route.fulfill({ body: 'refreshed' });
+    });
+    await page.goto('https://focus.test/');
+    const save = page.getByRole('button', { name: 'Save' });
+    await save.focus();
+
+    const evaluate = page.evaluate.bind(page);
+    let delayed = false;
+    page.evaluate = (async (fn: Parameters<typeof page.evaluate>[0], arg: unknown) => {
+      const source = String(fn);
+      // The poll's frame read: not the recorder (`push`) or the position read (`length`).
+      if (!delayed && source.includes('__focusFrames') && !source.includes('length') && !source.includes('push')) {
+        delayed = true;
+        await evaluate(() => void fetch('/refresh').then(() => document.querySelector('button')!.remove()));
+        await requested;
+        await evaluate(
+          () =>
+            new Promise<void>((resolve) => {
+              const until = performance.now() + 650;
+              const tick = () => (performance.now() >= until ? resolve() : requestAnimationFrame(tick));
+              requestAnimationFrame(tick);
+            }),
+        );
+      }
+      return evaluate(fn, arg);
+    }) as typeof page.evaluate;
+
+    let outcome = 'pending';
+    try {
+      await expectFocusKept(page, async () => {}, { control: save }).then(
+        () => (outcome = 'passed'),
+        (error: Error) => (outcome = error.message),
+      );
+      expect(delayed, 'the frame read was delayed').toBe(true);
+      expect(outcome, 'the refresh is still in flight; the helper must not pass').not.toBe('passed');
+    } finally {
+      page.evaluate = evaluate;
+      release();
+    }
+  });
+
   test('a paused page clock never counts as settled', async ({ page }) => {
     await page.clock.install();
     await page.clock.pauseAt(new Date(Date.now() + 86_400_000));

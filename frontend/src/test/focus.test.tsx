@@ -96,6 +96,22 @@ describe("criterion 1: activeElementLikeBrowser", () => {
     expect(activeElementLikeBrowser()).toBe(document.body);
   });
 
+  it("a focused element under an [inert] ancestor, at any depth, is <body>", () => {
+    render(
+      <section data-testid="region">
+        <div>
+          <div>
+            <button type="button">Deep</button>
+          </div>
+        </div>
+      </section>,
+    );
+    button("Deep").focus();
+    screen.getByTestId("region").setAttribute("inert", "");
+    expect(document.activeElement).toBe(button("Deep"));
+    expect(activeElementLikeBrowser()).toBe(document.body);
+  });
+
   it("an enabled, attached element is itself; a removed one is already <body> in jsdom", () => {
     // A plain node, not React's: React's cleanup would fail on a node removed behind its back.
     const here = document.body.appendChild(
