@@ -210,3 +210,118 @@ def test_a_failing_change_is_raised_and_leaves_no_lock_or_task(scratch_database_
         assert await _value(sessions, 1) in (0, 1)
 
     _run(scratch_database_url, body)
+
+
+def test_an_unrelated_session_waiting_on_the_holder_does_not_count_as_the_action(
+    scratch_database_url: str,
+) -> None:
+    # Review round 1 (Codex, High): any backend blocked by the holder passed, so an action that
+    # never waited was accepted while another session waited on the holder.
+    async def body(sessions: Sessions) -> None:
+        unrelated: asyncio.Future[int] | None = None
+        changed = asyncio.Event()
+
+        async def hold(db: AsyncSession) -> None:
+            nonlocal unrelated
+            await _hold(1)(db)
+            unrelated = asyncio.ensure_future(_increment(sessions, 1)())
+
+        async def act() -> str:
+            await changed.wait()  # no statement of the action ever waits on the holder
+            return "never blocked"
+
+        async def change(_db: AsyncSession) -> None:
+            changed.set()
+
+        try:
+            with pytest.raises(AssertionError, match=NEVER_BLOCKED):
+                await act_blocked_on_lock(sessions, hold=hold, act=act, change=change, timeout=1.0)
+        finally:
+            assert unrelated is not None
+            await asyncio.gather(unrelated, return_exceptions=True)
+
+    _run(scratch_database_url, body)
+
+
+def test_an_action_blocked_by_a_third_session_fails_even_while_another_waits_on_the_holder(
+    scratch_database_url: str,
+) -> None:
+    async def body(sessions: Sessions) -> None:
+        unrelated: asyncio.Future[int] | None = None
+        changed: list[str] = []
+
+        async def hold(db: AsyncSession) -> None:
+            nonlocal unrelated
+            await _hold(1)(db)
+            unrelated = asyncio.ensure_future(_increment(sessions, 1)())
+
+        async def change(_db: AsyncSession) -> None:
+            changed.append("changed")
+
+        async with sessions() as third:
+            await _hold(2)(third)
+            try:
+                with pytest.raises(AssertionError, match=NEVER_BLOCKED):
+                    await act_blocked_on_lock(
+                        sessions, hold=hold, act=_increment(sessions, 2), change=change, timeout=1.0
+                    )
+            finally:
+                await third.rollback()
+                assert unrelated is not None
+                await asyncio.gather(unrelated, return_exceptions=True)
+
+        assert changed == []
+
+    _run(scratch_database_url, body)
+
+
+def test_an_action_whose_wait_is_in_a_task_of_its_own_counts(scratch_database_url: str) -> None:
+    # The action's own child tasks are the action too (asyncio.gather inside it).
+    async def body(sessions: Sessions) -> None:
+        async def act() -> list[int]:
+            return list(await asyncio.gather(_increment(sessions, 1)(), _increment(sessions, 2)()))
+
+        async def change(db: AsyncSession) -> None:
+            await db.execute(text("UPDATE things SET value = 10 WHERE id = 1"))
+
+        assert await act_blocked_on_lock(sessions, hold=_hold(1), act=act, change=change) == [11, 1]
+
+    _run(scratch_database_url, body)
+
+
+def test_a_connection_the_action_returned_does_not_count_when_another_session_reuses_it(
+    scratch_database_url: str,
+) -> None:
+    # The round 1 fix's neighbour: the pool hands the action's returned connection to someone else.
+    async def body(sessions: Sessions) -> None:
+        released = asyncio.Event()
+        changed = asyncio.Event()
+        unrelated: asyncio.Future[int] | None = None
+
+        async def reuse() -> int:
+            await released.wait()
+            return await _increment(sessions, 1)()
+
+        async def hold(db: AsyncSession) -> None:
+            nonlocal unrelated
+            await _hold(1)(db)
+            unrelated = asyncio.ensure_future(reuse())
+
+        async def act() -> str:
+            async with sessions() as db:
+                await db.execute(text("SELECT 1"))
+            released.set()  # its connection is back in the pool, for `reuse` to take
+            await changed.wait()
+            return "never blocked"
+
+        async def change(_db: AsyncSession) -> None:
+            changed.set()
+
+        try:
+            with pytest.raises(AssertionError, match=NEVER_BLOCKED):
+                await act_blocked_on_lock(sessions, hold=hold, act=act, change=change, timeout=1.0)
+        finally:
+            assert unrelated is not None
+            await asyncio.gather(unrelated, return_exceptions=True)
+
+    _run(scratch_database_url, body)

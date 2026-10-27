@@ -87,6 +87,33 @@ test.describe('the helper on pages of its own', () => {
       /before the action, focus must be on the control/,
     );
   });
+
+  test('focus moving between two same-named controls is still a change, so the page is not settled', async ({ page }) => {
+    // Review round 1 (Codex, Medium): frames were compared by description, so focus alternating between two "Edit"
+    // buttons counted as stable and the helper returned before their removal dropped focus.
+    await page.setContent(`<main><button id="save">Save</button><button id="one">Edit</button><button id="two">Edit</button></main>`);
+    const save = page.getByRole('button', { name: 'Save' });
+    await save.focus();
+    const alternate = () =>
+      page.evaluate(() => {
+        const one = document.getElementById('one')!;
+        const two = document.getElementById('two')!;
+        const until = Date.now() + 1500;
+        let next = one;
+        const tick = () => {
+          if (Date.now() >= until) {
+            one.remove();
+            two.remove();
+            return;
+          }
+          next.focus();
+          next = next === one ? two : one;
+          requestAnimationFrame(tick);
+        };
+        tick();
+      });
+    await expect(expectFocusKept(page, alternate, { control: save })).rejects.toThrow(/focus is lost at the end: on <body>/);
+  });
 });
 
 /**

@@ -16,6 +16,8 @@ const STABLE_MS = 300;
 interface Frame {
   at: number;
   bad: boolean;
+  /** Which element: two with the same tag and name are still two (review round 1, Codex). */
+  element: number;
   focused: string;
 }
 
@@ -64,11 +66,18 @@ export async function expectFocusKept(
         element.closest('[inert]') !== null ||
         !element.checkVisibility() ||
         (within !== null && !within.contains(element));
+      const ids = new WeakMap<Element, number>();
+      let next = 0;
+      const idOf = (element: Element | null) => {
+        if (!element) return 0;
+        if (!ids.has(element)) ids.set(element, ++next);
+        return ids.get(element)!;
+      };
       window.__focusFrames = [];
       let frame = 0;
       const tick = () => {
         const active = document.activeElement;
-        window.__focusFrames!.push({ at: Date.now(), bad: lost(active), focused: describe(active) });
+        window.__focusFrames!.push({ at: Date.now(), bad: lost(active), element: idOf(active), focused: describe(active) });
         frame = requestAnimationFrame(tick);
       };
       frame = requestAnimationFrame(tick);
@@ -91,7 +100,7 @@ export async function expectFocusKept(
           if (after.length < 2) return 'too few frames after the action';
           let changed = actionStarted;
           for (let i = 1; i < after.length; i++) {
-            if (after[i].focused !== after[i - 1].focused || after[i].bad !== after[i - 1].bad) changed = after[i].at;
+            if (after[i].element !== after[i - 1].element || after[i].bad !== after[i - 1].bad) changed = after[i].at;
           }
           const quiet = after[after.length - 1].at - Math.max(changed, lastNetwork);
           return quiet >= STABLE_MS ? 'settled' : `changed ${quiet} ms ago`;

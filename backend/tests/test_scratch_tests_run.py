@@ -16,9 +16,10 @@ _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 def unrun_coroutines(source: str, filename: str) -> tuple[int, list[str]]:
     """How many tests take `FIXTURE`, and one problem per `async def` nested directly in one of
-    them that its body never runs: the name is never the callee or an argument of a call in the
-    test's own statements, nor in a sibling nested function those statements run (transitively).
-    A bare reference (`x = body`) doesn't run it. A file that doesn't parse is a problem too."""
+    them that its body never runs: the name is never the callee or an argument of a call made by
+    the test, where a call inside a local function, lambda or class counts only once that
+    function or lambda is itself called or passed (review round 1, Codex). A bare reference
+    (`x = body`) doesn't run it. A file that doesn't parse is a problem too."""
     try:
         tree = ast.parse(source, filename)
     except (SyntaxError, ValueError) as exc:
@@ -32,30 +33,48 @@ def unrun_coroutines(source: str, filename: str) -> tuple[int, list[str]]:
         if FIXTURE not in {param.arg for param in params}:
             continue
         tests += 1
-        nested = {child.name: child for child in node.body if isinstance(child, _DEFS)}
-        own = [child for child in node.body if not isinstance(child, _DEFS)]
-        run: set[str] = set()
-        pending = _called_or_passed(own) & nested.keys()
-        while pending:
-            name = pending.pop()
-            run.add(name)
-            pending |= (_called_or_passed(nested[name].body) & nested.keys()) - run
+        run = _run_by(node.body)
         problems += [
-            f"{filename}::{node.name}: `{name}` is defined and never run"
-            for name, child in nested.items()
-            if isinstance(child, ast.AsyncFunctionDef) and name not in run
+            f"{filename}::{node.name}: `{child.name}` is defined and never run"
+            for child in node.body
+            if isinstance(child, ast.AsyncFunctionDef) and child.name not in run
         ]
     return tests, problems
 
 
-def _called_or_passed(statements: list[ast.stmt]) -> set[str]:
-    """Names that are the callee, or a positional or keyword argument, of a call in `statements`."""
+def _run_by(body: list[ast.stmt]) -> set[str]:
+    """Names called or passed by `body` when it runs, following the local functions it calls or
+    passes into their own bodies (transitively), and nothing else of theirs."""
+    names, local = _calls(body)
+    followed: set[str] = set()
+    pending = names & local.keys()
+    while pending:
+        name = pending.pop()
+        followed.add(name)
+        inner = _run_by(local[name].body)
+        names |= inner
+        pending |= (inner & local.keys()) - followed
+    return names
+
+
+def _calls(
+    body: list[ast.stmt],
+) -> tuple[set[str], dict[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
+    """The names that are the callee, or a positional or keyword argument, of a call in `body`'s
+    own scope, and the functions it defines (in any block). Function, lambda and class bodies are
+    not entered: a lambda's only when it is itself called or passed."""
     names: set[str] = set()
-    for statement in statements:
-        for call in ast.walk(statement):
-            if not isinstance(call, ast.Call):
-                continue
-            exprs = [call.func, *call.args, *(keyword.value for keyword in call.keywords)]
+    local: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    stack: list[ast.AST] = list(body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, _DEFS):
+            local[node.name] = node
+            continue
+        if isinstance(node, ast.Lambda | ast.ClassDef):
+            continue
+        if isinstance(node, ast.Call):
+            exprs = [node.func, *node.args, *(keyword.value for keyword in node.keywords)]
             while exprs:
                 expr = exprs.pop()
                 if isinstance(expr, ast.Starred):
@@ -64,7 +83,10 @@ def _called_or_passed(statements: list[ast.stmt]) -> set[str]:
                     exprs += expr.elts
                 elif isinstance(expr, ast.Name):
                     names.add(expr.id)
-    return names
+                elif isinstance(expr, ast.Lambda):
+                    stack.append(expr.body)
+        stack.extend(ast.iter_child_nodes(node))
+    return names, local
 
 
 def test_every_scratch_database_test_runs_the_coroutine_it_defines() -> None:
@@ -114,6 +136,70 @@ def test_publish(scratch_database_url, monkeypatch):
         "case.py::test_publish: `body` is defined and never run",
         "case.py::test_publish: `unused` is defined and never run",
     ]
+
+
+def test_a_call_inside_a_nested_function_that_never_runs_does_not_count() -> None:
+    # Review round 1 (Codex, Medium): the scan walked into nested function bodies, so a call inside
+    # a never-called function counted as running `body`.
+    source = """
+def test_publish(scratch_database_url):
+    async def body(sessions):
+        assert False
+
+    async def wrapper():
+        def never_called():
+            _run(scratch_database_url, body)
+
+    asyncio.run(wrapper())
+"""
+    assert _check(source) == ["case.py::test_publish: `body` is defined and never run"]
+
+
+def test_a_lambda_or_class_that_is_never_run_does_not_count() -> None:
+    source = """
+def test_lambda(scratch_database_url):
+    async def body(sessions):
+        assert False
+    later = lambda: _run(scratch_database_url, body)
+
+def test_class(scratch_database_url):
+    async def body(sessions):
+        assert False
+    class Runner:
+        def go(self):
+            _run(scratch_database_url, body)
+"""
+    assert _check(source) == [
+        "case.py::test_lambda: `body` is defined and never run",
+        "case.py::test_class: `body` is defined and never run",
+    ]
+
+
+def test_runs_through_called_local_functions_lambdas_and_blocks_count() -> None:
+    source = """
+def test_inner_def_passed(scratch_database_url):
+    async def helper():
+        assert False
+    async def body(sessions):
+        async def act():
+            await helper()
+        await lock(act=act)
+    _run(scratch_database_url, body)
+
+def test_lambda_passed(scratch_database_url):
+    async def body(sessions):
+        assert False
+    _run(scratch_database_url, lambda s: body(s))
+
+def test_def_in_a_block(scratch_database_url):
+    async def body(sessions):
+        assert False
+    with patched():
+        async def wrapped(sessions):
+            await body(sessions)
+        _run(scratch_database_url, wrapped)
+"""
+    assert unrun_coroutines(source, "case.py") == (3, [])
 
 
 def test_a_bare_reference_does_not_run_it() -> None:

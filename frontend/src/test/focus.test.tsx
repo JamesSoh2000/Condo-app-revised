@@ -285,6 +285,18 @@ describe("criterion 2: expectFocusKept", () => {
     ).rejects.toBe(error);
   });
 
+  it("a `settle` that throws propagates its own error (review round 1, Codex's gap note)", async () => {
+    render(<SelfDisabling handoff="dialog" />);
+    button("Save").focus();
+    const error = new Error("the refresh failed");
+    await expect(
+      expectFocusKept(click(button("Save")), {
+        control: () => button("Save"),
+        settle: () => Promise.reject(error),
+      }),
+    ).rejects.toBe(error);
+  });
+
   it("refuses to run under fake timers, which would never let a macrotask turn pass", async () => {
     vi.useFakeTimers();
     render(<SelfDisabling handoff="dialog" />);
