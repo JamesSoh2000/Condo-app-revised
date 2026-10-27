@@ -125,7 +125,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P6-07a](./P6-07a-notices-e2e.md) | Notices E2E (J5) (split from P6-07) | B | 2 | P6-02a, P6-02b, P6-02c, P6-02d, P6-02e, P6-02f, P5-05 | todo | — |
 | [P6-07b](./P6-07b-maintenance-e2e.md) | Maintenance E2E (J6) with the internal-note privacy check (split from P6-07) | B | 2 | P6-04a, P6-04b, P6-04c, P6-04d, P6-07a | todo | — |
 | [P6-07c](./P6-07c-dashboard-e2e-and-smoke-list.md) | Dashboard E2E (J8) and the staging smoke list (split from P6-07) | B | 2 | P6-05b, P6-07b | todo | — |
-| [WF-01](./WF-01-ticket-loop-helpers.md) | Ticket-loop helpers: preflight, PR wait and PR state (workflow, off-roadmap) | B | 2 | — | todo | — |
+| [WF-01](./WF-01-ticket-loop-helpers.md) | Ticket-loop helpers: preflight, PR wait and PR state (workflow, off-roadmap) | B | 1 | — | todo | — |
 | [WF-02](./WF-02-known-failure-test-kit.md) | Known-failure test kit: focus, lock-wait and vacuous-test checks, and the pre-review table (workflow, off-roadmap) | both | 2 | WF-01 | todo | — |
 
 ### Milestone D — deployment (after week 8)
