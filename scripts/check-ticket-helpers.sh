@@ -284,6 +284,12 @@ d = json.loads(open(sys.argv[1]).read())
 assert d['behind_by'] == 7 and d['merge_commit'] is None and d['merge_state'] == 'BEHIND', d
 " "$work/out"
   want "compare asked for base...head" grep -qF "compare/main...$old" "$g/calls"
+  label="14 a full-size compare response"
+  # The real compare for #138 is ~200 KB (23 commits with their files): more than one argument may carry.
+  jedit "$fixtures/compare-138.json" "$g/compare.json" "d['files']=[{'filename': 'x' * 100, 'patch': 'y' * 2000}] * 150"
+  run "$repo" bash "$root/scripts/pr-state.sh" 138
+  want "exit 0" code 0
+  want "behind_by still read" grep -qF '"behind_by":2' "$work/out"
   label="14 gh failure"
   rm "$g/compare.json"
   touch "$g/compare.fail"

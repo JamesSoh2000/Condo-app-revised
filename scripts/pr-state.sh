@@ -21,13 +21,16 @@ if [[ ! $url =~ github\.com[:/]([^/]+/[^/]+)$ ]]; then
   exit 4
 fi
 repo="${BASH_REMATCH[1]%.git}"
-view="$("$gh" pr view "$pr" --repo "$repo" \
-  --json number,state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus,title,url,mergeCommit)"
-refs="$(python3 -I -c 'import json, sys; d = json.loads(sys.argv[1]); print(d["baseRefName"], d["headRefOid"])' "$view")"
-compare="$("$gh" api "repos/$repo/compare/${refs% *}...${refs#* }")"
-python3 -I - "$view" "$compare" <<'PY'
+# Responses go through files: a compare response (every commit with its files) outgrows a command argument.
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+"$gh" pr view "$pr" --repo "$repo" \
+  --json number,state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus,title,url,mergeCommit >"$tmp/view"
+refs="$(python3 -I -c 'import json, sys; d = json.load(open(sys.argv[1])); print(d["baseRefName"], d["headRefOid"])' "$tmp/view")"
+"$gh" api "repos/$repo/compare/${refs% *}...${refs#* }" >"$tmp/compare"
+python3 -I - "$tmp/view" "$tmp/compare" <<'PY'
 import json, sys
-v, c = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+v, c = json.load(open(sys.argv[1])), json.load(open(sys.argv[2]))
 print(json.dumps({
     "number": v["number"], "state": v["state"], "draft": v["isDraft"], "head": v["headRefOid"],
     "base": v["baseRefName"], "base_sha": c["base_commit"]["sha"], "behind_by": c["behind_by"],
