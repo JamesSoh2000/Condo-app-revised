@@ -192,6 +192,28 @@ test.describe('the helper on pages of its own', () => {
     await expect(expectFocusKept(page, removeAfter225ms, { control: save })).rejects.toThrow(/focus is lost at the end/);
   });
 
+  // Time no frame recorded is not time focus was seen to stay put (WF-02a review round 2, Codex).
+  test('an action that blocks rendering cannot count the blocked time as stable focus', async ({ page }) => {
+    trackRequests(page);
+    await page.setContent('<button>Save</button><p id="status" tabindex="-1">Saving</p>');
+    const save = page.getByRole('button', { name: 'Save' });
+    await save.focus();
+    const blockThenHandOffToARemovedStatus = () =>
+      page.evaluate(() => {
+        const until = performance.now() + 600;
+        while (performance.now() < until) {
+          // the main thread is busy: no frame runs
+        }
+        const status = document.getElementById('status')!;
+        status.focus();
+        document.querySelector('button')!.disabled = true;
+        const removeAt = performance.now() + 225;
+        const tick = () => (performance.now() >= removeAt ? status.remove() : requestAnimationFrame(tick));
+        requestAnimationFrame(tick);
+      });
+    await expect(expectFocusKept(page, blockThenHandOffToARemovedStatus, { control: save })).rejects.toThrow(/focus is lost/);
+  });
+
   test('a paused page clock never counts as settled', async ({ page }) => {
     await page.clock.install();
     await page.clock.pauseAt(new Date(Date.now() + 86_400_000));

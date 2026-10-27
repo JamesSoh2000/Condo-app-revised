@@ -119,7 +119,9 @@ export async function expectFocusKept(
           const frames = await page.evaluate(() => window.__focusFrames ?? []);
           const after = frames.slice(first);
           if (after.length < 2) return 'too few frames after the action';
-          let changed = startedAt;
+          // From the first frame seen, not the read before the action: time no frame ran (a blocked main thread) is
+          // not time focus was seen to stay put (WF-02a review round 2, Codex).
+          let changed = Math.max(startedAt, after[0].at);
           for (let i = 1; i < after.length; i++) {
             if (after[i].element !== after[i - 1].element || after[i].bad !== after[i - 1].bad) changed = after[i].at;
           }
