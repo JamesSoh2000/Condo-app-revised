@@ -6,7 +6,7 @@
 | Risk tier | 2 (test support that later tickets rely on as evidence) |
 | Depends on | WF-02a (both edit the PR template row, the two command files and `CLAUDE.md`) |
 | Replaces old | — (part of [WF-02](./WF-02-known-failure-test-kit.md)) |
-| Status | todo |
+| Status | in progress |
 
 Split from [WF-02](./WF-02-known-failure-test-kit.md) after its review round 3 (James's answer to inbox B-11, option
 (a)). The criterion numbers are WF-02's; WF-02's "Original ticket" section holds the full text of criteria 5–8, its
@@ -112,3 +112,49 @@ tests/test_scratch_tests_run.py -q`; `make check`.
 3. Why does the vacuous-test check refuse a rebound name instead of analysing it, and what does that cost?
 
 ## Frame notes (filled by the agent in step 1)
+
+Framed against `origin/main` at `d4633ff` (WF-02a merged).
+
+- Criteria added or sharpened:
+  - **5 (sharpened):** "the action's backend" is one connection the helper opens with `engine.connect()`, **detaches
+    from the pool** (`Connection.detach()`) and binds the action's session to (`sessions(bind=connection)`): every
+    statement of `act` runs on it, through any number of commits, and when it closes the backend ends instead of going
+    back to the pool. The holder gets the same treatment. Measured on asyncpg: a session bound this way kept one
+    `pg_backend_pid()` across two commits and `close()`, and the pool's next checkout was a different backend.
+    The probe matches each backend by `(pid, backend_start)` from `pg_stat_activity`, read once before `act` starts,
+    so a backend that has ended can't be confused with a later one that got its pid.
+  - **6 (added cases):** an `act` that waits on the holder in a session **of its own** is not seen: the helper raises
+    `AssertionError` at `timeout` (the documented limitation, as a test); an `act` that closes its session's connection
+    while the probe is out does not make an unrelated waiter count (the R3 interleaving, rebuilt for the new design:
+    the probe is held at its I/O point while another session waits on the holder).
+  - **8 (narrowed, as the ticket says; written out):** for each test taking `scratch_database_url`, the *tracked*
+    names are the functions (`def` or `async def`) defined directly in its body. A coroutine is run when its name is
+    the callee, or a direct positional or keyword argument, of a call that is reached from a statement of the test's
+    body through only calls and `await`s, in an expression statement, an assignment's value, or a `with` item, at the
+    top of the body or inside a `with` block; or the same holds inside a tracked function that is itself run
+    (transitively). Calls inside `if`/`for`/`while`/`try`/`match`, a lambda, a comprehension, a conditional
+    expression or a boolean operator don't count (they may not run). It fails, naming the test, the name and the line,
+    when a tracked name is bound anywhere else in the test: an assignment or deletion target (including `for`,
+    `with … as`, walrus and comprehension targets), a parameter (the test's own or a nested function's or lambda's),
+    another `def` or `class`, an `import … as`, `except … as`, a `match` capture, a type parameter, or a
+    `global`/`nonlocal` declaration. It also fails for an `async def` defined inside a block of the test instead of
+    directly in its body. Today all 75 coroutines are run by a top-level expression statement
+    (`_run(url, body)` 63, `asyncio.run(check())` 12; measured with `ast` at `d4633ff`), so none is rejected.
+  - **11 (lock half):** the `CLAUDE.md` lesson "Don't write from a value read before a slow `await`" gets the sentence
+    appended to its last line; also the template's lock-wait row and the two command lines name the helper (the
+    ticket's Docs bullet), each with words added only (`git diff --word-diff … | grep -F '[-'` prints nothing).
+- Criteria loosened: none.
+- Decisions taken:
+  - **Detach the action's and holder's connections** rather than read the pid of a pooled connection: the ticket's
+    "pid fixed for the action's life" holds only if the connection can't go back to the pool while the helper runs,
+    and the pool reuse was R3's race. Alternatives: a `NullPool` engine of the helper's own (copies the URL but loses
+    the caller's engine options); checking `connection.closed` after each probe (a re-check that narrows the race
+    instead of removing it). Basis: autonomous; measured above.
+  - **Match `backend_start` too**, not only the pid: costs one column and removes pid reuse by the OS. Basis:
+    autonomous.
+  - **No sibling depth limit:** a tracked function run by a run sibling counts transitively, as WF-02's frame notes
+    allowed; rebinding is what made the old scope analysis fail, and here any rebinding fails instead. Basis: ticket.
+  - **Criterion 7's variant of `_act`:** a local `_publish(db, world, notice)` in
+    `test_expiry_during_fan_out_wait.py`; `test_concurrency.py` is not edited (criterion 10). Basis: ticket.
+- Size: non-test lines are the template row, two command lines and one `CLAUDE.md` line (~6); the helper and the
+  check are test support. Split: none.
