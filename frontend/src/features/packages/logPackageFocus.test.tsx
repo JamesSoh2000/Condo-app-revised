@@ -5,7 +5,7 @@
  * found it in Chromium). `expectFocusKept` reads what a browser would; the create is held until the test answers.
  */
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
-import { afterEach, describe, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { components } from '@/api/schema';
 import { expectFocusKept } from '@/test/focus';
@@ -87,6 +87,25 @@ describe('"Log package" keeps focus in the form while the create is out', () => 
         },
       },
     );
+  });
+
+  it('then the unit search has it after a 409 that starts the form again (the key logged other details)', async () => {
+    const answer = desk();
+    await filled();
+    await expectFocusKept(
+      () => {
+        fireEvent.click(submit());
+      },
+      {
+        control: submit,
+        within: form,
+        settle: async () => {
+          answer(problem(409, 'idempotency_key_reused'));
+          await within(form()).findByText(/this form is for the next package/);
+        },
+      },
+    );
+    expect(document.activeElement).toBe(within(form()).getByLabelText('Unit', { exact: true }));
   });
 
   it('and after a refusal', async () => {
