@@ -6,7 +6,7 @@
 | Risk tier | 2 (test support that later tickets rely on as evidence) |
 | Depends on | WF-01 (both edit `.claude/commands/build-ticket.md` and `implement-ticket.md`; one agent per file) |
 | Replaces old | — |
-| Status | todo |
+| Status | in progress |
 
 ## Goal
 
@@ -296,8 +296,50 @@ Framing resolves each with the [decision rules](../AI_AGENT_PLAYBOOK.md#decision
 
 ## Frame notes (filled by the agent in step 1)
 
+Framed against `origin/main` at `5e9f59a` (WF-01 merged).
+
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
-  also the alternatives considered and why they lost):
-- Split:
+  - **1 (added case):** a focused button inside a `<fieldset disabled>` is also `<body>` for `activeElementLikeBrowser`
+    (Chromium drops focus from a control a disabled fieldset disables; `Modal`'s Tab trap and the residents forms use
+    fieldsets). Likewise an element inside a `[hidden]` or `inert` ancestor at any depth, not only the parent.
+  - **2 (sharpened):** with `within` given, focus that moves to an enabled element **outside** `within` fails too, with
+    `focus left <within>; on: <tag "name">`; an `action` or `settle` that throws propagates its own error (the helper
+    adds no message over it). The five samples are taken with real `setTimeout(0)` turns, so a test that installed
+    fake timers fails fast with a message naming that (it would otherwise hang).
+  - **3 (sharpened):** the three controls are "Choose file" (a chosen file starts an upload and disables it),
+    "Cancel" (removed when the upload is cancelled) and "Retry" (removed when the retry starts); plus "Cancel" focused
+    when the upload **finishes** or **fails** (the control is removed by a server answer, not a click: the
+    `settle` shape). Each `within` the `Modal` dialog. The mutation removes one control's handoff in
+    `FileUpload.tsx`'s status effect; at least the matching test fails.
+  - **4 (sharpened):** "two consecutive bad frames" counts frames recorded by the `requestAnimationFrame` loop
+    *after* `action` resolved its first statement (the click). "Stable for 300 ms" means: no request in flight (counted
+    from the page's `request`/`requestfinished`/`requestfailed` events) and no change of the focused element in the
+    recorded frames for 300 ms of the page's own clock. The `e2e` lint's no-sleep rule applies to the helper
+    (`expect.poll`, no `setTimeout`/`waitForTimeout`).
+  - **6 (added case):** a `change` that raises is re-raised, the holder is rolled back and the `act` task is
+    cancelled and awaited (no hang, no open transaction left for the engine's disposal).
+  - **7 (sharpened):** parametrised over `NORMAL` and `URGENT`, as the test it restates (both fan out
+    notifications; `URGENT` also enqueues email). "No notification, email job or audit row" is asserted by counts of
+    `notifications`, `jobs` and the notice's audit rows, plus the notice still `draft`.
+  - **8 (sharpened):** "passed or called" means: the coroutine's name is the callee of a call, or a positional or
+    keyword argument of a call, in a statement of the test's own body that is not itself a nested `def`; or it is
+    reachable that way through a sibling nested function that is itself passed or called (transitively). A bare
+    reference (`assert body`, `x = body`) does not count. The negative cases are parsed from strings: never used,
+    used only inside a never-run sibling, bare reference only; the positive ones: passed to `_run`, called inside
+    `asyncio.gather(...)`, used only inside a sibling that is passed.
+- Criteria loosened: none.
+- Decisions taken:
+  - **Split: none.** Non-test lines: the PR template block (~10), the two command files (~6), `CLAUDE.md` (two in-place
+    edits, 0 net lines), `e2e/README.md` rows (~3). The helpers are test support and count as tests (ticket default;
+    `CLAUDE.md` "tests don't count"). A component fix found by criterion 4's probe is capped at ~30 lines. Total far
+    under ~400. Basis: ticket default.
+  - **Chromium surface:** the packages desk's "Log package" submit and the "Hand out" confirm (ticket default), on a
+    unit the spec creates (`createUnit`), as `packages-desk.spec.ts` does. Basis: ticket default.
+  - **Criterion 7's case:** the default (P6-01c restated). Create and edit wait on `claim_file`, but that wait already
+    has coverage (`test_an_expiry_passing_while_the_attachment_claim_waits_is_refused`) in
+    `test_concurrency.py`, and the default is the one with a known failing mutation. Basis: ticket default.
+  - **Lock lookup:** `pg_stat_activity` with `pg_blocking_pids(pid)` (default; no extra role).
+  - **Other scratch fixtures:** none exists at framing (`grep @pytest.fixture` under `backend/tests`: only
+    `scratch_database_url` creates a database), so the check covers that fixture only. Basis: code.
+  - **Where the helper's own Chromium cases run:** `page.setContent` pages need no stack data, but the spec lives in
+    `e2e/tests/` and so runs only where `make e2e` / CI's `E2E journeys` run (both projects). Basis: ticket.
