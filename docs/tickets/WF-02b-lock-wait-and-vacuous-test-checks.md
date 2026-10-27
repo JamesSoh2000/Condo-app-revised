@@ -95,6 +95,14 @@ tests/test_scratch_tests_run.py -q`; `make check`.
 `.github/pull_request_template.md`, `.claude/commands/build-ticket.md`, `.claude/commands/implement-ticket.md`,
 `CLAUDE.md`. Start from PR #142's branch (`2e8d559`) for the tests, not for the attribution code.
 
+## Carried from WF-02a (read while framing)
+
+- **A pattern now seen twice:** a check made before an `await` is stale after it. WF-02 R3 F1 (a pid copied before
+  the probe's `await`) and WF-02a R3 F1 (`inFlight` checked before the frame read's `await`). Before the first
+  review, list every `await` in the helper and, for each value read before it, the test that changes it during the
+  await. If it recurs here, promote it to a `CLAUDE.md` lesson (test code, not only app code: the lock-wait lesson
+  covers only the latter).
+
 ## Must explain (learning checkpoint)
 
 1. Why does `act_blocked_on_lock` wait for the backend to appear in `pg_blocking_pids` instead of sleeping, and how

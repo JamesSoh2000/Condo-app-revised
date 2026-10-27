@@ -6,7 +6,7 @@
 | Risk tier | 2 (test support that later tickets rely on as evidence) |
 | Depends on | WF-01 |
 | Replaces old | — (part of [WF-02](./WF-02-known-failure-test-kit.md)) |
-| Status | in progress |
+| Status | done |
 
 Split from [WF-02](./WF-02-known-failure-test-kit.md) after its review round 3 (James's answer to inbox B-11, option
 (a)). The criterion numbers are WF-02's, so code comments that say "WF-02 criterion 3" still match; criteria 5–8 and
@@ -201,3 +201,10 @@ review rounds: its focus findings R1 F3 and R2 F2 were fixed there), cut down to
   `lock_wait`"; 10 names the one allowed `M` line.
 - The template's comment points to this ticket's shape table (WF-02's file is now a split stub).
 - Review: a fresh round count (round 1 here), since the diff changed; same reviewer as WF-02 (James's instruction).
+
+## Follow-ups (from PR #144)
+
+- After a refusal, "Log package" leaves focus on its (then empty) status line, not on the error or the field it
+  names. Focus stays in the form, but not at the most useful place. Candidate for a small packages ticket.
+- After-merge measurement (Test plan): over the next five tickets, count round-1 findings in the focus shapes in the
+  [mistakes log](../AGENT_MISTAKES_LOG.md) against the table above, and note in the inbox whether the number fell.
