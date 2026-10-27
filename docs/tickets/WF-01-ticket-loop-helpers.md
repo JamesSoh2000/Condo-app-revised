@@ -6,7 +6,7 @@
 | Risk tier | 1 (tooling, but its output feeds the merge gate and no human checks after the reviewers, so the playbook's Tier 1 review applies: a Claude reviewer with the security pass plus Codex) |
 | Depends on | — |
 | Replaces old | — |
-| Status | in progress |
+| Status | done |
 
 ## Goal
 
