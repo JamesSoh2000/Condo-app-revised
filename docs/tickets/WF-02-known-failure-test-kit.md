@@ -56,7 +56,7 @@ own tests, and the measure of success is fewer round-1 findings of these shapes,
     the lines in `build-ticket.md` step 3 and `implement-ticket.md` Verify that require it before the first reviewer.
   - Two `CLAUDE.md` lessons (the focus lesson and the lock-wait lesson) get the helper names appended **in place**.
     Every existing word stays verbatim, in particular the focus lesson's "assert `document.activeElement` after the
-    action" and its Chromium line; no line is added.
+    action", and the separate "Check focus and accessible names in Chromium" lesson is unchanged; no line is added.
 - Out (do **not** do in this ticket):
   - Any change to `docs/templates/REVIEW_PROMPT.md`, `.claude/commands/review-ticket.md`, the number of rounds, who
     reviews, or what a reviewer reads.
@@ -227,7 +227,7 @@ review prompt are not edited.
    '[-'` (only words and lines added, so the template's "Merge gate" checkboxes are unchanged);
    `python3 scripts/check-links.py` passes.
 10. **Given** the existing tests, **then** none is edited, skipped or deleted: `git diff --name-status
-    origin/main...HEAD -- backend/tests frontend/src e2e | grep -v '^A' | grep -v ' e2e/README.md$'` prints nothing,
+    origin/main...HEAD -- backend/tests frontend/src e2e | grep -v '^A' | grep -vP '\te2e/README\.md$'` prints nothing,
     except the missing-call additions of criterion 8 and one import line in an existing helper or conftest if needed,
     each named and justified in the PR.
 11. **Given** the two `CLAUDE.md` lessons, **then** `git diff --word-diff origin/main...HEAD -- CLAUDE.md` shows

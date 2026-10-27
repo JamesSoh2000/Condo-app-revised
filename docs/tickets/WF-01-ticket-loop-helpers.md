@@ -102,7 +102,8 @@ already exists. It does not edit the ticket's status; the agent does that in the
 ### `scripts/pr-wait.sh <PR> [--sha <sha>] [--timeout <s>]`
 
 Resolves the PR's head SHA (with `--sha`, first waits up to 60 s for the PR's head to *be* that SHA: GitHub moves a
-PR's head a moment after a push, so a poll in that window sees the previous commit and its green checks), then waits until **every required check** has a completed result **on that SHA**, or the
+PR's head a moment after a push, so a poll in that window sees the previous commit and its green checks; the 60 s count
+inside `--timeout`, and `PR_WAIT_HEAD_TIMEOUT` overrides them for the self-test only), then waits until **every required check** has a completed result **on that SHA**, or the
 timeout (default **540 s**, polling every 30 s; the first poll is at once). The required checks are read from the base
 branch's protection (`required_status_checks.checks[]`, each a name and an `app_id`) so the list never lives in two
 places; a check run counts only if its name matches the entry's `context` and its app matches the entry's `app_id` (an
@@ -112,7 +113,8 @@ the PR's head once more and reports `head-moved` (exit 3) if it is not the SHA i
 prints the pages as concatenated JSON objects, so they are parsed with `json.JSONDecoder.raw_decode` in a loop; and
 whatever the filter returns, the script keeps per (name, app) only the check run with the highest `id`, so a failed
 run followed by a successful re-run counts as the re-run. The Bash tool
-caps a foreground command at 10 minutes, hence the default: on exit 2 the agent runs the script again (it
+caps a foreground command at 10 minutes (and only when the call passes `timeout: 600000`; its default is 120 s, so
+the commands say to pass it), hence the default: on exit 2 the agent runs the script again (it
 re-resolves the head, so a push in between is exit 3), or starts it with `run_in_background`. Output on stdout, and nothing else:
 
 ```text
@@ -227,15 +229,19 @@ then edited only where a criterion needs a different conclusion; the PR shows wh
     `mergeable: UNKNOWN` is printed as `UNKNOWN`; a `gh` failure is exit 4.
 15. **Given** `pr-wait.sh <PR> --sha <new>` where the PR's head shows the *old* SHA for the first polls and the old SHA's
     checks are all green, **then** it never prints `success` for the old SHA: it waits for the head to become `<new>`
-    and reports that head's checks, or exits 3 after 60 s; and **given** the head moves between the last poll and the
+    and reports that head's checks, or exits 3 after 60 s (the self-test sets `PR_WAIT_HEAD_TIMEOUT` low); and **given** the head moves between the last poll and the
     final re-read, **then** exit 3.
 16. **Given** a malformed `gh` response or a `gh` crash mid-wait, **then** `pr-wait.sh` exits 4 and `ticket-preflight.sh`
     exits 65, never 1 or 0; **given** an unknown option, **then** all three exit 64; **given** `--timeout 1` with a
     pending check, **then** exit 2 within a few seconds; **given** `origin/main` not fetchable, **then** preflight exits 65.
 17. **Given** the changed files, **then** these commands print nothing (their output is pasted in the PR):
     `git diff --exit-code origin/main...HEAD -- docs/templates/REVIEW_PROMPT.md .claude/commands/review-ticket.md`;
-    `git diff --word-diff origin/main...HEAD -- CLAUDE.md .claude/commands/build-ticket.md
-    .claude/commands/implement-ticket.md | grep -F '[-'` (only words added); and the playbook diff
+    `git diff --word-diff origin/main...HEAD -- CLAUDE.md .claude/commands/implement-ticket.md | grep -F '[-'`
+    (only words added); `git diff --word-diff origin/main...HEAD -- .claude/commands/build-ticket.md | grep -F '[-'`
+    shows removals only inside the four spans the Command changes replace (step 1's `git worktree add` parenthetical,
+    step 3's `gh pr checks --watch` parenthetical, step 7's `gh pr merge` command, step 9's `gh pr view` parenthetical),
+    none in step 4, step 7's checkbox wording or a stop rule, and the old merge and wait commands do not survive next
+    to the new ones; and the playbook diff
     `git diff --word-diff origin/main...HEAD -- docs/AI_AGENT_PLAYBOOK.md | grep -F '[-'` shows removals only inside
     the step 4 "wait for CI" sentence and step 7's merge command line, none in a checkbox, a stop rule or a
     protected-gate line. `git diff origin/main...HEAD -- .github/workflows/ci.yml` shows added steps, plus the one
