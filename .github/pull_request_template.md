@@ -54,6 +54,23 @@ Built autonomously (docs/AI_AGENT_PLAYBOOK.md); merged by the agent once the mer
      For each fix: the concrete failure that motivated it and the evidence for the final approach (the test
      that failed and now passes). -->
 
+#### Known failure cases (filled before the first review; one row per changed control, field or wait point)
+<!-- These are the implementer's claims for the reviewer to test, not evidence. Consider, per changed thing, each
+     shape that keeps reaching review round 1 (docs/tickets/WF-02-known-failure-test-kit.md), with the test that proves
+     it or `n/a: why`:
+     - a control that disables or removes itself, or one inside a reused component: focus on <body>
+       (`expectFocusKept`, both `frontend/src/test/focus.ts` and `e2e/helpers/focus.ts`)
+     - a refresh or a late answer that removes the focused row or changes the surface (`settle`)
+     - an unfinished upload, a half-typed native input or a replacement in progress: counted in `dirty` and in what
+       Publish/Save sends
+     - a server error on a field the view may not render (focus needs a target)
+     - a statement that can wait (row lock, file claim, FK lock in an INSERT) before a time or state check
+       (`act_blocked_on_lock`, `backend/tests/helpers/lock_wait.py`)
+     - a reused component's per-instance state (a "focus is inside me" flag, a Tab trap) applied to new content
+     Keep adding rows for each fix's neighbours before the next round. -->
+| Changed thing | Lesson that applies (CLAUDE.md) | Test | or `n/a: why` |
+|---|---|---|---|
+
 ### Merge gate (agent ticks these before `gh pr merge --squash`)
 - [ ] Required CI checks green on the PR head (backend, frontend, prodlike, e2e when applicable, docs)
 - [ ] Rebased onto the latest `main`

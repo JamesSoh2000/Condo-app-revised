@@ -141,7 +141,7 @@ Everything a command prints is re-read on every later turn, so don't print the s
   inbox / <ticket> in step 6", not "listed in" (P1-04, P1-05, P1-07; 2026-10-16).
 - Don't write from a value read before a slow `await` (argon2, a lock wait): re-check it after the lock, with a fresh
   clock, in the writing statement. Expiry must be final. "After the lock" means after the *last* statement that can
-  wait: a later row lock or file claim counts too (P4-02b ×4, 2026-10-20; P6-01b R1, 2026-10-24).
+  wait: a later row lock or file claim counts too (P4-02b ×4, 2026-10-20; P6-01b R1, 2026-10-24). Test it with `act_blocked_on_lock` (`tests/helpers/lock_wait.py`).
 - Validate caller input by what Postgres accepts, not Python: lone surrogates, NUL, NaN and byte lengths fail at
   flush as `DBAPIError`, not the documented `ValueError` (P3-02 ×2, P3-03; 2026-10-18).
 - Check focus and accessible names in Chromium, not only jsdom (no CSS or click focus; P2-06c, P4-07a, P4-08b/d).
@@ -159,4 +159,4 @@ Everything a command prints is re-read on every later turn, so don't print the s
   viewport (P4-08a, P4-08c, P5-03b R1 F1, P5-03c R1 F3; 2026-10-23).
 - A control that disables or removes itself (a submit, "Mark as read", a dialog's last button) drops focus to `<body>`
   in a browser: move focus first to something that stays mounted (the dialog, the card, a message), and assert
-  `document.activeElement` after the action in the test (P2-06c, P4-07a, P4-08b, P5-03d, P6-02b R2 F1; 2026-10-25).
+  `document.activeElement` (with `expectFocusKept`: `src/test/focus.ts`; in Chromium `e2e/helpers/focus.ts`) after the action in the test (P2-06c, P4-07a, P4-08b, P5-03d, P6-02b R2 F1; 2026-10-25).
