@@ -45,6 +45,7 @@ repo="${BASH_REMATCH[1]%.git}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 deadline=$((SECONDS + timeout))
+checked_base=
 
 read_pr() { # sets state, head and base_ref from the PR as GitHub reports it now
   local fields
@@ -53,6 +54,10 @@ read_pr() { # sets state, head and base_ref from the PR as GitHub reports it now
   read -r state head base_ref <<<"$fields"
   [[ $head =~ ^[0-9a-f]{40}$ ]] || error "unexpected head in the PR response"
   [[ $state == OPEN || $state == MERGED ]] || error "PR #$pr is $state"
+  # Once the protection is read, a retargeted PR would be judged by the old base's required checks.
+  if [[ -n $checked_base && $base_ref != "$checked_base" ]]; then
+    error "PR #$pr was retargeted from $checked_base to $base_ref during the wait; run it again"
+  fi
 }
 moved() { # moved <sha waited on> <sha the PR has>
   printf 'head: %s (PR #%s, base %s)\nmoved: %s -> %s\nresult: head-moved\n' "$1" "$pr" "$base_ref" "$1" "$2"
@@ -76,6 +81,7 @@ if [[ -n $sha ]]; then
   done
 fi
 sha=$head
+checked_base=$base_ref
 
 "$gh" api "repos/$repo/branches/$base_ref/protection" >"$tmp/protection"
 python3 -I - "$tmp/protection" >"$tmp/required" <<'PY'
@@ -91,7 +97,7 @@ evaluate() { # prints a verdict (success, failure or waiting), then "name<TAB>st
   python3 -I - "$tmp/required" "$tmp/runs" <<'PY'
 import json, sys
 required = [line.split("\t") for line in open(sys.argv[1]).read().splitlines()]
-text, decoder, pos, runs = open(sys.argv[2]).read(), json.JSONDecoder(), 0, []
+text, decoder, pos, runs, pages = open(sys.argv[2]).read(), json.JSONDecoder(), 0, [], 0
 while True:  # gh api --paginate prints one JSON object per page, back to back
     while pos < len(text) and text[pos].isspace():
         pos += 1
@@ -99,6 +105,9 @@ while True:  # gh api --paginate prints one JSON object per page, back to back
         break
     page, pos = decoder.raw_decode(text, pos)
     runs += page["check_runs"]
+    pages += 1
+if not pages:
+    sys.exit("pr-wait: the check-run response is empty")
 latest = {}  # per (name, app) only the newest run: a re-run supersedes the run it repeats
 for r in runs:
     key = (r["name"], r["app"]["id"])

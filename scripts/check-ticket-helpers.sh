@@ -167,6 +167,32 @@ c9() {
   want "exit 3" code 3
   want "names both SHAs" has "moved: $new -> $old"
   want "old head's green never reported" lacks "result: success"
+  # Review round 1 (F2): the verdict is also bound to the base whose protection it was checked against.
+  label="9 base retargeted during the wait"
+  scenario c9c
+  open_pr "$g/pr.1.json" "$old"
+  jedit "$g/pr.1.json" "$g/pr.3.json" "d['baseRefName']='release'"
+  jedit "$g/runs-$old.json" "$g/runs-$old.json" "r=run('E2E journeys'); r['status']='in_progress'; r['conclusion']=None"
+  PR_WAIT_INTERVAL=1 wait_pr 138
+  want "exit 4" code 4
+  want "no success line" lacks "success"
+  label="9 base retargeted before the final re-read"
+  scenario c9d
+  open_pr "$g/pr.1.json" "$old"
+  jedit "$g/pr.1.json" "$g/pr.3.json" "d['baseRefName']='release'"
+  wait_pr 138
+  want "exit 4" code 4
+  want "no success line" lacks "success"
+  label="9 base retargeted while waiting for --sha"
+  scenario c9e
+  open_pr "$g/pr.1.json" "$old"
+  open_pr "$g/pr.3.json" "$new"
+  jedit "$g/pr.3.json" "$g/pr.3.json" "d['baseRefName']='release'"
+  cp "$fixtures/check-runs-a2e19e6.json" "$g/runs-$new.json"
+  PR_WAIT_INTERVAL=1 wait_pr 138 --sha "$new"
+  want "exit 0 against the new base" code 0
+  want "the new base's protection read" grep -qF "branches/release/protection" "$g/calls"
+  want "the old base's protection never read" bash -c "! grep -qF 'branches/main/protection' '$g/calls'"
 }
 
 c10() {
@@ -344,6 +370,32 @@ c16() {
   touch "$g/runs-$old.2.fail"
   PR_WAIT_INTERVAL=1 wait_pr 138
   want "exit 4, never 1 or 0" code 4
+  # Review round 1 (F3): an empty body is malformed, not "no checks yet".
+  local key
+  for key in "runs-$old" pr protection; do
+    label="16 empty $key response"
+    scenario "c16-empty-$key"
+    : >"$g/$key.json"
+    wait_pr 138 --timeout 3
+    want "exit 4" code 4
+    want "no success line" lacks "success"
+  done
+  label="16 whitespace-only check-run response"
+  scenario c16-ws
+  printf ' \n' >"$g/runs-$old.json"
+  wait_pr 138 --timeout 3
+  want "exit 4" code 4
+  label="16 empty PR response to pr-state"
+  scenario c16-empty-view
+  : >"$g/pr.json"
+  run "$repo" bash "$root/scripts/pr-state.sh" 138
+  want "pr-state exit 4" code 4
+  want "no JSON printed" test ! -s "$work/out"
+  label="16 empty compare"
+  scenario c16-empty-compare
+  : >"$g/compare.json"
+  run "$repo" bash "$root/scripts/pr-state.sh" 138
+  want "pr-state exit 4" code 4
   label="16 malformed compare"
   scenario c16d
   printf '[]' >"$g/compare.json"
@@ -367,6 +419,17 @@ c16() {
     # shellcheck disable=SC2086
     run "$repo" bash "$root/scripts/pr-state.sh" $args
     want "pr-state '$args' exit 64" code 64
+  done
+  # Review round 1 (F1): the commands run the helpers directly, so each must be executable.
+  local script
+  for script in ticket-preflight.sh pr-wait.sh pr-state.sh check-ticket-helpers.sh; do
+    label="16 $script runs directly"
+    want "is executable" test -x "$root/scripts/$script"
+  done
+  for script in ticket-preflight.sh pr-wait.sh pr-state.sh; do
+    label="16 $script runs directly"
+    run "$repo" "$root/scripts/$script" --bogus
+    want "reaches the usage check: exit 64" code 64
   done
 }
 
