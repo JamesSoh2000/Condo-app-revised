@@ -39,7 +39,7 @@ are unchanged, except that the merge command gets a stricter flag.
     the four scripts are added to the existing `Shellcheck the smoke scripts` step, which lives in the `prodlike` job.
   - The commands that call them: `.claude/commands/build-ticket.md` (step 1, every push-and-wait in steps 3, 4, 5 and 6, step 7 and the
     handoff in step 9) and
-    `.claude/commands/implement-ticket.md` (Verify 5); the playbook's step 4 and step 7 command lines
+    `.claude/commands/implement-ticket.md` (Verify 5); the playbook's step 4 sentence "wait for CI" and step 7's merge command
     (additions only); one in-place edit of `CLAUDE.md`'s "Context hygiene" (no net new line).
 - Out (do **not** do in this ticket):
   - Anything that writes prose or decides: the PR body, the review history, the bookkeeping commit, the handoff
@@ -85,10 +85,14 @@ base: <origin/main sha>
 | 11 | a dependency is not `done` (it is printed with its status) |
 | 12 | ticket not in the index, or its file is missing |
 | 13 | status is `done`, `review` or `blocked` (printed) |
+| 14 | `--create` only: the branch or directory already exists (nothing changed) |
 | 64 | usage error |
 | 65 | git or parse error: no `Run state:` line in the inbox, an unreadable index row, or `origin/main` not fetchable. Never "ready" |
 
-When several apply, all the failing facts are printed and the exit code is the first of 10, 12, 13, 11. A
+When several apply, all the failing facts are printed and the exit code is the first of 10, 12, 13, 11. What the agent
+does: 10 stops (paused); 11 ends the run, naming the dependency (the next ticket is picked by `/build-next`); 12 blocks
+the ticket (a stop rule: it is not in the index); 13 ends the run and reports the status; 14 and 65 end the run and
+report the error. A
 dependency ID that is not in the index is exit 11 with `<ID>=missing`.
 
 `--create` (exit 0 only): `git worktree add ../bw-<id lowercase> -b <branch> origin/main`, where `<branch>` is
@@ -97,11 +101,17 @@ already exists. It does not edit the ticket's status; the agent does that in the
 
 ### `scripts/pr-wait.sh <PR> [--sha <sha>] [--timeout <s>]`
 
-Resolves the PR's head SHA, then waits until **every required check** has a completed result **on that SHA**, or the
+Resolves the PR's head SHA (with `--sha`, first waits up to 60 s for the PR's head to *be* that SHA: GitHub moves a
+PR's head a moment after a push, so a poll in that window sees the previous commit and its green checks), then waits until **every required check** has a completed result **on that SHA**, or the
 timeout (default **540 s**, polling every 30 s; the first poll is at once). The required checks are read from the base
 branch's protection (`required_status_checks.checks[]`, each a name and an `app_id`) so the list never lives in two
-places; a check run counts only if **both** its name and its app match. The script reads check runs of that SHA
-(`commits/<sha>/check-runs?filter=latest`, all pages), so a re-run of a job counts by its latest run. The Bash tool
+places; a check run counts only if its name matches the entry's `context` and its app matches the entry's `app_id` (an
+`app_id` that is null or -1, "any source", is matched by name alone). Just before printing `success` the script reads
+the PR's head once more and reports `head-moved` (exit 3) if it is not the SHA it checked. The script reads check runs of that SHA
+(`commits/<sha>/check-runs?filter=latest`, all pages). `gh api --paginate` in the installed `gh` (2.45, no `--slurp`)
+prints the pages as concatenated JSON objects, so they are parsed with `json.JSONDecoder.raw_decode` in a loop; and
+whatever the filter returns, the script keeps per (name, app) only the check run with the highest `id`, so a failed
+run followed by a successful re-run counts as the re-run. The Bash tool
 caps a foreground command at 10 minutes, hence the default: on exit 2 the agent runs the script again (it
 re-resolves the head, so a push in between is exit 3), or starts it with `run_in_background`. Output on stdout, and nothing else:
 
@@ -116,8 +126,9 @@ result: failure
 ```
 
 For a required check that finished with anything other than `success` (including `cancelled`, `skipped`,
-`neutral`, `timed_out`), the script saves the failed steps' log (`gh run view --job <check run id> --log-failed`: job-scoped, so it works while
-other jobs still run) to a file under `${TMPDIR:-/tmp}` and prints its path; the log itself is never printed. If the
+`neutral`, `timed_out`), the script saves the job's log (`gh api repos/<repo>/actions/jobs/<check run id>/logs`: job-scoped and available as soon as
+that job ends, while `gh run view --log-failed` refuses a run that is still in progress) to a `mktemp` file under
+`${TMPDIR:-/tmp}` (mode 0600, not a predictable name) and prints its path; the log itself is never printed. If the
 log cannot be fetched the line says `log: unavailable` and the exit code does not change. A required check with no run on the SHA is
 `missing`, never `success`.
 
@@ -129,6 +140,11 @@ log cannot be fetched the line says `log: unavailable` and the exit code does no
 | 3 | `head-moved` | the PR's head is no longer the SHA the wait started on (a push during the wait), or `--sha` was given and the head is not that SHA |
 | 4 | `error` | `gh` failed; the protection could not be read, or its required list is **empty or absent** (fail closed: the script never guesses a list, and nothing required is not "all green"); or the PR is closed unmerged |
 | 64 | — | usage error |
+
+An unexpected failure inside the script (a `gh` non-zero exit, malformed JSON, a Python traceback) is trapped and exits 4,
+never 1: exit 1 always means "a required check finished and was not success". `ticket-preflight.sh` traps to 65. A PR
+with merge conflicts gets no CI run, so its checks stay `missing` until the timeout: `pr-state.sh`'s `merge_state` is
+read first (step 7 already does).
 
 A merged PR is allowed (its head's checks are still readable), so the script can be exercised against a real PR.
 If the protection cannot be read for lack of permission (exit 4), the agent may fall back to `gh pr checks --watch`
@@ -154,17 +170,18 @@ asked again, never read as clean.
 - `build-ticket.md` step 1: "Run `scripts/ticket-preflight.sh $ARGUMENTS --create`" replaces the separate inbox read,
   dependency check and `git worktree add` (exit 10–13 map to the existing stop and block paths). Step 2's rule to read
   the ticket from the worktree stays.
-- Steps 3, 4, 5 and 6 (every "push and wait for CI"): `git push` then `scripts/pr-wait.sh <PR>`; on exit 1 the agent
+- Steps 3, 4, 5 and 6 (every "push and wait for CI"): `git push` then `scripts/pr-wait.sh <PR> --sha "$(git rev-parse HEAD)"`; on exit 1 the agent
   reads the log file and fixes the cause (the playbook's two-retry rule for unrelated failures is unchanged); on exit
   2 it runs the script again; exits 2, 3 and 4 are never treated as green.
-- Step 7 (merge gate): `scripts/pr-wait.sh <PR> --sha <the sha the checklist was ticked against>`, then
+- Step 7 (merge gate): `scripts/pr-wait.sh <PR> --sha <the sha the checklist was ticked against>` (the commands always pass
+  `--sha`; leaving it out is for a manual look only), then
   `scripts/pr-state.sh <PR>`, then `gh pr merge <N> --squash --delete-branch --match-head-commit <that sha>`. The
   playbook's step 7 gets the same flag on its merge command. A head that moved since the boxes were ticked makes
   `gh` refuse; the agent re-ticks the changed boxes.
 - Handoff (step 9): the merge commit comes from `scripts/pr-state.sh`.
 - `implement-ticket.md` Verify 5 and the playbook's step 4: "wait for CI" names `scripts/pr-wait.sh`.
 - `CLAUDE.md` "Context hygiene": the `gh pr view --json` bullet names `scripts/pr-state.sh` as the way to get the
-  merge-gate fields once. No line is added.
+  merge-gate fields once. Every existing word stays; no line is added.
 
 ## Acceptance criteria
 
@@ -202,35 +219,47 @@ then edited only where a criterion needs a different conclusion; the PR shows wh
     absent, while some other check run on the head is red, **then** exit 4 and no `success` line.
 12. **Given** a check run whose name matches a required one but whose app is not the required `app_id`, **then** it does
     not satisfy that check (`missing`, exit 2).
-13. **Given** check runs on several pages, **then** a required check on page 2 is found; **given** two runs of one job
-    (a failed run, then a successful re-run), **then** the latest decides.
+13. **Given** check runs on several pages (the fake `gh` emits **concatenated JSON objects**, as `gh api --paginate`
+    does), **then** a required check on page 2 is found; **given** two runs of one job (a failed run, then a successful
+    re-run, both in the response), **then** the one with the highest `id` decides, in both orders.
 14. **Given** a PR, **when** `pr-state.sh` runs, **then** it prints one JSON object with exactly the keys above;
     for a PR behind its base `behind_by` is the true count, for a merged PR `merge_commit` is its SHA, and
-    `mergeable: UNKNOWN` is printed as `UNKNOWN`.
-15. **Given** the changed files, **then** these commands print nothing (they are the criteria's proof, pasted in the PR):
+    `mergeable: UNKNOWN` is printed as `UNKNOWN`; a `gh` failure is exit 4.
+15. **Given** `pr-wait.sh <PR> --sha <new>` where the PR's head shows the *old* SHA for the first polls and the old SHA's
+    checks are all green, **then** it never prints `success` for the old SHA: it waits for the head to become `<new>`
+    and reports that head's checks, or exits 3 after 60 s; and **given** the head moves between the last poll and the
+    final re-read, **then** exit 3.
+16. **Given** a malformed `gh` response or a `gh` crash mid-wait, **then** `pr-wait.sh` exits 4 and `ticket-preflight.sh`
+    exits 65, never 1 or 0; **given** an unknown option, **then** all three exit 64; **given** `--timeout 1` with a
+    pending check, **then** exit 2 within a few seconds; **given** `origin/main` not fetchable, **then** preflight exits 65.
+17. **Given** the changed files, **then** these commands print nothing (their output is pasted in the PR):
     `git diff --exit-code origin/main...HEAD -- docs/templates/REVIEW_PROMPT.md .claude/commands/review-ticket.md`;
-    and `git diff origin/main...HEAD -- docs/AI_AGENT_PLAYBOOK.md` shows removed lines only in the step 4 and step 7
-    command lines that gain a helper name or `--match-head-commit`, no checkbox, stop rule or protected-gate line
-    changed. `git diff origin/main...HEAD -- .github/workflows/ci.yml` shows only added steps and added names in the
-    shellcheck step.
-16. **Given** the four mutations (the SHA comparison removed; `success` accepted for `skipped`; zero runs treated as
-    green; the protection's required list ignored or its emptiness accepted), **when** the self-test runs on each,
-    **then** it fails. Evidence, not a repeatable check: made by hand, pasted in the PR.
+    `git diff --word-diff origin/main...HEAD -- CLAUDE.md .claude/commands/build-ticket.md
+    .claude/commands/implement-ticket.md | grep -F '[-'` (only words added); and the playbook diff
+    `git diff --word-diff origin/main...HEAD -- docs/AI_AGENT_PLAYBOOK.md | grep -F '[-'` shows removals only inside
+    the step 4 "wait for CI" sentence and step 7's merge command line, none in a checkbox, a stop rule or a
+    protected-gate line. `git diff origin/main...HEAD -- .github/workflows/ci.yml` shows added steps, plus the one
+    `run:` line of the shellcheck step that gains file names (one removed and one added line, otherwise nothing).
+18. **Given** the mutations (the SHA comparison removed; the `--sha` head wait removed; `success` accepted for
+    `skipped`; zero runs treated as green; the protection's required list ignored or its emptiness accepted), **when**
+    the self-test runs on each, **then** it fails. Evidence, not a repeatable check: made by hand, pasted in the PR.
 
 ## Test plan
 
-- `scripts/check-ticket-helpers.sh` (criteria 1–14, one function per criterion; exits non-zero on any failure and
+- `scripts/check-ticket-helpers.sh` (criteria 1–16, one function per criterion; exits non-zero on any failure and
   prints the failing criterion). Wired into `.github/workflows/ci.yml`'s `docs` job as a new step; the new scripts are
   added to the `prodlike` job's `Shellcheck the smoke scripts` step (additions only, [protected
   gates](../AI_AGENT_PLAYBOOK.md#protected-gates)). `make lint` also runs the self-test (shellcheck itself is CI-only
   where it is not installed).
-- Criterion 15: the three commands above, run by the author and the reviewer.
-- Criterion 16: `scripts/mutation-probe.sh` is backend-only (it applies a patch and runs pytest), so these shell
+- Criterion 17: the commands above, run by the author and the reviewer.
+- Criterion 18: `scripts/mutation-probe.sh` is backend-only (it applies a patch and runs pytest), so these shell
   mutations are made **by hand on a clean committed tree**, each shown failing, then restored with `git checkout` and
   the baseline shown green.
 - Manual, against GitHub (read-only): `scripts/pr-wait.sh 138` on the merged P6-03b PR exits 0 with the five required
   checks and prints head `a2e19e6…`; `scripts/pr-wait.sh 138 --sha 0000000000000000000000000000000000000000` exits 3;
-  `scripts/pr-state.sh 138` prints merge commit `9b428fe…`. Paste the output.
+  `scripts/pr-state.sh 138` prints merge commit `9b428fe…`. Paste the output. Also against a real failing run (any
+  earlier failed run of this repository's CI) to see the job log fetched and saved while no other check is pending,
+  since the fake `gh` cannot prove the real endpoint's behaviour.
 - Commands: `bash scripts/check-ticket-helpers.sh`; `shellcheck scripts/ticket-preflight.sh scripts/pr-wait.sh
   scripts/pr-state.sh scripts/check-ticket-helpers.sh` (CI); `python3 scripts/check-links.py`.
 - After merge, not a criterion: the next five tickets' parent responses per ticket are counted with the audit's
@@ -256,6 +285,9 @@ Framing resolves each with the [decision rules](../AI_AGENT_PLAYBOOK.md#decision
 - Poll interval 30 s (as the runs used) and default timeout 540 s (under the Bash tool's 10-minute cap; the runs
   used 1500 s, which only fits a background command).
 - A timeout (exit 2) is reported, never retried by the script; the agent decides whether to wait again.
+- Size: about 250–300 non-test lines (three scripts, the command edits); the self-test and fixtures count as tests. If
+  framing measures more than ~400, split into WF-01a (preflight) and WF-01b (`pr-wait.sh`, `pr-state.sh`, the merge
+  command), and add the rows.
 - Whether `/draft-ticket` and `/milestone-recap` also call `pr-wait.sh` (default: yes for the "wait for CI" step of
   draft-ticket step 7; the recap is out of scope unless it has the same wait).
 
