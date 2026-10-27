@@ -17,6 +17,8 @@
 > m1 and m3 ran at `4be2c2e` and touch files round 1 didn't change). `make check` ran at `4be2c2e` (exit 0); CI
 > is green at `a47a8c9`. Branch is rebased on `origin/main` (`d4633ff`).
 > Differences from the plan: see §2.
+> **Updated** (pre-merge): read `CLAUDE.md`'s diff at the new head; the lock lesson also gained the "check after
+> the `await`" sentence for test helpers (§2, last table row). No code changed.
 > Written by the implementing session after that check ([ADR-0017](../adr/0017-implementer-writes-the-explanation.md)).
 > Form: full. Tier: 2. Walkthrough variant: C (a test-support process).
 
@@ -94,6 +96,7 @@ where each review round found a new hole.
 | R3's test holds the probe by patching `AsyncSession.scalar` for the probe statement | a timing race | deterministic interleaving (Codex's R3 proof did the same) | review finding | recorded |
 | `build-ticket.md` gets a new sentence | edit inside the existing parenthesis | that changed the token `tests),`; criterion 9 allows added words only | ticket | recorded |
 | Identify the backend *before* detaching | detach first | a cancel during the identity read left a detached backend nothing ended | review round 1, F1 | recorded |
+| Promote "a check made before an `await` is stale after it" to `CLAUDE.md`, for test helpers, appended to the lock lesson in place | a follow-up for the next ticket | round 1's F2 was the third occurrence (WF-02 R3 F1, WF-02a R3 F1), and the ticket says to promote it if it recurs; appended in place, so criterion 11's line count holds | ticket ("Carried from WF-02a") | recorded |
 
 **Framing changes:** criterion 5 sharpened (the detached connection and `(pid, backend_start)`); 6 gained "a wait in
 the action's own session is not seen" and the R3 interleaving rebuilt; 8 written out as the narrow rule with every
