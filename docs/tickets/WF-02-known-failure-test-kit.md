@@ -1,21 +1,41 @@
-# WF-02 — Known-failure test kit: focus, lock-wait and vacuous-test checks, and the pre-review table
+# WF-02 — Known-failure test kit: focus, lock-wait and vacuous-test checks, and the pre-review table (split)
 
 | Field | Value |
 |---|---|
 | Phase / lane | Workflow (off-roadmap, like P2-gate-01) / B (QA support; the backend helper is test code) |
 | Risk tier | 2 (test support that later tickets rely on as evidence) |
-| Depends on | WF-01 (both edit `.claude/commands/build-ticket.md` and `implement-ticket.md`; one agent per file) |
+| Depends on | WF-01 |
 | Replaces old | — |
-| Status | todo |
+| Status | split into [WF-02a](./WF-02a-focus-test-kit.md), [WF-02b](./WF-02b-lock-wait-and-vacuous-test-checks.md) |
 
-## Goal
+Split after review round 3 (2026-10-27, James's answer to inbox B-11: option (a)). "WF-02" in other text and in code
+comments means both parts; the criterion numbers below are kept in both parts, so "WF-02 criterion 4" still names one
+criterion.
+
+| Part | Scope | Acceptance criteria (original numbers) |
+|---|---|---|
+| [WF-02a](./WF-02a-focus-test-kit.md) | `frontend/src/test/focus.ts`, `e2e/helpers/focus.ts` and their tests, the `FileUpload` and "Log package" focus tests, the "Log package" focus fix, the PR template's "Known failure cases" table and the command lines, the focus lesson's words | 1–4, 9, 10, the focus half of 11 |
+| [WF-02b](./WF-02b-lock-wait-and-vacuous-test-checks.md) | `act_blocked_on_lock` (redesigned: the helper opens the action's session), criterion 7's restatement, the vacuous-test check (narrowed, fail-closed), the helper's name in the template row, the commands and the lock lesson | 5–8, the lock half of 11 |
+
+## Why split
+
+PR #142 built the whole ticket in one PR. Three review rounds (Codex `gpt-6.1-sol`, high) each found a new way for
+`act_blocked_on_lock` to credit the action with another session's wait (R1: any waiter; R2: overlapping calls; R3: a
+pooled connection reused during the probe), and the vacuous-test check kept missing Python binding forms (R1–R3). A
+High was open after round 3: stop rule 4 ([inbox B-11](../HUMAN_INBOX.md)). The focus half had no open finding, so it
+merges on its own (WF-02a), and the backend half is redesigned so its attribution cannot race (WF-02b). PR #142's
+branch `wf-02-known-failure-test-kit` keeps the round-3 code and its review history for WF-02b to start from.
+
+## Original ticket (for reference)
+
+### Goal
 
 Of the seven defect shapes in the table below that keep reaching review round 1, three get a shared helper or check that
 the implementer uses before the first review (focus lost from a control or its target, a value used after a lock wait,
 a test that never runs); the other four get a row in a pre-review table in the PR, which lists all of them per
 changed control.
 
-## Why
+### Why
 
 The same token audit as [WF-01](./WF-01-ticket-loop-helpers.md) (eight runs, P6-01b … P6-03a) found review rounds
 and their fixes to be the largest category: 37.6% of cumulative tokens and 51.0% of fresh-input-plus-output tokens,
@@ -44,7 +64,7 @@ check that fails when a test is vacuous, can. The fresh reviewers, the full-diff
 exactly as they are: this ticket only moves the discovery of known defects from the reviewers to the implementer's
 own tests, and the measure of success is fewer round-1 findings of these shapes, not fewer rounds allowed.
 
-## Scope
+### Scope
 
 - In:
   - **Frontend focus helper** `frontend/src/test/focus.ts` and **Chromium helper** `e2e/helpers/focus.ts`
@@ -68,9 +88,9 @@ own tests, and the measure of success is fewer round-1 findings of these shapes,
   - The `dirty`/native-input shapes beyond the pre-review table's line for them (no helper: each form differs;
     P6-02d/f's own tests are the examples the table points to).
 
-## Interfaces
+### Interfaces
 
-### `frontend/src/test/focus.ts` (jsdom, Vitest + Testing Library)
+#### `frontend/src/test/focus.ts` (jsdom, Vitest + Testing Library)
 
 ```ts
 /** What a browser would report as focused. jsdom keeps a *disabled* element, one under a `[hidden]` ancestor and an
@@ -104,7 +124,7 @@ that looks fine, which is how "focus is fine, then a slow refresh drops it" pass
 It exists because the existing tests read `document.activeElement`, which in jsdom is still the disabled button
 (P6-02b R2 F1: "jsdom tests didn't hold focus on it").
 
-### `e2e/helpers/focus.ts` (Playwright, real Chromium)
+#### `e2e/helpers/focus.ts` (Playwright, real Chromium)
 
 ```ts
 export async function expectFocusKept(
@@ -122,7 +142,7 @@ the page has been stable for 300 ms (an `expect.poll` over the recorded frames, 
 fix-up; more is what a keyboard or screen-reader user notices). The budget (one bad frame) is fixed in the helper and
 is not changed to make a test pass. It uses the existing `e2e/helpers/test.ts` fixtures.
 
-### `backend/tests/helpers/lock_wait.py`
+#### `backend/tests/helpers/lock_wait.py`
 
 ```python
 async def act_blocked_on_lock[T](
@@ -148,14 +168,14 @@ If `act` finishes without ever being blocked by the holder, or nothing is blocke
 ordering. It cannot UPDATE a row `act` already locked, so a state change during the wait is made on rows the holder
 owns or by waiting for a deadline.
 
-### The vacuous-test check
+#### The vacuous-test check
 
 `backend/tests/test_scratch_tests_run.py`: for every test function under `backend/tests/` whose parameters include
 `scratch_database_url`, every `async def` nested directly in it must be **passed or called in the test's own body**
 (not only referenced inside another nested function that is itself never called). Parsed with `ast`, not a regex.
 Fail-closed: a test it cannot parse fails. It covers the "body defined, never run" case only (P6-03b R3).
 
-### The pre-review table (`.github/pull_request_template.md`, "Independent review")
+#### The pre-review table (`.github/pull_request_template.md`, "Independent review")
 
 ```markdown
 #### Known failure cases (filled before the first review; one row per changed control, field or wait point)
@@ -174,7 +194,7 @@ adding rows for each fix's neighbours (it already requires that list). The revie
 comment says: "These are the implementer's claims for the reviewer to test, not evidence." `review-ticket.md` and the
 review prompt are not edited.
 
-## Acceptance criteria
+### Acceptance criteria
 
 1. **Given** a focused button that becomes `disabled` in jsdom, **when** `activeElementLikeBrowser()` is read, **then** it
    is `document.body`; likewise for a focused element under a `[hidden]` ancestor and inside an `[inert]` subtree; for
@@ -234,7 +254,7 @@ review prompt are not edited.
     only added words (no `[-…-]` removals), each lesson names its helper (`src/test/focus.ts`,
     `tests/helpers/lock_wait.py`), and `wc -l CLAUDE.md` is not larger than before.
 
-## Test plan
+### Test plan
 
 - Criteria 1–2: `frontend/src/test/focus.test.tsx`. Criterion 3: `frontend/src/features/files/fileUploadFocus.test.tsx`
   (new file; `files.test.tsx` stays untouched). Criterion 4: `e2e/tests/focus.spec.ts`, run by CI's `E2E journeys`
@@ -255,7 +275,7 @@ review prompt are not edited.
   log against the table above, and note in the inbox whether the number fell. A small sample cannot show the defect
   rate is unchanged; the unchanged review coverage is what keeps it so.
 
-## Likely files
+### Likely files
 
 `frontend/src/test/focus.ts` (+ `focus.test.tsx`), `frontend/src/features/files/fileUploadFocus.test.tsx`,
 `e2e/helpers/focus.ts`, `e2e/tests/focus.spec.ts`, `e2e/README.md`, `backend/tests/helpers/lock_wait.py`,
@@ -266,7 +286,7 @@ review prompt are not edited.
 and `notices.ts`, `frontend/src/test/queryFreshness.test.ts` (a parser-based fitness test),
 `frontend/src/features/lists/useLoadMore.test.tsx` (focus assertions), `e2e/helpers/test.ts`.
 
-## Open decisions
+### Open decisions
 
 Framing resolves each with the [decision rules](../AI_AGENT_PLAYBOOK.md#decision-rules). Defaults:
 
@@ -284,7 +304,7 @@ Framing resolves each with the [decision rules](../AI_AGENT_PLAYBOOK.md#decision
 - `act_blocked_on_lock` polling `pg_stat_activity` (default) versus `pg_locks`; the default needs no extra role.
 - Whether the vacuous-test check also covers tests that use another scratch fixture, if any exists at framing time.
 
-## Must explain (learning checkpoint)
+### Must explain (learning checkpoint)
 
 1. In jsdom a disabled focused button is still `document.activeElement`. How does `activeElementLikeBrowser` make a
    test fail where Chromium would drop focus, and what does it still not model (CSS `display: none`)?
@@ -294,10 +314,52 @@ Framing resolves each with the [decision rules](../AI_AGENT_PLAYBOOK.md#decision
 4. Why are the existing tests left untouched and the new ones written beside them (protected gates)?
 5. Why do the reviewers get no new instruction, why does the table say "claims to test, not evidence", and what would a falling round-1 count prove or not prove?
 
-## Frame notes (filled by the agent in step 1)
+### Frame notes (filled by the agent in step 1)
+
+Framed against `origin/main` at `5e9f59a` (WF-01 merged).
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
-  also the alternatives considered and why they lost):
-- Split:
+  - **1 (added case):** a focused button inside a `<fieldset disabled>` is also `<body>` for `activeElementLikeBrowser`
+    (Chromium drops focus from a control a disabled fieldset disables; `Modal`'s Tab trap and the residents forms use
+    fieldsets). Likewise an element inside a `[hidden]` or `inert` ancestor at any depth, not only the parent.
+  - **2 (sharpened):** with `within` given, focus that moves to an enabled element **outside** `within` fails too, with
+    `focus left <within>; on: <tag "name">`; an `action` or `settle` that throws propagates its own error (the helper
+    adds no message over it). The five samples are taken with real `setTimeout(0)` turns, so a test that installed
+    fake timers fails fast with a message naming that (it would otherwise hang).
+  - **3 (sharpened):** the three controls are "Choose file" (a chosen file starts an upload and disables it),
+    "Cancel" (removed when the upload is cancelled) and "Retry" (removed when the retry starts); plus "Cancel" focused
+    when the upload **finishes** or **fails** (the control is removed by a server answer, not a click: the
+    `settle` shape). Each `within` the `Modal` dialog. The mutation removes one control's handoff in
+    `FileUpload.tsx`'s status effect; at least the matching test fails.
+  - **4 (sharpened):** "two consecutive bad frames" counts frames recorded by the `requestAnimationFrame` loop
+    *after* `action` resolved its first statement (the click). "Stable for 300 ms" means: no request in flight (counted
+    from the page's `request`/`requestfinished`/`requestfailed` events) and no change of the focused element in the
+    recorded frames for 300 ms of the page's own clock. The `e2e` lint's no-sleep rule applies to the helper
+    (`expect.poll`, no `setTimeout`/`waitForTimeout`).
+  - **6 (added case):** a `change` that raises is re-raised, the holder is rolled back and the `act` task is
+    cancelled and awaited (no hang, no open transaction left for the engine's disposal).
+  - **7 (sharpened):** parametrised over `NORMAL` and `URGENT`, as the test it restates (both fan out
+    notifications; `URGENT` also enqueues email). "No notification, email job or audit row" is asserted by counts of
+    `notifications`, `jobs` and the notice's audit rows, plus the notice still `draft`.
+  - **8 (sharpened):** "passed or called" means: the coroutine's name is the callee of a call, or a positional or
+    keyword argument of a call, in a statement of the test's own body that is not itself a nested `def`; or it is
+    reachable that way through a sibling nested function that is itself passed or called (transitively). A bare
+    reference (`assert body`, `x = body`) does not count. The negative cases are parsed from strings: never used,
+    used only inside a never-run sibling, bare reference only; the positive ones: passed to `_run`, called inside
+    `asyncio.gather(...)`, used only inside a sibling that is passed.
+- Criteria loosened: none.
+- Decisions taken:
+  - **Split: none.** Non-test lines: the PR template block (~10), the two command files (~6), `CLAUDE.md` (two in-place
+    edits, 0 net lines), `e2e/README.md` rows (~3). The helpers are test support and count as tests (ticket default;
+    `CLAUDE.md` "tests don't count"). A component fix found by criterion 4's probe is capped at ~30 lines. Total far
+    under ~400. Basis: ticket default.
+  - **Chromium surface:** the packages desk's "Log package" submit and the "Hand out" confirm (ticket default), on a
+    unit the spec creates (`createUnit`), as `packages-desk.spec.ts` does. Basis: ticket default.
+  - **Criterion 7's case:** the default (P6-01c restated). Create and edit wait on `claim_file`, but that wait already
+    has coverage (`test_an_expiry_passing_while_the_attachment_claim_waits_is_refused`) in
+    `test_concurrency.py`, and the default is the one with a known failing mutation. Basis: ticket default.
+  - **Lock lookup:** `pg_stat_activity` with `pg_blocking_pids(pid)` (default; no extra role).
+  - **Other scratch fixtures:** none exists at framing (`grep @pytest.fixture` under `backend/tests`: only
+    `scratch_database_url` creates a database), so the check covers that fixture only. Basis: code.
+  - **Where the helper's own Chromium cases run:** `page.setContent` pages need no stack data, but the spec lives in
+    `e2e/tests/` and so runs only where `make e2e` / CI's `E2E journeys` run (both projects). Basis: ticket.

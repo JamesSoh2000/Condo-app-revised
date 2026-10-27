@@ -41,3 +41,6 @@ reviewer can check the code against it, and the explanation is later compared ag
 5. Open or update the PR and wait for CI. Wait with `scripts/pr-wait.sh <N> --sha "$(git rev-parse HEAD)"`
    (exit 0 is the only green). An unrelated failure gets two retries, then its own fix PR, or a
    block if it is external.
+6. Before the first review, fill the PR's "Known failure cases" table in "Independent review": one row per changed
+   control, field or wait point, with the CLAUDE.md lesson that applies and its test (`expectFocusKept` in
+   `frontend/src/test/focus.ts` and `e2e/helpers/focus.ts` for the focus rows) or `n/a: why`.

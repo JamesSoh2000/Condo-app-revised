@@ -25,6 +25,9 @@ only after re-reading the code, never from memory of what you built.
    (`gh pr create`). Push and wait for CI (`git push`, then `scripts/pr-wait.sh <N> --sha "$(git rev-parse HEAD)"`
    with the Bash tool's `timeout: 600000`: exit 1, read the printed log file and fix the cause; exit 2, run it
    again; exit 3, the head moved, wait on the new head; exit 4, an error. Exits 2, 3 and 4 are never green).
+   Before spawning the first reviewer, fill the PR's "Known failure cases" table (one row per changed control, field
+   or wait point, each with its test or `n/a: why`; `expectFocusKept` makes the focus rows one-line tests), and keep
+   adding rows for each fix's neighbours in step 4.
 4. **Review** (step 5). Read the ticket's tier.
    - Spawn a fresh subagent with: "Run `.claude/commands/review-ticket.md` for $ARGUMENTS in worktree
      `<path>`. Round <N>." Tier 1: say it must include the security pass.

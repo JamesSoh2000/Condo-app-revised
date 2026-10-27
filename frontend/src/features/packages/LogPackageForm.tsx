@@ -57,6 +57,7 @@ export function LogPackageForm({ headingId }: { headingId: string }) {
   const [logged, setLogged] = useState(false);
   const [error, setError] = useState<{ field: Field; message: string } | null>(null);
   const unitRef = useRef<HTMLInputElement>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
   const id = useId();
   const busy = create.isPending;
 
@@ -135,6 +136,9 @@ export function LogPackageForm({ headingId }: { headingId: string }) {
     setLogged(false);
     setError(null);
     if (picker.chosen === null || carrierValue === null || Object.values(problems).some(Boolean)) return;
+    // The submit is about to be disabled, which drops focus to <body> in a browser, for the wait and after a refusal
+    // (WF-02 criterion 4's probe): the status line, which stays, holds it until a 201 moves it to the unit search.
+    statusRef.current?.focus();
     create.mutate(
       {
         key,
@@ -283,8 +287,8 @@ export function LogPackageForm({ headingId }: { headingId: string }) {
           Log package
         </button>
         {fieldError('form')}
-        <p role="status" aria-live="polite" data-testid="log-status" className="text-sm text-green-800">
-          {logged ? 'Logged ✓' : ''}
+        <p ref={statusRef} tabIndex={-1} role="status" aria-live="polite" data-testid="log-status" className="text-sm text-green-800">
+          {busy ? 'Logging…' : logged ? 'Logged ✓' : ''}
         </p>
       </div>
     </form>
