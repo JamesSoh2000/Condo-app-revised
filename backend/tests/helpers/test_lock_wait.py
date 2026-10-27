@@ -325,3 +325,55 @@ def test_a_connection_the_action_returned_does_not_count_when_another_session_re
             await asyncio.gather(unrelated, return_exceptions=True)
 
     _run(scratch_database_url, body)
+
+
+def test_two_overlapping_calls_each_watch_only_their_own_action(scratch_database_url: str) -> None:
+    # Review round 2 (Codex, High): the "inside an action" flag was shared, so B's action waiting on
+    # A's holder counted as A's, and A passed with an action that ran no statement.
+    async def body(sessions: Sessions) -> None:
+        held_a = asyncio.Event()
+        changed_a = asyncio.Event()
+
+        async def hold_a(db: AsyncSession) -> None:
+            await _hold(1)(db)
+            held_a.set()
+
+        async def hold_b(db: AsyncSession) -> None:
+            await held_a.wait()
+            await _hold(2)(db)
+
+        async def act_a() -> str:
+            await changed_a.wait()  # runs no statement
+            return "never blocked"
+
+        async def change_a(_db: AsyncSession) -> None:
+            changed_a.set()
+
+        results = await asyncio.gather(
+            act_blocked_on_lock(sessions, hold=hold_a, act=act_a, change=change_a, timeout=1.0),
+            act_blocked_on_lock(
+                sessions, hold=hold_b, act=_increment(sessions, 1), change=_nothing, timeout=1.0
+            ),
+            return_exceptions=True,
+        )
+
+        assert isinstance(results[0], AssertionError)
+        assert str(results[0]) == NEVER_BLOCKED
+
+    _run(scratch_database_url, body)
+
+
+def test_two_overlapping_calls_whose_actions_both_wait_both_pass(scratch_database_url: str) -> None:
+    async def body(sessions: Sessions) -> None:
+        results = await asyncio.gather(
+            act_blocked_on_lock(
+                sessions, hold=_hold(1), act=_increment(sessions, 1), change=_nothing
+            ),
+            act_blocked_on_lock(
+                sessions, hold=_hold(2), act=_increment(sessions, 2), change=_nothing
+            ),
+        )
+
+        assert list(results) == [1, 1]
+
+    _run(scratch_database_url, body)

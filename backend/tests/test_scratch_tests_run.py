@@ -43,28 +43,44 @@ def unrun_coroutines(source: str, filename: str) -> tuple[int, list[str]]:
 
 
 def _run_by(body: list[ast.stmt]) -> set[str]:
-    """Names called or passed by `body` when it runs, following the local functions it calls or
-    passes into their own bodies (transitively), and nothing else of theirs."""
-    names, local = _calls(body)
+    """Names called or passed when `body` runs: its own calls, and those of the local functions it
+    calls or passes (transitively), as far as they mean names of `body`'s scope or outer ones."""
+    names, local, _ = _calls(body)
     followed: set[str] = set()
     pending = names & local.keys()
     while pending:
         name = pending.pop()
         followed.add(name)
-        inner = _run_by(local[name].body)
+        inner = _free(local[name])
         names |= inner
         pending |= (inner & local.keys()) - followed
     return names
 
 
+def _free(function: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    """Names of the enclosing scopes that running `function` calls or passes: what it runs, less
+    the names it binds itself (parameters, assignments, local definitions), which shadow them
+    (review round 2, Codex)."""
+    _, local, bound = _calls(function.body)
+    return _run_by(function.body) - local.keys() - bound - _parameters(function.args)
+
+
+def _parameters(args: ast.arguments) -> set[str]:
+    named = [*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg]
+    return {arg.arg for arg in named if arg is not None}
+
+
 def _calls(
     body: list[ast.stmt],
-) -> tuple[set[str], dict[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
-    """The names that are the callee, or a positional or keyword argument, of a call in `body`'s
-    own scope, and the functions it defines (in any block). Function, lambda and class bodies are
-    not entered: a lambda's only when it is itself called or passed."""
+) -> tuple[set[str], dict[str, ast.FunctionDef | ast.AsyncFunctionDef], set[str]]:
+    """In `body`'s own scope: the names that are the callee, or a positional or keyword argument,
+    of a call; the functions it defines (in any block); and the other names it binds (assigned,
+    unless declared `nonlocal` or `global`). Function, lambda and class bodies are not entered: a
+    lambda's only when it is itself called or passed, less its parameters."""
     names: set[str] = set()
     local: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    stored: set[str] = set()
+    declared: set[str] = set()
     stack: list[ast.AST] = list(body)
     while stack:
         node = stack.pop()
@@ -73,7 +89,13 @@ def _calls(
             continue
         if isinstance(node, ast.Lambda | ast.ClassDef):
             continue
-        if isinstance(node, ast.Call):
+        if isinstance(node, ast.Nonlocal | ast.Global):
+            declared.update(node.names)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            stored.add(node.id)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            stored.add(node.name)
+        elif isinstance(node, ast.Call):
             exprs = [node.func, *node.args, *(keyword.value for keyword in node.keywords)]
             while exprs:
                 expr = exprs.pop()
@@ -84,9 +106,10 @@ def _calls(
                 elif isinstance(expr, ast.Name):
                     names.add(expr.id)
                 elif isinstance(expr, ast.Lambda):
-                    stack.append(expr.body)
+                    inner, _, _ = _calls([ast.Expr(value=expr.body)])
+                    names |= inner - _parameters(expr.args)
         stack.extend(ast.iter_child_nodes(node))
-    return names, local
+    return names, local, stored - declared
 
 
 def test_every_scratch_database_test_runs_the_coroutine_it_defines() -> None:
@@ -200,6 +223,66 @@ def test_def_in_a_block(scratch_database_url):
         _run(scratch_database_url, wrapped)
 """
     assert unrun_coroutines(source, "case.py") == (3, [])
+
+
+def test_a_name_shadowed_in_a_called_function_does_not_run_the_coroutine() -> None:
+    # Review round 2 (Codex, Medium): names from different scopes were merged, so a wrapper calling
+    # its own `body` counted as running the test's.
+    source = """
+def test_local_def(scratch_database_url):
+    async def body(sessions):
+        assert False
+    def wrapper():
+        def body():
+            pass
+        body()
+    wrapper()
+
+def test_parameter(scratch_database_url):
+    async def body(sessions):
+        assert False
+    def wrapper(body):
+        body()
+    wrapper(print)
+
+def test_assignment(scratch_database_url):
+    async def body(sessions):
+        assert False
+    def wrapper():
+        body = print
+        body()
+    wrapper()
+
+def test_lambda_parameter(scratch_database_url):
+    async def body(sessions):
+        assert False
+    _run(scratch_database_url, lambda body: body())
+"""
+    assert _check(source) == [
+        f"case.py::test_{name}: `body` is defined and never run"
+        for name in ("local_def", "parameter", "assignment", "lambda_parameter")
+    ]
+
+
+def test_a_name_declared_nonlocal_or_free_in_a_called_function_runs_the_coroutine() -> None:
+    source = """
+def test_free(scratch_database_url):
+    async def body(sessions):
+        assert False
+    def wrapper():
+        _run(scratch_database_url, body)
+    wrapper()
+
+def test_nonlocal(scratch_database_url):
+    async def body(sessions):
+        assert False
+    def wrapper():
+        nonlocal body
+        _run(scratch_database_url, body)
+        body = None
+    wrapper()
+"""
+    assert unrun_coroutines(source, "case.py") == (2, [])
 
 
 def test_a_bare_reference_does_not_run_it() -> None:

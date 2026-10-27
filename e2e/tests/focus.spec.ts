@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { expect, type Page, test } from '../helpers/test';
 
 import { buildingId, storageStatePath } from '../helpers/auth';
-import { expectFocusKept } from '../helpers/focus';
+import { expectFocusKept, trackRequests } from '../helpers/focus';
 import { createUnit, logPackage } from '../helpers/packages';
 
 /**
@@ -18,6 +18,7 @@ type Handoff = 'status' | 'none' | 'remove' | 'next-frame' | 'third-frame';
 
 /** A Save button whose click disables (or removes) it; `handoff` says where focus goes, and when. */
 async function selfDisabling(page: Page, handoff: Handoff) {
+  trackRequests(page);
   await page.setContent(`
     <main>
       <button id="save" type="button">Save</button>
@@ -91,6 +92,7 @@ test.describe('the helper on pages of its own', () => {
   test('focus moving between two same-named controls is still a change, so the page is not settled', async ({ page }) => {
     // Review round 1 (Codex, Medium): frames were compared by description, so focus alternating between two "Edit"
     // buttons counted as stable and the helper returned before their removal dropped focus.
+    trackRequests(page);
     await page.setContent(`<main><button id="save">Save</button><button id="one">Edit</button><button id="two">Edit</button></main>`);
     const save = page.getByRole('button', { name: 'Save' });
     await save.focus();
@@ -113,6 +115,52 @@ test.describe('the helper on pages of its own', () => {
         tick();
       });
     await expect(expectFocusKept(page, alternate, { control: save })).rejects.toThrow(/focus is lost at the end: on <body>/);
+  });
+
+  test('a request already in flight when the helper starts must finish before it passes', async ({ page }) => {
+    // Review round 2 (Codex, Medium): the helper counted only requests started after it, so a refresh already out
+    // was invisible: it passed, and the refresh's answer then removed the focused button.
+    trackRequests(page);
+    await page.route('https://focus.test/', (route) => route.fulfill({ contentType: 'text/html', body: '<button id="save">Save</button>' }));
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let arrived!: () => void;
+    const requested = new Promise<void>((resolve) => (arrived = resolve));
+    await page.route('https://focus.test/refresh', async (route) => {
+      arrived();
+      await released;
+      await route.fulfill({ contentType: 'text/plain', body: 'refreshed' });
+    });
+    await page.goto('https://focus.test/');
+    await page.evaluate(() => void fetch('/refresh').then(() => document.getElementById('save')!.remove()));
+    await requested;
+    const save = page.getByRole('button', { name: 'Save' });
+    await save.focus();
+    let outcome = 'pending';
+    const checked = expectFocusKept(page, () => save.click(), { control: save }).then(
+      () => (outcome = 'passed'),
+      (error: Error) => (outcome = error.message),
+    );
+    // Well past the helper's 300 ms of quiet, counted in the page's frames (no sleep), with the refresh still out.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const until = performance.now() + 1500;
+          const tick = () => (performance.now() >= until ? resolve() : requestAnimationFrame(tick));
+          tick();
+        }),
+    );
+    expect(outcome, 'the helper returned while the refresh was out').toBe('pending');
+    release();
+    await checked;
+    expect(outcome).toMatch(/focus is lost at the end: on <body>/);
+  });
+
+  test('a page whose requests are not tracked is refused', async ({ page }) => {
+    await page.setContent('<button>Save</button>');
+    const save = page.getByRole('button', { name: 'Save' });
+    await save.focus();
+    await expect(expectFocusKept(page, () => save.click(), { control: save })).rejects.toThrow(/call trackRequests\(page\)/);
   });
 });
 
@@ -153,6 +201,7 @@ test.describe('probe: the packages desk', () => {
     const name = `${unit.tower}-${unit.label}`;
 
     const desk = await (await newContext({ storageState: storageStatePath('mapleSecurity') })).newPage();
+    trackRequests(desk);
     await desk.goto('/security/packages');
     const panel = desk.getByRole('region', { name: 'Log package' });
     await panel.getByLabel('Unit', { exact: true }).fill(unit.label);
@@ -186,6 +235,7 @@ test.describe('probe: the packages desk', () => {
     const item = await logPackage(deskContext.request, baseURL!, maple, { unit_id: unitId, carrier: `E2E ${unique(8)}` });
 
     const desk = await deskContext.newPage();
+    trackRequests(desk);
     await desk.goto('/security/packages');
     await desk.getByLabel('Unit number', { exact: true }).fill(unit.label);
     await desk.getByRole('group', { name: 'Show packages for' }).getByRole('radio', { name, exact: true }).check();

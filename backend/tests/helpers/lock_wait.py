@@ -24,9 +24,10 @@ _BLOCKED_BY_HOLDER = text(
     " WHERE :holder = ANY(pg_blocking_pids(waiting.pid)))"
 ).bindparams(bindparam("holder", type_=Integer), bindparam("pids", type_=ARRAY(Integer)))
 
-# True inside the action's task and the tasks it starts (they copy its context), so the pool's
-# checkout hook can tell the action's connections from everyone else's.
-_IN_ACTION: ContextVar[bool] = ContextVar("in_action", default=False)
+# This call's token inside its action's task and the tasks it starts (they copy its context), so
+# the pool's checkout hook tells the action's connections from everyone else's, including another
+# call's action on the same engine (review round 2, Codex).
+_ACTION: ContextVar[object | None] = ContextVar("action", default=None)
 
 _POLL_SECONDS = 0.01
 
@@ -55,15 +56,17 @@ async def act_blocked_on_lock[T](
     # The backends the action holds now: added at checkout in its context, removed at checkin.
     acting: dict[int, int] = {}
 
+    token = object()
+
     def checkout(dbapi_connection: Any, record: Any, _proxy: Any) -> None:
-        if _IN_ACTION.get():
+        if _ACTION.get() is token:
             acting[id(record)] = dbapi_connection.driver_connection.get_server_pid()
 
     def checkin(_dbapi_connection: Any, record: Any) -> None:
         acting.pop(id(record), None)
 
     async def run() -> T:
-        _IN_ACTION.set(True)
+        _ACTION.set(token)
         return await act()
 
     event.listen(engine.sync_engine, "checkout", checkout)

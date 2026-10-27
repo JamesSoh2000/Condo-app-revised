@@ -28,28 +28,44 @@ declare global {
   }
 }
 
+interface Network {
+  inFlight: Set<Request>;
+  last: number;
+}
+
+const tracked = new WeakMap<Page, Network>();
+
+/**
+ * Starts counting `page`'s requests. Call it before the page loads (before `goto` or `setContent`): a request already
+ * out when `expectFocusKept` starts (a refresh whose answer removes the focused row) must be seen too, and a listener
+ * added later never hears of it (review round 2, Codex). `expectFocusKept` refuses a page that isn't tracked.
+ */
+export function trackRequests(page: Page): void {
+  if (tracked.has(page)) return;
+  const network: Network = { inFlight: new Set(), last: Date.now() };
+  tracked.set(page, network);
+  const started = (request: Request) => {
+    network.inFlight.add(request);
+    network.last = Date.now();
+  };
+  const ended = (request: Request) => {
+    network.inFlight.delete(request);
+    network.last = Date.now();
+  };
+  page.on('request', started);
+  page.on('requestfinished', ended);
+  page.on('requestfailed', ended);
+}
+
 export async function expectFocusKept(
   page: Page,
   action: () => Promise<void>,
   options: { control: Locator; within?: Locator },
 ): Promise<void> {
+  const network = tracked.get(page);
+  if (!network) throw new Error('expectFocusKept: call trackRequests(page) before the page loads, so a request already in flight is seen');
   await expect(options.control, 'before the action, focus must be on the control').toBeFocused();
   const region = options.within ? await options.within.elementHandle() : null;
-
-  // A set, not a count: a request that started before these listeners ends without having been added.
-  const inFlight = new Set<Request>();
-  let lastNetwork = Date.now();
-  const started = (request: Request) => {
-    inFlight.add(request);
-    lastNetwork = Date.now();
-  };
-  const ended = (request: Request) => {
-    inFlight.delete(request);
-    lastNetwork = Date.now();
-  };
-  page.on('request', started);
-  page.on('requestfinished', ended);
-  page.on('requestfailed', ended);
 
   try {
     const inside = await page.evaluate((within) => {
@@ -94,7 +110,7 @@ export async function expectFocusKept(
     await expect
       .poll(
         async () => {
-          if (inFlight.size > 0) return 'a request is in flight';
+          if (network.inFlight.size > 0) return 'a request is in flight';
           const frames = await page.evaluate(() => window.__focusFrames ?? []);
           const after = frames.filter((frame) => frame.at >= actionStarted);
           if (after.length < 2) return 'too few frames after the action';
@@ -102,7 +118,7 @@ export async function expectFocusKept(
           for (let i = 1; i < after.length; i++) {
             if (after[i].element !== after[i - 1].element || after[i].bad !== after[i - 1].bad) changed = after[i].at;
           }
-          const quiet = after[after.length - 1].at - Math.max(changed, lastNetwork);
+          const quiet = after[after.length - 1].at - Math.max(changed, network.last);
           return quiet >= STABLE_MS ? 'settled' : `changed ${quiet} ms ago`;
         },
         { message: 'the page never settled after the action' },
@@ -133,9 +149,6 @@ export async function expectFocusKept(
       `focus was lost for ${worst} frames in a row (on ${lostOn}); the budget is ${BAD_FRAMES_ALLOWED}`,
     ).toBeLessThanOrEqual(BAD_FRAMES_ALLOWED);
   } finally {
-    page.off('request', started);
-    page.off('requestfinished', ended);
-    page.off('requestfailed', ended);
     await page.evaluate(() => window.__focusStop?.()).catch(() => {});
     await region?.dispose();
   }
