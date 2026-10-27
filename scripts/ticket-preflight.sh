@@ -80,8 +80,9 @@ def row(t):
 
 
 out, codes, errors = [f"ticket: {tid}"], set(), []
-states = re.findall(r"Run state:\s*([A-Za-z]+)", inbox)
-run_state = states[0] if len(set(states)) == 1 else "unreadable"
+# The whole value of the line, bold or not: "running-paused" or "running2" is not "running".
+states = re.findall(r"^\s*(?:\*\*)?Run state:[ \t]*(.*?)[ \t]*(?:\*\*)?[ \t]*$", inbox, re.M)
+run_state = states[0] if len(set(states)) == 1 and states[0] in {"running", "paused"} else "unreadable"
 try:
     t = row(tid)
 except Unreadable as e:

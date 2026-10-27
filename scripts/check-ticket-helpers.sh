@@ -593,6 +593,22 @@ c4() {
   publish stopped "P1-04|—|todo"
   preflight P1-04
   want "exit 65" code 65
+  # Review round 2 (F1): the whole value is the state; a word that only starts with one is not it.
+  local state
+  for state in running-paused running2 running/paused "paused (until Monday)" Running "running paused"; do
+    label="4 run state '$state'"
+    publish "$state" "P1-04|—|todo"
+    preflight P1-04 --create
+    want "exit 65, never 0 or 10" code 65
+    want "no worktree made" test ! -e "$base_dir/bw-p1-04"
+  done
+  label="4 run state without the bold, trailing spaces"
+  publish running "P1-04|—|todo"
+  printf '# Human Inbox\n\nRun state: running  \n' >"$seed/docs/HUMAN_INBOX.md"
+  git -C "$seed" commit -qam plain && git -C "$seed" push -q origin HEAD:main
+  preflight P1-04
+  want "exit 0" code 0
+  want "run_state: running" has "run_state: running"
   label="4 paused and an unmet dependency"
   publish paused "P1-04|—|todo" "P1-05|P1-04|todo"
   preflight P1-05 --create
