@@ -235,6 +235,11 @@ jobs:
           BASE_REF: origin/${{ github.base_ref || 'main' }}
         run: python3 scripts/check-explanation-refs.py
 
+      # The ticket-loop helpers (WF-01) against a fake gh serving captured GitHub responses, and a temporary
+      # git origin: each helper is shown to fail closed, not only to pass.
+      - name: Ticket-loop helpers self-test
+        run: bash scripts/check-ticket-helpers.sh
+
   prodlike:
     name: Prod-like stack smoke
     runs-on: ubuntu-24.04
@@ -258,7 +263,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Shellcheck the smoke scripts
-        run: shellcheck scripts/smoke.sh scripts/prodlike-checks.sh
+        run: shellcheck scripts/smoke.sh scripts/prodlike-checks.sh scripts/ticket-preflight.sh scripts/pr-wait.sh scripts/pr-state.sh scripts/check-ticket-helpers.sh scripts/fixtures/ticket-helpers/fake-gh
 
       - name: Validate the Caddyfile
         run: |

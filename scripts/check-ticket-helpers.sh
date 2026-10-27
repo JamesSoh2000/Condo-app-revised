@@ -82,7 +82,7 @@ c5() {
   want "exit 0" code 0
   want "result success" has "result: success"
   want "head is the PR's" has "head: $old (PR #138, base main)"
-  want "five required checks listed" test "$(grep -cE '[[:space:]]success$' "$work/out")" = 5
+  want "five required checks listed" test "$(grep -E '[[:space:]]success$' "$work/out" | grep -cv '^result:')" = 5
   open_pr "$g/pr.json" "$old"
   wait_pr 138 --sha "$old"
   want "open PR with matching --sha: exit 0" code 0

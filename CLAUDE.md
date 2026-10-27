@@ -111,7 +111,7 @@ Everything a command prints is re-read on every later turn, so don't print the s
 - Large diff: `git diff --stat` first, then one path's patch at a time. A reviewer still reads every changed path;
   the stat orders the reading and never replaces it.
 - `gh pr view --json <only the fields you need>` (`-q` to cut further), once per step. Fetch again only after the PR
-  changed (a push, a review round, a comment).
+  changed (a push, a review round, a comment). For the merge-gate fields, `scripts/pr-state.sh <N>` gives them once.
 
 ## Never
 

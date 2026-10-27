@@ -10,7 +10,7 @@ printf '%s\n' "$*" >>"$dir/calls"
 
 key=
 if [[ ${1:-} == pr && ${2:-} == view ]]; then
-  key=pr
+  key="pr"
 elif [[ ${1:-} == api ]]; then
   for arg in "$@"; do
     case "$arg" in
