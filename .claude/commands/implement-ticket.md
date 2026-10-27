@@ -38,5 +38,6 @@ reviewer can check the code against it, and the explanation is later compared ag
    with real evidence. Write "Decisions and alternatives" for a reader who wasn't in this conversation: the
    the explanation takes the "why" only from there, not from your memory. Put accepted risks and follow-ups under "Follow-ups and
    accepted risks".
-5. Open or update the PR and wait for CI. An unrelated failure gets two retries, then its own fix PR, or a
+5. Open or update the PR and wait for CI. Wait with `scripts/pr-wait.sh <N> --sha "$(git rev-parse HEAD)"`
+   (exit 0 is the only green). An unrelated failure gets two retries, then its own fix PR, or a
    block if it is external.

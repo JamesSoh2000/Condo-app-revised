@@ -22,4 +22,6 @@ Draft the full ticket for $ARGUMENTS. Do NOT write or change code in this sessio
 6. Add or update the row in `docs/tickets/README.md`, and replace the stub's body with a link to the new file.
 7. Open a docs PR (`docs(tickets): draft $ARGUMENTS [$ARGUMENTS]`, Tier 3). Run one fresh-subagent review
    with `.claude/commands/review-ticket.md`, checking the draft against the stub, `docs/PRODUCT_SCOPE.md`
-   and the ADRs. Merge when it says `MERGE` and CI is green. No explanation is needed for a ticket draft.
+   and the ADRs. Merge when it says `MERGE` and CI is green. Wait for CI with
+   `scripts/pr-wait.sh <N> --sha "$(git rev-parse HEAD)"` (exit 0 is the only green).
+   No explanation is needed for a ticket draft.

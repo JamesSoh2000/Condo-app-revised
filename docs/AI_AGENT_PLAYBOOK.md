@@ -88,7 +88,8 @@ Command: [`/implement-ticket`](../.claude/commands/implement-ticket.md).
 
 ### Step 4 — Verify (CI)
 
-`make check` locally, then push and wait for CI: lint, types, tests against Postgres, `alembic check`, fitness
+`make check` locally, then push and wait for CI with `scripts/pr-wait.sh <N> --sha <pushed sha>`:
+lint, types, tests against Postgres, `alembic check`, fitness
 tests, OpenAPI drift, the Base44 ratchet, `prodlike` smoke, E2E, `docs`. A failure is fixed at its cause. A
 failure unrelated to the ticket (flaky test, broken `main`) gets **two** retries; after that, fix it in its
 own small PR first if it is in the repo, or block if it is external.
@@ -221,7 +222,8 @@ the inbox, so all three land atomically. The agent merges only when **all** of t
       saying so.
 - [ ] No protected gate was loosened.
 
-Then: `gh pr merge <N> --squash --delete-branch`, remove the worktree, and return to step 0.
+Then: `gh pr merge <N> --squash --delete-branch --match-head-commit <sha>`, where `<sha>` is the head the boxes
+were ticked against (a head that moved makes `gh` refuse), remove the worktree, and return to step 0.
 
 GitHub enforces most of this: `main` is protected (P0-04b). A PR is required, the three CI jobs must be
 green and the branch up to date, history is linear, and the rules apply to admins. Never use

@@ -6,7 +6,7 @@
 | Risk tier | 1 (tooling, but its output feeds the merge gate and no human checks after the reviewers, so the playbook's Tier 1 review applies: a Claude reviewer with the security pass plus Codex) |
 | Depends on | — |
 | Replaces old | — |
-| Status | todo |
+| Status | done |
 
 ## Goal
 
@@ -310,7 +310,34 @@ Framing resolves each with the [decision rules](../AI_AGENT_PLAYBOOK.md#decision
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+  - **8a (added):** a required check run that exists but is `queued` or `in_progress` (no conclusion yet) is
+    `pending`, never decided by its null conclusion; at the timeout it is exit 2, listed `pending`.
+  - **12 (sharpened):** a protection entry whose `app_id` is `null` or `-1` is satisfied by a run of that name
+    from any app (the "any source" case the interface names, now tested).
+  - **3 (sharpened):** the new worktree's `HEAD` equals the printed `base:` and the branch is
+    `<id lowercase>-<slug>`; `--create` on a ticket that is not ready (exit 10, 11, 12 or 13) creates nothing.
+  - **4 (sharpened):** "unreadable index row" means the ticket's row (or a dependency's row) does not have the
+    seven cells, its tier is not a digit, its status is not one of `todo`, `in progress`, `review`, `done`,
+    `blocked`, a dependency is not an ID, or the link is not `./<ID>-<slug>.md`; an ID listed twice and a
+    `Run state:` that is neither `running` nor `paused` are also exit 65. The current index (102 rows) parses
+    under these rules.
+  - **9 (sharpened):** the `head-moved` output is `moved: <started sha> -> <current sha>` before `result:`.
+  - **14 (sharpened):** `base_sha` and `behind_by` both come from one compare response
+    (`compare/<base>...<head>`: `base_commit.sha`, `behind_by`); the key set is exact, order is not tested.
+  - **16 (sharpened):** a non-numeric or zero `--timeout`, a missing or non-numeric PR, an ID that is not
+    ticket-shaped and an extra argument are all exit 64.
+- Criteria loosened (with reason; also listed in the inbox): none.
 - Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
   also the alternatives considered and why they lost):
-- Split:
+  - Flat `scripts/`; required checks from branch protection; 30 s poll and 540 s timeout; a timeout is
+    reported, not retried (all four: the ticket's defaults).
+  - `/draft-ticket` step 7 names `pr-wait.sh` for its "CI is green" (the ticket's default, additions only);
+    `/milestone-recap` has no CI wait, so it is untouched.
+  - The self-test also overrides the 30 s poll (`PR_WAIT_INTERVAL`, like `PR_WAIT_HEAD_TIMEOUT`, for the
+    self-test only), or criteria 9 and 15 would take minutes. The head wait polls every 5 s (or the poll
+    interval if smaller). Basis: autonomous, reversible.
+  - The compare fixture is trimmed to the fields `pr-state.sh` reads (the real response lists 23 commits with
+    their files); the check-run, protection and PR fixtures are kept whole. Basis: autonomous; the ticket's
+    "captured from real responses" names those three.
+- Split: none. Estimate ~350 non-test lines (preflight ~110, `pr-wait.sh` ~170, `pr-state.sh` ~45, command
+  and doc edits ~20).

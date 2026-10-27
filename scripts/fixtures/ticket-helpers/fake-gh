@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Fake `gh` for scripts/check-ticket-helpers.sh. It serves files from $FAKE_GH_DIR by what the call asks for
+# and records every call in $FAKE_GH_DIR/calls. For a key K it serves K.<n>.json on its n-th call when that
+# file exists, else the highest-numbered one below n, else K.json; K.fail (or K.<n>.fail) makes that call fail.
+# Keys: pr (gh pr view), protection, compare, runs-<sha> (check runs), log-<job id> (a job log).
+set -uo pipefail
+
+dir="${FAKE_GH_DIR:?FAKE_GH_DIR is not set}"
+printf '%s\n' "$*" >>"$dir/calls"
+
+key=
+if [[ ${1:-} == pr && ${2:-} == view ]]; then
+  key="pr"
+elif [[ ${1:-} == api ]]; then
+  for arg in "$@"; do
+    case "$arg" in
+      */branches/*/protection) key=protection ;;
+      */compare/*) key=compare ;;
+      */commits/*/check-runs*) key="runs-$(sed -E 's#.*/commits/([^/]+)/check-runs.*#\1#' <<<"$arg")" ;;
+      */actions/jobs/*/logs) key="log-$(sed -E 's#.*/actions/jobs/([^/]+)/logs#\1#' <<<"$arg")" ;;
+    esac
+  done
+fi
+if [[ -z $key ]]; then
+  echo "fake gh: unexpected call: $*" >&2
+  exit 1
+fi
+
+count_file="$dir/.count-$key"
+n=$(($(cat "$count_file" 2>/dev/null || echo 0) + 1))
+echo "$n" >"$count_file"
+
+for ((i = n; i >= 1; i--)); do
+  if [[ -e "$dir/$key.$i.fail" ]]; then
+    echo "fake gh: HTTP 500 for $key (call $n)" >&2
+    exit 1
+  fi
+  if [[ -e "$dir/$key.$i.json" ]]; then
+    cat "$dir/$key.$i.json"
+    exit 0
+  fi
+done
+if [[ -e "$dir/$key.fail" ]]; then
+  echo "fake gh: HTTP 403 for $key" >&2
+  exit 1
+fi
+if [[ -e "$dir/$key.json" ]]; then
+  cat "$dir/$key.json"
+  exit 0
+fi
+echo "fake gh: no fixture for $key (call $n)" >&2
+exit 1

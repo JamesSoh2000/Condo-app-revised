@@ -63,11 +63,12 @@ cli: ## Run an operator command in the app container: make cli args="audit --sin
 test: db-guard ## Backend tests, on a per-run copy of condo_test on the compose db and a per-run S3 bucket (needs `make up`)
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) TEST_DATABASE_URL=$(TEST_DATABASE_URL) $(TEST_S3_ENV) uv run pytest
 
-lint: ## ruff, the format check, eslint and the Base44 import fence self-test
+lint: ## ruff, the format check, eslint, the Base44 import fence and the ticket-loop helpers self-tests
 	$(BACKEND) uv run ruff check --no-cache .
 	$(BACKEND) uv run ruff format --no-cache --check .
 	$(FRONTEND) npm run lint
 	bash scripts/check-eslint-fence.sh
+	bash scripts/check-ticket-helpers.sh
 
 fmt: ## Format and auto-fix the backend
 	$(BACKEND) uv run ruff format .
