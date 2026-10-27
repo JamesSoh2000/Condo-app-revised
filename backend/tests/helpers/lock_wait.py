@@ -107,14 +107,15 @@ async def _detached(
     can ever run on this backend."""
     backend: _Backend | None = None
     try:
-        async with engine.connect() as connection:
+        async with engine.connect() as connection, sessions(bind=connection) as session:
+            pid, started = (await session.execute(_THIS_BACKEND)).one()
+            await session.commit()
+            # Detach only now, with no `await` before `backend` is set: a cancellation up to here
+            # leaves a pooled connection, which the pool resets or discards (WF-02b round 1).
             assert connection.sync_connection is not None
             connection.sync_connection.detach()
-            async with sessions(bind=connection) as session:
-                pid, started = (await session.execute(_THIS_BACKEND)).one()
-                await session.commit()
-                backend = (pid, started)
-                yield session, backend
+            backend = (pid, started)
+            yield session, backend
     finally:
         if backend is not None:
             await _end(sessions, backend)
@@ -149,12 +150,14 @@ async def _wait_until_blocked(
     }
     loop = asyncio.get_running_loop()
     while True:
-        if task.done():
-            error = None if task.cancelled() else task.exception()
-            raise AssertionError(NEVER_BLOCKED) from error
         async with sessions() as probe:
             if await probe.scalar(_BLOCKED_BY_HOLDER, params):
                 return
+        # Checked after the probe, before the deadline: an error the action raised while the probe
+        # was out is still the cause (WF-02b round 1).
+        if task.done():
+            error = None if task.cancelled() else task.exception()
+            raise AssertionError(NEVER_BLOCKED) from error
         if loop.time() >= deadline:
             raise AssertionError(NEVER_BLOCKED)
         # Wakes early when the action finishes; the next turn then reports it.

@@ -447,3 +447,101 @@ def test_a_connection_the_action_gives_up_during_the_probe_does_not_count(
 async def _in_own_session(sessions: Sessions, row: int) -> int:
     async with sessions() as db:
         return await _add_one(db, row)
+
+
+def test_a_call_cancelled_while_it_identifies_its_backend_leaves_no_connection(
+    scratch_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Round 1 (WF-02b, Codex, Medium): the connection was detached before its backend was read, so a
+    # cancellation during that read left a detached backend that nothing ended.
+    async def body(sessions: Sessions) -> None:
+        before = await _backends(sessions)
+        identifying = asyncio.Event()
+        real_execute = AsyncSession.execute
+
+        async def slow_identity(self: AsyncSession, statement: Any, *args: Any, **kw: Any) -> Any:
+            if statement is lock_wait._THIS_BACKEND:
+                identifying.set()
+                await real_execute(self, text("SELECT pg_sleep(30)"))
+            return await real_execute(self, statement, *args, **kw)
+
+        monkeypatch.setattr(AsyncSession, "execute", slow_identity)
+        call = asyncio.ensure_future(
+            act_blocked_on_lock(sessions, hold=_hold(1), act=_increment(1), change=_nothing)
+        )
+        try:
+            await identifying.wait()
+            call.cancel()
+            await asyncio.gather(call, return_exceptions=True)
+        finally:
+            monkeypatch.undo()
+
+        assert call.cancelled()
+        assert await _backends(sessions) == before
+
+    _run(scratch_database_url, body)
+
+
+def test_a_call_cancelled_while_it_waits_leaves_no_lock_task_or_connection(
+    scratch_database_url: str,
+) -> None:
+    # The neighbour: an abandoned caller at the helper's longest await (the probe loop).
+    async def body(sessions: Sessions) -> None:
+        before = await _backends(sessions)
+        polling = asyncio.Event()
+
+        async def act(db: AsyncSession) -> int:
+            value = await _add_one(db, 2)  # never blocked, and still running
+            await db.execute(text("SELECT 1 FROM things WHERE id = 2 FOR UPDATE"))
+            polling.set()
+            await asyncio.Event().wait()
+            return value
+
+        call = asyncio.ensure_future(
+            act_blocked_on_lock(sessions, hold=_hold(1), act=act, change=_nothing, timeout=30)
+        )
+        await polling.wait()
+        assert not call.done()
+        call.cancel()
+        await asyncio.gather(call, return_exceptions=True)
+
+        assert call.cancelled()
+        # Neither the holder's lock on row 1 nor the action's open transaction on row 2 is left.
+        assert (await _value(sessions, 1), await _value(sessions, 2)) == (0, 1)
+        assert await _backends(sessions) == before
+
+    _run(scratch_database_url, body)
+
+
+def test_an_error_raised_during_the_last_probe_is_the_cause_of_the_assertion(
+    scratch_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Round 1 (WF-02b, Codex, Medium): the deadline was checked after a probe without looking at
+    # the action again, so an error it raised during that probe was lost.
+    async def body(sessions: Sessions) -> None:
+        refused = _Refused()
+        probing = asyncio.Event()
+        real_scalar = AsyncSession.scalar
+
+        async def act(_db: AsyncSession) -> int:
+            await probing.wait()
+            raise refused
+
+        async def slow_probe(self: AsyncSession, statement: Any, *args: Any, **kw: Any) -> Any:
+            if statement is lock_wait._BLOCKED_BY_HOLDER:
+                probing.set()
+                await real_scalar(self, text("SELECT pg_sleep(0.05)"))
+            return await real_scalar(self, statement, *args, **kw)
+
+        monkeypatch.setattr(AsyncSession, "scalar", slow_probe)
+        try:
+            with pytest.raises(AssertionError, match=NEVER_BLOCKED) as raised:
+                await act_blocked_on_lock(
+                    sessions, hold=_hold(1), act=act, change=_nothing, timeout=0.01
+                )
+        finally:
+            monkeypatch.undo()
+
+        assert raised.value.__cause__ is refused
+
+    _run(scratch_database_url, body)
