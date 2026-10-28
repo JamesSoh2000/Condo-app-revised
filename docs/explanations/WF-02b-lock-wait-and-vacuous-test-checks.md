@@ -9,12 +9,13 @@
 > the squash merge are not described here.
 > This is a snapshot: before the merge it is edited to match the PR head; once merged, write a new
 > explanation for later changes and do not update this one. Lasting decisions live in ADRs.
-> **Reality check** (2026-10-28, after the split): `git diff --stat origin/main...HEAD` (12 files);
-> `git diff a47a8c9 HEAD -- backend .github .claude CLAUDE.md` shows only the removed check and the `CLAUDE.md`
-> sentence (§2, last table row), so §4's excerpts still match; ran `pytest tests/helpers/test_lock_wait.py
-> tests/notices/test_expiry_during_fan_out_wait.py -q` six times (20 passed each). Mutation probes m1, m2, m4–m6 ran
-> at `4be2c2e`/`a47a8c9` against the same code (all `PROBE OK`); m3 belonged to the check and moved with it.
-> The branch has `origin/main` (`9024ea1`) merged in rather than rebased (§6).
+> **Reality check** (2026-10-28, after the split and the split review's fix `5701992`): `git diff --stat
+> origin/main...HEAD` (12 files); `git diff a47a8c9 HEAD -- backend .github .claude CLAUDE.md` shows the removed check,
+> the `CLAUDE.md` sentence (§2, last table row) and the shielded `_end` with its test (§4, §6), and §4's excerpts were
+> re-read against the file; ran `pytest tests/helpers/test_lock_wait.py tests/notices/test_expiry_during_fan_out_wait.py
+> -q` eight times (22 passed each). Mutation probes m2, m4, m5 (regenerated for the shield) and m6 at `5701992`: all
+> `PROBE OK`; m1 ran at `4be2c2e` against unchanged code; m3 belonged to the check and moved with it.
+> `make check` exit 0 at `5701992`'s tree. The branch has `origin/main` (`9024ea1`) merged in rather than rebased (§6).
 > Differences from the plan: see §2.
 > Written by the implementing session after that check ([ADR-0017](../adr/0017-implementer-writes-the-explanation.md)).
 > Form: full. Tier: 2. Walkthrough variant: C (a test-support process).
@@ -69,7 +70,8 @@ where each review round found a new race.
   `(pid, backend_start)`. The two-argument form waits for the process to exit, and `_end` asserts that it did.
 - **Alternatives rejected:** terminating client-side (the server ends the backend asynchronously, so the next
   statement can still meet its lock); garbage collection (what left the lock).
-- **Tradeoffs and accepted limitations:** one extra query per call.
+- **Tradeoffs and accepted limitations:** one extra query per call. `_end` runs shielded from a cancellation of the
+  caller (split review F1, §6); a second cancellation during it is not handled (§7).
 - **Basis:** test result (`test_a_failing_change_is_raised_and_leaves_no_lock_task_or_connection` failed with
   `canceling statement due to lock timeout`, then passed); mutation m5. **Source:** recorded (PR D2). Autonomous.
 
@@ -156,7 +158,15 @@ None.
             yield session, backend
     finally:
         if backend is not None:
-            await _end(sessions, backend)
+            # Shielded: a cancellation of the caller here would leave the backend holding the
+            # action's locks, so finish ending it, then let the cancellation through (WF-02b
+            # review of the split diff). A second cancellation is not handled.
+            ending = asyncio.ensure_future(_end(sessions, backend))
+            try:
+                await asyncio.shield(ending)
+            except asyncio.CancelledError:
+                await asyncio.shield(ending)
+                raise
 ```
 
 - It gives the caller a session on one backend that only the caller can ever use.
@@ -165,6 +175,9 @@ None.
 - Without `detach()`, a connection the action closed goes back to the pool, and the R3 test's held probe returns
   `True` for another session's wait (m4). Without `_end`, a cancelled action leaves its locks behind (m5:
   `test_a_failing_change_is_raised_and_leaves_no_lock_task_or_connection` fails).
+- The shield is the split review's F1 fix: one cancellation of the caller during `_end`'s query used to abort it, and
+  the action's backend stayed `idle in transaction` with its row lock. Now `_end` finishes first. Without the shield,
+  `test_a_call_cancelled_while_it_ends_a_backend_still_ends_it[action]` fails (`assert 2 == 1` backends).
 
 `backend/tests/helpers/lock_wait.py::_BLOCKED_BY_HOLDER`
 
@@ -254,6 +267,7 @@ _BLOCKED_BY_HOLDER = text(
 | The action raises after / before / during the last probe | propagates unchanged / chained / chained | `test_a_domain_error_raised_after_the_wait_propagates_unchanged`, `test_an_error_raised_before_any_wait_is_the_cause_of_the_assertion`, `test_an_error_raised_during_the_last_probe_is_the_cause_of_the_assertion` |
 | `change` raises | re-raised; no lock, task or backend left | `test_a_failing_change_is_raised_and_leaves_no_lock_task_or_connection` |
 | The call is cancelled while identifying, or while polling | no backend, lock or task left | `test_a_call_cancelled_while_it_identifies_its_backend_leaves_no_connection`, `test_a_call_cancelled_while_it_waits_leaves_no_lock_task_or_connection` |
+| The call is cancelled once while `_end` ends a backend (after `change` failed) | `_end` finishes, then the cancellation propagates | `test_a_call_cancelled_while_it_ends_a_backend_still_ends_it[action/holder]` |
 | An OS pid reused by a later backend | `backend_start` differs, so no match | **No test** (it can't be forced) |
 
 Acceptance criteria → tests:
@@ -273,6 +287,7 @@ Acceptance criteria → tests:
 | 2 | Codex `gpt-6.1-sol` high (fresh) | `a47a8c9` | MERGE | none | — |
 | 3 | Codex `gpt-6.1-sol` high (fresh) | `91d3a87` | BLOCK | High: the check counted a runner call inside a `with` body (`pytest.raises` swallowing an earlier error) or after a sibling's `return` | not fixed here: stop rule 4, inbox B-12 |
 | 4 | Codex `gpt-6.1-sol` high (fresh; James asked for a fix and one more round) | `084499b` (rebased, not pushed: R3's fix) | BLOCK | High: a later `with` item counted after `suppress`. High: a call after a compound statement containing `return` counted. Medium: this explanation still showed the old traversal | the check moved to WF-02c (B-12, option (a)), with both Highs as its sharpened criterion; the Medium is resolved by the cut |
+| split 1 | Codex `gpt-6.1-sol` high (fresh; a new count for the split diff) | `c5c1f30` | MERGE | Medium: one cancellation of the caller during `_end`'s query (after `change` failed) left the action's backend alive, holding its row lock | fixed in `5701992` |
 
 - **R1 F1:** `_detached` detached first and read the backend after. Cancelling the call during that read left
   `backend` unset, so `_end` was skipped and one backend stayed. Codex's proof slowed the identity query and
@@ -292,14 +307,24 @@ Acceptance criteria → tests:
   into WF-02c's criterion 8. A force-push of the rebased branch was refused by the session's permission check, so the
   split is built on the pushed head `91d3a87` with `origin/main` merged in.
 
+- **Split 1 F1:** Codex's proof held the termination query and cancelled the call once: one backend left
+  (`assert 2 == 1`) and the next update timed out on the lock. Fix: `_end` runs in a task awaited through
+  `asyncio.shield`, and on cancellation the helper awaits it again before re-raising (§4). Evidence:
+  `test_a_call_cancelled_while_it_ends_a_backend_still_ends_it[action]` failed 3 of 3 runs without the shield and
+  passes; `[holder]` is the neighbour (the holder's connection closes cleanly, so it passed before too). The first
+  version of that test could hang under mutation m6 (it raised before releasing its gate, leaving the held query
+  waiting forever; found when the m6 probe hung): it now releases the gate in a `finally` and waits 30 s, longer than
+  the helper's 5 s.
+
 The earlier design's three rounds (PR #142) are in WF-02's ticket and in inbox B-11; their shapes are this PR's
 R1–R3 tests.
 
 ## 7. Not verified, accepted risks and follow-ups
 
 - **pid reuse:** the `backend_start` guard has no failing test; no test can make the OS reuse a pid.
-- **A second cancellation during cleanup** (while `_end` or a rollback is awaited) is not handled or tested. Tests
-  cancel at most once. Accepted (PR "Independent review", round 1 neighbours). Tracked only here.
+- **A second cancellation during cleanup** (while `_end` or a rollback is awaited) is not handled or tested: a first
+  one during `_end` is (split review F1). Tests cancel at most once. Accepted (PR "Independent review"). Tracked only
+  here.
 - **The action's own sessions are invisible** (D1). Accepted; docstring and test.
 - **After-merge measurement** (WF-02's): count round-1 findings of the pre-review table's shapes over the next five
   tickets. Tracked in WF-02's ticket.
