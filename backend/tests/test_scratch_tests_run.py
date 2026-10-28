@@ -1,13 +1,17 @@
-"""Fitness test: a scratch-database test runs the coroutine it defines (WF-02 criterion 8).
+"""Fitness test: a scratch-database test runs the coroutine it defines (WF-02 criterion 8, WF-02c).
 
 A test that takes `scratch_database_url` builds its world in a nested `async def` and hands it to a
 runner (`_run(url, body)`). P6-03b review round 3 found one that defined `body` and never passed it:
 the test ran nothing and passed. Checked with `ast`, not a regex (the CLAUDE.md lesson). It does not
 catch a test that runs but cannot fail; mutation probes cover that.
 
-Deliberately narrow and fail-closed (WF-02b): it does not work out Python's scopes, because each
-review round of PR #142 found a binding form that such analysis missed. It counts only the plainest
-ways to run a coroutine, and it refuses a test that binds one of its function names a second time.
+Deliberately narrow and fail-closed (WF-02b, WF-02c): it does not work out Python's scopes, because
+each review round of PR #142 found a binding form that such analysis missed, and it refuses a test
+that binds one of its function names a second time. It counts only the plainest ways to run a
+coroutine, and draws one trust boundary: code from outside the test (a module function such as
+`_run`, a fixture, a library, an import) is trusted to run what it is handed; code inside the
+test is read, never trusted. So `print(body)` passes (a limitation), and `ignore(body)` with
+`ignore` defined in the test fails.
 """
 
 import ast
@@ -50,14 +54,14 @@ def unrun_coroutines(source: str, filename: str) -> tuple[int, list[str]]:
 def _problems(test: _Def) -> list[str]:
     """The functions defined directly in the test's body are *tracked*. Each `async def` must be
     run (`_run_by`); a tracked name bound anywhere else in the test fails instead of being
-    analysed, and so does an `async def` defined inside a block of the test."""
+    analysed, and so does a decorated one and an `async def` defined inside a block of the test."""
     tracked: dict[str, _Def] = {}
     for child in test.body:
         if isinstance(child, _DEFS):
             tracked.setdefault(child.name, child)
     problems = [
         f"`{name}` is bound again ({form}, line {line}); give one of them another name"
-        for name, form, line in _bindings(test, set(tracked.values()))
+        for name, form, line in _bindings(test, {test, *tracked.values()})
         if name in tracked
     ]
     problems += [
@@ -66,7 +70,19 @@ def _problems(test: _Def) -> list[str]:
         for node in _own_scope(test.body)
         if isinstance(node, ast.AsyncFunctionDef) and node not in test.body
     ]
-    run = _run_by(test.body, tracked)
+    problems += [
+        f"`{name}` is decorated (line {definition.lineno}); the check can't tell what the "
+        "decorator returns, so don't decorate it"
+        for name, definition in tracked.items()
+        if definition.decorator_list
+    ]
+    inside = {
+        name
+        for statement in test.body
+        for name, form, _ in _bindings(statement, set())
+        if form != "`import`"
+    }
+    run = _run_by(test.body, tracked, inside)
     problems += [
         f"`{name}` is defined and never run"
         for name, definition in tracked.items()
@@ -75,48 +91,95 @@ def _problems(test: _Def) -> list[str]:
     return problems
 
 
-def _run_by(body: list[ast.stmt], tracked: dict[str, _Def]) -> set[str]:
-    """The tracked functions that `body` calls or passes, and those they call or pass in turn."""
+def _run_by(body: list[ast.stmt], tracked: dict[str, _Def], inside: set[str]) -> set[str]:
+    """The tracked functions that `body` runs, and those they run in turn. Only a function the test
+    calls directly is read further: code that is handed a function may catch its errors
+    (`pytest.raises(E, f)`, `gather(..., return_exceptions=True)`), so a statement in it that
+    raises could skip the rest without failing the test."""
     run: set[str] = set()
+    read: set[str] = set()
     pending = [body]
     while pending:
-        for name in _called_or_passed(pending.pop()):
-            if name in tracked and name not in run:
-                run.add(name)
+        for name, called in _runs(pending.pop(), tracked, inside):
+            run.add(name)
+            if called and name not in read:
+                read.add(name)
                 pending.append(tracked[name].body)
     return run
 
 
-def _called_or_passed(statements: list[ast.stmt]) -> Iterator[str]:
-    """Names that are the callee, or a direct argument, of a call made by an expression
-    statement, an assignment's value, a `return` or a `with` item of `statements`, reached through
-    calls and `await`s only, up to the first `return` or `raise`. No block's body counts: an `if`, a
-    loop, a `try` or a `match` may not run it, and a `with` may suppress an error raised before the
-    call (`pytest.raises` does; WF-02b review round 3)."""
+def _runs(
+    statements: list[ast.stmt], tracked: dict[str, _Def], inside: set[str]
+) -> Iterator[tuple[str, bool]]:
+    """(name, called directly) for the tracked functions run by an expression statement, an
+    assignment's value, a `return`'s value or the *first* item of a `with` in `statements`, up to
+    the first statement whose own scope holds a `return` or `raise` (its counted part runs before
+    it can leave). No block's body counts: an `if`, a loop, a `try` or a `match` may not run it,
+    and a `with` may suppress an error raised before the call (`pytest.raises` does; PR #145 round
+    3). A later `with` item runs inside the earlier ones, which may suppress it too (round 4)."""
     for statement in statements:
         match statement:
             case ast.Expr(value=value) | ast.Assign(value=value) | ast.Return(value=value):
                 if value is not None:
-                    yield from _direct(value)
+                    yield from _evaluated(value, tracked, inside)
             case ast.AnnAssign(value=value):
                 if value is not None:
-                    yield from _direct(value)
-            case ast.With(items=items) | ast.AsyncWith(items=items):
-                for item in items:
-                    yield from _direct(item.context_expr)
-        if isinstance(statement, ast.Return | ast.Raise):
+                    yield from _evaluated(value, tracked, inside)
+            case ast.With(items=[first, *_]) | ast.AsyncWith(items=[first, *_]):
+                yield from _evaluated(first.context_expr, tracked, inside)
+        if any(isinstance(node, ast.Return | ast.Raise) for node in _own_scope([statement])):
             return
 
 
-def _direct(expr: ast.expr) -> Iterator[str]:
+def _evaluated(
+    expr: ast.expr,
+    tracked: dict[str, _Def],
+    inside: set[str],
+    *,
+    awaited: bool = False,
+    handed: bool = False,
+) -> Iterator[tuple[str, bool]]:
+    """(name, called directly) for the tracked functions that evaluating `expr` runs, through calls
+    and `await`s only. A tracked function is run when the test calls it so that its body starts
+    (`_starts`), or when it, or a call of it, is a direct argument of code from outside the test
+    (`_outside`); an argument of a function defined in the test counts only if that function is run
+    and does it itself."""
     if isinstance(expr, ast.Await):
-        yield from _direct(expr.value)
+        yield from _evaluated(expr.value, tracked, inside, awaited=True, handed=handed)
+    elif isinstance(expr, ast.Name):
+        if handed and expr.id in tracked:
+            yield expr.id, False
     elif isinstance(expr, ast.Call):
-        for part in [expr.func, *expr.args, *(keyword.value for keyword in expr.keywords)]:
-            if isinstance(part, ast.Name):
-                yield part.id
-            else:
-                yield from _direct(part)
+        callee = expr.func
+        if isinstance(callee, ast.Name) and callee.id in tracked:
+            if _starts(tracked[callee.id], awaited):
+                yield callee.id, True
+            elif handed:
+                yield callee.id, False
+        else:
+            yield from _evaluated(callee, tracked, inside)
+        outside = _outside(callee, inside)
+        for argument in [*expr.args, *(keyword.value for keyword in expr.keywords)]:
+            yield from _evaluated(argument, tracked, inside, handed=outside)
+
+
+def _starts(definition: _Def, awaited: bool) -> bool:
+    """Whether a call of `definition` runs its body: a plain `def` when called, an `async def` when
+    the call is awaited. Never for a generator (it runs only when iterated) or a decorated function
+    (the decorator may have replaced it)."""
+    if definition.decorator_list:
+        return False
+    if any(isinstance(node, ast.Yield | ast.YieldFrom) for node in _own_scope(definition.body)):
+        return False
+    return awaited or isinstance(definition, ast.FunctionDef)
+
+
+def _outside(callee: ast.expr, inside: set[str]) -> bool:
+    """Whether `callee` is code from outside the test: a name, or `a.b.c` rooted at one, that the
+    test binds only by `import`, if at all."""
+    while isinstance(callee, ast.Attribute):
+        callee = callee.value
+    return isinstance(callee, ast.Name) and callee.id not in inside
 
 
 def _own_scope(body: list[ast.stmt]) -> Iterator[ast.AST]:
@@ -129,12 +192,13 @@ def _own_scope(body: list[ast.stmt]) -> Iterator[ast.AST]:
             stack.extend(ast.iter_child_nodes(node))
 
 
-def _bindings(test: _Def, definitions: set[_Def]) -> Iterator[tuple[str, str, int]]:
-    """Every name the test binds anywhere inside it, with the binding's form and line, except the
-    tracked definitions themselves. Every binding form in Python's grammar is here: none is
-    resolved, so a missing form would only let a rebinding through, never hide a problem."""
+def _bindings(root: ast.AST, skip: set[ast.AST]) -> Iterator[tuple[str, str, int]]:
+    """Every name bound anywhere inside `root`, with the binding's form and line, except the
+    definitions in `skip` (the test and its tracked functions). Every binding form in Python's
+    grammar is here: none is resolved, so a missing form would only let a rebinding through, or
+    trust code defined in the test, never hide a problem."""
     targets: dict[int, str] = {}
-    for node in ast.walk(test):
+    for node in ast.walk(root):
         if isinstance(node, ast.comprehension):
             targets |= dict.fromkeys(map(id, ast.walk(node.target)), "comprehension variable")
         elif isinstance(node, ast.For | ast.AsyncFor):
@@ -143,9 +207,9 @@ def _bindings(test: _Def, definitions: set[_Def]) -> Iterator[tuple[str, str, in
             targets |= dict.fromkeys(map(id, ast.walk(node.optional_vars)), "`with … as`")
         elif isinstance(node, ast.NamedExpr):
             targets[id(node.target)] = "`:=`"
-    for node in ast.walk(test):
-        line = getattr(node, "lineno", test.lineno)
-        if isinstance(node, _DEFS) and node is not test and node not in definitions:
+    for node in ast.walk(root):
+        line = getattr(node, "lineno", getattr(root, "lineno", 0))
+        if isinstance(node, _DEFS) and node not in skip:
             yield node.name, "`def`", line
         elif isinstance(node, ast.ClassDef):
             yield node.name, "`class`", line
@@ -184,8 +248,8 @@ def test_every_scratch_database_test_runs_the_coroutine_it_defines() -> None:
         problems += wrong
 
     assert problems == []
-    # The scan found the tests it is about (81 at WF-02), so it can't pass by finding none.
-    assert tests >= 81
+    # The scan found the tests it is about (101 at WF-02c), so it can't pass by finding none.
+    assert tests >= 101
 
 
 def _check(source: str) -> list[str]:
@@ -298,7 +362,7 @@ def test_starred(scratch_database_url):
     assert _check(source) == _never_run(*(f"test_{name}" for name in names.split()))
 
 
-_HARNESS = '''
+_HARNESS = """
 import asyncio
 from contextlib import asynccontextmanager, contextmanager, nullcontext, suppress
 
@@ -327,7 +391,7 @@ async def suppressed():
         yield
     except Exception:
         pass
-'''
+"""
 
 
 def _execute(source: str) -> dict[str, str]:
@@ -352,9 +416,10 @@ def _execute(source: str) -> dict[str, str]:
 
 
 def test_calls_that_may_not_be_reached_do_not_count() -> None:
-    # Each case ends without running `body`. PR #145 review round 3: a context manager can suppress
-    # an error raised before the call (`pytest.raises` does), and a `return` skips what follows. Round
-    # 4: a later `with` item runs inside the earlier ones, and a compound statement can `return`.
+    # Each case ends without running `body`. PR #145 review round 3: a context manager can
+    # suppress an error raised before the call (`pytest.raises` does), and a `return` skips what
+    # follows. Round 4: a later `with` item runs inside the earlier ones, and a compound statement
+    # can `return`.
     source = """
 def test_with_block(scratch_database_url):
     async def body(sessions):
