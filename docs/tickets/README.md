@@ -128,7 +128,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [WF-01](./WF-01-ticket-loop-helpers.md) | Ticket-loop helpers: preflight, PR wait and PR state (workflow, off-roadmap) | B | 1 | — | done | — |
 | [WF-02a](./WF-02a-focus-test-kit.md) | Focus test kit and the pre-review table (split from [WF-02](./WF-02-known-failure-test-kit.md); workflow, off-roadmap) | B | 2 | WF-01 | done | — |
 | [WF-02b](./WF-02b-lock-wait-and-vacuous-test-checks.md) | Lock-wait helper (split from WF-02; workflow, off-roadmap) | B | 2 | WF-02a | done | — |
-| [WF-02c](./WF-02c-vacuous-test-check.md) | Vacuous-test check (split from WF-02b; workflow, off-roadmap) | B | 2 | WF-02b | todo | — |
+| [WF-02c](./WF-02c-vacuous-test-check.md) | Vacuous-test check (split from WF-02b; workflow, off-roadmap) | B | 2 | WF-02b | in progress | — |
 
 ### Milestone D — deployment (after week 8)
 
