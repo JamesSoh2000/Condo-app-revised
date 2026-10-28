@@ -1,42 +1,39 @@
-# Explanation — WF-02b Lock-wait helper and vacuous-test check
+# Explanation — WF-02b Lock-wait helper
 
-> **PR:** #145 · **Source revision:** `a47a8c9`, the pre-merge PR head this explanation was written from and
-> checked against. **Reviewed:** the final review round (2) reviewed this commit.
+> **PR:** #145 · **Source revision:** the PR head after the split commit (WF-02c, inbox B-12); the lock helper and
+> its tests are unchanged since `a47a8c9`, which rounds 2 and 3 reviewed. **Reviewed:** see §6; the review of the
+> split diff is recorded there when it finishes.
 > **Merge commit:** not known when written; after the merge, `gh pr view 145 --json mergeCommit` gives it.
 > Built and merged autonomously ([ADR-0014](../adr/0014-autonomous-agent-workflow.md)); no human reviewed it
 > before merge. This describes the PR's changes at the source revision. Commits after it (bookkeeping) and
-> the squash merge are not described here, and a rebase after it gives the same changes new SHAs.
+> the squash merge are not described here.
 > This is a snapshot: before the merge it is edited to match the PR head; once merged, write a new
 > explanation for later changes and do not update this one. Lasting decisions live in ADRs.
-> **Reality check:** re-read at `a47a8c9` the diff (`git diff --stat origin/main...HEAD`, 9 files),
-> `backend/tests/helpers/lock_wait.py` in full, `backend/tests/test_scratch_tests_run.py::_problems`,
-> `::_run_by`, `::_called_or_passed`, `::_direct`, `::_bindings`, and the cited tests' assertions; ran
-> `pytest tests/helpers/test_lock_wait.py tests/notices/test_expiry_during_fan_out_wait.py
-> tests/test_scratch_tests_run.py -v` (31 passed), `test_lock_wait.py` five more times (18 passed each), and the
-> lock-helper mutation probes m2, m4, m5 (regenerated for the moved lines) and m6 at `a47a8c9` (all `PROBE OK`;
-> m1 and m3 ran at `4be2c2e` and touch files round 1 didn't change). `make check` ran at `4be2c2e` (exit 0); CI
-> is green at `a47a8c9`. Branch is rebased on `origin/main` (`d4633ff`).
+> **Reality check** (2026-10-28, after the split): `git diff --stat origin/main...HEAD` (12 files);
+> `git diff a47a8c9 HEAD -- backend .github .claude CLAUDE.md` shows only the removed check and the `CLAUDE.md`
+> sentence (§2, last table row), so §4's excerpts still match; ran `pytest tests/helpers/test_lock_wait.py
+> tests/notices/test_expiry_during_fan_out_wait.py -q` six times (20 passed each). Mutation probes m1, m2, m4–m6 ran
+> at `4be2c2e`/`a47a8c9` against the same code (all `PROBE OK`); m3 belonged to the check and moved with it.
+> The branch has `origin/main` (`9024ea1`) merged in rather than rebased (§6).
 > Differences from the plan: see §2.
-> **Updated** (pre-merge): read `CLAUDE.md`'s diff at the new head; the lock lesson also gained the "check after
-> the `await`" sentence for test helpers (§2, last table row). No code changed.
 > Written by the implementing session after that check ([ADR-0017](../adr/0017-implementer-writes-the-explanation.md)).
 > Form: full. Tier: 2. Walkthrough variant: C (a test-support process).
 
 ## 1. What was built and why
 
-Two test tools that WF-02 meant to add, rebuilt after PR #142's design failed three review rounds (inbox B-11,
+One of the test tools WF-02 meant to add, rebuilt after PR #142's design failed three review rounds (inbox B-11,
 James chose the split):
 
 - `backend/tests/helpers/lock_wait.py::act_blocked_on_lock` runs an action while another transaction holds a lock it
   needs, proves the action really waited on *that* lock, changes the world during the wait, and returns the action's
   result. It makes the `CLAUDE.md` lesson "don't write from a value read before a slow `await`" a one-call test.
-- `backend/tests/test_scratch_tests_run.py` is a fitness test: every test that takes `scratch_database_url` must run
-  the coroutine it defines (P6-03b R3 had one that never did).
+- WF-02's second tool, a fitness test that every test taking `scratch_database_url` runs the coroutine it defines,
+  was built here too, but review rounds 3 and 4 each found a never-run call it counted. It moved to WF-02c (inbox
+  B-12, James chose option (a)), and this PR no longer contains it (§6).
 
-The decisions that matter: the helper now opens the action's session itself, on a connection **detached from the
-pool**, so "which database backend is the action's" is fixed before the action starts (§2 D1). And the check stopped
-trying to understand Python's scopes: it refuses any second binding of a tracked name (§2 D3). Both replace designs
-where each review round found a new hole.
+The decision that matters: the helper now opens the action's session itself, on a connection **detached from the
+pool**, so "which database backend is the action's" is fixed before the action starts (§2 D1). It replaces a design
+where each review round found a new race.
 
 ## 2. Decisions
 
@@ -76,19 +73,6 @@ where each review round found a new hole.
 - **Basis:** test result (`test_a_failing_change_is_raised_and_leaves_no_lock_task_or_connection` failed with
   `canceling statement due to lock timeout`, then passed); mutation m5. **Source:** recorded (PR D2). Autonomous.
 
-### D3. The vacuous-test check is narrow and fail-closed
-
-- **Problem or constraint:** PR #142's check resolved Python scopes to decide whether a call meant the test's
-  coroutine, and each round found a binding form it missed (nested bodies, merged scopes, comprehensions, `import`,
-  `class`).
-- **Chosen:** the functions defined directly in a test's body are *tracked*. A tracked coroutine counts as run only
-  through the plainest shapes (§3). Any other binding of a tracked name anywhere in the test is a failure that names
-  the form and line, so no scope ever needs resolving. An `async def` inside a block of the test also fails.
-- **Alternatives rejected:** B-11 option (b), adding the missing forms (the history suggested more would turn up).
-- **Tradeoffs and accepted limitations:** legal tests that run a coroutine in an `if`, loop, `try`, lambda or
-  comprehension, or reuse a tracked name, are rejected. None exists (the real scan passes with no exemption list).
-- **Basis:** ticket (B-11 option (a)); four hand mutations of the check, each caught (PR D3). **Source:** recorded.
-
 | Decision | Alternative rejected | Why | Basis | Source |
 |---|---|---|---|---|
 | Match backends by `(pid, backend_start)` | pid only | the OS may give an ended backend's pid to a new one; no test can force that | autonomous | recorded (PR table) |
@@ -99,8 +83,8 @@ where each review round found a new hole.
 | Promote "a check made before an `await` is stale after it" to `CLAUDE.md`, for test helpers, appended to the lock lesson in place | a follow-up for the next ticket | round 1's F2 was the third occurrence (WF-02 R3 F1, WF-02a R3 F1), and the ticket says to promote it if it recurs; appended in place, so criterion 11's line count holds | ticket ("Carried from WF-02a") | recorded |
 
 **Framing changes:** criterion 5 sharpened (the detached connection and `(pid, backend_start)`); 6 gained "a wait in
-the action's own session is not seen" and the R3 interleaving rebuilt; 8 written out as the narrow rule with every
-binding form; 11's lock half plus the template and command lines. None loosened (ticket Frame notes, `bef4777`).
+the action's own session is not seen" and the R3 interleaving rebuilt; 8 moved to WF-02c after review round 4; 11's
+lock half plus the template and command lines. None loosened (ticket Frame notes, `bef4777`).
 
 **Plan versus final code:** two deviations, both noted below the PR's Plan: cleanup terminates the backends (D2,
 found while implementing), and the backend is identified before the connection is detached (round 1 F1; the plan
@@ -116,7 +100,6 @@ had detach first).
   backend in `pg_blocking_pids`.
 - `change(holder)` runs, the holder commits, and the helper returns the task's result. The `finally` blocks undo
   everything, in order.
-- Separately, `test_scratch_tests_run.py` parses every test file with `ast` and applies the narrow rule.
 
 ### Walkthrough (variant C: one call, from trigger to result)
 
@@ -153,9 +136,9 @@ None.
 | `backend/tests/helpers/lock_wait.py` | new: the helper | +164 |
 | `backend/tests/helpers/test_lock_wait.py` | new: criteria 5–6, R1–R3, round 1 | +547 |
 | `backend/tests/notices/test_expiry_during_fan_out_wait.py` | new: criterion 7 | +89 |
-| `backend/tests/test_scratch_tests_run.py` | new: criterion 8 | +492 |
 | `.github/pull_request_template.md`, `.claude/commands/build-ticket.md`, `.claude/commands/implement-ticket.md`, `CLAUDE.md` | the helper named (added words only) | +6 / −3 (lines rewrapped or extended) |
-| `docs/tickets/WF-02b-lock-wait-and-vacuous-test-checks.md` | Frame notes, status | +47 / −1 |
+| `docs/tickets/WF-02b-lock-wait-and-vacuous-test-checks.md` | Frame notes, status, criterion 8 marked as moved | +62 / −10 |
+| `docs/tickets/WF-02c-vacuous-test-check.md`, `docs/tickets/WF-02-known-failure-test-kit.md`, `docs/tickets/README.md` | the check's new ticket, the split table, the index row | +79 / −3 |
 
 `backend/tests/helpers/lock_wait.py::_detached`
 
@@ -226,41 +209,6 @@ _BLOCKED_BY_HOLDER = text(
 - The `task.done()` check comes after the probe (round 1 F2). Before the fix it sat before the probe, and an error
   raised during the last probe was lost to the deadline branch.
 
-`backend/tests/test_scratch_tests_run.py::_called_or_passed` and `::_direct`
-
-```python
-    for statement in statements:
-        match statement:
-            case ast.Expr(value=value) | ast.Assign(value=value) | ast.Return(value=value):
-                if value is not None:
-                    yield from _direct(value)
-            case ast.AnnAssign(value=value):
-                if value is not None:
-                    yield from _direct(value)
-            case ast.With(items=items, body=body) | ast.AsyncWith(items=items, body=body):
-                for item in items:
-                    yield from _direct(item.context_expr)
-                yield from _called_or_passed(body)
-
-
-def _direct(expr: ast.expr) -> Iterator[str]:
-    if isinstance(expr, ast.Await):
-        yield from _direct(expr.value)
-    elif isinstance(expr, ast.Call):
-        for part in [expr.func, *expr.args, *(keyword.value for keyword in expr.keywords)]:
-            if isinstance(part, ast.Name):
-                yield part.id
-            else:
-                yield from _direct(part)
-```
-
-- What counts as running a coroutine: its name is the callee or a direct argument of a call, reached through only
-  calls and `await`s, from a statement that always runs. `if`, loops, `try`, `match`, lambdas, comprehensions,
-  conditional expressions, boolean operators and `*` arguments are not entered.
-- `_run_by` follows tracked siblings transitively. `_bindings` lists every binding node in Python's `ast`, and
-  `_problems` fails a tracked name bound a second time.
-- Counting `if`/`for`/`try` bodies makes `test_calls_that_may_not_run_do_not_count` fail (hand mutation, PR D3).
-
 `backend/tests/helpers/test_lock_wait.py::test_a_connection_the_action_gives_up_during_the_probe_does_not_count`
 (the R3 case, rebuilt; trimmed)
 
@@ -307,19 +255,13 @@ def _direct(expr: ast.expr) -> Iterator[str]:
 | `change` raises | re-raised; no lock, task or backend left | `test_a_failing_change_is_raised_and_leaves_no_lock_task_or_connection` |
 | The call is cancelled while identifying, or while polling | no backend, lock or task left | `test_a_call_cancelled_while_it_identifies_its_backend_leaves_no_connection`, `test_a_call_cancelled_while_it_waits_leaves_no_lock_task_or_connection` |
 | An OS pid reused by a later backend | `backend_start` differs, so no match | **No test** (it can't be forced) |
-| A coroutine never passed, used only in a never-run sibling, or bare-referenced | "defined and never run" | `test_a_coroutine_that_is_never_passed_fails_naming_the_test`, `…_used_only_inside_a_sibling_that_never_runs_fails`, `test_a_bare_reference_does_not_run_it` |
-| A call that may not run (11 shapes) | not counted | `test_calls_that_may_not_run_do_not_count` |
-| A tracked name bound again (20 forms, incl. R3's comprehension, `import`, `class`), as a test parameter, or a run sibling rebound | "bound again (form, line N)" | `test_rebinding_a_tracked_name_anywhere_in_the_test_fails_naming_the_binding`, `test_a_test_parameter_with_a_tracked_name_fails`, `test_a_run_sibling_that_is_rebound_fails` |
-| An `async def` inside a block | "defined inside a block" | `test_a_coroutine_defined_inside_a_block_fails` |
-| The runner never awaits what it's given | not detected | **No test** (out of the check's reach, as in WF-02) |
 
 Acceptance criteria → tests:
 - **5:** `test_the_action_sees_the_change_made_while_it_waited` (result 11 on the holder's committed 10).
 - **6:** the R1/R2/R3, third-session, own-session, error and cleanup rows above.
 - **7:** `test_a_notice_expiring_while_its_fan_out_waits_on_a_membership_lock_is_not_published[normal/urgent]`
   (`422 notice_expired`, still `draft`, no audit, notification or job). m1 makes both fail.
-- **8:** `test_every_scratch_database_test_runs_the_coroutine_it_defines` (81 tests found, no problems) and the
-  negative cases.
+- **8:** moved to WF-02c; nothing here.
 - **9–11:** the commands in the PR's evidence table (no removed words, protected files unchanged, links clean,
   `CLAUDE.md` still 162 lines).
 
@@ -329,6 +271,8 @@ Acceptance criteria → tests:
 |---|---|---|---|---|---|
 | 1 | Codex `gpt-6.1-sol` high (fresh) | `4be2c2e` | MERGE | Medium: a cancel during backend identification leaked a detached backend. Medium: an error raised during the last probe wasn't chained | both fixed in `a47a8c9` |
 | 2 | Codex `gpt-6.1-sol` high (fresh) | `a47a8c9` | MERGE | none | — |
+| 3 | Codex `gpt-6.1-sol` high (fresh) | `91d3a87` | BLOCK | High: the check counted a runner call inside a `with` body (`pytest.raises` swallowing an earlier error) or after a sibling's `return` | not fixed here: stop rule 4, inbox B-12 |
+| 4 | Codex `gpt-6.1-sol` high (fresh; James asked for a fix and one more round) | `084499b` (rebased, not pushed: R3's fix) | BLOCK | High: a later `with` item counted after `suppress`. High: a call after a compound statement containing `return` counted. Medium: this explanation still showed the old traversal | the check moved to WF-02c (B-12, option (a)), with both Highs as its sharpened criterion; the Medium is resolved by the cut |
 
 - **R1 F1:** `_detached` detached first and read the backend after. Cancelling the call during that read left
   `backend` unset, so `_end` was skipped and one backend stayed. Codex's proof slowed the identity query and
@@ -342,6 +286,12 @@ Acceptance criteria → tests:
 - Neighbour added before round 2: `test_a_call_cancelled_while_it_waits_leaves_no_lock_task_or_connection`. It
   already passed: cancelling in the poll loop was safe.
 
+- **R3, R4 and the split:** both rounds found nothing in the lock helper, criterion 7 or the docs. Each found a new
+  way for the vacuous-test check to count a call that never runs, the pattern PR #142 showed for its scope analysis.
+  James chose to move the check to WF-02c (B-12, option (a)); R3's fix and the stricter rule R4 points to are written
+  into WF-02c's criterion 8. A force-push of the rebased branch was refused by the session's permission check, so the
+  split is built on the pushed head `91d3a87` with `origin/main` merged in.
+
 The earlier design's three rounds (PR #142) are in WF-02's ticket and in inbox B-11; their shapes are this PR's
 R1–R3 tests.
 
@@ -351,8 +301,6 @@ R1–R3 tests.
 - **A second cancellation during cleanup** (while `_end` or a rollback is awaited) is not handled or tested. Tests
   cancel at most once. Accepted (PR "Independent review", round 1 neighbours). Tracked only here.
 - **The action's own sessions are invisible** (D1). Accepted; docstring and test.
-- **The check rejects legal shapes** (D3). Accepted; none exist today.
-- **The check can't tell whether a runner awaits what it's given** (WF-02's original limit).
 - **After-merge measurement** (WF-02's): count round-1 findings of the pre-review table's shapes over the next five
   tickets. Tracked in WF-02's ticket.
 - PR #142 is closed as superseded in the bookkeeping step.
@@ -365,10 +313,6 @@ R1–R3 tests.
 - **Changing the helper:** run `backend/tests/helpers/test_lock_wait.py` (and five more times for the cancellation cases)
   and the mutation patches. Any new `await` in `_detached` before `backend =` must leave the connection pooled. Any
   new state read before an `await` in `_wait_until_blocked` needs a test that changes it during the await.
-- **A new way to run a coroutine in tests** (e.g. a runner called inside `try`): the check will reject it. Either
-  write the call as a plain statement, or extend `_called_or_passed` with a negative case in
-  `test_calls_that_may_not_run_do_not_count` showing what stays excluded.
-
 ## 9. Must explain, then quiz
 
 **1. Why does `act_blocked_on_lock` wait for the backend to appear in `pg_blocking_pids` instead of sleeping, and
@@ -386,13 +330,6 @@ the action's connection, detaches it (`backend/tests/helpers/lock_wait.py::_deta
 serve another session, so there is no moment at which the attribution can become wrong. A re-check after each
 `await` (B-11 option (b)) would only have made the window smaller.
 
-**3. Why does the vacuous-test check refuse a rebound name instead of analysing it, and what does that cost?**
-Analysing means resolving Python scopes. Every review round found a binding form the analysis missed, and each miss
-let a test that never ran its coroutine pass. Refusing needs only a complete list of binding *nodes*
-(`backend/tests/test_scratch_tests_run.py::_bindings`), which is finite and easy to check. A missed form there would let a
-rebinding through, but couldn't make a never-run coroutine count as run. The cost: legitimate tests that reuse a
-name, or run a coroutine conditionally, are rejected and must be rewritten. Today there are none.
-
 **Quiz**
 
 1. A test's `act` calls a service that opens its own `AsyncSession` from the app's session factory. What does
@@ -400,7 +337,7 @@ name, or run a coroutine conditionally, are rejected and must be rewritten. Toda
 2. Why does `_detached` call `session.commit()` after reading the backend, before `detach()`?
 3. What would break if `_end` were removed? Which test catches it?
 4. What would break if `_wait_until_blocked` checked `task.done()` only before the probe, as it first did?
-5. How would you extend the check to allow `try: _run(url, body)` while keeping it fail-closed?
+5. Why does `_BLOCKED_BY_HOLDER` match each backend by `backend_start` as well as by pid?
 
 <details><summary>Answers</summary>
 
@@ -413,10 +350,8 @@ name, or run a coroutine conditionally, are rejected and must be rewritten. Toda
    holding its locks. `test_a_failing_change_is_raised_and_leaves_no_lock_task_or_connection` fails (m5).
 4. An error the action raised while the last probe was out would reach the deadline branch unchained
    (`test_an_error_raised_during_the_last_probe_is_the_cause_of_the_assertion`).
-5. Not by counting the whole `try` body: a statement before the call can raise, and a handler can swallow it, so
-   the call never runs and the test passes. A fail-closed extension counts a call in a `try` body only when it is
-   the body's first statement, or when the `try` has no `except` handlers (`try`/`finally`, where an error fails the
-   test). Add those as positive cases, and keep the current `try`/`except` case in
-   `test_calls_that_may_not_run_do_not_count` as a negative one.
+5. Postgres backends are OS processes, and the OS can give an ended backend's pid to a new one. Matching the start
+   time too means a later backend with the same pid is never taken for the action or the holder. No test can force
+   pid reuse, so this guard is untested (§7).
 
 </details>
