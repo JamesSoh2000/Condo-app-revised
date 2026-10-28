@@ -118,7 +118,15 @@ async def _detached(
             yield session, backend
     finally:
         if backend is not None:
-            await _end(sessions, backend)
+            # Shielded: a cancellation of the caller here would leave the backend holding the
+            # action's locks, so finish ending it, then let the cancellation through (WF-02b
+            # review of the split diff). A second cancellation is not handled.
+            ending = asyncio.ensure_future(_end(sessions, backend))
+            try:
+                await asyncio.shield(ending)
+            except asyncio.CancelledError:
+                await asyncio.shield(ending)
+                raise
 
 
 async def _end(sessions: async_sessionmaker[AsyncSession], backend: _Backend) -> None:

@@ -545,3 +545,53 @@ def test_an_error_raised_during_the_last_probe_is_the_cause_of_the_assertion(
         assert raised.value.__cause__ is refused
 
     _run(scratch_database_url, body)
+
+
+@pytest.mark.parametrize("ending", ["action", "holder"])
+def test_a_call_cancelled_while_it_ends_a_backend_still_ends_it(
+    scratch_database_url: str, monkeypatch: pytest.MonkeyPatch, ending: str
+) -> None:
+    # Review of the split diff (WF-02b, Codex, Medium): one cancellation during `_end`'s query,
+    # after `change` failed, left the action's backend alive and holding its row lock. The action's
+    # backend is ended first (its `_detached` is the inner one), then the holder's.
+    async def body(sessions: Sessions) -> None:
+        before = await _backends(sessions)
+        terminating = asyncio.Event()
+        released = asyncio.Event()
+        seen = 0
+        real_scalars = AsyncSession.scalars
+
+        async def gated_scalars(self: AsyncSession, statement: Any, *args: Any, **kw: Any) -> Any:
+            nonlocal seen
+            if statement is lock_wait._TERMINATE:
+                seen += 1
+                if seen == ("action", "holder").index(ending) + 1:
+                    # Held at the query's I/O point until the caller has been cancelled.
+                    terminating.set()
+                    await released.wait()
+            return await real_scalars(self, statement, *args, **kw)
+
+        async def change(_db: AsyncSession) -> None:
+            raise RuntimeError("change failed")
+
+        monkeypatch.setattr(AsyncSession, "scalars", gated_scalars)
+        call = asyncio.ensure_future(
+            act_blocked_on_lock(sessions, hold=_hold(1), act=_increment(1), change=change)
+        )
+        try:
+            # Longer than the helper's own 5 s, so a broken helper fails here instead of racing it.
+            await asyncio.wait_for(terminating.wait(), 30)
+            call.cancel()
+        finally:
+            # Always let the held query go, or a failure above leaves the call waiting forever.
+            released.set()
+            await asyncio.gather(call, return_exceptions=True)
+            monkeypatch.undo()
+
+        assert call.cancelled()
+        assert await _backends(sessions) == before
+        # The row is no longer locked (`_value` would time out on the lock). The action may have
+        # committed its increment after the holder's rollback, before its task was cancelled.
+        assert await _value(sessions, 1) in (0, 1)
+
+    _run(scratch_database_url, body)
