@@ -1,8 +1,7 @@
 # Explanation — WF-02b Lock-wait helper
 
-> **PR:** #145 · **Source revision:** the PR head after the split commit (WF-02c, inbox B-12); the lock helper and
-> its tests are unchanged since `a47a8c9`, which rounds 2 and 3 reviewed. **Reviewed:** see §6; the review of the
-> split diff is recorded there when it finishes.
+> **PR:** #145 · **Source revision:** `e3675f1`, the pre-merge PR head this explanation was checked against.
+> **Reviewed:** the final review round (split round 2, Codex, MERGE with no findings) reviewed this commit.
 > **Merge commit:** not known when written; after the merge, `gh pr view 145 --json mergeCommit` gives it.
 > Built and merged autonomously ([ADR-0014](../adr/0014-autonomous-agent-workflow.md)); no human reviewed it
 > before merge. This describes the PR's changes at the source revision. Commits after it (bookkeeping) and
@@ -288,6 +287,7 @@ Acceptance criteria → tests:
 | 3 | Codex `gpt-6.1-sol` high (fresh) | `91d3a87` | BLOCK | High: the check counted a runner call inside a `with` body (`pytest.raises` swallowing an earlier error) or after a sibling's `return` | not fixed here: stop rule 4, inbox B-12 |
 | 4 | Codex `gpt-6.1-sol` high (fresh; James asked for a fix and one more round) | `084499b` (rebased, not pushed: R3's fix) | BLOCK | High: a later `with` item counted after `suppress`. High: a call after a compound statement containing `return` counted. Medium: this explanation still showed the old traversal | the check moved to WF-02c (B-12, option (a)), with both Highs as its sharpened criterion; the Medium is resolved by the cut |
 | split 1 | Codex `gpt-6.1-sol` high (fresh; a new count for the split diff) | `c5c1f30` | MERGE | Medium: one cancellation of the caller during `_end`'s query (after `change` failed) left the action's backend alive, holding its row lock | fixed in `5701992` |
+| split 2 | Codex `gpt-6.1-sol` high (fresh) | `e3675f1` | MERGE | none (the F1 fix verified; full backend run 3034 passed; its 7 confirmation proofs passed, then deleted) | — |
 
 - **R1 F1:** `_detached` detached first and read the backend after. Cancelling the call during that read left
   `backend` unset, so `_end` was skipped and one backend stayed. Codex's proof slowed the identity query and
