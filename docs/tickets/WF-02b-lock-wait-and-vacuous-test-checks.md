@@ -6,7 +6,7 @@
 | Risk tier | 2 (test support that later tickets rely on as evidence) |
 | Depends on | WF-02a (both edit the PR template row, the two command files and `CLAUDE.md`) |
 | Replaces old | — (part of [WF-02](./WF-02-known-failure-test-kit.md)) |
-| Status | in progress |
+| Status | done |
 
 Split from [WF-02](./WF-02-known-failure-test-kit.md) after its review round 3 (James's answer to inbox B-11, option
 (a)). The criterion numbers are WF-02's; WF-02's "Original ticket" section holds the full text of criteria 5–8, its
