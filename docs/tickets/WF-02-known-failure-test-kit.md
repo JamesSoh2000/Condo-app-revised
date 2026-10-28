@@ -6,7 +6,7 @@
 | Risk tier | 2 (test support that later tickets rely on as evidence) |
 | Depends on | WF-01 |
 | Replaces old | — |
-| Status | split into [WF-02a](./WF-02a-focus-test-kit.md), [WF-02b](./WF-02b-lock-wait-and-vacuous-test-checks.md) |
+| Status | split into [WF-02a](./WF-02a-focus-test-kit.md), [WF-02b](./WF-02b-lock-wait-and-vacuous-test-checks.md), [WF-02c](./WF-02c-vacuous-test-check.md) |
 
 Split after review round 3 (2026-10-27, James's answer to inbox B-11: option (a)). "WF-02" in other text and in code
 comments means both parts; the criterion numbers below are kept in both parts, so "WF-02 criterion 4" still names one
@@ -15,7 +15,8 @@ criterion.
 | Part | Scope | Acceptance criteria (original numbers) |
 |---|---|---|
 | [WF-02a](./WF-02a-focus-test-kit.md) | `frontend/src/test/focus.ts`, `e2e/helpers/focus.ts` and their tests, the `FileUpload` and "Log package" focus tests, the "Log package" focus fix, the PR template's "Known failure cases" table and the command lines, the focus lesson's words | 1–4, 9, 10, the focus half of 11 |
-| [WF-02b](./WF-02b-lock-wait-and-vacuous-test-checks.md) | `act_blocked_on_lock` (redesigned: the helper opens the action's session), criterion 7's restatement, the vacuous-test check (narrowed, fail-closed), the helper's name in the template row, the commands and the lock lesson | 5–8, the lock half of 11 |
+| [WF-02b](./WF-02b-lock-wait-and-vacuous-test-checks.md) | `act_blocked_on_lock` (redesigned: the helper opens the action's session), criterion 7's restatement, the helper's name in the template row, the commands and the lock lesson | 5–7, the lock half of 11 |
+| [WF-02c](./WF-02c-vacuous-test-check.md) | the vacuous-test check (narrowed, fail-closed; moved from WF-02b after its review round 4, inbox B-12) | 8 |
 
 ## Why split
 

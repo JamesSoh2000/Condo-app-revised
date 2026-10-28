@@ -65,6 +65,7 @@ Built autonomously (docs/AI_AGENT_PLAYBOOK.md); merged by the agent once the mer
        Publish/Save sends
      - a server error on a field the view may not render (focus needs a target)
      - a statement that can wait (row lock, file claim, FK lock in an INSERT) before a time or state check
+       (`act_blocked_on_lock`, `backend/tests/helpers/lock_wait.py`)
      - a reused component's per-instance state (a "focus is inside me" flag, a Tab trap) applied to new content
      - a test that is defined and never run (a nested `body` coroutine no statement calls or passes)
      Keep adding rows for each fix's neighbours before the next round. -->

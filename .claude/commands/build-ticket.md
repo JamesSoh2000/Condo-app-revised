@@ -27,7 +27,8 @@ only after re-reading the code, never from memory of what you built.
    again; exit 3, the head moved, wait on the new head; exit 4, an error. Exits 2, 3 and 4 are never green).
    Before spawning the first reviewer, fill the PR's "Known failure cases" table (one row per changed control, field
    or wait point, each with its test or `n/a: why`; `expectFocusKept` makes the focus rows one-line tests), and keep
-   adding rows for each fix's neighbours in step 4.
+   adding rows for each fix's neighbours in step 4. `act_blocked_on_lock` (`backend/tests/helpers/lock_wait.py`) makes
+   the lock-wait rows one-line tests too.
 4. **Review** (step 5). Read the ticket's tier.
    - Spawn a fresh subagent with: "Run `.claude/commands/review-ticket.md` for $ARGUMENTS in worktree
      `<path>`. Round <N>." Tier 1: say it must include the security pass.
