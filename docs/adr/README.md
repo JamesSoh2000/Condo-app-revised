@@ -32,5 +32,6 @@ himself. Reading them is a core learning activity, because they state the trade-
 | [0019](./0019-sql-parameters-hidden-from-errors.md) | The engine hides SQL parameters from database error messages, so emailed tokens reach no log (agent, P4-04) | Accepted |
 | [0020](./0020-maintenance-request-shape.md) | A maintenance request row holds its current state (history in P6-03c's status events); common areas are free text (agent, P6-03a) | Accepted |
 | [0021](./0021-occupancy-record-fence.md) | The record fence: an occupancy write never moves a window edge behind a record stamped since (agent from James's answer, P6-03b) | Accepted |
+| [0022](./0022-feature-settings-in-building-features-config.md) | A feature's per-building settings live in its `building_features.config`; the maintenance emergency phone first (agent, P6-03b D1, written in P6-03e) | Accepted |
 
 Template: [../templates/ADR.md](../templates/ADR.md).

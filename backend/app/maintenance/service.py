@@ -1,21 +1,26 @@
-"""Maintenance requests (P6-03b): a resident files one; every member reads what
-`visible_maintenance` lets them (CLAUDE.md rule 3).
+"""Maintenance requests (P6-03b, P6-03e): a resident files one and may cancel it while it is
+`submitted`; every member reads what `visible_maintenance` lets them (CLAUDE.md rule 3).
 
 `create_request` follows `app.packages.service.create_package`: the request, its photo claims and
 rows, the managers' notifications and the audit row commit together, once (CLAUDE.md rule 5).
+`cancel_request` follows `app.packages.service._transition`: a conditional `UPDATE … WHERE status IN
+(…) RETURNING` that also names the requester, so of two concurrent writes one wins and nobody
+else's request is cancelled (CLAUDE.md rule 7).
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
 from app.audit.service import record_audit
-from app.core.errors import NotFound, UnprocessableContent
+from app.buildings.enums import Feature
+from app.buildings.models import BuildingFeature
+from app.core.errors import Forbidden, NotFound, UnprocessableContent
 from app.core.pagination import CursorParams, Page, paginate
 from app.files.models import FilePurpose
 from app.files.service import claim_file
@@ -31,6 +36,7 @@ from app.maintenance.schemas import (
     MaintenanceRequestCreate,
     MaintenanceRequestOut,
 )
+from app.maintenance.state import assert_transition, sources
 from app.memberships.enums import MembershipStatus, Role
 from app.memberships.models import BuildingMembership, UnitOccupancy
 from app.memberships.service import OccupancyChanged
@@ -45,6 +51,9 @@ from app.tenancy.context import TenantContext
 from app.units.models import Unit
 from app.units.service import UnitNotFound
 from app.users.models import User
+
+# `users.phone`'s length (ADR-0022).
+MAX_EMERGENCY_PHONE = 32
 
 # The notification's words for each category (P6-03b D5): fixed text, never the resident's.
 _CATEGORY_NAMES = {
@@ -65,6 +74,10 @@ class MaintenanceRequestNotFound(NotFound):
 
 class UnitNotOccupied(UnprocessableContent):
     code = "unit_not_occupied"
+
+
+class NotRequester(Forbidden):
+    code = "not_requester"
 
 
 @dataclass(frozen=True)
@@ -289,11 +302,29 @@ async def _check_unit(db: AsyncSession, ctx: TenantContext, unit_id: UUID) -> st
     return f"{unit.tower} {unit.label}" if unit.tower else unit.label
 
 
+async def emergency_phone(db: AsyncSession, building_id: UUID) -> str | None:
+    """The building's emergency phone (ADR-0022): the maintenance feature's
+    `config["emergency_phone"]`, stripped. `config` is JSONB, which no column type checks, so
+    anything but an object holding a non-blank string of at most 32 characters reads as none."""
+    config = await db.scalar(
+        select(BuildingFeature.config).where(
+            BuildingFeature.building_id == building_id,
+            BuildingFeature.feature == Feature.MAINTENANCE,
+        )
+    )
+    phone = config.get("emergency_phone") if isinstance(config, dict) else None
+    if not isinstance(phone, str):
+        return None
+    phone = phone.strip()
+    return phone if 0 < len(phone) <= MAX_EMERGENCY_PHONE else None
+
+
 async def _outs(
     db: AsyncSession, ctx: TenantContext, requests: Sequence[MaintenanceRequestColumns]
 ) -> list[MaintenanceRequestOut]:
-    """`requests` with their photos, their units' current tower and label, and for staff their
-    requesters' current names: three statements at most, however many."""
+    """`requests` with their photos, their units' current tower and label, for staff their
+    requesters' current names, and on emergency requests the building's phone: four statements at
+    most, however many."""
     if not requests:
         return []
     ids = [request.id for request in requests]
@@ -329,6 +360,9 @@ async def _outs(
             )
         )
         names = {membership_id: full_name for membership_id, full_name in rows}
+    phone = None
+    if any(request.category == MaintenanceCategory.EMERGENCY for request in requests):
+        phone = await emergency_phone(db, ctx.building_id)
     return [
         MaintenanceRequestOut(
             **request.model_dump(),
@@ -337,6 +371,7 @@ async def _outs(
             unit_tower=units[request.unit_id].tower if request.unit_id is not None else None,
             unit_label=units[request.unit_id].label if request.unit_id is not None else None,
             requester_name=names.get(request.requester_membership_id),
+            emergency_phone=phone if request.category == MaintenanceCategory.EMERGENCY else None,
         )
         for request in requests
     ]
@@ -367,8 +402,75 @@ async def list_requests(
 async def get_request(
     db: AsyncSession, ctx: TenantContext, request_id: UUID
 ) -> MaintenanceRequestOut:
-    request = await db.scalar(visible_maintenance(ctx).where(MaintenanceRequest.id == request_id))
+    return await _out(db, ctx, await _visible(db, ctx, request_id))
+
+
+async def _visible(db: AsyncSession, ctx: TenantContext, request_id: UUID) -> MaintenanceRequest:
+    request = await db.scalar(
+        visible_maintenance(ctx)
+        .where(MaintenanceRequest.id == request_id)
+        .execution_options(populate_existing=True)
+    )
     if request is None:
         # The same answer for someone else's, another building's and no request (ADR-0004).
         raise MaintenanceRequestNotFound(detail="Maintenance request not found.")
-    return await _out(db, ctx, request)
+    return request
+
+
+async def cancel_request(
+    db: AsyncSession, ctx: TenantContext, request_id: UUID
+) -> MaintenanceRequestOut:
+    """Withdraw the caller's own `submitted` request. 404, 403 `not_requester` (a co-occupant's,
+    P6-03b D3), 409 `invalid_transition`."""
+    await _for_cancel(db, ctx, request_id)
+    # The requester is in the WHERE, not only checked above: the UPDATE decides (CLAUDE.md rule 7).
+    # A concurrent start holding the row makes this wait; once it commits, Postgres re-checks the
+    # WHERE on the row it wrote and updates nothing.
+    cancelled = await db.scalar(
+        update(MaintenanceRequest)
+        .where(
+            MaintenanceRequest.id == request_id,
+            MaintenanceRequest.building_id == ctx.building_id,
+            MaintenanceRequest.requester_membership_id == ctx.membership_id,
+            MaintenanceRequest.status.in_(sources(MaintenanceStatus.CANCELLED)),
+        )
+        .values(
+            status=MaintenanceStatus.CANCELLED,
+            # The statement's clock, after any wait on the row lock.
+            cancelled_at=func.clock_timestamp(),
+            cancelled_by_membership_id=ctx.membership_id,
+        )
+        .returning(MaintenanceRequest)
+        .execution_options(populate_existing=True)
+    )
+    if cancelled is None:
+        # Zero rows: answer 404, 403 or 409 from the request as it is now.
+        current = await _for_cancel(db, ctx, request_id)
+        # Unreachable: the UPDATE would have matched a request the caller may still cancel.
+        raise AssertionError(f"maintenance request {current.id} matched no cancel")
+    # Not the status read before the UPDATE's lock wait (the CLAUDE.md lesson): the UPDATE matched
+    # one of these, and there is one. A second source would fail here, not record a stale one.
+    [from_status] = sources(MaintenanceStatus.CANCELLED)
+    await record_audit(
+        db,
+        action=actions.MAINTENANCE_CANCELLED,
+        entity_type=MAINTENANCE_REQUEST_ATTACHED_TYPE,
+        entity_id=request_id,
+        building_id=ctx.building_id,
+        actor_user_id=ctx.user_id,
+        metadata={"from_status": from_status},
+    )
+    out = await _out(db, ctx, cancelled)
+    await db.commit()
+    return out
+
+
+async def _for_cancel(db: AsyncSession, ctx: TenantContext, request_id: UUID) -> MaintenanceRequest:
+    """The request as it is now, if the caller may cancel it: 404 unless visible, 403 unless
+    theirs (before the status: they could never cancel it), else 409 unless `submitted`. An early
+    answer only; the UPDATE decides."""
+    request = await _visible(db, ctx, request_id)
+    if request.requester_membership_id != ctx.membership_id:
+        raise NotRequester(detail="Only the resident who filed this request can cancel it.")
+    assert_transition(request.status, MaintenanceStatus.CANCELLED)
+    return request
