@@ -17,9 +17,9 @@ test is read, never trusted. So `print(body)` passes (a limitation), and `ignore
 import ast
 import asyncio
 import inspect
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 
@@ -76,13 +76,7 @@ def _problems(test: _Def) -> list[str]:
         for name, definition in tracked.items()
         if definition.decorator_list
     ]
-    inside = {
-        name
-        for statement in test.body
-        for name, form, _ in _bindings(statement, set())
-        if form != "`import`"
-    }
-    run = _run_by(test.body, tracked, inside)
+    run = _run_by(test.body, _Test(tracked, _trusted(test), _raising(tracked)))
     problems += [
         f"`{name}` is defined and never run"
         for name, definition in tracked.items()
@@ -91,7 +85,63 @@ def _problems(test: _Def) -> list[str]:
     return problems
 
 
-def _run_by(body: list[ast.stmt], tracked: dict[str, _Def], inside: set[str]) -> set[str]:
+class _Test(NamedTuple):
+    tracked: dict[str, _Def]
+    trusted: set[str]  # callee roots that are code from outside the test (`_trusted`)
+    raising: set[str]  # tracked functions that may raise (`_raising`)
+
+
+def _trusted(test: _Def) -> set[str]:
+    """The names whose calls are code from outside the test: each is only ever the root of a callee
+    (`a` in `a.b(...)`), and the test binds it only by `import`, if at all. A name used any other
+    way (`setattr(a, …)`, `alias = a`, `a.b = …`) may have been changed by the test (round 1 F2).
+    None at all if the test stores into an attribute or item of something it didn't bind
+    (`globals()["_run"] = …`, an outside object's attribute): that can rebind any name."""
+    bound = {
+        name
+        for statement in test.body
+        for name, form, _ in _bindings(statement, set())
+        if form != "`import`"
+    }
+    for node in ast.walk(test):
+        if isinstance(node, ast.Attribute | ast.Subscript) and isinstance(
+            node.ctx, ast.Store | ast.Del
+        ):
+            target: ast.expr = node
+            while isinstance(target, ast.Attribute | ast.Subscript):
+                target = target.value
+            if not (isinstance(target, ast.Name) and target.id in bound):
+                return set()
+    roots = {id(_root(node.func)) for node in ast.walk(test) if isinstance(node, ast.Call)}
+    names = [node for node in ast.walk(test) if isinstance(node, ast.Name)]
+    used_otherwise = {node.id for node in names if id(node) not in roots}
+    return {node.id for node in names if id(node) in roots} - used_otherwise - bound
+
+
+def _raising(tracked: dict[str, _Def]) -> set[str]:
+    """The tracked functions that may raise: a `raise` anywhere inside one (in a nested function
+    too), or a reference to one that may. A statement that runs one can end the test (with
+    `pytest.skip`'s exception, green) before the statements after it (round 1 F1)."""
+    raising = {
+        name
+        for name, definition in tracked.items()
+        if any(isinstance(node, ast.Raise) for node in ast.walk(definition))
+    }
+    grown = True
+    while grown:
+        grown = False
+        for name, definition in tracked.items():
+            if name not in raising and _refers_to(ast.walk(definition), raising):
+                raising.add(name)
+                grown = True
+    return raising
+
+
+def _refers_to(nodes: Iterable[ast.AST], names: set[str]) -> bool:
+    return any(isinstance(node, ast.Name) and node.id in names for node in nodes)
+
+
+def _run_by(body: list[ast.stmt], test: _Test) -> set[str]:
     """The tracked functions that `body` runs, and those they run in turn. Only a function the test
     calls directly is read further: code that is handed a function may catch its errors
     (`pytest.raises(E, f)`, `gather(..., return_exceptions=True)`), so a statement in it that
@@ -100,67 +150,65 @@ def _run_by(body: list[ast.stmt], tracked: dict[str, _Def], inside: set[str]) ->
     read: set[str] = set()
     pending = [body]
     while pending:
-        for name, called in _runs(pending.pop(), tracked, inside):
+        for name, called in _runs(pending.pop(), test):
             run.add(name)
             if called and name not in read:
                 read.add(name)
-                pending.append(tracked[name].body)
+                pending.append(test.tracked[name].body)
     return run
 
 
-def _runs(
-    statements: list[ast.stmt], tracked: dict[str, _Def], inside: set[str]
-) -> Iterator[tuple[str, bool]]:
+def _runs(statements: list[ast.stmt], test: _Test) -> Iterator[tuple[str, bool]]:
     """(name, called directly) for the tracked functions run by an expression statement, an
     assignment's value, a `return`'s value or the *first* item of a `with` in `statements`, up to
-    the first statement whose own scope holds a `return` or `raise` (its counted part runs before
-    it can leave). No block's body counts: an `if`, a loop, a `try` or a `match` may not run it,
-    and a `with` may suppress an error raised before the call (`pytest.raises` does; PR #145 round
-    3). A later `with` item runs inside the earlier ones, which may suppress it too (round 4)."""
+    the first statement that can leave: one whose own scope holds a `return` or `raise`, or refers
+    to a tracked function that may raise (its counted part runs before it can leave). No block's
+    body counts: an `if`, a loop, a `try` or a `match` may not run it, and a `with` may suppress an
+    error raised before the call (`pytest.raises` does; PR #145 round 3). A later `with` item runs
+    inside the earlier ones, which may suppress it too (round 4)."""
     for statement in statements:
         match statement:
             case ast.Expr(value=value) | ast.Assign(value=value) | ast.Return(value=value):
                 if value is not None:
-                    yield from _evaluated(value, tracked, inside)
+                    yield from _evaluated(value, test)
             case ast.AnnAssign(value=value):
                 if value is not None:
-                    yield from _evaluated(value, tracked, inside)
+                    yield from _evaluated(value, test)
             case ast.With(items=[first, *_]) | ast.AsyncWith(items=[first, *_]):
-                yield from _evaluated(first.context_expr, tracked, inside)
-        if any(isinstance(node, ast.Return | ast.Raise) for node in _own_scope([statement])):
+                yield from _evaluated(first.context_expr, test)
+        scope = list(_own_scope([statement]))
+        if any(isinstance(node, ast.Return | ast.Raise) for node in scope):
+            return
+        if _refers_to(scope, test.raising):
             return
 
 
 def _evaluated(
-    expr: ast.expr,
-    tracked: dict[str, _Def],
-    inside: set[str],
-    *,
-    awaited: bool = False,
-    handed: bool = False,
+    expr: ast.expr, test: _Test, *, awaited: bool = False, handed: bool = False
 ) -> Iterator[tuple[str, bool]]:
     """(name, called directly) for the tracked functions that evaluating `expr` runs, through calls
     and `await`s only. A tracked function is run when the test calls it so that its body starts
     (`_starts`), or when it, or a call of it, is a direct argument of code from outside the test
-    (`_outside`); an argument of a function defined in the test counts only if that function is run
+    (`_trusted`); an argument of a function defined in the test counts only if that function is run
     and does it itself."""
     if isinstance(expr, ast.Await):
-        yield from _evaluated(expr.value, tracked, inside, awaited=True, handed=handed)
+        yield from _evaluated(expr.value, test, awaited=True, handed=handed)
     elif isinstance(expr, ast.Name):
-        if handed and expr.id in tracked:
+        if handed and expr.id in test.tracked:
             yield expr.id, False
     elif isinstance(expr, ast.Call):
         callee = expr.func
-        if isinstance(callee, ast.Name) and callee.id in tracked:
-            if _starts(tracked[callee.id], awaited):
+        if isinstance(callee, ast.Name) and callee.id in test.tracked:
+            if _starts(test.tracked[callee.id], awaited):
                 yield callee.id, True
             elif handed:
                 yield callee.id, False
         else:
-            yield from _evaluated(callee, tracked, inside)
-        outside = _outside(callee, inside)
+            yield from _evaluated(callee, test)
+        root = _root(callee)
+        outside = isinstance(root, ast.Name) and root.id in test.trusted
         for argument in [*expr.args, *(keyword.value for keyword in expr.keywords)]:
-            yield from _evaluated(argument, tracked, inside, handed=outside)
+            yield from _evaluated(argument, test, handed=outside)
 
 
 def _starts(definition: _Def, awaited: bool) -> bool:
@@ -174,12 +222,11 @@ def _starts(definition: _Def, awaited: bool) -> bool:
     return awaited or isinstance(definition, ast.FunctionDef)
 
 
-def _outside(callee: ast.expr, inside: set[str]) -> bool:
-    """Whether `callee` is code from outside the test: a name, or `a.b.c` rooted at one, that the
-    test binds only by `import`, if at all."""
+def _root(callee: ast.expr) -> ast.expr:
+    """`a` for `a.b.c`; anything else as it is."""
     while isinstance(callee, ast.Attribute):
         callee = callee.value
-    return isinstance(callee, ast.Name) and callee.id not in inside
+    return callee
 
 
 def _own_scope(body: list[ast.stmt]) -> Iterator[ast.AST]:
