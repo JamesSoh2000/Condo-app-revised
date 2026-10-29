@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-03b |
 | Replaces old | M8-T01 (resident cancel), M8-T04 (emergency part) |
-| Status | in progress |
+| Status | done |
 
 Split from [P6-03b](./P6-03b-maintenance-submit-and-read-api.md) while it was being built (its Frame notes,
 "Split"): P6-03b's diff came out at 705 non-test lines with these two parts. The criteria, rows and decisions
@@ -152,3 +152,15 @@ and are not taken.
 - Estimate: ~180 non-test lines (`p6-03e-start` measured ~170, plus 2d's line and the non-object `config`
   guard). No split.
 - Split: none.
+
+## Follow-ups (from PR #149)
+
+- **P6-03c:** its actions should lock the request first (`SELECT … FOR UPDATE`, as `_for_cancel`) whenever they
+  record a time or a `from_status`: an `UPDATE` that waits on a lock released without a change keeps the
+  `clock_timestamp()` it computed before the wait (PR #149 E1). Carried to P6-03c's ticket.
+- **Managers are not notified when a resident cancels** (not in this ticket's scope): carried to P6-03c's ticket
+  to decide with its notifications.
+- **No API edits the emergency phone** (scope "Out"); a later building-settings ticket writes the same `config`
+  key (ADR-0022).
+- **Docker unreachable (PRE-8):** local checks ran on a scratch Postgres 16 + `moto`; CI on Postgres 18 is the
+  green run of record.
