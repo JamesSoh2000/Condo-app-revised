@@ -13,6 +13,7 @@ import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { ResetLinkInvalid, ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage';
 import { ManagerNoticesPage } from '@/features/notices/ManagerNoticesPage';
 import { NoticesPage } from '@/features/notices/NoticesPage';
+import { MyMaintenancePage } from '@/features/maintenance/pages/MyMaintenancePage';
 import { JoinInvalid, JoinPage } from '@/features/onboarding/JoinPage';
 import { MyPackagesPage } from '@/features/packages/pages/MyPackagesPage';
 import { SecurityPackagesPage } from '@/features/packages/pages/SecurityPackagesPage';
@@ -88,6 +89,15 @@ export function AppRoutes() {
             element={
               <RequirePageAccess access={PAGE_ACCESS.Notices}>
                 <NoticesPage />
+              </RequirePageAccess>
+            }
+          />
+          {/* One route for the list and a request (`/maintenance/<id>`, the notifications' link), as packages (P6-04a). */}
+          <Route
+            path={`${PAGE_ACCESS.Maintenance.path}/:requestId?`}
+            element={
+              <RequirePageAccess access={PAGE_ACCESS.Maintenance}>
+                <MyMaintenancePage />
               </RequirePageAccess>
             }
           />

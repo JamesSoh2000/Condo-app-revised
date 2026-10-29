@@ -45,7 +45,7 @@ export const PAGE_ACCESS: Record<Page, PageAccess> = {
   Notices: { feature: 'notices', label: 'Notices', path: '/notices' },
   // Only property management publishes and archives (P6-01b); the others read the feed (P6-02c D1).
   ManagementNotices: { roles: ['property_management'], feature: 'notices', label: 'Manage notices', path: '/manage/notices' },
-  Maintenance: { roles: ['resident'], feature: 'maintenance', label: 'Maintenance requests' },
+  Maintenance: { roles: ['resident'], feature: 'maintenance', label: 'Maintenance requests', path: '/maintenance' },
   ManagementMaintenance: { roles: STAFF, feature: 'maintenance', label: 'Maintenance' },
 };
 

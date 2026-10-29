@@ -90,7 +90,7 @@ describe('navigation from the page table (criterion 1)', () => {
       '/Contacts',
       '/packages',
       '/notices',
-      '/Maintenance',
+      '/maintenance',
     ]);
     for (const staffItem of ['Residents', 'Package log', 'Manage notices', 'Maintenance']) {
       expect(within(nav()!).queryByRole('link', { name: staffItem })).toBeNull();
@@ -100,12 +100,12 @@ describe('navigation from the page table (criterion 1)', () => {
   it('marks the current page with aria-current, also for a differently cased URL', async () => {
     stubApi(persona(['resident']));
 
-    // /packages until P5-04 migrated it: any unmigrated page.
-    renderApp(['/maintenance']);
+    // /packages until P5-04 migrated it, /maintenance until P6-04a: any unmigrated page.
+    renderApp(['/dashboard']);
 
     await screen.findByText(/being migrated/i);
     const current = within(nav()!).getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page');
-    expect(current.map((link) => link.textContent)).toEqual(['Maintenance requests']);
+    expect(current.map((link) => link.textContent)).toEqual(['Dashboard']);
   });
 
   it.each([
@@ -204,7 +204,7 @@ describe('navigation from the page table (criterion 1)', () => {
   it('makes no request of its own: the building is requested once, by the guards (1d)', async () => {
     const fetchMock = stubApi(persona(['resident']));
 
-    renderApp(['/Maintenance']);
+    renderApp(['/Dashboard']);
     await findNavItems();
     await settle();
 
@@ -277,14 +277,14 @@ describe('council "view as" (criterion 3)', () => {
   });
 
   it('keeps the guards: a page the real roles allow opens by URL in either view (3d)', async () => {
-    stubApi(COUNCIL_RESIDENT);
+    // P6-04a migrated /Maintenance, the last resident-only page, so it renders itself and asks for its list.
+    stubApi({ ...COUNCIL_RESIDENT, [`GET /api/buildings/${MAPLE.id}/maintenance-requests`]: () => json({ items: [], next_cursor: null }) });
     sessionStorage.setItem(VIEW_KEY, 'management');
     const app = renderApp(['/']);
     await findNavItems();
 
-    // /Packages until P5-04 migrated it: any unmigrated resident page.
     act(() => app.navigate()('/Maintenance'));
-    expect(await screen.findByText(/being migrated/i)).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Maintenance requests', level: 1 })).toBeTruthy();
     expect(location()).toBe('/Maintenance');
 
     openAccountMenu();

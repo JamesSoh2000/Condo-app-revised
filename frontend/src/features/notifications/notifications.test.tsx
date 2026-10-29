@@ -60,7 +60,7 @@ function notification(overrides: Partial<Notification> = {}): Notification {
     kind: 'package.arrived',
     title: `Notification ${sequence}`,
     body: 'A package is waiting at the front desk.',
-    link: '/Maintenance',
+    link: '/Dashboard',
     entity_type: null,
     entity_id: null,
     read_at: null,
@@ -198,7 +198,7 @@ describe('mark all read (criterion 3)', () => {
 
 describe('clicking a notification (criteria 4 and 10)', () => {
   it('marks it read, navigates to its link, closes the panel and refreshes the badge', async () => {
-    const target = notification({ link: '/Maintenance' });
+    const target = notification({ link: '/Dashboard' });
     const server = notificationServer(MAPLE, [target, notification()]);
     const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME), ...server.routes });
 
@@ -207,7 +207,7 @@ describe('clicking a notification (criteria 4 and 10)', () => {
     const region = await openPanel();
     fireEvent.click(await within(region).findByRole('button', { name: new RegExp(target.title) }));
 
-    await waitFor(() => expect(location()).toBe('/Maintenance'));
+    await waitFor(() => expect(location()).toBe('/Dashboard'));
     expect(screen.queryByRole('region', { name: /notifications/i })).toBeNull();
     expect(await bell('Notifications, 1 unread')).toBeTruthy();
     expect(notificationCalls(fetchMock)).toContain(`POST ${base(MAPLE)}/${target.id}/read`);
@@ -228,7 +228,7 @@ describe('clicking a notification (criteria 4 and 10)', () => {
   });
 
   it('sends nothing for a notification that is already read, and still follows its link', async () => {
-    const target = notification({ read_at: '2026-10-17T00:00:00Z', link: '/Maintenance' });
+    const target = notification({ read_at: '2026-10-17T00:00:00Z', link: '/Dashboard' });
     const server = notificationServer(MAPLE, [target]);
     const fetchMock = stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME), ...server.routes });
 
@@ -236,7 +236,7 @@ describe('clicking a notification (criteria 4 and 10)', () => {
     const region = await openPanel();
     fireEvent.click(await within(region).findByRole('button', { name: new RegExp(target.title) }));
 
-    await waitFor(() => expect(location()).toBe('/Maintenance'));
+    await waitFor(() => expect(location()).toBe('/Dashboard'));
     expect(notificationCalls(fetchMock).filter((call) => call.startsWith('POST'))).toEqual([]);
   });
 
@@ -509,7 +509,7 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
   });
 
   it('F4: keeps a failed mark-read of a linked notification, so the reopened panel shows the error', async () => {
-    const target = notification({ link: '/Maintenance' });
+    const target = notification({ link: '/Dashboard' });
     const server = notificationServer(MAPLE, [target]);
     stubApi({
       'GET /api/auth/me': () => json(RESIDENT_ME),
@@ -519,7 +519,7 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     renderApp(['/']);
     fireEvent.click(await within(await openPanel()).findByRole('button', { name: new RegExp(target.title) }));
 
-    await waitFor(() => expect(location()).toBe('/Maintenance'));
+    await waitFor(() => expect(location()).toBe('/Dashboard'));
     const region = await openPanel();
     expect((await within(region).findByRole('alert')).textContent).toMatch(/could not mark/i);
   });
@@ -868,7 +868,7 @@ describe('review round 3 (Codex gpt-6.1-sol) and inbox B-5: one shared building 
   it('B-5: the page and the nav stay closed when a 5xx follows a building 404, until the building answers again', async () => {
     const maple = revocableMaple([notification()]);
     stubApi(maple.routes);
-    const app = renderApp(['/Maintenance']);
+    const app = renderApp(['/Dashboard']);
     await screen.findByText(/being migrated/i);
     expect(screen.getByRole('navigation')).toBeTruthy();
 
@@ -893,7 +893,7 @@ describe('review round 3 (Codex gpt-6.1-sol) and inbox B-5: one shared building 
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const maple = revocableMaple([notification()]);
     stubApi(maple.routes);
-    const app = renderApp(['/Maintenance']);
+    const app = renderApp(['/Dashboard']);
     await bell('Notifications, 1 unread');
     maple.state.status = 404;
     await act(() => app.queryClient.invalidateQueries({ queryKey: ['b', MAPLE.id, 'building'] }));
@@ -940,7 +940,7 @@ describe('review round 4 (Codex gpt-6-astra): denials from mutations, whenever t
     let finish!: (response: Response) => void;
     const reply = new Promise<Response>((resolve) => (finish = resolve));
     stubApi({ 'GET /api/auth/me': () => json(RESIDENT_ME), ...server.routes, [`POST ${base(MAPLE)}/${target.id}/read`]: () => reply });
-    const app = renderApp(['/Maintenance']);
+    const app = renderApp(['/Dashboard']);
     fireEvent.click(await within(await openPanel()).findByRole('button', { name: /private notice/i }));
     await waitFor(() => expect(app.queryClient.isMutating()).toBe(1));
 
@@ -979,7 +979,7 @@ describe('review round 4 (Codex gpt-6-astra): denials from mutations, whenever t
         return problem(404, 'building_not_found');
       },
     });
-    renderApp(['/Maintenance']);
+    renderApp(['/Dashboard']);
     fireEvent.click(await within(await openPanel()).findByRole('button', { name: /private notice/i }));
 
     expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
@@ -999,7 +999,7 @@ describe('review round 4 (Codex gpt-6-astra): denials from mutations, whenever t
       [`GET ${base(MAPLE)}/summary`]: (request) =>
         status === 200 ? server.routes[`GET ${base(MAPLE)}/summary`](request) : reply,
     });
-    const app = renderApp(['/Maintenance']);
+    const app = renderApp(['/Dashboard']);
     await bell('Notifications, 1 unread');
     status = 404;
     // A summary fetch outlives the shell (fetchQuery, as a prefetch would): only the cache sees its answer.

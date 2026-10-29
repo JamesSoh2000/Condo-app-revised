@@ -100,12 +100,12 @@ describe('home and placeholders (criterion 1)', () => {
 
   // P2-06b guards pages by role: /ManagementMaintenance is opened as a security user (a resident gets /403).
   // /ManagementNotices was here until P6-02c migrated it (features/notices/managerNotices.test.tsx), /SecurityPackages until P5-03b migrated it, /Packages until P5-04 (its own test:
-  // features/packages/myPackages.test.tsx); /maintenance keeps the case-insensitive match covered.
+  // features/packages/myPackages.test.tsx), /Maintenance until P6-04a (features/maintenance/myMaintenance.test.tsx);
+  // /dashboard keeps the case-insensitive match covered.
   it.each([
     ['/ManagementMaintenance', 'security'],
-    ['/Maintenance', 'resident'],
-    ['/maintenance', 'resident'],
     ['/Dashboard', 'resident'],
+    ['/dashboard', 'resident'],
     ['/Contacts', 'resident'],
   ] as const)(
     'renders a Being migrated placeholder at %s',

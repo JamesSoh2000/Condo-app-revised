@@ -67,13 +67,13 @@ describe('login (P2-06a criterion 1)', () => {
 
   it('follows a safe next', async () => {
     backend(() => noContent());
-    // /Packages until P5-04 migrated it: any unmigrated resident page.
-    renderApp(['/login?next=%2FMaintenance']);
+    // /Packages until P5-04 migrated it, /Maintenance until P6-04a: any unmigrated page.
+    renderApp(['/login?next=%2FDashboard']);
 
     fillAndSubmit('resident1@example.test', 'DevPassword!2026');
 
     expect(await screen.findByText(/being migrated/i)).toBeTruthy();
-    expect(location()).toBe('/Maintenance');
+    expect(location()).toBe('/Dashboard');
   });
 
   it.each(['%2Flogin%2F', '%2F%256cogin'])('lands on home for a login alias in next=%s (review round 1)', async (next) => {
