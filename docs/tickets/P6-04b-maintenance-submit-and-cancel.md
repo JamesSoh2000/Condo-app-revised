@@ -1,10 +1,10 @@
-# P6-04b — Maintenance submit form with photos, and cancel
+# P6-04b — Maintenance submit form and the emergency text
 
 | Field | Value |
 |---|---|
 | Phase / lane | P6 / A |
 | Risk tier | 2 |
-| Depends on | P6-04a, P6-03b, P6-03e, P3-06 |
+| Depends on | P6-04a, P6-03b, P6-03e |
 | Replaces old | M8-T02 (submit part) |
 | Status | in progress |
 
@@ -18,6 +18,10 @@ its emergency copy.
   here follow `MyMaintenanceList`'s `retry`. Also fix `features/packages/MyPackageList.tsx`'s "Try again", which has
   the same drop, with the same tests (`frontend/src/features/maintenance/myMaintenance.test.tsx` "review round 1"),
   or split it out if it doesn't fit.
+
+**Split while building (2026-10-29):** photos moved to [P6-04f](./P6-04f-maintenance-photos.md) and cancel to
+[P6-04e](./P6-04e-maintenance-cancel-ui.md); see the Frame notes' "Split". The text below keeps the original
+criteria, each moved part marked.
 
 ## Goal
 
@@ -63,15 +67,16 @@ merged ones (`frontend/src/api/schema.d.ts`).
 
 ## Acceptance criteria
 
-1. **Given** `a_resident1` (tenant in 101), **when** they fill the form for their unit with two photos and
-   submit, **then** one request is sent with the photos' file ids in order, the new request shows at the top of
+1. **Given** `a_resident1` (tenant in 101), **when** they fill the form for their unit ~~with two photos~~ (photos:
+   P6-04f criterion 1) and submit, **then** one request is sent ~~with the photos' file ids in order~~, the new request shows at the top of
    the list, and focus moves to the outcome message (the submit button that disabled itself would drop it to
    `<body>`; the CLAUDE.md lesson).
 2. **Given** a double press, or Enter then a press, **then** exactly one `maintenance_create` is sent; with
    `Idempotency-Key`, a retry after a network failure sends the same key and body.
-3. **Given** a photo still uploading, **then** submit is disabled and says why; a failed upload can be removed or
+3. *(Moved to P6-04f criteria 2–3.)* **Given** a photo still uploading, **then** submit is disabled and says why; a failed upload can be removed or
    retried without losing the other fields.
-4. **Given** each documented error (422 per field, the unit not occupied, `invalid_file`, `file_not_found`, 429, a
+4. **Given** each documented error (422 per field, the unit not occupied, `invalid_file` and `file_not_found` (moved to
+   P6-04f criterion 4), 429, a
    500, a network failure), **then** a message says what to do, the alert takes focus, and the typed values and
    photos remain.
 5. **Given** a resident with no current occupancy (P6-03b criterion 2), **then** the unit choice is absent and
@@ -79,21 +84,23 @@ merged ones (`frontend/src/api/schema.d.ts`).
 6. **Emergency.** **Given** `emergency` chosen, **then** the fixed text shows before submit, and after the 201 the
    text with the response's `emergency_phone`; with no phone set for the building (`null`), the text says to call
    the emergency services and building staff directly; nothing on screen says the building was notified.
-7. **Cancel.** **Given** a `submitted` request of the caller, **when** they confirm cancel, **then** one request is
+7. *(Moved to P6-04e criteria 1–5.)* **Cancel.** **Given** a `submitted` request of the caller, **when** they confirm cancel, **then** one request is
    sent and it shows as cancelled; a 409 (a manager started it meanwhile) shows the message, keeps the dialog open
    and refreshes the list; Cancel and Escape return focus to the opener; a request the caller may not cancel has no
    button.
-8. **Switching building** with the form or dialog open closes it, and nothing typed in A is submitted to B.
-9. **375 px in Chromium** with the longest description, a 255-character photo file name and the longest
-   common-area detail, the form, the emergency text and the dialog stay inside the viewport.
+8. **Switching building** with the form ~~or dialog~~ (dialog: P6-04e criterion 6) open closes it, and nothing typed in A is submitted to B.
+9. **375 px in Chromium** with the longest description ~~, a 255-character photo file name~~ (P6-04f criterion 6) and
+   the longest common-area detail, the form and the emergency text ~~and the dialog~~ (P6-04e criterion 7) stay inside
+   the viewport.
 10. The legacy `Maintenance.jsx` is deleted and the ratchet lowered.
 
 ## Test plan
 
 - `frontend/src/features/maintenance/submit.test.tsx`: criteria 1–8
-- `frontend/src/features/maintenance/cancel.test.tsx`: criterion 7
-- Chromium check at 375 px and focus after submit and cancel (criteria 1, 7, 9), output in the PR
-- `make check DB_PORT=55432`; on `make up`, submit with a photo and cancel, transcript in the PR
+- ~~`frontend/src/features/maintenance/cancel.test.tsx`: criterion 7~~ (P6-04e)
+- Chromium check at 375 px and focus after submit (criteria 1, 9), output in the PR
+- `make check DB_PORT=55432`; on the stack, submit a unit and an emergency request, transcript in the PR (photo and
+  cancel runs: P6-04f, P6-04e)
 
 ## Likely files
 
@@ -183,5 +190,11 @@ Left open by the stub:
     radio is one press away.
   - **Review route** (James, in-session 2026-10-29): the review rounds run as a fresh Codex `gpt-6.1-sol` session at
     high effort through the `codex-review` skill, instead of a fresh Claude reviewer; no Claude reviewer is spawned.
-- Split: none. Estimate ~420 non-test lines (form ~200, photo list ~70, emergency copy ~30, cancel dialog ~70, hooks
-  ~30, shared retry ~20); measured in the PR. If it passes ~450, cancel moves to its own ticket.
+- Split (2026-10-29, while building; the framing estimate of ~420 was wrong): the full implementation measured ~750
+  added non-test lines (form 288, photo list 124, cancel dialog 107, page 103, hooks 55, shared retry 34, list 49).
+  Without cancel it was still ~560, so both moved: cancel to [P6-04e](./P6-04e-maintenance-cancel-ui.md) (criterion
+  7, criterion 8's dialog, criterion 9's dialog) and photos to [P6-04f](./P6-04f-maintenance-photos.md) (criterion 1's
+  photos, 3, criterion 4's file errors, criterion 9's file name). P6-04b keeps the form, the emergency copy, the
+  carried retry fix and the legacy delete (426 added non-test lines, ~24 of them moved from `MyMaintenanceList`). The
+  draft of both parts is kept on the local branch `p6-04-photos-cancel-draft` (`71e043c`), unreviewed. No criterion
+  is loosened: each moved one is in its new ticket in full. P3-06 leaves P6-04b's dependencies (no upload here).
