@@ -62,7 +62,12 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
   const [hadUnit, setHadUnit] = useState(occupancy !== null);
   if (hadUnit !== (occupancy !== null)) {
     setHadUnit(occupancy !== null);
-    if (occupancy === null && locationRef.current?.contains(document.activeElement)) focusCommonArea.current = true;
+    if (occupancy === null) {
+      // The common area is now the only choice, and it stays chosen if a unit comes back, so what the resident types
+      // meanwhile isn't hidden and replaced by "My unit" (review round 3 F1).
+      setLocation('common_area');
+      if (locationRef.current?.contains(document.activeElement)) focusCommonArea.current = true;
+    }
   }
   const [commonArea, setCommonArea] = useState('');
   const [category, setCategory] = useState<MaintenanceCategory | ''>('');
