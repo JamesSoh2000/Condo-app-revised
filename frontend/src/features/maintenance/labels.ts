@@ -30,8 +30,11 @@ export function requestLocation(item: MaintenanceRequest): string {
 
 const FIRST_LINE_MAX = 120;
 
-/** A description's first line, cut at 120 characters (not UTF-16 units, so no emoji is split) with "…". */
+/**
+ * A description's first line, cut at 120 characters (not UTF-16 units, so no emoji is split) with "…". A line ends at
+ * any break the API keeps: CRLF, a lone CR or LF, or U+2028/U+2029, which aren't control characters (round 1 F2).
+ */
 export function firstLine(description: string): string {
-  const chars = Array.from(description.split(/\r?\n/, 1)[0]);
+  const chars = Array.from(description.split(/\r\n|[\r\n\u2028\u2029]/, 1)[0]);
   return chars.length > FIRST_LINE_MAX ? `${chars.slice(0, FIRST_LINE_MAX).join('')}…` : chars.join('');
 }

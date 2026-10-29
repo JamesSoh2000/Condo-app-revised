@@ -484,7 +484,7 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     retry.focus();
     state.answer = () => page(THREE);
 
-    await expectFocusKept(() => fireEvent.click(retry), { control: () => retry, settle: async () => void (await list()) });
+    await expectFocusKept(() => void fireEvent.click(retry), { control: () => retry, settle: async () => void (await list()) });
     expect(document.activeElement).toBe(await heading());
     expect(screen.queryByRole('alert')).toBeNull();
   });
@@ -523,7 +523,7 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     retry.focus();
     state.answer = () => page([]);
 
-    await expectFocusKept(() => fireEvent.click(retry), {
+    await expectFocusKept(() => void fireEvent.click(retry), {
       control: () => retry,
       settle: async () => void (await screen.findByText('You haven’t submitted any requests.')),
     });
