@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-03b |
 | Replaces old | M8-T02 (list part) |
-| Status | todo |
+| Status | in progress |
 
 Drafted from the P6-04 stub in [P6-P7-backlog.md](./P6-P7-backlog.md) and split four ways, as the notices
 frontend was (P6-02a → d). Measured against the components of its kind (`MyPackageList.tsx` 146,
