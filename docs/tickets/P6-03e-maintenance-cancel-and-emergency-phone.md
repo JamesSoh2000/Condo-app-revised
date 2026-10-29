@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-03b |
 | Replaces old | M8-T01 (resident cancel), M8-T04 (emergency part) |
-| Status | todo |
+| Status | in progress |
 
 Split from [P6-03b](./P6-03b-maintenance-submit-and-read-api.md) while it was being built (its Frame notes,
 "Split"): P6-03b's diff came out at 705 non-test lines with these two parts. The criteria, rows and decisions
@@ -44,6 +44,23 @@ building's emergency phone.
    are unchanged; a test skips the early check once and shows the `UPDATE` itself refuses. **Given** a request a
    manager started at the same time, **then** exactly one of start (P6-03c) and cancel wins; here, with a raw
    `UPDATE` to `in_progress` in a second session, the cancel waits and gets 409.
+   *Sharpened in framing:*
+   - 1a. The answer is 200 with the cancelled request (`MaintenanceRequestOut`: `status = cancelled`,
+     `cancelled_at` equal to the row's); `cancelled_at = clock_timestamp()` taken by the `UPDATE` (after any lock
+     wait), so `submitted_at ≤ cancelled_at ≤` the test's next `clock_timestamp()`;
+     `cancelled_by_membership_id = ctx.membership_id`; the audit row is exactly
+     `(maintenance.cancelled, maintenance_request, <id>, actor ctx.user_id, {"from_status": "submitted"})`.
+     A request body is ignored (none is defined): `{"cancelled_by_membership_id": …}` changes nothing.
+   - 1b. Ownership is answered before the status: the co-occupant gets 403 `not_requester` on a request that is
+     no longer `submitted` too (they could never cancel it).
+   - 1c. *(Missed case.)* The requester need not live in the unit any more: `a_former` cancels their own 101
+     request filed before T1 (200), while `a_resident1`, who lives in 101 now but not when it was filed, gets
+     404 `maintenance_request_not_found` on it (the occupancy window, CLAUDE.md rule 3). `a_council` (council +
+     resident) cancels their own request; a common-area request is cancelled by its requester.
+   - 1d. The race test proves the cancel was **blocked by the start's lock** (`act_blocked_on_lock`,
+     `tests/helpers/lock_wait.py`), not merely slow; it gets 409 `invalid_transition`, the row stays
+     `in_progress` and no `maintenance.cancelled` row is written. The same with the start rolled back instead:
+     the cancel then wins (200).
 2. **Emergency** (P6-03b criterion 7). **Given** `category = emergency`, **then** the 201 and every read of that
    request include the building's `emergency_phone`, in the list too, and the cancel's answer; no other category
    does; a building with no phone, or a `config` value that isn't a non-blank string of at most 32 characters,
@@ -51,13 +68,33 @@ building's emergency phone.
    `bootstrap-building --emergency-phone` sets a new building's (refused, naming the option, without the
    `maintenance` feature; printable, stripped, at most 32 characters). The app never claims to have alerted
    anyone (stub: "never rely on the app").
+   *Sharpened in framing:*
+   - 2a. "Every read" is: the create's 201, its idempotent replay (201, `Idempotent-Replayed: true`), `GET` one
+     and the list, for the requester, `a_manager` and `a_security`, and the cancel's 200. The value returned is
+     the stored one stripped of surrounding whitespace, read at answer time (a phone changed in `config` shows
+     on the next read). A list mixing categories carries the phone on the emergency items only.
+   - 2b. The null cases, each tested: no `emergency_phone` key, JSON `null`, `""`, whitespace only, a number,
+     a list, 33 characters; a feature row whose whole `config` is not an object (a JSON string or array) also
+     gives null, never a 500.
+   - 2c. "Never claims to have alerted anyone": the OpenAPI description of `emergency_phone` and the create
+     route say the app alerts no one (call the number); no field or message says anyone was notified by phone.
+   - 2d. *(Missed case.)* The bootstrap plan (`--dry-run`) and summary print `emergency phone: <value>` when
+     one is given, so the operator sees what will be stored before writing; without one, no such line. A phone
+     with a control character (newline, tab), blank, or over 32 characters after the strip is refused naming
+     `--emergency-phone`, before any database session.
 3. **The tenant table on cancel** (P6-03b rows 1, 2, 3, 4, 5, 6, 7, 8, 10 for this route): the requester
    cancels their own; signed out 401; `b_manager`, `a_pending`, `a_suspended` 404 `building_not_found`;
    `a_manager` and `a_security` 403 `forbidden_role`; `a_resident2` on `a_resident1`'s request and a B request
    on A's URL 404 `maintenance_request_not_found`, the same body as a random id; a request that isn't
    `submitted` 409 `invalid_transition`; two cancels at once give one 200 and one 409, with one audit row.
+   *Sharpened in framing:* row 8 covers each non-`submitted` status (`in_progress`, `on_hold`, `resolved`,
+   `cancelled`), each 409 with nothing written; rows 3–7 write nothing (row counts unchanged). Row 7 (an ID
+   from the body) has no body here: the B request's id on A's URL is its form. Row 9 (idempotency) is n/a: a
+   second cancel is the 409 of row 8.
 4. **Feature off** and **atomicity**: cancel gives 403 `feature_disabled` with `maintenance` off; a forced
    failure after the `UPDATE` leaves the request `submitted` and no audit row.
+   *Sharpened in framing:* "after the `UPDATE`" is a failure raised by `record_audit` (after the `UPDATE`, before
+   the commit): the request keeps `status = submitted`, `cancelled_at` and `cancelled_by_membership_id` null.
 
 ## Test plan
 
@@ -78,7 +115,35 @@ building's emergency phone.
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened: (to frame)
-- Criteria loosened: none so far (moved unchanged from P6-03b).
-- Decisions taken: P6-03b D1 and D3 (its Frame notes), to confirm in framing.
+Framed on `origin/main` at `ceec5c4` (P6-03b merged as #138, WF-02b's `act_blocked_on_lock` merged as #145).
+`p6-03e-start` branched from P6-03a's merge, before P6-03b's review fixes and the record fence (ADR-0021 on
+`main`): only its cancel and phone parts are ported; its other differences from `main` are older P6-03b code
+and are not taken.
+
+- Criteria added or sharpened: 1a (the answer's shape, the clock, the exact audit row, a body is ignored); 1b
+  (ownership before status); 1c (missed case: a requester who moved out still cancels their own, and the unit's
+  current occupant can't see it; `a_council`; common area); 1d (the race proven with `act_blocked_on_lock`, and
+  its rolled-back variant); 2a ("every read" listed, including the idempotent replay; stripped; read at answer
+  time; mixed list); 2b (each null case, including a non-object `config`); 2c (what "never claims" means,
+  testably); 2d (missed case: the bootstrap plan and summary show the phone; the refusals listed); 3 (row 8 per
+  status, nothing written on refusals, rows 7 and 9 explained); 4 (where the forced failure is).
+- Criteria loosened: none.
+- Tenant table (ENGINEERING_PRACTICES §7) on `POST …/{id}/cancel`: rows 1–8 and 10 as criterion 3; row 9 n/a
+  (an action on an existing row: a repeat is row 8's 409). The emergency phone adds no route; its row 5
+  (another building's phone) is in criterion 2.
+- Decisions taken:
+  - **D1** (P6-03b D1, confirmed): the phone is the `maintenance` feature row's `config["emergency_phone"]`.
+    The ADR drafted as 0021 on `p6-03e-start` is written as **ADR-0022** (`main` took 0021 for the record
+    fence), and its inbox line comes in step 6.
+  - **D3** (P6-03b D3, confirmed): the requester only; 403 `not_requester` for a co-occupant who sees it; 404
+    for anyone who doesn't.
+  - **E1** (new, rule 3): the cancel follows `app/packages/service.py::_transition` (an unlocked early check
+    for the answer, then the conditional `UPDATE` decides), as the ticket's race wording ("the cancel waits")
+    describes, rather than notices' lock-first `_locked`. The audit's `from_status` is taken from the state
+    machine (the only source of `cancelled`, `submitted`), not from the value read before the `UPDATE`'s lock
+    wait (the CLAUDE.md lesson on values read before a wait).
+  - **E2** (new, rule 3): the bootstrap plan and summary print the phone (2d); the bootstrap audit metadata is
+    unchanged (it records no feature settings today).
+- Estimate: ~180 non-test lines (`p6-03e-start` measured ~170, plus 2d's line and the non-object `config`
+  guard). No split.
 - Split: none.
