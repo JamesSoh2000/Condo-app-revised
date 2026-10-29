@@ -97,7 +97,7 @@ describe('membership screens, no operational building calls (criterion 1)', () =
       [OWN_STATUS]: () => json({ status: memberships[0]?.status ?? 'pending', unit_label: null, tower: null, relationship: null, decision_reason: null }),
     });
 
-    renderApp(['/Maintenance']);
+    renderApp(['/Dashboard']);
 
     expect(await screen.findByRole('heading', { name: heading })).toBeTruthy();
     openAccountMenu();
@@ -185,11 +185,11 @@ describe('default selection (criterion 4)', () => {
   it('keeps the page the user opened when they pick their first building', async () => {
     stubApi(MULTI_ROUTES);
 
-    renderApp(['/Maintenance']);
+    renderApp(['/Dashboard']);
     await pick('Maple Tower');
 
     expect(await screen.findByText(/being migrated/i)).toBeTruthy();
-    expect(location()).toBe('/Maintenance');
+    expect(location()).toBe('/Dashboard');
   });
 });
 
@@ -291,7 +291,7 @@ describe('switching buildings (criteria 3 and 11)', () => {
   it('goes home on a switch, dropping the old building’s cached data', async () => {
     stubApi(MULTI_ROUTES);
     sessionStorage.setItem(KEY, MAPLE.id);
-    const app = renderApp(['/Maintenance']);
+    const app = renderApp(['/Dashboard']);
     await screen.findByText(/being migrated/i);
     app.queryClient.setQueryData(['b', MAPLE.id, 'packages'], ['a Maple package']);
 
@@ -391,11 +391,12 @@ describe('feature guard (criterion 7)', () => {
 
   it('renders the page in a building with the feature on', async () => {
     sessionStorage.setItem(KEY, MAPLE.id);
-    stubApi(MULTI_ROUTES);
+    // P6-04a migrated /Maintenance: the page itself now renders, asking for its list.
+    stubApi({ ...MULTI_ROUTES, [`GET /api/buildings/${MAPLE.id}/maintenance-requests`]: () => json({ items: [], next_cursor: null }) });
 
     renderApp(['/Maintenance']);
 
-    expect(await screen.findByText(/being migrated/i)).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Maintenance requests', level: 1 })).toBeTruthy();
     expect(location()).toBe('/Maintenance');
   });
 });
@@ -408,7 +409,7 @@ describe('lost access mid-session (criterion 8; tenant rows 2 and 3)', () => {
       [`GET /api/buildings/${MAPLE.id}`]: () => problem(404, 'building_not_found'),
     });
 
-    renderApp(['/Maintenance']);
+    renderApp(['/Dashboard']);
 
     expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
     expect(screen.queryByText(/being migrated/i)).toBeNull();
@@ -432,9 +433,9 @@ describe('lost access mid-session (criterion 8; tenant rows 2 and 3)', () => {
       },
     });
 
-    renderApp(['/Maintenance']);
+    renderApp(['/Dashboard']);
 
-    await waitFor(() => expect(location()).toBe('/login?next=%2FMaintenance'));
+    await waitFor(() => expect(location()).toBe('/login?next=%2FDashboard'));
     expect(sessionStorage.getItem(KEY)).toBeNull();
   });
 
@@ -456,7 +457,7 @@ describe('lost access mid-session (criterion 8; tenant rows 2 and 3)', () => {
   });
 });
 
-// These open /Maintenance as an unmigrated resident page; they used /Packages until P5-04 migrated it.
+// These open /Dashboard as an unmigrated page; they used /Packages until P5-04 migrated it, then /Maintenance until P6-04a.
 describe('lost access after the building loaded (review round 1, Claude H1 and Codex High)', () => {
   /** Signed in on `path` with Maple loaded; `answer` then decides every later building request. */
   /** `meLater` answers /me from then on (a lost session makes /me 401 too: the login page checks it). */
@@ -474,7 +475,7 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
   }
 
   it('hides the page when a background refetch answers 404', async () => {
-    await loadedThen('/Maintenance', () => problem(404, 'building_not_found'));
+    await loadedThen('/Dashboard', () => problem(404, 'building_not_found'));
 
     expect(await screen.findByRole('heading', { name: /no longer have access/i })).toBeTruthy();
     expect(screen.queryByText(/being migrated/i)).toBeNull();
@@ -491,7 +492,7 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
       [`GET /api/buildings/${MAPLE.id}`]: () =>
         answer === 'ok' ? json(buildingOut(MAPLE, ['resident'])) : problem(404, 'building_not_found'),
     });
-    const app = renderApp(['/Maintenance']);
+    const app = renderApp(['/Dashboard']);
     if (loadedFirst) {
       await screen.findByText(/being migrated/i);
       answer = 'gone';
@@ -515,7 +516,7 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
   });
 
   it('keeps showing the page when a background refetch fails with a server error', async () => {
-    const { app } = await loadedThen('/Maintenance', () => problem(500, 'internal_error'));
+    const { app } = await loadedThen('/Dashboard', () => problem(500, 'internal_error'));
     // The refetch really failed (after its retries), with the old data kept.
     await waitFor(() => expect(app.queryClient.getQueryState(['b', MAPLE.id, 'building'])?.status).toBe('error'));
     await settle();
@@ -526,7 +527,7 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
 
   it('goes to the login page when a background refetch answers 401', async () => {
     const lost = () => problem(401, 'not_authenticated');
-    await loadedThen('/Maintenance', lost, lost);
+    await loadedThen('/Dashboard', lost, lost);
 
     await waitFor(() => expect(location()).toMatch(/^\/login/));
     expect(screen.queryByText(/being migrated/i)).toBeNull();
@@ -535,7 +536,7 @@ describe('lost access after the building loaded (review round 1, Claude H1 and C
   it('shows the status screen when a /me refetch says the membership is no longer active', async () => {
     let me: Me = RESIDENT_ME;
     const fetchMock = stubApi({ 'GET /api/auth/me': () => json(me) });
-    const app = renderApp(['/Maintenance']);
+    const app = renderApp(['/Dashboard']);
     await screen.findByText(/being migrated/i);
     const before = buildingCalls(fetchMock).length;
 
@@ -778,7 +779,7 @@ describe('regression tests carried from P2-06b review round 3 (P2-06c criterion 
     // No AuthProvider: its 401 redirect would hide what BuildingLoaded renders by itself.
     render(
       <QueryClientProvider client={createQueryClient({ retryDelay: 0 })}>
-        <MemoryRouter initialEntries={['/Maintenance']}>
+        <MemoryRouter initialEntries={['/Dashboard']}>
           <AppRoutes />
         </MemoryRouter>
       </QueryClientProvider>,
@@ -810,7 +811,7 @@ describe('regression tests carried from P2-06b review round 3 (P2-06c criterion 
     }
     render(
       <QueryClientProvider client={createQueryClient({ retryDelay: 0 })}>
-        <MemoryRouter initialEntries={['/Maintenance']}>
+        <MemoryRouter initialEntries={['/Dashboard']}>
           <RequireAuth>
             <BuildingProvider>
               <Probe />
@@ -829,6 +830,6 @@ describe('regression tests carried from P2-06b review round 3 (P2-06c criterion 
     expect(context!.buildingId).toBe(MAPLE.id);
     expect(sessionStorage.getItem(KEY)).toBe(MAPLE.id);
     expect(writes).not.toHaveBeenCalled();
-    expect(path).toBe('/Maintenance');
+    expect(path).toBe('/Dashboard');
   });
 });
