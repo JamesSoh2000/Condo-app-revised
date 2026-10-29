@@ -524,9 +524,10 @@ export interface paths {
          * Create
          * @description File a request for the unit you live in now, or a common area, and tell the managers.
          *
-         *     A retry with the same `Idempotency-Key` and body answers 201 with the same request and
-         *     `Idempotent-Replayed: true`, writing nothing; the key with another body, or another member's
-         *     key, is 409 `idempotency_key_reused`.
+         *     An `emergency` request answers with the building's `emergency_phone` to call: the app
+         *     alerts no one. A retry with the same `Idempotency-Key` and body answers 201 with the same
+         *     request and `Idempotent-Replayed: true`, writing nothing; the key with another body, or
+         *     another member's key, is 409 `idempotency_key_reused`.
          */
         post: operations["maintenance_create"];
         delete?: never;
@@ -549,6 +550,29 @@ export interface paths {
         get: operations["maintenance_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/buildings/{building_id}/maintenance-requests/{request_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel
+         * @description Withdraw your own request before work starts.
+         *
+         *     403 `not_requester` for a request you see but didn't file; 409 `invalid_transition` unless it
+         *     is `submitted`; of two at once, one wins.
+         */
+        post: operations["maintenance_cancel"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1516,6 +1540,11 @@ export interface components {
              * @description The requester's current full name, for security and property management only; null for every other caller.
              */
             requester_name: string | null;
+            /**
+             * Emergency Phone
+             * @description The building's emergency phone on an `emergency` request; null for every other category, or if the building has none. Call it: the app alerts no one.
+             */
+            emergency_phone: string | null;
         };
         /**
          * MaintenanceStatus
@@ -3675,6 +3704,74 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    maintenance_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
