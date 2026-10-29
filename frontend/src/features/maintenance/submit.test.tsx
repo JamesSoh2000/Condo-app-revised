@@ -399,7 +399,7 @@ describe('emergency (criterion 6)', () => {
     fill({ cat: 'emergency' });
     fireEvent.click(submitButton());
 
-    const shown = await outcome();
+    const shown = await screen.findByTestId('emergency-outcome');
     expect(document.activeElement).toBe(shown);
     expect(within(shown).getByTestId('emergency-notice').textContent).toBe(
       'Your request was submitted, but it alerts no one. If this is an emergency, call the emergency services, or building staff at +1 416 555 0199, now.',
@@ -414,7 +414,7 @@ describe('emergency (criterion 6)', () => {
     fill({ cat: 'emergency' });
     fireEvent.click(submitButton());
 
-    expect(within(await outcome()).getByTestId('emergency-notice').textContent).toBe(
+    expect(within(await screen.findByTestId('emergency-outcome')).getByTestId('emergency-notice').textContent).toBe(
       'Your request was submitted, but it alerts no one. If this is an emergency, call the emergency services and building staff directly, now.',
     );
     expect(document.body.textContent).not.toMatch(NOT_PROMISED);
@@ -449,5 +449,113 @@ describe('switching building (criterion 8)', () => {
     expect(commonArea().value).toBe('');
     expect(world.created).toHaveLength(0);
     expect(calls(fetchMock).some((call) => call.startsWith('POST') && call.includes('maintenance-requests'))).toBe(false);
+  });
+});
+
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  async function emergencyWith(phone: string | null) {
+    start(newWorld(), { create: () => json(maintenanceRequest(90, { category: 'emergency', emergency_phone: phone }), 201) });
+    await openForm();
+    fill({ cat: 'emergency' });
+    fireEvent.click(submitButton());
+    return screen.findByTestId('emergency-outcome');
+  }
+
+  it.each(['+1-416-555-0199;ext=123', '416-555-0199 x123', 'Front desk 416-555-0199', '+1 (416) 555-0199 #2'])(
+    'F1: a phone that is not plainly a number (%s) is shown whole, as text, not as a call link',
+    async (phone) => {
+      const shown = await emergencyWith(phone);
+      expect(within(shown).getByTestId('emergency-notice').textContent).toContain(phone);
+      expect(within(shown).queryByRole('link')).toBeNull();
+    },
+  );
+
+  it.each([
+    ['+1 416 555 0199', 'tel:+14165550199'],
+    ['(416) 555-0199', 'tel:4165550199'],
+    ['416.555.0199', 'tel:4165550199'],
+  ])('F1 neighbour: a plain number (%s) is a call link to its digits', async (phone, href) => {
+    const shown = await emergencyWith(phone);
+    expect(within(shown).getByRole('link', { name: phone }).getAttribute('href')).toBe(href);
+  });
+
+  it('F2: the emergency text and phone stay when New request opens another form, until Dismiss', async () => {
+    const shown = await emergencyWith('+1 416 555 0199');
+    fireEvent.click(screen.getByRole('button', { name: 'New request' }));
+    expect(within(screen.getByTestId('emergency-outcome')).getByRole('link', { name: '+1 416 555 0199' })).toBe(
+      within(shown).getByRole('link', { name: '+1 416 555 0199' }),
+    );
+    expect(form()).toBeTruthy();
+    fireEvent.click(within(shown).getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByTestId('emergency-outcome')).toBeNull();
+    // "New request" is gone while the form is open: focus goes to the form's first field, which stays.
+    expect(document.activeElement).not.toBe(document.body);
+    expect(form().contains(document.activeElement)).toBe(true);
+  });
+
+  it('F2 neighbour: a later ordinary request keeps the emergency text, and shows its own outcome too', async () => {
+    let call = 0;
+    start(newWorld(), {
+      create: () =>
+        json(call++ === 0 ? maintenanceRequest(90, { category: 'emergency', emergency_phone: '+1 416 555 0199' }) : maintenanceRequest(91), 201),
+    });
+    await openForm();
+    fill({ cat: 'emergency' });
+    fireEvent.click(submitButton());
+    await screen.findByTestId('emergency-outcome');
+    await openForm();
+    fill();
+    fireEvent.click(submitButton());
+    const ordinary = await outcome();
+    await waitFor(() => expect(document.activeElement).toBe(ordinary));
+    expect(ordinary.textContent).toContain('Your request was submitted.');
+    expect(within(screen.getByTestId('emergency-outcome')).getByRole('link', { name: '+1 416 555 0199' })).toBeTruthy();
+  });
+
+  it('F2 neighbour: Dismiss on the emergency text with no form open returns focus to New request', async () => {
+    const shown = await emergencyWith(null);
+    expect(document.activeElement).toBe(shown);
+    fireEvent.click(within(shown).getByRole('button', { name: 'Dismiss' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New request' }));
+  });
+
+  it('F3: losing the occupancy while a unit radio has focus moves focus to the common-area field', async () => {
+    stubApi(residentWorld(newWorld()));
+    const app = renderApp(['/maintenance']);
+    await openForm();
+    const unit = inForm().getByRole('radio', { name: 'My unit, A-101' });
+    unit.focus();
+
+    await expectFocusKept(
+      () => void app.queryClient.setQueryData(['me'], { ...RESIDENT_ME, memberships: [{ ...membership(MAPLE), occupancy: null }] }),
+      { control: () => unit, settle: async () => void (await waitFor(() => expect(inForm().queryByRole('radio')).toBeNull())) },
+    );
+    expect(document.activeElement).toBe(commonArea());
+  });
+
+  it('F3 neighbour: losing the occupancy while focus is elsewhere in the form leaves focus there', async () => {
+    stubApi(residentWorld(newWorld()));
+    const app = renderApp(['/maintenance']);
+    await openForm();
+    description().focus();
+    act(() => {
+      app.queryClient.setQueryData(['me'], { ...RESIDENT_ME, memberships: [{ ...membership(MAPLE), occupancy: null }] });
+    });
+    await waitFor(() => expect(inForm().queryByRole('radio')).toBeNull());
+    expect(document.activeElement).toBe(description());
+  });
+
+  it('F3 neighbour: losing the occupancy with the common-area radio focused (field shown) moves focus to that field', async () => {
+    stubApi(residentWorld(newWorld()));
+    const app = renderApp(['/maintenance']);
+    await openForm();
+    const area = inForm().getByRole('radio', { name: 'A common area' });
+    fireEvent.click(area);
+    area.focus();
+    act(() => {
+      app.queryClient.setQueryData(['me'], { ...RESIDENT_ME, memberships: [{ ...membership(MAPLE), occupancy: null }] });
+    });
+    await waitFor(() => expect(inForm().queryByRole('radio')).toBeNull());
+    expect(document.activeElement).toBe(commonArea());
   });
 });

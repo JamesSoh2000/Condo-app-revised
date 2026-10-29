@@ -22,12 +22,17 @@ function Maintenance({ buildingId }: { buildingId: string }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const newRef = useRef<HTMLButtonElement>(null);
   const outcomeRef = useRef<HTMLDivElement>(null);
+  const emergencyRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
   // Under the page's guards, which render it only once the building has loaded; a denied building shows nothing of it.
   const building = useBuilding({ passive: true }).data;
   const time = useBuildingDenied() ? undefined : buildingTime(building);
   const membership = useBuildingContext().active.find((one) => one.building.id === buildingId);
   const [formOpen, setFormOpen] = useState(false);
+  // The last ordinary request's outcome, gone with the next form; an emergency request's text and phone stay until
+  // their own Dismiss, whatever is opened or sent after (criterion 6; review round 1 F2).
   const [submitted, setSubmitted] = useState<MaintenanceRequest | null>(null);
+  const [emergency, setEmergency] = useState<MaintenanceRequest | null>(null);
 
   // Set by Close: "New request" comes back once the panel is gone, and takes focus then.
   const focusNew = useRef(false);
@@ -35,6 +40,9 @@ function Maintenance({ buildingId }: { buildingId: string }) {
   useEffect(() => {
     if (submitted) outcomeRef.current?.focus();
   }, [submitted]);
+  useEffect(() => {
+    if (emergency) emergencyRef.current?.focus();
+  }, [emergency]);
   useEffect(() => {
     if (formOpen || !focusNew.current) return;
     focusNew.current = false;
@@ -51,11 +59,25 @@ function Maintenance({ buildingId }: { buildingId: string }) {
     setFormOpen(false);
   }
 
+  function dismissEmergency() {
+    setEmergency(null);
+    // "New request", or with the form open (it replaces the button) the form's first field; both stay.
+    (newRef.current ?? sectionRef.current?.querySelector<HTMLElement>('form input, form select'))?.focus();
+  }
+
   return (
-    <section className="flex min-w-0 flex-col gap-4">
+    <section ref={sectionRef} className="flex min-w-0 flex-col gap-4">
       <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-semibold">
         Maintenance requests
       </h1>
+      {emergency && (
+        <div ref={emergencyRef} tabIndex={-1} role="status" data-testid="emergency-outcome" className="flex min-w-0 flex-col gap-2">
+          <EmergencyNotice submitted phone={emergency.emergency_phone} />
+          <button type="button" onClick={dismissEmergency} className="min-h-11 self-start rounded border px-4 text-sm">
+            Dismiss
+          </button>
+        </div>
+      )}
       {formOpen ? (
         <SubmitRequestForm
           buildingId={buildingId}
@@ -63,7 +85,8 @@ function Maintenance({ buildingId }: { buildingId: string }) {
           onClose={closeForm}
           onSubmitted={(made) => {
             setFormOpen(false);
-            setSubmitted(made);
+            if (made.category === 'emergency') setEmergency(made);
+            else setSubmitted(made);
           }}
         />
       ) : (
@@ -73,7 +96,7 @@ function Maintenance({ buildingId }: { buildingId: string }) {
       )}
       {submitted && (
         <div ref={outcomeRef} tabIndex={-1} role="status" data-testid="maintenance-outcome" className="flex min-w-0 flex-col gap-2 rounded border bg-white p-3">
-          {submitted.category === 'emergency' ? <EmergencyNotice submitted phone={submitted.emergency_phone} /> : <p>Your request was submitted.</p>}
+          <p>Your request was submitted.</p>
           <button
             type="button"
             onClick={() => {

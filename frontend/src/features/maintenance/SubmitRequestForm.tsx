@@ -54,6 +54,16 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
   const [chosenLocation, setLocation] = useState<'unit' | 'common_area'>(occupancy ? 'unit' : 'common_area');
   // `/me` can lose the occupancy while the form is open.
   const location = occupancy ? chosenLocation : 'common_area';
+  const locationRef = useRef<HTMLFieldSetElement>(null);
+  const commonAreaRef = useRef<HTMLInputElement>(null);
+  // The radios go when the occupancy does, which drops focus to <body> if one had it (review round 1 F3). Where focus
+  // is can only be read while they are still in the document: in the render that sees the change.
+  const focusCommonArea = useRef(false);
+  const [hadUnit, setHadUnit] = useState(occupancy !== null);
+  if (hadUnit !== (occupancy !== null)) {
+    setHadUnit(occupancy !== null);
+    if (occupancy === null && locationRef.current?.contains(document.activeElement)) focusCommonArea.current = true;
+  }
   const [commonArea, setCommonArea] = useState('');
   const [category, setCategory] = useState<MaintenanceCategory | ''>('');
   const [description, setDescription] = useState('');
@@ -77,6 +87,11 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
   useEffect(() => {
     if (error) alertRef.current?.focus();
   }, [error]);
+  useEffect(() => {
+    if (!focusCommonArea.current) return;
+    focusCommonArea.current = false;
+    commonAreaRef.current?.focus();
+  }, [hadUnit]);
 
   const problems = {
     common_area: location === 'common_area' ? textError(commonArea, COMMON_AREA_MAX, NO_COMMON_AREA) : null,
@@ -165,7 +180,7 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
         New maintenance request
       </h2>
       {occupancy ? (
-        <fieldset className="min-w-0">
+        <fieldset ref={locationRef} className="min-w-0">
           <legend className="mb-1 text-sm font-medium">Where is the problem?</legend>
           <div className="flex flex-wrap gap-2">
             <label className="flex min-h-11 items-center gap-2 rounded border px-3">
@@ -188,6 +203,7 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
             Which common area?
           </label>
           <input
+            ref={commonAreaRef}
             id={`${id}-common-area`}
             name="common_area"
             maxLength={2 * COMMON_AREA_MAX}
