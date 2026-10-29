@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import actions
 from app.audit.service import record_audit
+from app.buildings.enums import Feature
 from app.buildings.models import Building, BuildingFeature
 from app.buildings.schemas import BootstrapInput, BuildingOut
 from app.core import clock
@@ -100,7 +101,17 @@ async def bootstrap_building(
     if data.features:
         await db.execute(
             insert(BuildingFeature),
-            [{"building_id": building_id, "feature": feature} for feature in data.features],
+            [
+                {
+                    "building_id": building_id,
+                    "feature": feature,
+                    # The feature's settings (ADR-0022): only maintenance has one yet.
+                    "config": {"emergency_phone": data.emergency_phone}
+                    if feature == Feature.MAINTENANCE and data.emergency_phone is not None
+                    else {},
+                }
+                for feature in data.features
+            ],
         )
     if units is not None:
         report = await import_units(db, building_id, units, dry_run=False, audit=False)
@@ -145,6 +156,8 @@ def render_bootstrap(data: BootstrapInput, result: BootstrapResult, *, dry_run: 
     ]
     if data.manager_name is not None:
         lines.append(f"manager name: {data.manager_name}")
+    if data.emergency_phone is not None:
+        lines.append(f"emergency phone: {data.emergency_phone}")
     if result.building_id is not None:
         lines += [f"building id: {result.building_id}", f"join code: {result.join_code}"]
     return "\n".join(lines)

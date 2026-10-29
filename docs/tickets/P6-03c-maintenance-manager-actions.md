@@ -165,6 +165,17 @@ Left open by the stub:
 - whether the 14 days count from `resolved_at` or from the last transition
 - how a repeated status change of one kind gets its own email (criterion 6a)
 
+## Carried from P6-03e (PR #149)
+
+- **Lock before you write a time or `from_status`.** P6-03e's cancel locks the request first
+  (`backend/app/maintenance/service.py::_for_cancel`, `SELECT … FOR UPDATE OF maintenance_requests`), then runs
+  the conditional `UPDATE`. The plan's unlocked version (`app/packages/service.py::_transition`) failed a test:
+  an `UPDATE` that waits on a lock released without a change keeps the `clock_timestamp()` it computed before
+  the wait. Start, hold, resolve and reopen record times and `from_status`: copy the lock-first shape, and
+  prove each wait with `act_blocked_on_lock` (see `tests/maintenance/test_concurrency.py::
+  test_a_cancel_blocked_by_a_start_gets_409`). Start-vs-cancel is now serialized by that lock.
+- **Decide whether managers are notified when a resident cancels** (P6-03e sends nothing).
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:

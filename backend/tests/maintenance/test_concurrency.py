@@ -1,4 +1,4 @@
-"""Maintenance races (P6-03b criterion 1 row 9, criterion 2's move-out).
+"""Maintenance races (P6-03b criterion 1 row 9, criterion 2's move-out; P6-03e's cancel races).
 
 On real connections, as `tests/packages/test_concurrency.py`: a scratch database of its own,
 migrated here and dropped after the test, and one session per request.
@@ -9,16 +9,19 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.audit.models import AuditEvent
+from app.core.errors import DomainError
 from app.maintenance import service
-from app.maintenance.enums import MaintenanceLocation
+from app.maintenance.enums import MaintenanceLocation, MaintenanceStatus
 from app.maintenance.models import MaintenanceRequest
 from app.maintenance.schemas import MaintenanceRequestCreate
 from app.memberships.occupancy import end_occupancy
 from app.notifications.models import Notification
 from app.packages.service import IdempotencyKeyReused
+from tests.helpers.lock_wait import act_blocked_on_lock
 from tests.maintenance.conftest import make_maintenance_request
 from tests.notifications.test_concurrency import migrate
 from tests.packages.conftest import persona_ctx
@@ -67,6 +70,20 @@ async def _create(sessions: Sessions, world: World, data: MaintenanceRequestCrea
         except service.UnitNotOccupied:
             return "422"
         return "replayed" if result.replayed else "created"
+
+
+async def _cancel(db: AsyncSession, world: World, request: MaintenanceRequest) -> str:
+    """a_resident1's cancel of their own request, in the session it is given."""
+    try:
+        await service.cancel_request(db, persona_ctx(world, "a_resident1"), request.id)
+    except DomainError as exc:
+        return f"{exc.status} {exc.code}"
+    return "200"
+
+
+async def _cancel_alone(sessions: Sessions, world: World, request: MaintenanceRequest) -> str:
+    async with sessions() as db:
+        return await _cancel(db, world, request)
 
 
 async def _count(sessions: Sessions, model: Any, *where: Any) -> int:
@@ -638,5 +655,87 @@ def test_a_retry_waiting_behind_a_move_out_replays(scratch_database_url: str) ->
             await asyncio.wait_for(moving, 10)
             assert replay.replayed
             assert replay.request.id == created.request.id
+
+    _run(scratch_database_url, body)
+
+
+def test_two_concurrent_cancels_have_one_winner(scratch_database_url: str) -> None:
+    # P6-03e criterion 3 row 10.
+    async def body(sessions: Sessions, world: World, request: MaintenanceRequest) -> None:
+        outcomes = await asyncio.gather(
+            _cancel_alone(sessions, world, request), _cancel_alone(sessions, world, request)
+        )
+
+        assert sorted(outcomes) == ["200", "409 invalid_transition"]
+        cancelled = AuditEvent.action == "maintenance.cancelled"
+        assert await _count(sessions, AuditEvent, cancelled) == 1
+        is_cancelled = MaintenanceRequest.status == MaintenanceStatus.CANCELLED
+        assert await _count(sessions, MaintenanceRequest, is_cancelled) == 1
+
+    _run(scratch_database_url, body)
+
+
+@pytest.mark.parametrize("start_commits", [True, False], ids=["start-commits", "start-rolls-back"])
+def test_a_cancel_blocked_by_a_start_gets_409(
+    scratch_database_url: str, start_commits: bool
+) -> None:
+    # P6-03e criteria 1 and 1d: P6-03c's start, as a raw conditional UPDATE held open in a second
+    # session. The cancel's locked read waits on the start's row lock, then answers from the row the
+    # start left: 409 if it committed, a cancel if it rolled back.
+    async def body(sessions: Sessions, world: World, request: MaintenanceRequest) -> None:
+        savepoint: Any = None
+        released_at: Any = None
+
+        async def start(db: AsyncSession) -> None:
+            nonlocal savepoint
+            # In a savepoint, so the rolled-back variant can undo it and still let the helper
+            # commit the holder.
+            savepoint = await db.begin_nested()
+            await db.execute(
+                update(MaintenanceRequest)
+                .where(
+                    MaintenanceRequest.id == request.id,
+                    MaintenanceRequest.status == MaintenanceStatus.SUBMITTED,
+                )
+                .values(
+                    status=MaintenanceStatus.IN_PROGRESS,
+                    started_at=func.clock_timestamp(),
+                    started_by_membership_id=world.a_manager.membership.id,
+                )
+            )
+
+        async def settle(db: AsyncSession) -> None:
+            nonlocal released_at
+            # The database clock while the cancel is still blocked: its `cancelled_at` must be
+            # later, taken after the wait (1a). It was not when the UPDATE itself waited: Postgres
+            # kept the clock it computed before a wait on a lock released without a change.
+            released_at = await db.scalar(select(func.clock_timestamp()))
+            if start_commits:
+                await savepoint.commit()
+            else:
+                await savepoint.rollback()
+
+        outcome = await act_blocked_on_lock(
+            sessions, hold=start, act=lambda db: _cancel(db, world, request), change=settle
+        )
+
+        cancelled = AuditEvent.action == "maintenance.cancelled"
+        if start_commits:
+            assert outcome == "409 invalid_transition"
+            started = MaintenanceRequest.status == MaintenanceStatus.IN_PROGRESS
+            assert await _count(sessions, MaintenanceRequest, started) == 1
+            assert await _count(sessions, AuditEvent, cancelled) == 0
+        else:
+            assert outcome == "200"
+            is_cancelled = MaintenanceRequest.status == MaintenanceStatus.CANCELLED
+            assert await _count(sessions, MaintenanceRequest, is_cancelled) == 1
+            async with sessions() as db:
+                cancelled_at = await db.scalar(
+                    select(MaintenanceRequest.cancelled_at).where(
+                        MaintenanceRequest.id == request.id
+                    )
+                )
+            assert cancelled_at is not None and cancelled_at > released_at
+            assert await _count(sessions, AuditEvent, cancelled) == 1
 
     _run(scratch_database_url, body)
