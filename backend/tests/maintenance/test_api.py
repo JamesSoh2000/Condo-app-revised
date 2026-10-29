@@ -1,6 +1,7 @@
 """The maintenance routes (P6-03b): create, list and get, with the tenant table
-(ENGINEERING_PRACTICES §7). Idempotency is in `test_idempotency.py`, notifications in
-`test_notify.py`, atomicity in `test_atomicity.py`, races in `test_concurrency.py`."""
+(ENGINEERING_PRACTICES §7). Cancel is in `test_cancel.py` (P6-03e), the emergency phone in
+`test_emergency.py`, idempotency in `test_idempotency.py`, notifications in `test_notify.py`,
+atomicity in `test_atomicity.py`, races in `test_concurrency.py`."""
 
 import uuid
 from datetime import timedelta
@@ -126,6 +127,7 @@ async def test_resident_files_a_request_for_their_unit(
         "unit_tower": None,
         "unit_label": "101",
         "requester_name": None,
+        "emergency_phone": None,
     }
     positions = (
         await db.execute(
@@ -465,6 +467,7 @@ async def test_signed_out_is_401_on_every_route(client: AsyncClient, world: Worl
     some = f"{base(world)}/{uuid.uuid4()}"
     for method, url in [("POST", base(world)), ("GET", base(world)), ("GET", some)]:
         assert_problem(await client.request(method, url, json={}), 401, "not_authenticated")
+    assert_problem(await client.post(f"{some}/cancel"), 401, "not_authenticated")
 
 
 @pytest.mark.parametrize("persona", ["b_manager", "a_pending", "a_suspended"])
@@ -475,7 +478,12 @@ async def test_outsiders_get_building_not_found_on_every_route(
     client = await as_user(getattr(world, persona).user)
     before = await counts(db)
     one = f"{base(world)}/{request.id}"
-    for method, url in [("POST", base(world)), ("GET", base(world)), ("GET", one)]:
+    for method, url in [
+        ("POST", base(world)),
+        ("GET", base(world)),
+        ("GET", one),
+        ("POST", f"{one}/cancel"),
+    ]:
         await assert_cross_building_404(client, method, url, json=unit_body(world.a_101))
     assert await counts(db) == before
 
@@ -506,7 +514,7 @@ async def test_feature_off_is_403_on_every_route_and_writes_nothing(
     for persona in ("a_resident1", "a_manager"):
         client = await as_user(getattr(world, persona).user)
         one = f"{base(world)}/{request.id}"
-        for method, url in [("GET", base(world)), ("GET", one)]:
+        for method, url in [("GET", base(world)), ("GET", one), ("POST", f"{one}/cancel")]:
             assert_problem(await client.request(method, url), 403, "feature_disabled")
         assert_problem(await create(client, world, unit_body(world.a_101)), 403, "feature_disabled")
     assert await counts(db) == before
