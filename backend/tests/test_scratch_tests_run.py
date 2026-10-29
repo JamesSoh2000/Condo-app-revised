@@ -161,8 +161,9 @@ def _run_by(body: list[ast.stmt], test: _Test) -> set[str]:
 def _runs(statements: list[ast.stmt], test: _Test) -> Iterator[tuple[str, bool]]:
     """(name, called directly) for the tracked functions run by an expression statement, an
     assignment's value, a `return`'s value or the *first* item of a `with` in `statements`, up to
-    the first statement that can leave: one whose own scope holds a `return` or `raise`, or refers
-    to a tracked function that may raise (its counted part runs before it can leave). No block's
+    the first statement that can leave: one that holds a `return` or `raise`, or refers to a tracked
+    function that may raise, in what it evaluates when it runs (`_eager`; round 2 F2: a `def`'s
+    defaults, a `class`'s bases and body). Its counted part runs before it can leave. No block's
     body counts: an `if`, a loop, a `try` or a `match` may not run it, and a `with` may suppress an
     error raised before the call (`pytest.raises` does; PR #145 round 3). A later `with` item runs
     inside the earlier ones, which may suppress it too (round 4)."""
@@ -176,39 +177,56 @@ def _runs(statements: list[ast.stmt], test: _Test) -> Iterator[tuple[str, bool]]
                     yield from _evaluated(value, test)
             case ast.With(items=[first, *_]) | ast.AsyncWith(items=[first, *_]):
                 yield from _evaluated(first.context_expr, test)
-        scope = list(_own_scope([statement]))
+        scope = list(_eager([statement]))
         if any(isinstance(node, ast.Return | ast.Raise) for node in scope):
             return
         if _refers_to(scope, test.raising):
             return
 
 
-def _evaluated(
-    expr: ast.expr, test: _Test, *, awaited: bool = False, handed: bool = False
-) -> Iterator[tuple[str, bool]]:
+def _evaluated(expr: ast.expr, test: _Test, *, awaited: bool = False) -> Iterator[tuple[str, bool]]:
     """(name, called directly) for the tracked functions that evaluating `expr` runs, through calls
     and `await`s only. A tracked function is run when the test calls it so that its body starts
     (`_starts`), or when it, or a call of it, is a direct argument of code from outside the test
-    (`_trusted`); an argument of a function defined in the test counts only if that function is run
-    and does it itself."""
+    (`_trusted`, `_handed`); an argument of a function defined in the test counts only if that
+    function is run and does it itself. A call is made only after its callee and every argument
+    are evaluated, so nothing after a part that may raise counts, nor the call (round 2 F1)."""
     if isinstance(expr, ast.Await):
-        yield from _evaluated(expr.value, test, awaited=True, handed=handed)
-    elif isinstance(expr, ast.Name):
-        if handed and expr.id in test.tracked:
-            yield expr.id, False
+        yield from _evaluated(expr.value, test, awaited=True)
     elif isinstance(expr, ast.Call):
         callee = expr.func
-        if isinstance(callee, ast.Name) and callee.id in test.tracked:
-            if _starts(test.tracked[callee.id], awaited):
-                yield callee.id, True
-            elif handed:
-                yield callee.id, False
-        else:
-            yield from _evaluated(callee, test)
+        started = isinstance(callee, ast.Name) and callee.id in test.tracked
         root = _root(callee)
         outside = isinstance(root, ast.Name) and root.id in test.trusted
-        for argument in [*expr.args, *(keyword.value for keyword in expr.keywords)]:
-            yield from _evaluated(argument, test, handed=outside)
+        handed: list[str] = []
+        parts = [*expr.args, *(keyword.value for keyword in expr.keywords)]
+        for part in parts if started else [callee, *parts]:
+            yield from _evaluated(part, test)
+            if _may_raise(part, test):
+                return
+            if outside and part is not callee and (name := _handed(part, test)):
+                handed.append(name)
+        if isinstance(callee, ast.Name) and started and _starts(test.tracked[callee.id], awaited):
+            yield callee.id, True
+        for name in handed:
+            yield name, False
+
+
+def _handed(argument: ast.expr, test: _Test) -> str | None:
+    """The tracked function an argument hands over: its name, or a call of it that doesn't start it
+    (`body(None)` for an `async def`, a generator)."""
+    if isinstance(argument, ast.Name) and argument.id in test.tracked:
+        return argument.id
+    match argument:
+        case ast.Call(func=ast.Name(id=name)) if name in test.tracked:
+            return None if _starts(test.tracked[name], False) else name
+    return None
+
+
+def _may_raise(expr: ast.expr, test: _Test) -> bool:
+    """Whether evaluating `expr` may run a tracked function that may raise (a bare name runs
+    nothing)."""
+    return not isinstance(expr, ast.Name) and _refers_to(_eager([expr]), test.raising)
 
 
 def _starts(definition: _Def, awaited: bool) -> bool:
@@ -227,6 +245,23 @@ def _root(callee: ast.expr) -> ast.expr:
     while isinstance(callee, ast.Attribute):
         callee = callee.value
     return callee
+
+
+def _eager(nodes: Iterable[ast.AST]) -> Iterator[ast.AST]:
+    """The nodes evaluated when `nodes` run. A function's or lambda's body runs only when it is
+    called, but a function's decorators, defaults and annotations, a lambda's defaults and a
+    class's whole body run now."""
+    stack: list[ast.AST] = list(nodes)
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            stack += [*node.decorator_list, node.args, *node.type_params]
+            stack += [node.returns] if node.returns else []
+        elif isinstance(node, ast.Lambda):
+            stack.append(node.args)
+        else:
+            stack.extend(ast.iter_child_nodes(node))
 
 
 def _own_scope(body: list[ast.stmt]) -> Iterator[ast.AST]:
