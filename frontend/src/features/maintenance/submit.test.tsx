@@ -4,31 +4,16 @@
  * (docs/tickets/P6-04b-maintenance-submit-and-cancel.md).
  */
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { writeSelectedBuilding } from '@/app/buildingStorage';
 import { expectFocusKept } from '@/test/focus';
-import {
-  FILES,
-  FakeXHR,
-  U101,
-  maintenanceBase,
-  maintenanceRequest,
-  newWorld,
-  residentWorld,
-  type World,
-} from '@/test/maintenance';
+import { U101, maintenanceBase, maintenanceRequest, newWorld, residentWorld, type World } from '@/test/maintenance';
 import { BIRCH, MAPLE, RESIDENT_ME, buildingOut, calls, json, membership, openAccountMenu, problem, renderApp, stubApi, type Handler } from '@/test/renderApp';
 
 vi.mock('@/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/client')>();
   return { ...actual, ...actual.createApiClient({ baseUrl: 'http://app.test' }) };
-});
-
-beforeEach(() => {
-  FakeXHR.instances = [];
-  vi.stubGlobal('XMLHttpRequest', FakeXHR);
-  vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:preview'), revokeObjectURL: vi.fn() }));
 });
 
 afterEach(() => {
@@ -68,32 +53,14 @@ function fill({ cat = 'plumbing', text = 'The kitchen tap drips.' }: { cat?: str
   fireEvent.change(description(), { target: { value: text } });
 }
 
-async function addPhoto(n: number, name = `leak-${n}.jpg`) {
-  fireEvent.click(inForm().getByRole('button', { name: 'Add a photo' }));
-  const row = await inForm().findByRole('group', { name: `Photo ${n}` });
-  const input = row.querySelector<HTMLInputElement>('input[type="file"]')!;
-  fireEvent.change(input, { target: { files: [new File(['x'], name, { type: 'image/jpeg' })] } });
-  await waitFor(() => expect(FakeXHR.instances.length).toBeGreaterThanOrEqual(n));
-  return row;
-}
-
-async function uploadPhoto(n: number) {
-  const row = await addPhoto(n);
-  FakeXHR.instances[n - 1].respond(204);
-  await within(row).findByText(`Uploaded leak-${n}.jpg.`);
-  return row;
-}
-
 const outcome = () => screen.findByTestId('maintenance-outcome');
 
 describe('submitting a request (criterion 1)', () => {
-  it('sends one request with both photos in order, shows it first in the list and focuses the outcome', async () => {
+  it('sends one request for the unit, shows it first in the list and focuses the outcome', async () => {
     const world = newWorld([maintenanceRequest(1, { description: 'Older request' })]);
     start(world);
     await openForm();
     fill();
-    await uploadPhoto(1);
-    await uploadPhoto(2);
     const button = submitButton();
     button.focus();
 
@@ -105,7 +72,6 @@ describe('submitting a request (criterion 1)', () => {
       unit_id: U101,
       category: 'plumbing',
       description: 'The kitchen tap drips.',
-      photo_file_ids: [FILES[0], FILES[1]],
     });
     expect(document.activeElement).toBe(await outcome());
     expect((await outcome()).textContent).toContain('Your request was submitted.');
@@ -130,7 +96,6 @@ describe('submitting a request (criterion 1)', () => {
       common_area: 'Lobby, north door',
       category: 'doors_windows',
       description: 'The door sticks.',
-      photo_file_ids: [],
     });
   });
 
@@ -277,7 +242,6 @@ describe('one request per submit (criterion 2)', () => {
     start(world, { create: inTurn(networkDown, () => json(maintenanceRequest(90), 201)) });
     await openForm();
     fill();
-    await uploadPhoto(1);
     fireEvent.click(submitButton());
     await inForm().findByText('Could not send your request. What you typed is kept; try again.');
     fireEvent.click(submitButton());
@@ -329,94 +293,6 @@ describe('one request per submit (criterion 2)', () => {
   });
 });
 
-describe('photos (criterion 3)', () => {
-  it('disables submit while a photo uploads and says why', async () => {
-    start(newWorld());
-    await openForm();
-    fill();
-    await addPhoto(1);
-
-    expect(submitButton().disabled).toBe(true);
-    const why = inForm().getByText('Wait for the photos to finish uploading.');
-    expect(submitButton().getAttribute('aria-describedby')).toContain(why.id);
-    FakeXHR.instances[0].respond(204);
-    await waitFor(() => expect(submitButton().disabled).toBe(false));
-  });
-
-  it('a failed upload can be retried, keeping the other fields', async () => {
-    const world = newWorld();
-    start(world);
-    await openForm();
-    fill();
-    const row = await addPhoto(1);
-    FakeXHR.instances[0].fail();
-    fireEvent.click(await within(row).findByRole('button', { name: 'Retry' }));
-    await waitFor(() => expect(FakeXHR.instances).toHaveLength(2));
-    FakeXHR.instances[1].respond(204);
-    await within(row).findByText('Uploaded leak-1.jpg.');
-    expect(description().value).toBe('The kitchen tap drips.');
-    fireEvent.click(submitButton());
-    await outcome();
-    expect(world.created[0].body.photo_file_ids).toEqual([FILES[0]]);
-  });
-
-  it('a failed upload can be removed, keeping the other photos and fields; focus goes to Add a photo', async () => {
-    const world = newWorld();
-    start(world);
-    await openForm();
-    fill();
-    await uploadPhoto(1);
-    const row = await addPhoto(2);
-    FakeXHR.instances[1].fail();
-    const remove = await within(row).findByRole('button', { name: 'Remove photo 2' });
-    remove.focus();
-    fireEvent.click(remove);
-
-    expect(inForm().queryByRole('group', { name: 'Photo 2' })).toBeNull();
-    expect(document.activeElement).toBe(inForm().getByRole('button', { name: 'Add a photo' }));
-    fireEvent.click(submitButton());
-    await outcome();
-    expect(world.created[0].body.photo_file_ids).toEqual([FILES[0]]);
-  });
-
-  it('refuses to send while a photo failed, saying to retry or remove it', async () => {
-    const world = newWorld();
-    start(world);
-    await openForm();
-    fill();
-    await addPhoto(1);
-    FakeXHR.instances[0].fail();
-    await inForm().findByRole('button', { name: 'Retry' });
-    fireEvent.click(submitButton());
-
-    expect(inForm().getByText('A photo didn’t upload. Retry it or remove it.')).toBeTruthy();
-    expect(world.created).toHaveLength(0);
-  });
-
-  it('refuses a photo row with no file chosen', async () => {
-    const world = newWorld();
-    start(world);
-    await openForm();
-    fill();
-    fireEvent.click(inForm().getByRole('button', { name: 'Add a photo' }));
-    fireEvent.click(submitButton());
-
-    expect(inForm().getByText('Choose a file for each photo, or remove the empty one.')).toBeTruthy();
-    expect(world.created).toHaveLength(0);
-  });
-
-  it('Add a photo focuses the new photo’s button, and is disabled at five photos with the reason', async () => {
-    start(newWorld());
-    await openForm();
-    for (let n = 1; n <= 5; n += 1) {
-      fireEvent.click(inForm().getByRole('button', { name: 'Add a photo' }));
-      await waitFor(() => expect(document.activeElement).toBe(inForm().getByRole('button', { name: `Choose photo ${n}` })));
-    }
-    expect(inForm().getByRole<HTMLButtonElement>('button', { name: 'Add a photo' }).disabled).toBe(true);
-    expect(inForm().getByText('A request takes at most 5 photos.')).toBeTruthy();
-  });
-});
-
 describe('errors from the server (criterion 4)', () => {
   const cases: { name: string; answer: Handler; message: string }[] = [
     {
@@ -430,18 +306,15 @@ describe('errors from the server (criterion 4)', () => {
     { name: 'unit_not_found', answer: () => problem(404, 'unit_not_found'), message: 'You no longer live in this unit. Choose a common area, or ask the building office.' },
     { name: 'unit_inactive', answer: () => problem(409, 'unit_inactive'), message: 'You no longer live in this unit. Choose a common area, or ask the building office.' },
     { name: 'occupancy_changed', answer: () => problem(409, 'occupancy_changed'), message: 'Your unit changed while you were sending. Check where the problem is and send again.' },
-    { name: 'invalid_file', answer: () => problem(422, 'invalid_file'), message: 'A photo can’t be attached. Remove it and add it again.' },
-    { name: 'file_not_found', answer: () => problem(404, 'file_not_found'), message: 'A photo can’t be attached. Remove it and add it again.' },
     { name: '429', answer: () => problem(429, 'rate_limited', { 'Retry-After': '30' }), message: 'Too many requests. Try again in 30 seconds.' },
     { name: '500', answer: () => problem(500, 'internal_error'), message: 'Could not send your request. What you typed is kept; try again.' },
     { name: 'a network failure', answer: networkDown, message: 'Could not send your request. What you typed is kept; try again.' },
   ];
 
-  it.each(cases)('$name: the message takes focus and the values and photos stay', async ({ answer, message }) => {
+  it.each(cases)('$name: the message takes focus and the values stay', async ({ answer, message }) => {
     start(newWorld(), { create: answer });
     await openForm();
     fill();
-    await uploadPhoto(1);
     const button = submitButton();
     button.focus();
     fireEvent.click(button);
@@ -451,7 +324,6 @@ describe('errors from the server (criterion 4)', () => {
     await waitFor(() => expect(document.activeElement).toBe(alert));
     expect(category().value).toBe('plumbing');
     expect(description().value).toBe('The kitchen tap drips.');
-    expect(within(inForm().getByRole('group', { name: 'Photo 1' })).getByText('Uploaded leak-1.jpg.')).toBeTruthy();
     expect(submitButton().disabled).toBe(false);
   });
 

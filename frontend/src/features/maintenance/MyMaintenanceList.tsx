@@ -9,16 +9,13 @@ interface Props {
   time: Intl.DateTimeFormat | undefined;
   /** Where focus goes when "Load more" added no card (`useLoadMore`). */
   focusHeading: () => void;
-  /** The caller's membership here: only their own `submitted` requests get "Cancel request" (P6-04b). */
-  membershipId: string | null;
-  onCancel: (item: MaintenanceRequest, opener: HTMLButtonElement) => void;
 }
 
 /**
  * The resident's requests (P6-04a): one card each, in the API's order, paged with "Load more". Every item the API
  * returns is shown: `visible_maintenance` already decided which are the caller's, a co-occupant's included.
  */
-export function MyMaintenanceList({ buildingId, time, focusHeading, membershipId, onCancel }: Props) {
+export function MyMaintenanceList({ buildingId, time, focusHeading }: Props) {
   const query = useMaintenanceRequests(buildingId);
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   const more = useLoadMore(query, focusHeading);
@@ -43,7 +40,7 @@ export function MyMaintenanceList({ buildingId, time, focusHeading, membershipId
     ) : (
       <ul ref={more.listRef} aria-label="Your maintenance requests" className="flex flex-col gap-3">
         {items.map((item) => (
-          <Card key={item.id} item={item} time={time} canCancel={item.status === 'submitted' && item.requester_membership_id === membershipId} onCancel={onCancel} />
+          <Card key={item.id} item={item} time={time} />
         ))}
       </ul>
     ));
@@ -73,17 +70,10 @@ export function MyMaintenanceList({ buildingId, time, focusHeading, membershipId
   );
 }
 
-interface CardProps {
-  item: MaintenanceRequest;
-  time: Intl.DateTimeFormat | undefined;
-  canCancel: boolean;
-  onCancel: Props['onCancel'];
-}
-
-function Card({ item, time, canCancel, onCancel }: CardProps) {
+function Card({ item, time }: { item: MaintenanceRequest; time: Intl.DateTimeFormat | undefined }) {
   const photos = item.photo_file_ids.length;
   return (
-    <li tabIndex={-1} data-request-id={item.id} className="flex flex-col gap-1 rounded border bg-white p-3 [overflow-wrap:anywhere]">
+    <li tabIndex={-1} className="flex flex-col gap-1 rounded border bg-white p-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
         <h3 className="min-w-0 font-medium">{CATEGORY_LABEL[item.category]}</h3>
         <p className="text-sm font-medium">{STATUS_LABEL[item.status]}</p>
@@ -94,11 +84,6 @@ function Card({ item, time, canCancel, onCancel }: CardProps) {
         Submitted <time dateTime={item.submitted_at}>{time?.format(new Date(item.submitted_at))}</time>
         {photos > 0 && ` · ${photos} ${photos === 1 ? 'photo' : 'photos'}`}
       </p>
-      {canCancel && (
-        <button type="button" onClick={(event) => onCancel(item, event.currentTarget)} className="min-h-11 self-start rounded border px-4 text-sm">
-          Cancel request
-        </button>
-      )}
     </li>
   );
 }

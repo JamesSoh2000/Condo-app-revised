@@ -5,14 +5,13 @@ import { ApiError } from '@/api/errors';
 import type { components } from '@/api/schema';
 import { codePoints, rateLimitMessage, serverFieldErrors } from '@/features/auth/formErrors';
 import { EmergencyNotice } from '@/features/maintenance/EmergencyNotice';
-import { PhotoList, type Photo } from '@/features/maintenance/PhotoList';
 import { useCreateMaintenance, type MaintenanceCategory, type MaintenanceRequest, type NewMaintenanceRequest } from '@/features/maintenance/api';
 import { CATEGORY_LABEL } from '@/features/maintenance/labels';
 import { unitName } from '@/features/onboarding/api';
 import { VISIBLE_ONLY, textError, textMessages } from '@/features/packages/PackageDialog';
 
 type Occupancy = components['schemas']['MeOccupancyOut'];
-type Field = 'location' | 'common_area' | 'category' | 'description' | 'photos' | 'form';
+type Field = 'location' | 'common_area' | 'category' | 'description' | 'form';
 
 // `MaintenanceRequestCreate` (backend app/maintenance/schemas.py): both stripped and required, counted in code points.
 const DESCRIPTION_MAX = 2000;
@@ -23,7 +22,6 @@ const NO_COMMON_AREA = 'Say which common area.';
 // surrogate, which Postgres refuses (the CLAUDE.md lesson), is refused.
 const INVISIBLE_MULTILINE = /(?![\t\n\r])[\p{Cc}\p{Cs}]/u;
 const UNIT_GONE_CODES = ['unit_not_occupied', 'unit_not_found', 'unit_inactive'];
-const FILE_REFUSED = ['file_not_found', 'invalid_file', 'upload_incomplete'];
 const FAILED = 'Could not send your request. What you typed is kept; try again.';
 const INPUT = 'w-full min-w-0 rounded border px-3 py-2';
 
@@ -46,7 +44,7 @@ interface Props {
 
 /**
  * The resident's "New request" panel (P6-04b). One `Idempotency-Key` per opened form, kept by every retry (D2); a
- * guard taken before anything else sends one create per press. Every refusal keeps what was typed and the photos, and
+ * guard taken before anything else sends one create per press. Every refusal keeps what was typed, and
  * its message takes focus. The server checks the unit again: one the caller no longer lives in is refused.
  */
 export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted }: Props) {
@@ -59,7 +57,6 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
   const [commonArea, setCommonArea] = useState('');
   const [category, setCategory] = useState<MaintenanceCategory | ''>('');
   const [description, setDescription] = useState('');
-  const [photos, setPhotos] = useState<Photo[]>([]);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ field: Field; message: string } | null>(null);
@@ -81,16 +78,10 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
     if (error) alertRef.current?.focus();
   }, [error]);
 
-  const uploading = photos.some((photo) => photo.status === 'uploading');
   const problems = {
     common_area: location === 'common_area' ? textError(commonArea, COMMON_AREA_MAX, NO_COMMON_AREA) : null,
     category: category === '' ? 'Choose a category.' : null,
     description: descriptionError(description),
-    photos: photos.some((photo) => photo.status === 'error')
-      ? 'A photo didn’t upload. Retry it or remove it.'
-      : photos.some((photo) => photo.status === 'idle')
-        ? 'Choose a file for each photo, or remove the empty one.'
-        : null,
   };
   const show = (field: keyof typeof problems) => (tried ? problems[field] : null);
 
@@ -107,8 +98,6 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
           ? 'Your unit changed while you were sending. Check where the problem is and send again.'
           : 'You no longer live in this unit. Choose a common area, or ask the building office.';
       setError({ field: 'location', message });
-    } else if (code !== null && FILE_REFUSED.includes(code)) {
-      setError({ field: 'photos', message: 'A photo can’t be attached. Remove it and add it again.' });
     } else {
       const placed = serverFieldErrors(err, ['common_area', 'category', 'description'] as const, {
         common_area: textMessages(COMMON_AREA_MAX, NO_COMMON_AREA),
@@ -122,12 +111,12 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (inFlight.current || uploading) return;
+    if (inFlight.current) return;
     setTried(true);
     setError(null);
     const first = (Object.keys(problems) as (keyof typeof problems)[]).find((field) => problems[field]);
     if (first) {
-      formRef.current?.querySelector<HTMLElement>(first === 'photos' ? '[data-photo] button' : `[name="${first}"]`)?.focus();
+      formRef.current?.querySelector<HTMLElement>(`[name="${first}"]`)?.focus();
       return;
     }
     const where: Pick<NewMaintenanceRequest, 'location' | 'unit_id' | 'common_area'> =
@@ -136,7 +125,6 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
       ...where,
       category: category as MaintenanceCategory,
       description: description.trim(),
-      photo_file_ids: photos.map((photo) => photo.fileId!),
     };
     inFlight.current = true;
     setBusy(true);
@@ -258,22 +246,9 @@ export function SubmitRequestForm({ buildingId, occupancy, onClose, onSubmitted 
         {hint('description')}
         {alert('description')}
       </div>
-      <PhotoList photos={photos} setPhotos={setPhotos} busy={busy} hintId={`${id}-photos-error`} hint={show('photos')}>
-        {alert('photos')}
-      </PhotoList>
-      {uploading && (
-        <p id={`${id}-uploading`} className="text-sm text-slate-700">
-          Wait for the photos to finish uploading.
-        </p>
-      )}
       {alert('form')}
       <div className="flex flex-wrap gap-2">
-        <button
-          type="submit"
-          disabled={busy || uploading}
-          aria-describedby={uploading ? `${id}-uploading` : undefined}
-          className="min-h-11 rounded bg-blue-700 px-4 text-white disabled:opacity-50"
-        >
+        <button type="submit" disabled={busy} className="min-h-11 rounded bg-blue-700 px-4 text-white disabled:opacity-50">
           Submit request
         </button>
         <button type="button" disabled={busy} onClick={onClose} className="min-h-11 rounded border px-4 disabled:opacity-50">

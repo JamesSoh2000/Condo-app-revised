@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import { api } from '@/api/client';
 import type { components } from '@/api/schema';
@@ -61,32 +61,6 @@ export function useCreateMaintenance(buildingId: string) {
         params: { path: { building_id: buildingId }, header: { 'idempotency-key': key } },
         body,
       }),
-    onSettled: () => refresh(queryClient, buildingId),
-  });
-}
-
-/**
- * Withdraw one's own `submitted` request (P6-04b). The answer replaces the item in every cached list page at once, so
- * the card says "Cancelled" before the refresh lands.
- */
-export function useCancelMaintenance(buildingId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationKey: [...maintenanceKey(buildingId), 'cancel'],
-    mutationFn: (requestId: string) =>
-      api.post('/api/buildings/{building_id}/maintenance-requests/{request_id}/cancel', {
-        params: { path: { building_id: buildingId, request_id: requestId } },
-      }),
-    onSuccess: (done) => {
-      queryClient.setQueriesData<InfiniteData<{ items: MaintenanceRequest[]; next_cursor: string | null }>>(
-        { queryKey: [...maintenanceKey(buildingId), 'list'] },
-        (data) =>
-          data && {
-            ...data,
-            pages: data.pages.map((page) => ({ ...page, items: page.items.map((item) => (item.id === done.id ? done : item)) })),
-          },
-      );
-    },
     onSettled: () => refresh(queryClient, buildingId),
   });
 }
