@@ -590,6 +590,129 @@ def test_publish(scratch_database_url):
     assert _check(source) == ["case.py::test_publish: `helper` is defined and never run"]
 
 
+def test_a_statement_that_runs_a_function_that_may_raise_ends_the_reading() -> None:
+    # Review round 1 F1: a sibling the test calls raises (`pytest.skip`'s exception here, which
+    # ends the test green), so the statements after the call never run. Its neighbours: the
+    # `raise` inside a block or a nested function of the sibling, a sibling that calls one that
+    # raises, and a raising coroutine handed to outside code.
+    source = """
+def test_called(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    abort()
+    _run(scratch_database_url, body)
+
+def test_in_a_block(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        if True:
+            raise pytest.skip.Exception("later")
+    abort()
+    _run(scratch_database_url, body)
+
+def test_in_a_nested_function(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        def inner():
+            raise pytest.skip.Exception("later")
+        inner()
+    abort()
+    _run(scratch_database_url, body)
+
+def test_through_another_sibling(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    def setup():
+        abort()
+    setup()
+    _run(scratch_database_url, body)
+
+def test_handed(scratch_database_url):
+    async def body(sessions):
+        mark()
+    async def abort(sessions):
+        raise pytest.skip.Exception("later")
+    _run(scratch_database_url, abort)
+    _run(scratch_database_url, body)
+"""
+    outcomes = _execute(source)
+    assert set(outcomes.values()) == {"skipped"}
+    assert sorted(_check(source)) == sorted(_never_run(*outcomes))
+
+
+def test_a_callee_the_test_changes_is_not_trusted() -> None:
+    # Review round 1 F2: the test replaces an outside runner's attribute with its own code. Its
+    # neighbours: through `setattr`, an alias, `vars()`, `globals()`, and an attribute store on
+    # an outside object that rebinds a module name (here through its `__setattr__`).
+    source = """
+from types import SimpleNamespace
+
+runner = SimpleNamespace(run=_run)
+other = SimpleNamespace(run=_run)
+third = SimpleNamespace(run=_run)
+
+
+class _Here:
+    def __setattr__(self, name, value):
+        globals()[name] = value
+
+
+here = _Here()
+
+def test_attribute(scratch_database_url):
+    async def body(sessions):
+        mark()
+    runner.run = lambda url, coroutine: None
+    runner.run(scratch_database_url, body)
+
+def test_setattr(scratch_database_url):
+    async def body(sessions):
+        mark()
+    setattr(other, "run", lambda url, coroutine: None)
+    other.run(scratch_database_url, body)
+
+def test_alias(scratch_database_url):
+    async def body(sessions):
+        mark()
+    alias = third
+    alias.run = lambda url, coroutine: None
+    third.run(scratch_database_url, body)
+
+def test_vars(scratch_database_url):
+    async def body(sessions):
+        mark()
+    vars(runner)["run"] = lambda url, coroutine: None
+    runner.run(scratch_database_url, body)
+
+def test_globals(scratch_database_url):
+    async def body(sessions):
+        mark()
+    globals()["_run"] = lambda url, coroutine: None
+    _run(scratch_database_url, body)
+
+def test_outside_object(scratch_database_url):
+    async def body(sessions):
+        mark()
+    here._run = lambda url, coroutine: None
+    _run(scratch_database_url, body)
+"""
+    for case in ["test_attribute", "test_setattr", "test_alias", "test_vars", "test_globals"]:
+        # Each runs `body` without its replacing line, so the line alone makes it vacuous.
+        lines = source.splitlines(keepends=True)
+        start = next(i for i, line in enumerate(lines) if line.startswith(f"def {case}("))
+        end = next(i for i in range(start, len(lines)) if "lambda url, coroutine" in lines[i])
+        assert _execute("".join(lines[:end] + lines[end + 1 :]))[case] == "ran", case
+    outcomes = _execute(source)
+    assert set(outcomes.values()) == {"passed"}
+    assert sorted(_check(source)) == sorted(_never_run(*outcomes))
+
+
 def test_a_decorated_function_fails_naming_it() -> None:
     source = """
 def test_publish(scratch_database_url):
@@ -646,6 +769,23 @@ def test_imported_runner(scratch_database_url):
     async def body(sessions):
         mark()
     run(body(None))
+
+def test_after_a_sibling_that_returns(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def setup():
+        return 1
+    setup()
+    _run(scratch_database_url, body)
+
+def test_after_changing_other_objects(scratch_database_url):
+    from types import SimpleNamespace
+    async def body(sessions):
+        mark()
+    state = SimpleNamespace()
+    state.ready = True
+    setattr(state, "patched", print)
+    _run(scratch_database_url, body)
 """
     outcomes = _execute(source)
     assert set(outcomes.values()) == {"ran"}
