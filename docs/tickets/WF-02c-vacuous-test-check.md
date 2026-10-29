@@ -53,6 +53,13 @@ The lock-wait helper (WF-02b) had no open finding after four rounds, so it merge
     later `with` item after `suppress`; `if True: return`; `with nullcontext(): return`), plus `raise` before the
     call, `async with` body, and a `try`/`while`/`match` containing `return` before the call.
   - Positive: `return _run(url, body)` in a run sibling; `with running(body):` as the first item.
+  - **Scope of the claim (B-13, James, option (a), 2026-10-28):** the check guards against an *accidental* missing or
+    unreachable run, as P6-03b's was. These constructions, written to defeat it, are unsupported (it does not catch
+    them): code that changes a function after it is defined (`wrapper.__code__ = …`); a `yield` hidden in a nested
+    definition's default, annotation or class base, which turns its function into a generator; and code the test
+    defines but the check doesn't read (a lambda, a class's constructor or `__call__`, a function defined in a
+    block) ending the test before the run. Round 3 of PR #147 found these. Its cases are not tests of this
+    PR. Nothing else in 8 changes.
 - **9, 10** as in WF-02, for this PR's files.
 
 ## Test plan

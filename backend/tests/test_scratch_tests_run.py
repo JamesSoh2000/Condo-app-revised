@@ -12,6 +12,12 @@ coroutine, and draws one trust boundary: code from outside the test (a module fu
 `_run`, a fixture, a library, an import) is trusted to run what it is handed; code inside the
 test is read, never trusted. So `print(body)` passes (a limitation), and `ignore(body)` with
 `ignore` defined in the test fails.
+
+It guards against an *accidental* missing or unreachable run (WF-02c, inbox B-13). Constructions
+written to defeat it are not supported: changing a function after it is defined
+(`wrapper.__code__ = …`), a `yield` hidden in a nested definition's default or class base, and
+code the test defines but this check doesn't read (a lambda, a class, a function defined in a
+block) ending the test before the run.
 """
 
 import ast
