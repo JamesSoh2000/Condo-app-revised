@@ -61,8 +61,13 @@ function Maintenance({ buildingId }: { buildingId: string }) {
 
   function dismissEmergency() {
     setEmergency(null);
-    // "New request", or with the form open (it replaces the button) the form's first field; both stay.
-    (newRef.current ?? sectionRef.current?.querySelector<HTMLElement>('form input, form select'))?.focus();
+    // "New request", or with the form open (it replaces the button) the form's first enabled field, or while the form is
+    // sending (its fields disabled) its status line; each stays (review round 2 F1). The heading if none is there.
+    const target =
+      newRef.current ??
+      sectionRef.current?.querySelector<HTMLElement>('form :is(input, select, textarea):not(:disabled), form [role="status"]') ??
+      headingRef.current;
+    target?.focus();
   }
 
   return (

@@ -32,7 +32,8 @@ export function EmergencyNotice({ submitted = false, phone = null }: { submitted
     );
   }
   return (
-    <p data-testid="emergency-notice" className="rounded border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-900">
+    // Wraps anywhere: the phone is free text up to 32 characters, which may have no space to break at (review round 2 F2).
+    <p data-testid="emergency-notice" className="rounded border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-900 [overflow-wrap:anywhere]">
       {text}
     </p>
   );

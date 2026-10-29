@@ -559,3 +559,28 @@ describe('review round 1 (Codex gpt-6.1-sol)', () => {
     expect(document.activeElement).toBe(commonArea());
   });
 });
+
+describe('review round 2 (Codex gpt-6.1-sol)', () => {
+  it('F1: Dismiss on the emergency text while the next request is sending keeps focus off <body>', async () => {
+    let call = 0;
+    start(newWorld(), {
+      create: () =>
+        call++ === 0
+          ? json(maintenanceRequest(90, { category: 'emergency', emergency_phone: '+1 416 555 0199' }), 201)
+          : new Promise<Response>(() => {}),
+    });
+    await openForm();
+    fill({ cat: 'emergency' });
+    fireEvent.click(submitButton());
+    const shown = await screen.findByTestId('emergency-outcome');
+    await openForm();
+    fill();
+    fireEvent.click(submitButton());
+    await inForm().findByText('Sending…');
+    const dismiss = within(shown).getByRole('button', { name: 'Dismiss' });
+    dismiss.focus();
+
+    await expectFocusKept(() => void fireEvent.click(dismiss), { control: () => dismiss });
+    expect(screen.queryByTestId('emergency-outcome')).toBeNull();
+  });
+});
