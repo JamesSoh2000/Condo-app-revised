@@ -183,7 +183,7 @@ None. `building_features.config` (JSONB, default `{}`) already existed; this tic
 | `backend/app/audit/actions.py` | `MAINTENANCE_CANCELLED` | +1 |
 | `docs/adr/0022-…`, `docs/adr/README.md` | ADR-0022 | +40 |
 | `frontend/src/api/schema.d.ts` | generated | +103 / −1 |
-| tests | `test_cancel.py`, `test_emergency.py` (new); `test_api.py`, `test_atomicity.py`, `test_concurrency.py`, `tests/cli/test_bootstrap.py` (extended) | — |
+| tests | `backend/tests/maintenance/test_cancel.py`, `backend/tests/maintenance/test_emergency.py` (new); `backend/tests/maintenance/test_api.py`, `backend/tests/maintenance/test_atomicity.py`, `backend/tests/maintenance/test_concurrency.py`, `backend/tests/cli/test_bootstrap.py` (extended) | — |
 
 `backend/app/maintenance/service.py::cancel_request`
 
@@ -335,7 +335,7 @@ criterion)
 
 | What could go wrong | What the code does | Test that proves it |
 |---|---|---|
-| A co-occupant cancels | 403 `not_requester`, nothing written | `test_cancel.py::test_a_co_occupant_who_sees_the_request_may_not_cancel_it` |
+| A co-occupant cancels | 403 `not_requester`, nothing written | `backend/tests/maintenance/test_cancel.py::test_a_co_occupant_who_sees_the_request_may_not_cancel_it` |
 | Co-occupant on a started request | 403, not 409 (ownership first) | `::test_a_co_occupant_gets_not_requester_even_once_it_was_started` |
 | The early check is bypassed | The `UPDATE` matches nothing; 403 / 409 from the re-check | `::test_the_update_itself_refuses_someone_elses_request`, `::test_the_update_itself_refuses_a_request_that_is_not_submitted` |
 | Requester moved out | Still cancels; the unit's current occupant gets 404 | `::test_a_requester_who_moved_out_still_cancels_their_own` |
@@ -344,19 +344,19 @@ criterion)
 | Not `submitted` | 409 for each of 4 statuses, nothing written | `::test_only_a_submitted_request_can_be_cancelled` |
 | Staff cancel | 403 `forbidden_role` | `::test_staff_may_not_cancel` |
 | Hidden, B or random id | The same 404 body | `::test_another_residents_request_is_the_same_404_as_none` |
-| Signed out, outsiders, feature off | 401 / 404 / 403 | `test_api.py::test_signed_out_is_401_on_every_route`, `::test_outsiders_get_building_not_found_on_every_route`, `::test_feature_off_is_403_on_every_route_and_writes_nothing` |
-| Two cancels at once | One 200, one 409, one audit row | `test_concurrency.py::test_two_concurrent_cancels_have_one_winner` |
-| Start and cancel race | Cancel blocked; 409 or (start rolled back) 200 with a clock after the wait | `test_concurrency.py::test_a_cancel_blocked_by_a_start_gets_409` |
-| Failure after the `UPDATE` | All rolled back | `test_atomicity.py::test_a_failure_after_the_cancel_update_leaves_it_submitted` |
-| Bad or odd `config` | `emergency_phone: null` | `test_emergency.py::test_a_building_without_a_usable_phone_gives_null`, `::test_a_non_object_config_gives_null` |
+| Signed out, outsiders, feature off | 401 / 404 / 403 | `backend/tests/maintenance/test_api.py::test_signed_out_is_401_on_every_route`, `::test_outsiders_get_building_not_found_on_every_route`, `::test_feature_off_is_403_on_every_route_and_writes_nothing` |
+| Two cancels at once | One 200, one 409, one audit row | `backend/tests/maintenance/test_concurrency.py::test_two_concurrent_cancels_have_one_winner` |
+| Start and cancel race | Cancel blocked; 409 or (start rolled back) 200 with a clock after the wait | `backend/tests/maintenance/test_concurrency.py::test_a_cancel_blocked_by_a_start_gets_409` |
+| Failure after the `UPDATE` | All rolled back | `backend/tests/maintenance/test_atomicity.py::test_a_failure_after_the_cancel_update_leaves_it_submitted` |
+| Bad or odd `config` | `emergency_phone: null` | `backend/tests/maintenance/test_emergency.py::test_a_building_without_a_usable_phone_gives_null`, `::test_a_non_object_config_gives_null` |
 | Phone on other categories / buildings | Never | `::test_no_other_category_carries_the_phone`, `::test_a_mixed_list_carries_the_phone_on_emergency_items_only`, `::test_another_buildings_phone_is_never_shown` |
 | Phone changes after create | Next read shows the new value | `::test_the_phone_is_read_at_answer_time_and_stripped` |
-| Bootstrap input | Refused, naming the option; stripped; plan line | `::test_bootstrap_refuses_a_bad_phone`, `::test_bootstrap_strips_the_phone`, `::test_the_plan_shows_the_phone`; `tests/cli/test_bootstrap.py::test_cli_bad_emergency_phone_names_the_option` |
+| Bootstrap input | Refused, naming the option; stripped; plan line | `::test_bootstrap_refuses_a_bad_phone`, `::test_bootstrap_strips_the_phone`, `::test_the_plan_shows_the_phone`; `backend/tests/cli/test_bootstrap.py::test_cli_bad_emergency_phone_names_the_option` |
 
 **Acceptance criteria → tests:**
 
-- 1: `test_cancel.py` and the race test.
-- 2: `test_emergency.py`, including `::test_an_emergency_request_carries_the_phone_on_every_read`,
+- 1: `backend/tests/maintenance/test_cancel.py` and the race test.
+- 2: `backend/tests/maintenance/test_emergency.py`, including `::test_an_emergency_request_carries_the_phone_on_every_read`,
   `::test_a_replayed_create_carries_the_phone`, `::test_the_api_says_it_alerts_no_one`,
   `::test_the_seed_sets_maples_phone` and `::test_bootstrap_sets_the_phone_on_the_maintenance_feature`.
 - 3: the tenant rows above.
@@ -401,7 +401,7 @@ Each follow-up goes to its ticket or the inbox in the bookkeeping commit.
 - **Add another feature setting:** put it in that feature's `config` (ADR-0022). Validate it where it is
   written (the bootstrap schema, the seed), and read it defensively in the feature's own module, like
   `backend/app/maintenance/service.py::emergency_phone`.
-- **P6-03c's actions:** copy `_for_cancel`'s lock-then-`UPDATE` shape. `test_concurrency.py` and
+- **P6-03c's actions:** copy `_for_cancel`'s lock-then-`UPDATE` shape. `backend/tests/maintenance/test_concurrency.py` and
   `act_blocked_on_lock` show how to prove each wait.
 
 ## 9. Must explain, then quiz
