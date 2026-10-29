@@ -684,6 +684,7 @@ def test_a_cancel_blocked_by_a_start_gets_409(
     # waits on the start's row lock; once the start commits, the WHERE no longer matches.
     async def body(sessions: Sessions, world: World, request: MaintenanceRequest) -> None:
         savepoint: Any = None
+        released_at: Any = None
 
         async def start(db: AsyncSession) -> None:
             nonlocal savepoint
@@ -704,6 +705,10 @@ def test_a_cancel_blocked_by_a_start_gets_409(
             )
 
         async def settle(db: AsyncSession) -> None:
+            nonlocal released_at
+            # The database clock while the cancel is still blocked: its `cancelled_at` must be
+            # later, taken after the wait, not at its transaction's start (`now()`, 1a).
+            released_at = await db.scalar(select(func.clock_timestamp()))
             if start_commits:
                 await savepoint.commit()
             else:
@@ -723,6 +728,13 @@ def test_a_cancel_blocked_by_a_start_gets_409(
             assert outcome == "200"
             is_cancelled = MaintenanceRequest.status == MaintenanceStatus.CANCELLED
             assert await _count(sessions, MaintenanceRequest, is_cancelled) == 1
+            async with sessions() as db:
+                cancelled_at = await db.scalar(
+                    select(MaintenanceRequest.cancelled_at).where(
+                        MaintenanceRequest.id == request.id
+                    )
+                )
+            assert cancelled_at is not None and cancelled_at > released_at
             assert await _count(sessions, AuditEvent, cancelled) == 1
 
     _run(scratch_database_url, body)
