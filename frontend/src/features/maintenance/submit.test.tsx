@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { writeSelectedBuilding } from '@/app/buildingStorage';
 import { expectFocusKept } from '@/test/focus';
-import { U101, maintenanceBase, maintenanceRequest, newWorld, residentWorld, type World } from '@/test/maintenance';
+import { OCCUPANCY, U101, maintenanceBase, maintenanceRequest, newWorld, residentWorld, type World } from '@/test/maintenance';
 import { BIRCH, MAPLE, RESIDENT_ME, buildingOut, calls, json, membership, openAccountMenu, problem, renderApp, stubApi, type Handler } from '@/test/renderApp';
 
 vi.mock('@/api/client', async (importOriginal) => {
@@ -582,5 +582,98 @@ describe('review round 2 (Codex gpt-6.1-sol)', () => {
 
     await expectFocusKept(() => void fireEvent.click(dismiss), { control: () => dismiss });
     expect(screen.queryByTestId('emergency-outcome')).toBeNull();
+  });
+});
+
+describe('review round 3 (Codex gpt-6.1-sol): the location after the occupancy goes', () => {
+  const U102 = '01929a4e-0000-7000-8000-0000000c0002';
+  const meWith = (occupancy: typeof OCCUPANCY | null) => ({ ...RESIDENT_ME, memberships: [{ ...membership(MAPLE), occupancy }] });
+  const OTHER_UNIT = { ...OCCUPANCY, unit_id: U102, unit_label: '102' };
+
+  function openWith(world: World) {
+    stubApi(residentWorld(world));
+    return renderApp(['/maintenance']);
+  }
+  // React Query tells its observers on a later macrotask (`notifyManager`), so the form renders after that turn.
+  const setMe = (app: ReturnType<typeof renderApp>, occupancy: typeof OCCUPANCY | null) =>
+    act(async () => {
+      app.queryClient.setQueryData(['me'], meWith(occupancy));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+  it('F1: a common area typed after the unit went stays chosen, typed and focused when another unit comes, and is what is sent', async () => {
+    const world = newWorld();
+    const app = openWith(world);
+    await openForm();
+    await setMe(app, null);
+    commonArea().focus();
+    fireEvent.change(commonArea(), { target: { value: 'Lobby' } });
+
+    const field = commonArea();
+    await expectFocusKept(() => setMe(app, OTHER_UNIT), {
+      control: () => field,
+      settle: async () => void (await inForm().findByRole('radio', { name: 'My unit, A-102' })),
+    });
+    expect(inForm().getByRole<HTMLInputElement>('radio', { name: 'A common area' }).checked).toBe(true);
+    expect(inForm().getByRole<HTMLInputElement>('radio', { name: 'My unit, A-102' }).checked).toBe(false);
+    expect(commonArea()).toBe(field);
+    expect(field.value).toBe('Lobby');
+
+    fill();
+    fireEvent.click(submitButton());
+    await outcome();
+    expect(world.created[0].body).toEqual({ location: 'common_area', common_area: 'Lobby', category: 'plumbing', description: 'The kitchen tap drips.' });
+  });
+
+  it('F1 neighbour: with nothing typed, the unit coming back leaves "A common area" chosen; the resident picks the unit again', async () => {
+    const world = newWorld();
+    const app = openWith(world);
+    await openForm();
+    await setMe(app, null);
+    await setMe(app, OTHER_UNIT);
+
+    expect(inForm().getByRole<HTMLInputElement>('radio', { name: 'A common area' }).checked).toBe(true);
+    fireEvent.click(inForm().getByRole('radio', { name: 'My unit, A-102' }));
+    fill();
+    fireEvent.click(submitButton());
+    await outcome();
+    expect(world.created[0].body).toMatchObject({ location: 'unit', unit_id: U102 });
+  });
+
+  it('F1 neighbour: the same unit coming back also leaves the typed common area chosen', async () => {
+    const world = newWorld();
+    const app = openWith(world);
+    await openForm();
+    await setMe(app, null);
+    fireEvent.change(commonArea(), { target: { value: 'Garage' } });
+    await setMe(app, OCCUPANCY);
+
+    expect(inForm().getByRole<HTMLInputElement>('radio', { name: 'A common area' }).checked).toBe(true);
+    expect(commonArea().value).toBe('Garage');
+  });
+
+  it('F1 neighbour: a form opened with no unit keeps the common area when a unit arrives', async () => {
+    const world = newWorld();
+    stubApi(residentWorld(world, { occupancy: null }));
+    const app = renderApp(['/maintenance']);
+    await openForm();
+    fireEvent.change(commonArea(), { target: { value: 'Pool' } });
+    await setMe(app, OCCUPANCY);
+
+    expect(inForm().getByRole<HTMLInputElement>('radio', { name: 'A common area' }).checked).toBe(true);
+    expect(commonArea().value).toBe('Pool');
+  });
+
+  it('F1 neighbour: a unit changing straight to another (no gap) keeps "My unit" chosen, now naming the new unit', async () => {
+    const world = newWorld();
+    const app = openWith(world);
+    await openForm();
+    await setMe(app, OTHER_UNIT);
+
+    expect(inForm().getByRole<HTMLInputElement>('radio', { name: 'My unit, A-102' }).checked).toBe(true);
+    fill();
+    fireEvent.click(submitButton());
+    await outcome();
+    expect(world.created[0].body).toMatchObject({ location: 'unit', unit_id: U102 });
   });
 });
