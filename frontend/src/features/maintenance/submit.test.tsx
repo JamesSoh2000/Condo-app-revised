@@ -219,10 +219,11 @@ describe('the checks before sending (criteria 1 and 4)', () => {
     expect(inForm().getByText('Use visible characters only.')).toBeTruthy();
     expect(world.created).toHaveLength(0);
 
-    fireEvent.change(description(), { target: { value: 'Line one\r\n\tLine two' } });
+    // A textarea's value has LF line breaks only (the HTML spec normalises CRLF), in a browser as in jsdom.
+    fireEvent.change(description(), { target: { value: 'Line one\n\tLine two' } });
     fireEvent.click(submitButton());
     await outcome();
-    expect(world.created[0].body.description).toBe('Line one\r\n\tLine two');
+    expect(world.created[0].body.description).toBe('Line one\n\tLine two');
   });
 
   it('asks for the common area, refuses 121 characters and a control character', async () => {
