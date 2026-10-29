@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import { api } from '@/api/client';
 import type { components } from '@/api/schema';
@@ -35,5 +35,32 @@ export function useMaintenanceRequests(buildingId: string, status: MaintenanceSt
         signal,
       }),
     getNextPageParam: (page) => page.next_cursor,
+  });
+}
+
+export type NewMaintenanceRequest = components['schemas']['MaintenanceRequestCreate'];
+
+/**
+ * After any maintenance write: every maintenance query of the building is cancelled, then asked again however the
+ * write ended (an answer lost on the way may have been applied; a 409 means someone else changed the list). Cancelled
+ * first, so a list request already on its way is not reused (the CLAUDE.md lesson).
+ */
+function refresh(queryClient: QueryClient, buildingId: string) {
+  const filters = { queryKey: maintenanceKey(buildingId) };
+  void queryClient.cancelQueries(filters).then(() => queryClient.invalidateQueries(filters));
+}
+
+/** File a request (P6-04b). `key` is the form's `Idempotency-Key`, the same for every retry of one form. */
+export function useCreateMaintenance(buildingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // Keyed by building, so a `building_not_found` here marks the building denied (app/buildingDenial.ts).
+    mutationKey: [...maintenanceKey(buildingId), 'create'],
+    mutationFn: ({ key, body }: { key: string; body: NewMaintenanceRequest }) =>
+      api.post('/api/buildings/{building_id}/maintenance-requests', {
+        params: { path: { building_id: buildingId }, header: { 'idempotency-key': key } },
+        body,
+      }),
+    onSettled: () => refresh(queryClient, buildingId),
   });
 }

@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
-
 import { rateLimitMessage } from '@/features/auth/formErrors';
+import { useFocusedRetry } from '@/features/lists/useFocusedRetry';
 import { useLoadMore } from '@/features/lists/useLoadMore';
 import { useMaintenanceRequests, type MaintenanceRequest } from '@/features/maintenance/api';
 import { CATEGORY_LABEL, STATUS_LABEL, firstLine, requestLocation } from '@/features/maintenance/labels';
@@ -20,28 +19,7 @@ export function MyMaintenanceList({ buildingId, time, focusHeading }: Props) {
   const query = useMaintenanceRequests(buildingId);
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   const more = useLoadMore(query, focusHeading);
-  const retryRef = useRef<HTMLButtonElement>(null);
-  // Set when a pressed "Try again" failed again; its own object each time, so the effect runs after the commit that
-  // shows the new button (as `useLoadMore`).
-  const [failedRetry, setFailedRetry] = useState<{ parked: Element | null } | null>(null);
-
-  useEffect(() => {
-    if (!failedRetry) return;
-    const active = document.activeElement;
-    if (active === failedRetry.parked || active === document.body || active === null) retryRef.current?.focus();
-  }, [failedRetry]);
-
-  // A failed first page has no data, so its refetch goes back to pending and the button goes while it runs; then the
-  // cards, the empty message or a new button replace it. A press that leaves focus on it parks focus on the heading,
-  // which stays, and puts it on the new button if the retry failed. Focus the user moved meanwhile stays (round 1 F1).
-  const retry = (event: MouseEvent<HTMLButtonElement>) => {
-    const pressed = document.activeElement === event.currentTarget;
-    if (pressed) focusHeading();
-    const parked = document.activeElement;
-    void query.refetch().then((result) => {
-      if (pressed && result.isError) setFailedRetry({ parked });
-    });
-  };
+  const { retryRef, retry } = useFocusedRetry(query, focusHeading);
 
   let body;
   if (query.isPending) body = <p role="status">Loading requests…</p>;
