@@ -3,7 +3,7 @@
  * P6-04b: the resident's "New request" panel on `/maintenance`. Each `describe` names the criteria it proves
  * (docs/tickets/P6-04b-maintenance-submit-and-cancel.md).
  */
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { writeSelectedBuilding } from '@/app/buildingStorage';
@@ -213,13 +213,18 @@ describe('the checks before sending (criteria 1 and 4)', () => {
 });
 
 describe('one request per submit (criterion 2)', () => {
+  // Both presses in one act: React renders nothing between them, so the second still finds the button enabled, as a
+  // fast double click does in a browser. Two separate `fireEvent`s would let the disabled button refuse the second.
   it('a double press sends one create', async () => {
     const world = newWorld();
     start(world);
     await openForm();
     fill();
-    fireEvent.click(submitButton());
-    fireEvent.click(submitButton());
+    const button = submitButton();
+    act(() => {
+      button.click();
+      button.click();
+    });
     await outcome();
     expect(world.created).toHaveLength(1);
   });
@@ -231,10 +236,29 @@ describe('one request per submit (criterion 2)', () => {
     fill();
     fireEvent.click(inForm().getByRole('radio', { name: 'A common area' }));
     fireEvent.change(commonArea(), { target: { value: 'Garage' } });
-    fireEvent.submit(form());
-    fireEvent.click(submitButton());
+    const button = submitButton();
+    act(() => {
+      fireEvent.submit(form());
+      button.click();
+    });
     await outcome();
     expect(world.created).toHaveLength(1);
+  });
+
+  it('while the create is out, focus is on the status line, not on the disabled submit', async () => {
+    let answer: (response: Response) => void = () => undefined;
+    start(newWorld(), { create: () => new Promise<Response>((resolve) => (answer = resolve)) });
+    await openForm();
+    fill();
+    const button = submitButton();
+    button.focus();
+
+    await expectFocusKept(() => void fireEvent.click(button), { control: () => button, settle: async () => void (await inForm().findByText('Sending…')) });
+    expect(button.disabled).toBe(true);
+    expect(document.activeElement).toBe(inForm().getByText('Sending…'));
+    answer(json(maintenanceRequest(90), 201));
+    const shown = await outcome();
+    await waitFor(() => expect(document.activeElement).toBe(shown));
   });
 
   it('a retry after a network failure sends the same key and body', async () => {
