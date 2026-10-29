@@ -680,8 +680,8 @@ def test_a_cancel_blocked_by_a_start_gets_409(
     scratch_database_url: str, start_commits: bool
 ) -> None:
     # P6-03e criteria 1 and 1d: P6-03c's start, as a raw conditional UPDATE held open in a second
-    # session. The cancel's early check sees `submitted` (the start is uncommitted), then its UPDATE
-    # waits on the start's row lock; once the start commits, the WHERE no longer matches.
+    # session. The cancel's locked read waits on the start's row lock, then answers from the row the
+    # start left: 409 if it committed, a cancel if it rolled back.
     async def body(sessions: Sessions, world: World, request: MaintenanceRequest) -> None:
         savepoint: Any = None
         released_at: Any = None
@@ -707,7 +707,8 @@ def test_a_cancel_blocked_by_a_start_gets_409(
         async def settle(db: AsyncSession) -> None:
             nonlocal released_at
             # The database clock while the cancel is still blocked: its `cancelled_at` must be
-            # later, taken after the wait, not at its transaction's start (`now()`, 1a).
+            # later, taken after the wait (1a). It was not when the UPDATE itself waited: Postgres
+            # kept the clock it computed before a wait on a lock released without a change.
             released_at = await db.scalar(select(func.clock_timestamp()))
             if start_commits:
                 await savepoint.commit()

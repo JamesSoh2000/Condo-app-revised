@@ -3,9 +3,9 @@
 
 `create_request` follows `app.packages.service.create_package`: the request, its photo claims and
 rows, the managers' notifications and the audit row commit together, once (CLAUDE.md rule 5).
-`cancel_request` follows `app.packages.service._transition`: a conditional `UPDATE … WHERE status IN
-(…) RETURNING` that also names the requester, so of two concurrent writes one wins and nobody
-else's request is cancelled (CLAUDE.md rule 7).
+`cancel_request` locks the request first (as `app.notices.service._locked`), then writes with a
+conditional `UPDATE … WHERE status IN (…) RETURNING` that also names the requester, so of two
+concurrent writes one wins and nobody else's request is cancelled (CLAUDE.md rule 7).
 """
 
 from collections.abc import Sequence
@@ -405,12 +405,16 @@ async def get_request(
     return await _out(db, ctx, await _visible(db, ctx, request_id))
 
 
-async def _visible(db: AsyncSession, ctx: TenantContext, request_id: UUID) -> MaintenanceRequest:
-    request = await db.scalar(
-        visible_maintenance(ctx)
-        .where(MaintenanceRequest.id == request_id)
-        .execution_options(populate_existing=True)
-    )
+async def _visible(
+    db: AsyncSession, ctx: TenantContext, request_id: UUID, *, lock: bool = False
+) -> MaintenanceRequest:
+    """The request if the caller may see it, else 404; with `lock`, locked until commit. A
+    concurrent write holding it makes a locked read wait; READ COMMITTED then returns the row it
+    committed."""
+    stmt = visible_maintenance(ctx).where(MaintenanceRequest.id == request_id)
+    if lock:
+        stmt = stmt.with_for_update(of=MaintenanceRequest)
+    request = await db.scalar(stmt.execution_options(populate_existing=True))
     if request is None:
         # The same answer for someone else's, another building's and no request (ADR-0004).
         raise MaintenanceRequestNotFound(detail="Maintenance request not found.")
@@ -422,10 +426,13 @@ async def cancel_request(
 ) -> MaintenanceRequestOut:
     """Withdraw the caller's own `submitted` request. 404, 403 `not_requester` (a co-occupant's,
     P6-03b D3), 409 `invalid_transition`."""
-    await _for_cancel(db, ctx, request_id)
-    # The requester is in the WHERE, not only checked above: the UPDATE decides (CLAUDE.md rule 7).
-    # A concurrent start holding the row makes this wait; once it commits, Postgres re-checks the
-    # WHERE on the row it wrote and updates nothing.
+    # Locked first: a concurrent start holding the row makes this wait, and the answer then comes
+    # from the row it committed. Everything below runs after the wait: the status recorded and the
+    # UPDATE's clock. (Unlocked, an UPDATE that waits on a lock released without a change keeps the
+    # `clock_timestamp()` it computed before the wait.)
+    from_status = (await _for_cancel(db, ctx, request_id)).status
+    # The requester and the status are in the WHERE too, not only checked above: the UPDATE decides
+    # (CLAUDE.md rule 7).
     cancelled = await db.scalar(
         update(MaintenanceRequest)
         .where(
@@ -436,7 +443,7 @@ async def cancel_request(
         )
         .values(
             status=MaintenanceStatus.CANCELLED,
-            # The statement's clock, after any wait on the row lock.
+            # The statement's clock, after the lock above.
             cancelled_at=func.clock_timestamp(),
             cancelled_by_membership_id=ctx.membership_id,
         )
@@ -448,9 +455,6 @@ async def cancel_request(
         current = await _for_cancel(db, ctx, request_id)
         # Unreachable: the UPDATE would have matched a request the caller may still cancel.
         raise AssertionError(f"maintenance request {current.id} matched no cancel")
-    # Not the status read before the UPDATE's lock wait (the CLAUDE.md lesson): the UPDATE matched
-    # one of these, and there is one. A second source would fail here, not record a stale one.
-    [from_status] = sources(MaintenanceStatus.CANCELLED)
     await record_audit(
         db,
         action=actions.MAINTENANCE_CANCELLED,
@@ -466,10 +470,9 @@ async def cancel_request(
 
 
 async def _for_cancel(db: AsyncSession, ctx: TenantContext, request_id: UUID) -> MaintenanceRequest:
-    """The request as it is now, if the caller may cancel it: 404 unless visible, 403 unless
-    theirs (before the status: they could never cancel it), else 409 unless `submitted`. An early
-    answer only; the UPDATE decides."""
-    request = await _visible(db, ctx, request_id)
+    """The request, locked, if the caller may cancel it: 404 unless visible, 403 unless theirs
+    (before the status: they could never cancel it), else 409 unless `submitted`."""
+    request = await _visible(db, ctx, request_id, lock=True)
     if request.requester_membership_id != ctx.membership_id:
         raise NotRequester(detail="Only the resident who filed this request can cancel it.")
     assert_transition(request.status, MaintenanceStatus.CANCELLED)

@@ -229,7 +229,7 @@ async def test_the_update_itself_refuses_someone_elses_request(
     async def skip_first(db: AsyncSession, ctx: Any, request_id: uuid.UUID) -> Any:
         calls.append(request_id)
         if len(calls) == 1:
-            return await service._visible(db, ctx, request_id)
+            return await service._visible(db, ctx, request_id, lock=True)
         return await real(db, ctx, request_id)
 
     monkeypatch.setattr(service, "_for_cancel", skip_first)
@@ -241,3 +241,40 @@ async def test_the_update_itself_refuses_someone_elses_request(
     assert len(calls) == 2
     assert await counts(db) == before
     assert (await _row(db, request.id)).status == MaintenanceStatus.SUBMITTED
+
+
+@pytest.mark.parametrize("status", [MaintenanceStatus.IN_PROGRESS, MaintenanceStatus.CANCELLED])
+async def test_the_update_itself_refuses_a_request_that_is_not_submitted(
+    as_user: Any,
+    world: World,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    status: MaintenanceStatus,
+) -> None:
+    # CLAUDE.md rule 7: the status is in the UPDATE's WHERE too. Skip the early check once; the
+    # UPDATE must match nothing, and the re-read answers 409.
+    from app.maintenance import service
+
+    request = await make_maintenance_request(
+        db, world.a_resident1.membership, world.a_101, status=status
+    )
+    real = service._for_cancel
+    calls: list[uuid.UUID] = []
+
+    async def skip_first(db: AsyncSession, ctx: Any, request_id: uuid.UUID) -> Any:
+        calls.append(request_id)
+        if len(calls) == 1:
+            return await service._visible(db, ctx, request_id, lock=True)
+        return await real(db, ctx, request_id)
+
+    monkeypatch.setattr(service, "_for_cancel", skip_first)
+    client = await as_user(world.a_resident1.user)
+    before = await counts(db)
+
+    assert_problem(
+        await client.post(f"{base(world)}/{request.id}/cancel"), 409, "invalid_transition"
+    )
+
+    assert len(calls) == 2
+    assert await counts(db) == before
+    assert (await _row(db, request.id)).status == status
