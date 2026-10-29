@@ -6,7 +6,7 @@
 | Risk tier | 2 (a fitness test later tickets rely on as evidence) |
 | Depends on | WF-02b |
 | Replaces old | — (criterion 8 of [WF-02](./WF-02-known-failure-test-kit.md), moved from [WF-02b](./WF-02b-lock-wait-and-vacuous-test-checks.md)) |
-| Status | in progress |
+| Status | done |
 
 Split from [WF-02b](./WF-02b-lock-wait-and-vacuous-test-checks.md) after its review rounds 3 and 4 (James's answer to
 inbox B-12, option (a)). Criterion 8 is WF-02's, moved here word for word with WF-02b's sharpening; it is not loosened.
