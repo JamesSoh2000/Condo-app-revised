@@ -165,13 +165,14 @@ describe('the cards (criterion 1)', () => {
     for (const card of shown) expect(card.textContent).not.toMatch(/_/);
   });
 
-  it('cuts a long first line at 120 characters with an ellipsis', async () => {
-    const long = `${'x'.repeat(119)}é and more`;
+  it('cuts a long first line at 120 characters, not UTF-16 units, with an ellipsis', async () => {
+    // The emoji is the 120th character but the 120th and 121st UTF-16 units: a unit cut would split it.
+    const long = `${'x'.repeat(119)}😀 and more`;
     stubApi(resident(() => page([request(1, { description: long }), request(2, { description: 'y'.repeat(120) })])));
     renderApp(['/maintenance']);
 
     const [cut, whole] = await cards();
-    expect(cut.textContent).toContain(`${'x'.repeat(119)}é…`);
+    expect(cut.textContent).toContain(`${'x'.repeat(119)}😀…`);
     expect(cut.textContent).not.toContain('and more');
     expect(whole.textContent).toContain('y'.repeat(120));
     expect(whole.textContent).not.toContain('…');
