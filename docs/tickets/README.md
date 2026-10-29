@@ -115,7 +115,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P6-03c](./P6-03c-maintenance-manager-actions.md) | Maintenance manager actions: start, hold, resolve, reopen (split from P6-03) | A | 2 | P6-03b, P6-03e, P3-03, P3-02 | todo | — |
 | [P6-03d](./P6-03d-maintenance-comments.md) | Maintenance comments: public and internal (split from P6-03) | A | 2 | P6-03b, P3-03 | todo | — |
 | [P6-04a](./P6-04a-resident-maintenance-list.md) | Maintenance hooks and the resident's request list (split from P6-04) | A | 2 | P6-03b | done | — |
-| [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) | Maintenance submit form and the emergency text (split from P6-04; photos and cancel split out to P6-04f, P6-04e) | A | 2 | P6-04a, P6-03b, P6-03e | in progress | — |
+| [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) | Maintenance submit form and the emergency text (split from P6-04; photos and cancel split out to P6-04f, P6-04e) | A | 2 | P6-04a, P6-03b, P6-03e | done | — |
 | [P6-04e](./P6-04e-maintenance-cancel-ui.md) | Maintenance cancel from the resident's list (split from P6-04b) | A | 2 | P6-04b, P6-03e | todo | — |
 | [P6-04f](./P6-04f-maintenance-photos.md) | Photos on the maintenance submit form (split from P6-04b) | A | 2 | P6-04b, P3-06 | todo | — |
 | [P6-04c](./P6-04c-maintenance-request-view.md) | One maintenance request: timeline and comments (split from P6-04) | A | 2 | P6-04a, P6-04b, P6-03c, P6-03d, P6-03e | todo | — |

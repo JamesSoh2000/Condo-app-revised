@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-04a, P6-03b, P6-03e |
 | Replaces old | M8-T02 (submit part) |
-| Status | in progress |
+| Status | done |
 
 Split from the P6-04 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-04a](./P6-04a-resident-maintenance-list.md), before [P6-04c](./P6-04c-maintenance-request-view.md), which reuses

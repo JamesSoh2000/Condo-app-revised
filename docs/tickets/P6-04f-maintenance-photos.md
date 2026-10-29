@@ -12,6 +12,15 @@ Split from [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) while it was bein
 ~750 non-test lines. Its criterion 1's photos, criterion 3, criterion 4's file errors and criterion 9's file name are
 this ticket's.
 
+## Carried from P6-04b (first follow-up; do while framing)
+
+- **P6-04b review round 3 F1 (Medium, unfixed there):** in `SubmitRequestForm.tsx`, if `/me` drops the occupancy
+  (the form shows the common-area field), the resident types a common area, and `/me` then gives a *different* unit
+  while the form is open, the stored `chosenLocation` is still `unit`: the radios return with "My unit" chosen, the
+  field and its focus go, and a submit files for the new unit. Fix suggested by the reviewer: make `common_area` the
+  stored choice when the occupancy goes, and keep focus on the field. Test it test-first with the round 1 F3 tests in
+  `submit.test.tsx` as neighbours (PR #155 "Independent review", round 3).
+
 ## Draft to start from
 
 An unreviewed implementation written during P6-04b is on the local branch `p6-04-photos-cancel-draft` (commit
