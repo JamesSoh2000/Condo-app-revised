@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-04a, P6-03b, P6-03e, P3-06 |
 | Replaces old | M8-T02 (submit part) |
-| Status | todo |
+| Status | in progress |
 
 Split from the P6-04 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-04a](./P6-04a-resident-maintenance-list.md), before [P6-04c](./P6-04c-maintenance-request-view.md), which reuses
@@ -128,7 +128,60 @@ Left open by the stub:
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
-  also the alternatives considered and why they lost):
-- Split:
+  - **1** sharpened: the form is a panel opened by a "New request" button above the list; after the 201 the panel
+    closes, an outcome message ("Your request was submitted.") takes focus, and the list is refreshed (cancel, then
+    invalidate `maintenanceKey`, as `useLogPackage`). Closing the panel without submitting ("Close") returns focus
+    to "New request".
+  - **2** sharpened: the guard is a ref taken before anything else (as `usePackageSubmit`), so a second press in the
+    same tick sends nothing. P6-03b takes `Idempotency-Key` (8–80 visible ASCII): one `crypto.randomUUID()` per
+    opened form, reused by every retry of it. Added: a 201 with `Idempotent-Replayed: true` is a success like any
+    201; a 409 `idempotency_key_reused` (the key's first attempt landed with other details) says so, points at the
+    list, refreshes it, and gives the form a new key while keeping what was typed.
+  - **3** sharpened: "says why" is a visible text tied to the submit by `aria-describedby`. A failed upload's row
+    keeps `FileUpload`'s Retry and gets a Remove button; pressing submit with a failed or empty-chosen row is refused
+    with a message on the photos ("Retry it or remove it"). Added: at most 5 photos (`MAX_PHOTOS`): "Add a photo"
+    is disabled at 5 and says so; photo ids are sent in row order, only `ready` rows.
+  - **4** sharpened: the documented create errors are 422 `validation_error` (placed on `description` /
+    `common_area` / `category` when `serverFieldErrors` can, else a form message), 422 `unit_not_occupied`, 404
+    `unit_not_found`, 409 `unit_inactive`, 409 `occupancy_changed` (each: a message on the location, and `/me` asked
+    again), 422/409 `invalid_file`, `file_not_found`, `upload_incomplete` (a message on the photos), 429 (with its
+    wait), a 500 and a network failure (a form message saying the details are kept). Added client checks that
+    mirror `MaintenanceRequestCreate`: a description is required after the strip, at most 2,000 code points, and
+    holds no control character except tab and line breaks; a common area is required, at most 120 code points, no
+    control character.
+  - **5** sharpened: with no `occupancy` on `/me`'s membership for this building, the unit choice is absent and the
+    form says "You have no unit on file in this building, so you can report a common-area problem only." P6-03b
+    lets such a resident file a common-area request, so the form is still offered.
+  - **6** unchanged in substance; the fixed text is in `EmergencyNotice.tsx` and the test asserts that no text on
+    screen contains "notified", "alerted" or "sent to" next to the emergency copy.
+  - **7** sharpened: the button shows on a card only when `status` is `submitted` and `requester_membership_id` is
+    the caller's membership in this building (a co-occupant's submitted request and the caller's own `in_progress`
+    one have none). Confirm on 200: the card shows "Cancelled" from the response at once (the cached item is
+    replaced), the list is refreshed, a status says "Request cancelled.", and focus goes to the card (the button
+    that opened the dialog is gone). Added: 404 `maintenance_request_not_found` and 403 `not_requester` end like the
+    409 (message, list refreshed); after any of them the dialog keeps only "Close", and closing it returns focus to
+    the opener if it is still there, else to the card. 429 and other failures keep the dialog with a message.
+  - **8** sharpened: the page is keyed by building (P6-04a); the test opens the form, types, switches building and
+    checks that the form is closed in B and that no `maintenance_create` reaches either building.
+  - Added (carried from P6-04a): `MyPackageList`'s "Try again" keeps focus as `MyMaintenanceList`'s now does; the
+    retry logic moves into a shared `features/lists/useFocusedRetry.ts` that both lists use, with the P6-04a tests
+    kept and the same tests added for the packages list.
+- Tenant table (`docs/ENGINEERING_PRACTICES.md` §7): this ticket adds no endpoint; the server rows are P6-03b's. The
+  rows that apply to the browser: building switch (criterion 8), another member's record (criterion 7's no-button
+  case), and a membership with no occupancy (criterion 5).
+- Criteria loosened (with reason; also listed in the inbox): none.
+- Decisions taken (with basis):
+  - **Panel, not dialog** (open decision; autonomous, convention): an inline panel as `LogPackageForm`, opened by
+    "New request". A dialog would trap focus around a long form with five file controls and scroll inside a 375 px
+    viewport; the panel uses the page's own scroll. The cancel confirmation is a dialog (`Modal`), as the ticket says.
+  - **Emergency phone after the 201 only** (open decision; stub default): no API change. Before submit the fixed
+    text says to call the emergency services or building staff now.
+  - **Category labels** (open decision): P6-04a's `CATEGORY_LABEL`, in its order, in a `<select>` (8 options; radio
+    chips would wrap into a tall block at 375 px).
+  - **No draft across reload** (open decision; stated default).
+  - **Unit pre-selected** when the resident has one (autonomous): most requests are for the unit; the common-area
+    radio is one press away.
+  - **Review route** (James, in-session 2026-10-29): the review rounds run as a fresh Codex `gpt-6.1-sol` session at
+    high effort through the `codex-review` skill, instead of a fresh Claude reviewer; no Claude reviewer is spawned.
+- Split: none. Estimate ~420 non-test lines (form ~200, photo list ~70, emergency copy ~30, cancel dialog ~70, hooks
+  ~30, shared retry ~20); measured in the PR. If it passes ~450, cancel moves to its own ticket.

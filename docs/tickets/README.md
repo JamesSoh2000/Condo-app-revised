@@ -115,7 +115,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P6-03c](./P6-03c-maintenance-manager-actions.md) | Maintenance manager actions: start, hold, resolve, reopen (split from P6-03) | A | 2 | P6-03b, P6-03e, P3-03, P3-02 | todo | — |
 | [P6-03d](./P6-03d-maintenance-comments.md) | Maintenance comments: public and internal (split from P6-03) | A | 2 | P6-03b, P3-03 | todo | — |
 | [P6-04a](./P6-04a-resident-maintenance-list.md) | Maintenance hooks and the resident's request list (split from P6-04) | A | 2 | P6-03b | done | — |
-| [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) | Maintenance submit form with photos, and cancel (split from P6-04) | A | 2 | P6-04a, P6-03b, P6-03e, P3-06 | todo | — |
+| [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) | Maintenance submit form with photos, and cancel (split from P6-04) | A | 2 | P6-04a, P6-03b, P6-03e, P3-06 | in progress | — |
 | [P6-04c](./P6-04c-maintenance-request-view.md) | One maintenance request: timeline and comments (split from P6-04) | A | 2 | P6-04a, P6-04b, P6-03c, P6-03d, P6-03e | todo | — |
 | [P6-04d](./P6-04d-manager-maintenance-list-and-actions.md) | Manager maintenance list, filters and transitions (split from P6-04) | A | 2 | P6-04c, P6-03c | todo | — |
 | [P6-05a](./P6-05a-dashboard-summary-api.md) | Dashboard summary API (split from P6-05) | A | 2 | P6-03b, P6-03c, P6-03d, P5-02a, P6-01c, P4-05b | todo | — |
