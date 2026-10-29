@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { components } from '@/api/schema';
+import { expectFocusKept } from '@/test/focus';
 import {
   BIRCH,
   MAPLE,
@@ -772,5 +773,60 @@ describe('review round 2 (Codex gpt-6.1-sol)', () => {
     await navLink('My packages, 3 waiting');
     await waitFor(() => expect(waitingCount()).toBe(3));
     expect(listCalls(fetchMock, 'picked_up,returned')).toHaveLength(2);
+  });
+});
+
+describe('a failed list’s Try again keeps focus (P6-04b, carried from P6-04a review round 1 F1)', () => {
+  /** "Waiting for you" fails until `answer` is set; History answers. */
+  function failingWaiting() {
+    const state: { answer: (() => Response) | null } = { answer: null };
+    const fetchMock = stubApi(
+      resident(TWO_AND_THREE, {
+        [`GET ${BASE}`]: (request) => {
+          if (statuses(request) === 'picked_up,returned') return page(TWO_AND_THREE.history);
+          return state.answer === null ? problem(500, 'internal_error') : state.answer();
+        },
+      }),
+    );
+    return Object.assign(fetchMock, { state });
+  }
+  const retryButton = () => screen.findByRole('button', { name: 'Try again' });
+  const waitingHeading = () => screen.findByRole('heading', { name: 'Waiting for you', level: 2 });
+
+  it('a keyboard Try again that brings the cards keeps focus, on the list’s heading', async () => {
+    const { state } = failingWaiting();
+    renderApp(['/packages']);
+    const retry = await retryButton();
+    retry.focus();
+    state.answer = () => page(TWO_AND_THREE.waiting);
+
+    await expectFocusKept(() => void fireEvent.click(retry), { control: () => retry, settle: async () => void (await waitingList()) });
+    expect(document.activeElement).toBe(await waitingHeading());
+  });
+
+  it('a keyboard Try again that fails again puts focus back on Try again', async () => {
+    const fetchMock = failingWaiting();
+    renderApp(['/packages']);
+    const retry = await retryButton();
+    retry.focus();
+
+    const before = listCalls(fetchMock, 'received').length;
+    fireEvent.click(retry);
+    await waitFor(() => expect(listCalls(fetchMock, 'received').length).toBeGreaterThan(before));
+    await waitFor(async () => expect(document.activeElement).toBe(await retryButton()));
+    expect(document.activeElement).not.toBe(retry);
+  });
+
+  it('a Try again pressed by mouse while focus is elsewhere leaves focus where it is', async () => {
+    const { state } = failingWaiting();
+    renderApp(['/packages']);
+    const retry = await retryButton();
+    const heading = await waitingHeading();
+    heading.focus();
+    state.answer = () => page(TWO_AND_THREE.waiting);
+
+    fireEvent.click(retry);
+    await waitingList();
+    expect(document.activeElement).toBe(heading);
   });
 });

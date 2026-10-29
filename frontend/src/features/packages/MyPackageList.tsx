@@ -5,6 +5,7 @@ import { useBuildingId } from '@/app/BuildingProvider';
 import { pagePath } from '@/app/pages';
 import { rateLimitMessage } from '@/features/auth/formErrors';
 import { PrivateImage } from '@/features/files/PrivateImage';
+import { useFocusedRetry } from '@/features/lists/useFocusedRetry';
 import { useLoadMore } from '@/features/lists/useLoadMore';
 import { useMyPackages, type MyList, type Package } from '@/features/packages/api';
 
@@ -51,7 +52,9 @@ export function MyPackageList({ list, enabled, time, onOpen }: Props) {
   const text = TEXT[list];
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const more = useLoadMore(query, () => headingRef.current?.focus());
+  const focusHeading = () => headingRef.current?.focus();
+  const more = useLoadMore(query, focusHeading);
+  const { retryRef, retry } = useFocusedRetry(query, focusHeading);
 
   let body;
   if (query.isPending) body = <p role="status">Loading packages…</p>;
@@ -59,7 +62,7 @@ export function MyPackageList({ list, enabled, time, onOpen }: Props) {
     body = (
       <div role="alert" className="text-sm text-red-700">
         {rateLimitMessage(query.error) ?? text.failed}{' '}
-        <button type="button" className="underline" onClick={() => void query.refetch()}>
+        <button type="button" ref={retryRef} className="underline" onClick={retry}>
           Try again
         </button>
       </div>
