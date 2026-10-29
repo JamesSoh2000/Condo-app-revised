@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { components } from '@/api/schema';
 import { writeSelectedBuilding } from '@/app/buildingStorage';
+import { firstLine } from '@/features/maintenance/labels';
+import { expectFocusKept } from '@/test/focus';
 import {
   BIRCH,
   MAPLE,
@@ -463,5 +465,118 @@ describe('coming back (criterion 11)', () => {
 
     await waitFor(async () => expect(statusOf((await cards())[0])).toBe('In progress'));
     expect(listRequests(fetchMock)).toHaveLength(2);
+  });
+});
+
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  /** A first page that fails until `answer` is set, then answers with it. */
+  function failingFirst() {
+    const state: { answer: Response | (() => Response) | null } = { answer: null };
+    stubApi(resident(() => (state.answer === null ? problem(500, 'internal_error') : typeof state.answer === 'function' ? state.answer() : state.answer)));
+    return state;
+  }
+  const retryButton = () => screen.findByRole('button', { name: 'Try again' });
+
+  it('F1: a keyboard Try again that brings the cards keeps focus, on the heading', async () => {
+    const state = failingFirst();
+    renderApp(['/maintenance']);
+    const retry = await retryButton();
+    retry.focus();
+    state.answer = () => page(THREE);
+
+    await expectFocusKept(() => fireEvent.click(retry), { control: () => retry, settle: async () => void (await list()) });
+    expect(document.activeElement).toBe(await heading());
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('F1 neighbour: a keyboard Try again that fails again puts focus back on Try again', async () => {
+    // A failed first page has no data, so its refetch goes back to pending: the alert and its button go while it runs.
+    const fetchMock = stubApi(resident(() => problem(500, 'internal_error')));
+    renderApp(['/maintenance']);
+    const retry = await retryButton();
+    const before = listRequests(fetchMock).length;
+    retry.focus();
+
+    fireEvent.click(retry);
+    await waitFor(() => expect(listRequests(fetchMock).length).toBeGreaterThan(before));
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not load your requests.');
+    await waitFor(async () => expect(document.activeElement).toBe(await retryButton()));
+  });
+
+  it('F1 neighbour: a keyboard Try again answered 429 puts focus back on Try again and says to wait', async () => {
+    let limited = false;
+    stubApi(resident(() => (limited ? problem(429, 'rate_limited', { 'Retry-After': '30' }) : problem(500, 'internal_error'))));
+    renderApp(['/maintenance']);
+    const retry = await retryButton();
+    retry.focus();
+    limited = true;
+
+    fireEvent.click(retry);
+    await waitFor(async () => expect((await screen.findByRole('alert')).textContent).toContain('Try again in 30 seconds.'));
+    await waitFor(async () => expect(document.activeElement).toBe(await retryButton()));
+  });
+
+  it('F1 neighbour: a keyboard Try again that finds no requests keeps focus, on the heading', async () => {
+    const state = failingFirst();
+    renderApp(['/maintenance']);
+    const retry = await retryButton();
+    retry.focus();
+    state.answer = () => page([]);
+
+    await expectFocusKept(() => fireEvent.click(retry), {
+      control: () => retry,
+      settle: async () => void (await screen.findByText('You haven’t submitted any requests.')),
+    });
+    expect(document.activeElement).toBe(await heading());
+  });
+
+  it('F1 neighbour: focus the user moved during the retry stays where they put it', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let hold = false;
+    stubApi(resident(() => (hold ? held.then(() => problem(500, 'internal_error')) : problem(500, 'internal_error'))));
+    renderApp(['/maintenance']);
+    const retry = await retryButton();
+    retry.focus();
+    hold = true;
+
+    fireEvent.click(retry);
+    const elsewhere = await navLink('My profile');
+    elsewhere.focus();
+    release();
+    await retryButton();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it('F1 neighbour: a Try again pressed without focus on it (a pointer in jsdom) moves no focus', async () => {
+    const state = failingFirst();
+    renderApp(['/maintenance']);
+    const retry = await retryButton();
+    state.answer = () => page(THREE);
+
+    fireEvent.click(retry);
+    await list();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it.each([
+    ['a standalone CR', 'Tap leaks\rSecond line'],
+    ['CRLF', 'Tap leaks\r\nSecond line'],
+    ['LF', 'Tap leaks\nSecond line'],
+    ['U+2028 line separator', 'Tap leaks\u2028Second line'],
+    ['U+2029 paragraph separator', 'Tap leaks\u2029Second line'],
+  ])('F2: the first line ends at %s', (_name, description) => {
+    expect(firstLine(description)).toBe('Tap leaks');
+  });
+
+  it('F2 neighbour: a tab is not a line end, and a card shows only the line before a standalone CR', async () => {
+    expect(firstLine('Tap\tleaks')).toBe('Tap\tleaks');
+    stubApi(resident(() => page([request(1, { description: 'Tap leaks\rSecond line' })])));
+    renderApp(['/maintenance']);
+
+    const [card] = await cards();
+    expect(card.textContent).toContain('Tap leaks');
+    expect(card.textContent).not.toContain('Second line');
   });
 });
