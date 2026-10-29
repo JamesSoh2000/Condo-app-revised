@@ -12,6 +12,13 @@ Split from the P6-04 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-04a](./P6-04a-resident-maintenance-list.md), before [P6-04c](./P6-04c-maintenance-request-view.md), which reuses
 its emergency copy.
 
+## Carried from P6-04a (first follow-up; do while framing)
+
+- A failed first page's "Try again" must keep focus (P6-04a review round 1 F1): the form's and the list's retries
+  here follow `MyMaintenanceList`'s `retry`. Also fix `features/packages/MyPackageList.tsx`'s "Try again", which has
+  the same drop, with the same tests (`frontend/src/features/maintenance/myMaintenance.test.tsx` "review round 1"),
+  or split it out if it doesn't fit.
+
 ## Goal
 
 A resident submits a maintenance request from the maintenance page (category, description, their unit or a

@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-03b |
 | Replaces old | M8-T02 (list part) |
-| Status | in progress |
+| Status | done |
 
 Drafted from the P6-04 stub in [P6-P7-backlog.md](./P6-P7-backlog.md) and split four ways, as the notices
 frontend was (P6-02a → d). Measured against the components of its kind (`MyPackageList.tsx` 146,
@@ -167,3 +167,11 @@ Left open by the stub:
   5. **A card has no link yet.** P6-04c adds the view and its link; until then `/maintenance/<id>` shows the list
      (criterion 10). Basis: ticket scope.
 - Split: none. Estimate ~250 non-test lines (hooks ~40, labels ~30, list ~130, page ~40, pages/routes ~10).
+
+## Follow-ups (from PR #153)
+
+- `features/packages/MyPackageList.tsx`'s "Try again" drops focus to `<body>` the way P6-04a review round 1 F1 found
+  here (a failed first page refetches as `pending`, so the button goes): fix it as `MyMaintenanceList`'s `retry` does,
+  with the same tests. Carried to [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) as its first follow-up.
+- No test isolates `MyMaintenancePage`'s `key={buildingId}` (PR #153 mutation M2): P6-04c, which adds per-request
+  state to the page, should add one (a state that must not survive a switch).
