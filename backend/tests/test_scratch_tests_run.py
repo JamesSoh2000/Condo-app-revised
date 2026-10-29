@@ -693,6 +693,122 @@ def test_handed(scratch_database_url):
     assert sorted(_check(source)) == sorted(_never_run(*outcomes))
 
 
+def test_a_call_counts_only_after_its_arguments_are_evaluated() -> None:
+    # Review round 2 F1: an argument that raises is evaluated before the call is made, so the
+    # call never hands `body` over (or never starts the sibling). Its neighbours: the raising
+    # argument after the handed one, as a keyword, and a nested call that raises inside a runner.
+    source = """
+def test_before(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    _run(abort(), body)
+
+def test_after(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    _run(scratch_database_url, body, abort())
+
+def test_keyword(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    _run(scratch_database_url, body=body, extra=abort())
+
+def test_sibling_never_started(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    def wrapper(value):
+        _run(scratch_database_url, body)
+    wrapper(abort())
+
+def test_nested_runner(scratch_database_url):
+    async def body(sessions):
+        mark()
+    async def abort(sessions):
+        raise pytest.skip.Exception("later")
+    print(_run(scratch_database_url, abort), body)
+"""
+    outcomes = _execute(source)
+    assert set(outcomes.values()) == {"skipped"}
+    assert sorted(_check(source)) == sorted(_never_run(*outcomes))
+
+
+def test_what_a_definition_evaluates_can_end_the_reading() -> None:
+    # Review round 2 F2: a `def`'s defaults, a `class`'s bases and body, and a lambda's defaults
+    # are evaluated when the statement runs, unlike the bodies of functions and lambdas.
+    source = """
+def test_default(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    def setup(value=abort()):
+        pass
+    _run(scratch_database_url, body)
+
+def test_keyword_default(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    def setup(*, value=abort()):
+        pass
+    _run(scratch_database_url, body)
+
+def test_base(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    class Setup(abort()):
+        pass
+    _run(scratch_database_url, body)
+
+def test_class_keyword(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    class Setup(metaclass=abort()):
+        pass
+    _run(scratch_database_url, body)
+
+def test_class_body(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    class Setup:
+        value = abort()
+    _run(scratch_database_url, body)
+
+def test_class_body_raise(scratch_database_url):
+    async def body(sessions):
+        mark()
+    class Setup:
+        raise pytest.skip.Exception("later")
+    _run(scratch_database_url, body)
+
+def test_lambda_default(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    lambda value=abort(): None
+    _run(scratch_database_url, body)
+"""
+    outcomes = _execute(source)
+    assert set(outcomes.values()) == {"skipped"}
+    assert sorted(_check(source)) == sorted(_never_run(*outcomes))
+
+
 def test_a_callee_the_test_changes_is_not_trusted() -> None:
     # Review round 1 F2: the test replaces an outside runner's attribute with its own code. Its
     # neighbours: through `setattr`, an alias, `vars()`, `globals()`, and an attribute store on
@@ -834,6 +950,17 @@ def test_after_changing_other_objects(scratch_database_url):
     state.ready = True
     setattr(state, "patched", print)
     _run(scratch_database_url, body)
+
+def test_beside_raising_code_it_does_not_run(scratch_database_url):
+    async def body(sessions):
+        mark()
+    def abort():
+        raise pytest.skip.Exception("later")
+    def setup(value=len("abc")):
+        return abort
+    class Setup:
+        value = str(1)
+    _run(str(scratch_database_url), body)
 """
     outcomes = _execute(source)
     assert set(outcomes.values()) == {"ran"}
