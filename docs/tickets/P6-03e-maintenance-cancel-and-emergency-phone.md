@@ -142,6 +142,11 @@ and are not taken.
     describes, rather than notices' lock-first `_locked`. The audit's `from_status` is taken from the state
     machine (the only source of `cancelled`, `submitted`), not from the value read before the `UPDATE`'s lock
     wait (the CLAUDE.md lesson on values read before a wait).
+    *Changed during implementation (PR "Decisions and alternatives" E1):* a criterion 1a test showed that
+    an `UPDATE` waiting on a lock released without a change keeps the `clock_timestamp()` it computed
+    before the wait, so the cancel now locks the row first (`SELECT … FOR UPDATE`, as notices'
+    `_locked`); the `UPDATE` keeps the requester and status in its `WHERE`, and `from_status` is read
+    under the lock. No criterion changed.
   - **E2** (new, rule 3): the bootstrap plan and summary print the phone (2d); the bootstrap audit metadata is
     unchanged (it records no feature settings today).
 - Estimate: ~180 non-test lines (`p6-03e-start` measured ~170, plus 2d's line and the non-object `config`
