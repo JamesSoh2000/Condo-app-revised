@@ -656,6 +656,7 @@ from types import SimpleNamespace
 runner = SimpleNamespace(run=_run)
 other = SimpleNamespace(run=_run)
 third = SimpleNamespace(run=_run)
+fourth = SimpleNamespace(run=_run)
 
 
 class _Here:
@@ -687,8 +688,8 @@ def test_alias(scratch_database_url):
 def test_vars(scratch_database_url):
     async def body(sessions):
         mark()
-    vars(runner)["run"] = lambda url, coroutine: None
-    runner.run(scratch_database_url, body)
+    vars(fourth)["run"] = lambda url, coroutine: None
+    fourth.run(scratch_database_url, body)
 
 def test_globals(scratch_database_url):
     async def body(sessions):
