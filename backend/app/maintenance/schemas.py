@@ -97,6 +97,17 @@ class MaintenanceRequestOut(MaintenanceRequestColumns):
     )
 
 
+class MaintenanceStatusEventOut(APIModel):
+    """One manager move (P6-03c), for the request's timeline (P6-04c). `from_status` tells a first
+    start, a resume and a reopen apart. Who moved it stays out: no caller is shown it."""
+
+    id: UUID
+    request_id: UUID
+    from_status: MaintenanceStatus
+    status: MaintenanceStatus
+    at: datetime
+
+
 class MaintenanceCommentCreate(InputModel):
     body: CommentBody
     # Staff only (D1); a resident's `true` is 403 `internal_comment_forbidden`, never made public.
