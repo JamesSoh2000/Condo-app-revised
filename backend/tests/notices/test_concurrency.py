@@ -10,9 +10,8 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import event, func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -29,6 +28,7 @@ from app.notices.models import Notice, NoticeRead
 from app.notices.schemas import NoticeCreate, NoticeUpdate
 from app.notifications.models import Notification
 from tests.email.conftest import point_settings_at
+from tests.helpers.lock_wait import act_blocked_on_lock
 from tests.notices.conftest import make_attachment, make_notice, persona_ctx
 from tests.notifications.test_concurrency import migrate
 from tests.world import World, build_world
@@ -291,40 +291,38 @@ def test_a_notice_expiring_while_its_fan_out_waits_is_not_published(
     point_settings_at(monkeypatch, 1025)
 
     async def body(sessions: Sessions, world: World, notice: Notice) -> None:
-        async with sessions() as setup:
-            await setup.execute(
-                update(Notice)
-                .where(Notice.id == notice.id)
-                .values(
-                    priority=priority,
-                    expires_at=func.clock_timestamp() + timedelta(seconds=1),
+        # On `act_blocked_on_lock` (P6-03c, the ticket's first user): it proves the publish's own
+        # backend waited on the holder's lock, where this test first used a statement event and a
+        # sleep.
+        async def hold(db: AsyncSession) -> None:
+            # Expiring 1 s from now by the database clock, then the recipient's membership locked.
+            async with sessions() as setup:
+                await setup.execute(
+                    update(Notice)
+                    .where(Notice.id == notice.id)
+                    .values(
+                        priority=priority,
+                        expires_at=func.clock_timestamp() + timedelta(seconds=1),
+                    )
                 )
-            )
-            await setup.commit()
-        inserting = asyncio.Event()
-
-        def record(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
-            if statement.startswith("INSERT INTO notifications "):
-                inserting.set()
-
-        async with sessions() as blocker:
-            await blocker.scalar(
+                await setup.commit()
+            await db.scalar(
                 select(BuildingMembership)
                 .where(BuildingMembership.id == world.a_resident1.membership.id)
                 .with_for_update()
             )
-            engine = blocker.bind
-            assert isinstance(engine, AsyncEngine)
-            event.listen(engine.sync_engine, "before_cursor_execute", record)
-            task = asyncio.create_task(_act(sessions, world, notice, "publish"))
+
+        async def publish(db: AsyncSession) -> str:
             try:
-                await asyncio.wait_for(inserting.wait(), timeout=5)
-                await asyncio.sleep(1.2)
-                assert not task.done(), "the publish did not wait on the recipient's membership"
-            finally:
-                await blocker.rollback()
-                event.remove(engine.sync_engine, "before_cursor_execute", record)
-            outcome = await asyncio.wait_for(task, timeout=10)
+                await service.publish_notice(db, persona_ctx(world, "a_manager"), notice.id)
+            except DomainError as exc:
+                return f"{exc.status} {exc.code}"
+            return "200"
+
+        async def outlast(db: AsyncSession) -> None:
+            await db.execute(text("SELECT pg_sleep(1.2)"))
+
+        outcome = await act_blocked_on_lock(sessions, hold=hold, act=publish, change=outlast)
 
         assert outcome == "422 notice_expired"
         assert (await _row(sessions, notice)).status is NoticeStatus.DRAFT

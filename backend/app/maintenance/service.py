@@ -7,6 +7,8 @@ rows, the managers' notifications and the audit row commit together, once (CLAUD
 `cancel_request` locks the request first (as `app.notices.service._locked`), then writes with a
 conditional `UPDATE … WHERE status IN (…) RETURNING` that also names the requester, so of two
 concurrent writes one wins and nobody else's request is cancelled (CLAUDE.md rule 7).
+`move_request` is the manager's start, hold, resolve and reopen (P6-03c), on the same shape, with a
+status event per move (ADR-0020) and the requester told.
 """
 
 from collections.abc import Sequence
@@ -14,15 +16,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import ColumnElement, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from app.audit import actions
 from app.audit.service import record_audit
 from app.buildings.enums import Feature
-from app.buildings.models import BuildingFeature
-from app.core.errors import Forbidden, NotFound, UnprocessableContent
+from app.buildings.models import Building, BuildingFeature
+from app.core.errors import Conflict, Forbidden, NotFound, UnprocessableContent
 from app.core.pagination import CursorParams, Page, paginate
 from app.core.schemas import APIModel
 from app.files.models import FilePurpose
@@ -31,9 +34,11 @@ from app.maintenance.enums import MaintenanceCategory, MaintenanceStatus
 from app.maintenance.models import (
     MAINTENANCE_COMMENT_ENTITY_TYPE,
     MAINTENANCE_REQUEST_ATTACHED_TYPE,
+    MAINTENANCE_STATUS_EVENT_ENTITY_TYPE,
     MaintenanceComment,
     MaintenanceRequest,
     MaintenanceRequestPhoto,
+    MaintenanceStatusEvent,
 )
 from app.maintenance.queries import (
     sees_internal_comments,
@@ -48,7 +53,13 @@ from app.maintenance.schemas import (
     MaintenanceRequestCreate,
     MaintenanceRequestOut,
 )
-from app.maintenance.state import assert_transition, sources
+from app.maintenance.state import (
+    MOVES,
+    REOPEN_WINDOW,
+    InvalidTransition,
+    assert_transition,
+    sources,
+)
 from app.memberships.enums import MembershipStatus, Role
 from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
 from app.memberships.service import OccupancyChanged
@@ -94,6 +105,10 @@ class NotRequester(Forbidden):
 
 class InternalCommentForbidden(Forbidden):
     code = "internal_comment_forbidden"
+
+
+class ReopenWindowClosed(Conflict):
+    code = "reopen_window_closed"
 
 
 @dataclass(frozen=True)
@@ -495,6 +510,142 @@ async def _for_cancel(db: AsyncSession, ctx: TenantContext, request_id: UUID) ->
     return request
 
 
+# One value per statement, read after the lock the statement before took (as
+# `app.notices.service._NOW`).
+_NOW = func.statement_timestamp()
+
+# The audit action and the notification's words for each move (P6-03c D2): fixed text.
+_MOVE_AUDIT = {
+    "start": actions.MAINTENANCE_STARTED,
+    "hold": actions.MAINTENANCE_HELD,
+    "resolve": actions.MAINTENANCE_RESOLVED,
+    "reopen": actions.MAINTENANCE_REOPENED,
+}
+_MOVE_WORDS = {
+    "start": ("Maintenance request in progress", "Your {category} request is in progress."),
+    "hold": ("Maintenance request on hold", "Your {category} request is on hold."),
+    "resolve": ("Maintenance request resolved", "Your {category} request is resolved."),
+    "reopen": ("Maintenance request reopened", "Your {category} request was reopened."),
+}
+
+
+def reopen_window_open(
+    resolved_at: ColumnElement[datetime] | InstrumentedAttribute[datetime | None],
+    now: ColumnElement[datetime],
+) -> ColumnElement[bool]:
+    """True while a request resolved at `resolved_at` may be reopened: at exactly 14 days it is
+    closed (ADR-0020)."""
+    return resolved_at > now - REOPEN_WINDOW
+
+
+async def move_request(
+    db: AsyncSession, ctx: TenantContext, request_id: UUID, verb: str
+) -> MaintenanceRequestOut:
+    """A manager's `start` (also the resume from `on_hold`), `hold`, `resolve` or `reopen`. 404,
+    409 `invalid_transition`, 409 `reopen_window_closed`. The new status, its event, the
+    requester's notification and the audit row commit together."""
+    target, froms = MOVES[verb]
+    # Locked first (as `cancel_request`): a concurrent move holding the row makes this wait, and
+    # everything below, the status recorded and the UPDATE's clock, comes after the wait.
+    request = await _visible(db, ctx, request_id, lock=True)
+    from_status, resolved_at = request.status, request.resolved_at
+    if from_status not in froms:
+        raise InvalidTransition(detail=f"A {from_status} request can't be moved with {verb}.")
+    # The status is in the WHERE too, not only checked above: the UPDATE decides (rule 7).
+    where = [
+        MaintenanceRequest.id == request_id,
+        MaintenanceRequest.building_id == ctx.building_id,
+        MaintenanceRequest.status.in_(froms),
+    ]
+    if verb == "reopen":
+        where.append(reopen_window_open(MaintenanceRequest.resolved_at, _NOW))
+    row = (
+        await db.execute(
+            update(MaintenanceRequest)
+            .where(*where)
+            .values(status=target, **_move_columns(verb, ctx.membership_id))
+            .returning(MaintenanceRequest, _NOW)
+            .execution_options(populate_existing=True)
+        )
+    ).one_or_none()
+    if row is None:
+        # The row is locked and in a source status: only the window can have refused it.
+        raise ReopenWindowClosed(detail="This request was resolved 14 days ago or more.")
+    moved, at = row
+    event_id = await db.scalar(
+        insert(MaintenanceStatusEvent)
+        .values(
+            building_id=ctx.building_id,
+            request_id=request_id,
+            from_status=from_status,
+            status=target,
+            at=at,
+            by_membership_id=ctx.membership_id,
+        )
+        .returning(MaintenanceStatusEvent.id)
+    )
+    assert event_id is not None  # noqa: S101 (INSERT … RETURNING gives the row)
+    title, body = _MOVE_WORDS[verb]
+    await notify(
+        db,
+        building_id=ctx.building_id,
+        recipient_user_ids=[
+            user_id for user_id in await _requester_who_sees(db, moved) if user_id != ctx.user_id
+        ],
+        kind="maintenance.status_changed",
+        title=title,
+        body=body.format(category=_CATEGORY_NAMES[moved.category]),
+        link=f"/maintenance/{request_id}",
+        # The event, not the request: each move's email gets its own dedupe key (criterion 6a).
+        entity_type=MAINTENANCE_STATUS_EVENT_ENTITY_TYPE,
+        entity_id=event_id,
+    )
+    metadata: dict[str, object] = {"from_status": from_status}
+    if verb == "reopen":
+        metadata["to_status"] = target
+    await record_audit(
+        db,
+        action=_MOVE_AUDIT[verb],
+        entity_type=MAINTENANCE_REQUEST_ATTACHED_TYPE,
+        entity_id=request_id,
+        building_id=ctx.building_id,
+        actor_user_id=ctx.user_id,
+        metadata=metadata,
+    )
+    if verb == "reopen":
+        # Again after the last statement that can wait (CLAUDE.md, criterion 5): the event,
+        # notifications and audit INSERTs take KEY SHARE on the building, the actor's membership
+        # and user and the recipient's membership, and wait on a transaction holding one. A window
+        # closing meanwhile refuses the reopen, and the session rolls everything back.
+        await db.flush()
+        assert resolved_at is not None  # noqa: S101 (a resolved row has it: `resolved_state`)
+        if not await db.scalar(select(reopen_window_open(literal(resolved_at), _NOW))):
+            raise ReopenWindowClosed(detail="This request was resolved 14 days ago or more.")
+    out = await _out(db, ctx, moved)
+    await db.commit()
+    return out
+
+
+def _move_columns(verb: str, membership_id: UUID) -> dict[str, object]:
+    """The status columns `verb` sets and clears (ADR-0020): `started_*` is the first start, kept
+    through a resume, hold, resolve and reopen; leaving `on_hold` or `resolved` clears its own."""
+    cleared_hold = {"on_hold_at": None, "on_hold_by_membership_id": None}
+    match verb:
+        case "start":
+            return {
+                "started_at": func.coalesce(MaintenanceRequest.started_at, _NOW),
+                "started_by_membership_id": func.coalesce(
+                    MaintenanceRequest.started_by_membership_id, membership_id
+                ),
+            } | cleared_hold
+        case "hold":
+            return {"on_hold_at": _NOW, "on_hold_by_membership_id": membership_id}
+        case "resolve":
+            return {"resolved_at": _NOW, "resolved_by_membership_id": membership_id} | cleared_hold
+        case _:  # reopen
+            return {"resolved_at": None, "resolved_by_membership_id": None}
+
+
 class _CommentColumns(APIModel):
     """A comment's row; `MaintenanceCommentOut` swaps the author's membership for what the caller
     may see of them."""
@@ -583,7 +734,16 @@ async def _notify_comment(
 
 async def _requester_who_sees(db: AsyncSession, request: MaintenanceRequest) -> list[UUID]:
     """The requester's user, if their membership is active and holds a role that sees their own
-    request (`visible_maintenance`: resident, security, property management); else none."""
+    request (`visible_maintenance`: resident, security, property management); else none. Locks the
+    building FOR SHARE until commit."""
+    # Every write that takes a member's access away (suspend, deactivate, a role change) locks the
+    # building first (`app.memberships.service._lock_building`, NO KEY UPDATE). FOR SHARE waits for
+    # one in flight and holds off the next until this commits; the read below is a new statement,
+    # so it sees what that write committed (P6-03c review round 1: a suspension committed while a
+    # later INSERT waited was still told).
+    await db.execute(
+        select(Building.id).where(Building.id == request.building_id).with_for_update(read=True)
+    )
     user_id = await db.scalar(
         select(BuildingMembership.user_id).where(
             BuildingMembership.id == request.requester_membership_id,
