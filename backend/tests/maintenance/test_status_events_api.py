@@ -7,12 +7,14 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import update
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.buildings.enums import Feature
 from app.buildings.models import BuildingFeature
 from app.maintenance.models import MaintenanceRequest
+from app.memberships.enums import Role
+from app.memberships.models import MembershipRole
 from tests.helpers.tenancy import (
     assert_cross_building_404,
     assert_not_visible,
@@ -192,3 +194,22 @@ async def test_a_malformed_cursor_is_400(as_user: Any, world: World, request_101
     client = await as_user(world.a_resident1.user)
     response = await client.get(events_url(world, request_101.id), params={"cursor": "x"})
     assert response.status_code == 400, response.text
+
+
+async def test_a_council_only_member_sees_no_requests_moves(
+    as_user: Any, world: World, db: AsyncSession
+) -> None:
+    # Review round 2: a_council is also a resident. Council alone sees no request (P6-03a), so
+    # not even the moves of one it filed while a resident.
+    own = await make_maintenance_request(db, world.a_council.membership, None)
+    await db.execute(
+        delete(MembershipRole).where(
+            MembershipRole.membership_id == world.a_council.membership.id,
+            MembershipRole.role == Role.RESIDENT,
+        )
+    )
+    client = await as_user(world.a_council.user)
+
+    await assert_not_visible(
+        client, "GET", events_url(world, own.id), code="maintenance_request_not_found"
+    )

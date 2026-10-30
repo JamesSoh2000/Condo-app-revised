@@ -46,6 +46,13 @@ export function RequestDetailDialog({ requestId, time, onClose }: Props) {
   useEffect(() => {
     dialogRef.current?.focus();
   }, []);
+  // A read that fails or answers 404 replaces what was shown, and the entry or button that had focus with it; focus
+  // then falls to <body>, out of the dialog's Escape and Tab trap. After every render it is put back on the dialog
+  // (review round 2 F1). Any read's change re-renders this component: it observes all three.
+  useEffect(() => {
+    const active = document.activeElement;
+    if (active === null || active === document.body) dialogRef.current?.focus();
+  });
 
   const notFound = !valid || [query, events, comments].some((read) => isNotFound(read.error));
   // A failed request hides an answer cached from before, so an old status never reads as current (as packages).

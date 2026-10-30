@@ -6,7 +6,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { expectFocusKept, expectFocusOn } from '@/test/focus';
+import { activeElementLikeBrowser, expectFocusKept, expectFocusOn } from '@/test/focus';
 import { maintenanceBase, maintenanceRequest } from '@/test/maintenance';
 import { REQUEST, comment, memberWorld, statusEvent, viewState, type StatusEvent, type ViewState } from '@/test/maintenanceView';
 import { MAPLE, calls, json, problem, renderApp, stubApi } from '@/test/renderApp';
@@ -433,5 +433,99 @@ describe('review round 1 (Codex gpt-6.1-sol): the coverage it found missing', ()
     fireEvent.click(within(await dialog()).getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(location()).toBe('/maintenance'));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Maintenance requests' })));
+  });
+});
+
+describe('review round 2 (Codex gpt-6.1-sol): focus stays in the dialog when an error removes the focused entry', () => {
+  const inDialog = () => screen.getByRole('dialog').contains(activeElementLikeBrowser());
+  const refetch = (app: ReturnType<typeof renderApp>, last: string) =>
+    act(() => app.queryClient.refetchQueries({ queryKey: ['b'], predicate: (query) => query.queryKey.at(-1) === last }));
+  const notes = (count: number) => Array.from({ length: count }, (_, n) => comment('2026-10-21T12:00:00Z', { body: `Note ${n + 1}` }));
+  /** Comments in pages of 25 by an opaque cursor, failing with `failure()` once it returns a response. */
+  function pagedComments(comments: ReturnType<typeof notes>, failure: (request: Request) => Response | null) {
+    return {
+      [`GET ${ONE}/comments`]: (request: Request) => {
+        const failed = failure(request);
+        if (failed) return failed;
+        const next = new URL(request.url).searchParams.has('cursor');
+        return json({ items: next ? comments.slice(25) : comments.slice(0, 25), next_cursor: !next && comments.length > 25 ? 'page2' : null });
+      },
+    };
+  }
+
+  it('F1: a Load more answered 404 shows "Request not found" with focus on the dialog, and Escape closes it', async () => {
+    stubApi(memberWorld(viewState(), ['resident'], pagedComments(notes(26), (request) => (new URL(request.url).searchParams.has('cursor') ? problem(404, 'maintenance_request_not_found') : null))));
+    renderApp([`/maintenance/${REQUEST.id}`]);
+    await timeline();
+    const more = within(await dialog()).getByRole('button', { name: 'Load more' });
+    more.focus();
+
+    fireEvent.click(more);
+    const view = await dialog('Request not found');
+    await settle();
+    expect(document.activeElement).toBe(view);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await waitFor(() => expect(location()).toBe('/maintenance'));
+  });
+
+  it('F1: a refetch that fails after a Load more leaves focus on the dialog, not <body>', async () => {
+    let fail = false;
+    stubApi(memberWorld(viewState(), ['resident'], pagedComments(notes(26), () => (fail ? problem(500, 'internal_error') : null))));
+    const app = renderApp([`/maintenance/${REQUEST.id}`]);
+    await timeline();
+    const more = within(await dialog()).getByRole('button', { name: 'Load more' });
+    more.focus();
+    fireEvent.click(more);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText('Note 26').closest('li')));
+
+    fail = true;
+    await refetch(app, 'comments');
+    expect((await within(await dialog()).findByRole('alert')).textContent).toContain('Could not load the timeline.');
+    await settle();
+    expect(inDialog()).toBe(true);
+  });
+
+  it('F1 neighbour: a refetch that fails while Load more has focus leaves focus in the dialog', async () => {
+    let fail = false;
+    stubApi(memberWorld(viewState(), ['resident'], pagedComments(notes(26), () => (fail ? problem(500, 'internal_error') : null))));
+    const app = renderApp([`/maintenance/${REQUEST.id}`]);
+    await timeline();
+    within(await dialog()).getByRole('button', { name: 'Load more' }).focus();
+
+    fail = true;
+    await refetch(app, 'comments');
+    await within(await dialog()).findByRole('alert');
+    await settle();
+    expect(inDialog()).toBe(true);
+  });
+
+  it('F1 neighbour: the request answering 404 on a focus refetch, focus on an entry, leaves focus on the dialog', async () => {
+    let gone = false;
+    stubApi(memberWorld(viewState(), ['resident'], { [`GET ${ONE}`]: () => (gone ? problem(404, 'maintenance_request_not_found') : json(REQUEST)) }));
+    renderApp([`/maintenance/${REQUEST.id}`]);
+    const row = within(await timeline()).getAllByRole('listitem')[0];
+    row.focus();
+
+    gone = true;
+    setVisibility('hidden');
+    setVisibility('visible');
+    const view = await dialog('Request not found');
+    await settle();
+    expect(document.activeElement).toBe(view);
+  });
+
+  it('F1 neighbour: the request failing on a focus refetch, focus on an entry, leaves focus in the dialog', async () => {
+    let fail = false;
+    stubApi(memberWorld(viewState(), ['resident'], { [`GET ${ONE}`]: () => (fail ? problem(500, 'internal_error') : json(REQUEST)) }));
+    renderApp([`/maintenance/${REQUEST.id}`]);
+    const row = within(await timeline()).getAllByRole('listitem')[0];
+    row.focus();
+
+    fail = true;
+    setVisibility('hidden');
+    setVisibility('visible');
+    expect((await within(await dialog('Maintenance request')).findByRole('alert')).textContent).toContain('Could not load the request.');
+    await settle();
+    expect(inDialog()).toBe(true);
   });
 });
