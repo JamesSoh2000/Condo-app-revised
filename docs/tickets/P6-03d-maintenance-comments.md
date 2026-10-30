@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-03b, P3-03 |
 | Replaces old | M8-T01 (notes part), M8-T04 (note-added part) |
-| Status | in progress |
+| Status | done |
 
 Split from the P6-03 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); the schema is
 [P6-03a](./P6-03a-maintenance-schema-and-visibility.md), submit and read

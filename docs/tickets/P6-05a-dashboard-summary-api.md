@@ -125,6 +125,10 @@ Left open by the stub:
 - **Whether the existing nav badges move to this endpoint** (default: no; they keep their own summaries, and the
   landing page reads this one).
 
+Carried from P6-03d (PR #157):
+- Any count of maintenance **comments** goes through `app/maintenance/queries.py::visible_maintenance_comments`
+  (it hides internal comments from residents); never count `maintenance_comments` with a filter of its own.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
