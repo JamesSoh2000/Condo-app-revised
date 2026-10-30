@@ -11,6 +11,18 @@
 Split from [P6-04c](./P6-04c-maintenance-request-view.md) in its framing (the status-event read took its room).
 Adds the comment box to P6-04c's request view.
 
+## Follow-ups from P6-04c (fix first, test-first; PR #159 review round 3, Codex, confirmed and not fixed)
+
+1. **Medium: a background refetch drops focus from "Load more".** Focus "Load more", then a comments refetch (focus,
+   or after a send) disables it; that change re-renders only `Timeline`, so `RequestDetailDialog`'s "focus on `<body>`
+   back to the dialog" effect doesn't run and focus stays on `<body>` (Chromium: Escape no longer closes the dialog).
+   A send's refetch here makes it likely. Fix at the dialog level (any change inside it), not per control.
+2. **Medium: a new request's success steals focus from an open request view.** File a request, open another from its
+   Details link while the create is out; the create's success focuses the page's outcome message
+   (`MyMaintenancePage`) behind the modal. Don't move focus behind an open dialog.
+3. **Low: an uppercase UUID splits the cache.** The dialog keys by the URL's id, `Timeline` by the API's lowercase
+   id, so a later timeline 404 shows "Could not load more…" instead of "Request not found". Lowercase the id once.
+
 ## Goal
 
 Anyone who can see a request comments on it from the view; staff get an "Internal note (staff only)" toggle that is

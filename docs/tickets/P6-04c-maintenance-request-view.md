@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-04a, P6-04b, P6-03c, P6-03d, P6-03e |
 | Replaces old | M8-T02 (detail part), M8-T03 (comments part) |
-| Status | in progress |
+| Status | done |
 
 Split from the P6-04 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-04a](./P6-04a-resident-maintenance-list.md) and [P6-04b](./P6-04b-maintenance-submit-and-cancel.md), whose
@@ -175,3 +175,10 @@ Left open by the stub:
 - Found while framing (follow-up, P6-04d): every maintenance notification links `/maintenance/<id>`
   (`app/maintenance/service.py`), a resident-only page, so a manager's notification lands on a page they can't open
   until P6-04d routes it.
+
+## Follow-ups (from PR #159)
+
+- Review round 3's three confirmed findings (Medium, Medium, Low) were not fixed (the last round): P6-04g fixes them
+  first (its "Follow-ups from P6-04c").
+- Managers' maintenance notifications link the resident-only `/maintenance/<id>`: P6-04d.
+- The header's account button overflows with a long unbroken name: inbox, 2026-10-30.
