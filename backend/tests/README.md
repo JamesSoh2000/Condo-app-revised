@@ -141,8 +141,8 @@ statement (CLAUDE.md "Lessons learned"). `tests/helpers/lock_wait.py::act_blocke
 
 ```python
 outcome = await act_blocked_on_lock(
-    sessions,                      # an async_sessionmaker on a scratch database (real connections)
-    hold=lock_the_row,             # takes the lock in the holder's session
+    sessions,  # an async_sessionmaker on a scratch database (real connections)
+    hold=lock_the_row,  # takes the lock in the holder's session
     act=lambda db: run_the_write(db),  # the write under test, in the session it is given
     change=let_the_deadline_pass,  # in the holder's transaction while the write waits
 )
