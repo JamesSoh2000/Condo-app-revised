@@ -697,6 +697,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/buildings/{building_id}/maintenance-requests/{request_id}/status-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Status Events
+         * @description The status changes of a request you may see, oldest first: every start, hold, resume,
+         *     resolve and reopen. Submit and cancel are the request's `submitted_at` and `cancelled_at`.
+         */
+        get: operations["maintenance_list_status_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/buildings/{building_id}/members": {
         parameters: {
             query?: never;
@@ -1713,6 +1734,30 @@ export interface components {
          * @enum {string}
          */
         MaintenanceStatus: "submitted" | "in_progress" | "on_hold" | "resolved" | "cancelled";
+        /**
+         * MaintenanceStatusEventOut
+         * @description One manager move (P6-03c), for the request's timeline (P6-04c). `from_status` tells a first
+         *     start, a resume and a reopen apart. Who moved it stays out: no caller is shown it.
+         */
+        MaintenanceStatusEventOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            from_status: components["schemas"]["MaintenanceStatus"];
+            status: components["schemas"]["MaintenanceStatus"];
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
         /** MeBuildingOut */
         MeBuildingOut: {
             /**
@@ -2213,6 +2258,13 @@ export interface components {
         Page_MaintenanceRequestOut_: {
             /** Items */
             items: components["schemas"]["MaintenanceRequestOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[MaintenanceStatusEventOut] */
+        Page_MaintenanceStatusEventOut_: {
+            /** Items */
+            items: components["schemas"]["MaintenanceStatusEventOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -4353,6 +4405,77 @@ export interface operations {
                 };
             };
             /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    maintenance_list_status_events: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                request_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_MaintenanceStatusEventOut_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;

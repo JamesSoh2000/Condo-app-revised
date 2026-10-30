@@ -52,6 +52,7 @@ from app.maintenance.schemas import (
     MaintenanceRequestColumns,
     MaintenanceRequestCreate,
     MaintenanceRequestOut,
+    MaintenanceStatusEventOut,
 )
 from app.maintenance.state import (
     MOVES,
@@ -772,6 +773,26 @@ async def list_comments(
     )
     return Page[MaintenanceCommentOut](
         items=await _comment_outs(db, ctx, page.items), next_cursor=page.next_cursor
+    )
+
+
+async def list_status_events(
+    db: AsyncSession, ctx: TenantContext, request_id: UUID, params: CursorParams
+) -> Page[MaintenanceStatusEventOut]:
+    """A request's manager moves, oldest first (P6-04c); 404 for a request the caller can't see.
+    Whoever sees the request sees every move: no move is private."""
+    await _visible(db, ctx, request_id)
+    stmt = select(MaintenanceStatusEvent).where(
+        MaintenanceStatusEvent.building_id == ctx.building_id,
+        MaintenanceStatusEvent.request_id == request_id,
+    )
+    return await paginate(
+        db,
+        stmt,
+        MaintenanceStatusEvent.id,
+        params,
+        MaintenanceStatusEventOut.model_validate,
+        descending=False,
     )
 
 

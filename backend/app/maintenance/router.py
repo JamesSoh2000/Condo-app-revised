@@ -13,6 +13,7 @@ from app.maintenance.schemas import (
     MaintenanceCommentOut,
     MaintenanceRequestCreate,
     MaintenanceRequestOut,
+    MaintenanceStatusEventOut,
 )
 from app.memberships.enums import Role
 from app.tenancy.deps import Ctx, DbSession, require_feature, require_roles
@@ -175,3 +176,16 @@ async def list_comments(
 ) -> Page[MaintenanceCommentOut]:
     """The comments you may see on a request, oldest first: residents get the public ones."""
     return await service.list_comments(db, ctx, request_id, params)
+
+
+@router.get(
+    "/maintenance-requests/{request_id}/status-events",
+    dependencies=[_FEATURE],
+    responses=problem_responses(400, 401, 403, 404),
+)
+async def list_status_events(
+    request_id: UUID, ctx: Ctx, db: DbSession, params: Annotated[CursorParams, Depends()]
+) -> Page[MaintenanceStatusEventOut]:
+    """The status changes of a request you may see, oldest first: every start, hold, resume,
+    resolve and reopen. Submit and cancel are the request's `submitted_at` and `cancelled_at`."""
+    return await service.list_status_events(db, ctx, request_id, params)

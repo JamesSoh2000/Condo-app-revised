@@ -6,12 +6,14 @@
 | Risk tier | 2 |
 | Depends on | P6-04a, P6-04b, P6-03c, P6-03d, P6-03e |
 | Replaces old | M8-T02 (detail part), M8-T03 (comments part) |
-| Status | todo |
+| Status | done |
 
 Split from the P6-04 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); after
 [P6-04a](./P6-04a-resident-maintenance-list.md) and [P6-04b](./P6-04b-maintenance-submit-and-cancel.md), whose
 `EmergencyNotice` it reuses (both also edit `api.ts` and `MyMaintenancePage.tsx`, so they don't run at once). [P6-04d](./P6-04d-manager-maintenance-list-and-actions.md) opens
-the same view from the manager's list.
+the same view from the manager's list. **Split in framing:** the comment box, the internal toggle and sending
+(criteria 3 and 4, and the box's part of 8) moved to [P6-04g](./P6-04g-maintenance-comment-box.md); this ticket
+adds the status-event read the timeline needs (Frame notes).
 
 ## Goal
 
@@ -36,9 +38,12 @@ the toggle hard to misuse. Every P6-03c/d notification links here.
   - **timeline**: the status changes (from the row's `*_at` columns, or a status-event read, as P6-03a's framing
     settled) merged with the comments in time order, each with its time in the building's timezone and its author
     as P6-03d returns them
+  - **(added in framing) the status-event read** (backend): `GET …/maintenance-requests/{id}/status-events`
+    (`maintenance_list_status_events`), cursor pages oldest first like `maintenance_list_comments`, 404 exactly as
+    `maintenance_get`; each item `id`, `from_status`, `status`, `at` (no `by`: who moved it is not shown)
   - comment hooks over `maintenance_list_comments` (cursor pages, oldest first; "Show earlier" or "Load more" as
     the API's order needs) and `maintenance_comment`
-  - **comment box**: body with P6-03d's `max_length`; for a caller with a staff role P6-03d lets write internal,
+  - **comment box** (moved to P6-04g): body with P6-03d's `max_length`; for a caller with a staff role P6-03d lets write internal,
     an "Internal note (staff only)" checkbox, off by default and reset to off after each send; an internal comment
     in the thread shows an "Internal" label as text; one request per send; errors as messages, the text kept
   - not-found state: a hidden, other-building, random or non-UUID id shows "Request not found" (the same screen
@@ -64,14 +69,8 @@ and reopen while a manager acts).
    internal one labelled "Internal"; the resident sees only the public one (the server's answer, rendered as
    given); and nothing of a staff thread cached in the tab shows to a resident: switching to a building where the
    caller is a resident, or a new user signing in on the tab (the session epoch), shows only that caller's answer.
-3. **The toggle.** A resident has no internal toggle and never sends `internal: true`; a staff caller's toggle is
-   off by default, its state is part of the button's accessible name or an adjacent text ("Send internal note"),
-   and it is off again after a send; a multi-role member gets it only in a building where they hold the staff role
-   (`multi_in_a` does not in A).
-4. **Sending.** One `maintenance_comment` per send (a double press sends one); the new comment shows in the
-   timeline afterwards (from the refetch, not an optimistic insert that could mislabel it); focus stays on the
-   comment box, which stays mounted; a 404 (the request no longer visible) shows the not-found state; 422 and 429
-   show messages and keep the text; a closed request refuses as P6-03d decides, with that message.
+3. **The toggle.** Moved to [P6-04g](./P6-04g-maintenance-comment-box.md) criterion 1, unchanged.
+4. **Sending.** Moved to [P6-04g](./P6-04g-maintenance-comment-box.md) criterion 2, unchanged.
 5. **Not found.** A request of another resident, of building B (under A's path), a random UUID and a non-UUID id
    each show "Request not found", with no second request for the comments of a request that wasn't found.
 6. **Refresh.** After a status change by another session, reopening the view or refocusing the tab shows the new
@@ -79,12 +78,42 @@ and reopen while a manager acts).
 7. **Back/Forward.** Opening a request, then Back, shows the list where it was; Forward reopens the request; the
    page stays mounted (P6-04a's single route).
 8. **375 px in Chromium** with the longest description, the longest comment without spaces and the longest author
-   name, the view and the comment box stay inside the viewport.
+   name, the view stays inside the viewport (the comment box's part: P6-04g).
+
+### Added or sharpened in framing
+
+1a. **The timeline's entries and order.** "Submitted" at `submitted_at`; one entry per status event, named by its
+   move: `submitted → in_progress` "Work started", `on_hold → in_progress` "Work resumed", `resolved → in_progress`
+   "Reopened", `→ on_hold` "Put on hold", `→ resolved` "Resolved"; "Cancelled" at `cancelled_at`; each comment with
+   its body as text (line breaks kept) and its author: `author_name`, else "Building management" when
+   `author_is_staff`, else "Resident". Ascending time; at the same instant a status change comes before a comment,
+   then by id. Each time is shown in the building's timezone.
+1b. **Paging.** Both reads are oldest first (by id). The timeline merges them in time order, keeping each read in
+   its own order, and stops where a read with a next page runs out; one "Load more" asks the next page of each read
+   that has one. So every "Load more" only adds entries at the end, and an entry shown never moves. (Changed in review
+   round 1 F2 from a time horizon: a comment's `created_at` is its transaction's start, so a later page can hold an
+   older one. Times compare to the microsecond, F3.)
+1c. **Text only.** A description or comment holding HTML or Markdown shows as literal text.
+2a. **A role change while the view is open** (`/me` says the caller lost the staff role in the building): the
+   request's keys (the request, its events and its comments) hold whether the caller reads as staff, so no staff
+   answer (another resident's request, the requester's name, an internal comment) is shown under the resident's
+   (the request's key added in review round 1 F1); and the view's queries drop their cache when it closes
+   (`gcTime: 0`).
+5a. **A failed read** (500) of the comments or status events shows "Could not load the timeline." with Try again,
+   and the details still show; a 404 from either (the request left while open) shows "Request not found".
+5b. **The status-event read** (backend), the 10-case table rows that apply: the requester, a co-occupant and staff
+   get the events; another resident's request, building B's under A's path and a random id are the same 404;
+   signed out 401; an outsider `building_not_found`; the feature off 403; the council-only member sees only their
+   own request's; pages are oldest first with no gap.
+7a. **The card's link.** Each card has a "Details" link (accessible name with the category and submit time) to
+   `<path>/<id>` with `fromList`; Close goes back (Back) to the list, a link from elsewhere closes to the list in its
+   place, and focus returns to the link, or the heading if it is gone.
 
 ## Test plan
 
 - `frontend/src/features/maintenance/request.test.tsx`: criteria 1, 5–7
-- `frontend/src/features/maintenance/comments.test.tsx`: criteria 2–4
+- `frontend/src/features/maintenance/comments.test.tsx`: criteria 2, 2a (3–4 moved to P6-04g)
+- `backend/tests/maintenance/test_status_events_api.py`: criterion 5b
 - Chromium check at 375 px and focus after a send (criteria 4, 8), output in the PR
 - `make check DB_PORT=55432`; on `make up`, a public and an internal comment checked as the resident and the
   manager, transcript in the PR
@@ -118,8 +147,38 @@ Left open by the stub:
 
 ## Frame notes (filled by the agent in step 1)
 
-- Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
-- Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
-  also the alternatives considered and why they lost):
-- Split:
+- Criteria added or sharpened: 1a (entries, names, tie order), 1b (paging horizon), 1c (text only), 2a (a role
+  change while open; `gcTime: 0`), 5a (a failed or 404 timeline read), 5b (the status-event read's tenant table),
+  7a (the card's Details link and focus on close). "No second request" in criterion 5 now covers both timeline
+  reads: they start only after `maintenance_get` answered.
+- Criteria loosened (with reason; also listed in the inbox): none. Criteria 3 and 4 moved unchanged to P6-04g, and
+  the comment box's part of criterion 8 with them (a split, not a loosening).
+- Decisions taken:
+  - **D1 The status-event read is built here (backend).** Problem: the timeline needs the moves, the row keeps only
+    the current state, and no read of `maintenance_status_events` exists (P6-03c's follow-up assigns it to this
+    ticket). Chosen: a cursor-paged `GET …/status-events`, visibility exactly as `maintenance_get` (`_visible`).
+    Alternatives: the row's `*_at` columns (lose every resume, reopen and repeat; P6-03a ruled it out); the events
+    inside `maintenance_get` (an unbounded list in a response the list also shares). Basis: P6-03a/P6-03c records,
+    simplest pattern (copies `list_comments`). Fields without `by_membership_id`: a resident is never told which
+    manager acted (as `author_name`'s rule), and nothing here needs it; adding it later is additive.
+  - **D2 Dialog over the list**, as `PackageDetailDialog`/`NoticeDetailDialog`. Basis: convention (ticket's
+    "as … are").
+  - **D3 Timeline paging by a horizon** (1b) rather than loading every page on open. Alternatives: fetch all pages
+    automatically (unbounded requests on open); comments only paged and events all loaded (events are unbounded
+    too). Basis: autonomous, simplest that never misorders.
+  - **D4 Toggle shape**: left to P6-04g with the box.
+  - **D5 Author fallback "Resident"** for a non-staff comment without a name (a co-occupant's, seen by another
+    resident, P6-03d D7). Basis: autonomous; the API gives no name by design.
+- Split: over ~400 non-test lines once the status-event read is added (backend ~45, hooks ~70, view ~130, timeline
+  ~110, page and card link ~35, comment box and send ~120: ~510). The comment box, toggle and sending go to
+  **P6-04g** (criteria 3, 4, the box's part of 8); this ticket keeps ~390.
+- Found while framing (follow-up, P6-04d): every maintenance notification links `/maintenance/<id>`
+  (`app/maintenance/service.py`), a resident-only page, so a manager's notification lands on a page they can't open
+  until P6-04d routes it.
+
+## Follow-ups (from PR #159)
+
+- Review round 3's three confirmed findings (Medium, Medium, Low) were not fixed (the last round): P6-04g fixes them
+  first (its "Follow-ups from P6-04c").
+- Managers' maintenance notifications link the resident-only `/maintenance/<id>`: P6-04d.
+- The header's account button overflows with a long unbroken name: inbox, 2026-10-30.

@@ -123,6 +123,14 @@ Left open by the stub:
 - which filters beyond status, and whether `maintenance_list` gains them here
 - whether council opens the page (follows P6-03a's council decision; if council alone sees no rows, no)
 
+## Follow-ups from P6-04c (PR #159)
+
+- Every maintenance notification links `/maintenance/<id>` (`backend/app/maintenance/service.py`), a resident-only
+  page, so a manager's notification (a new request, a resident's comment) opens a page they can't use. This ticket's
+  route must take those links (a redirect from `/maintenance/<id>` for staff, or a role-aware link).
+- The request view (`RequestDetailDialog`) is reached by a pure manager only through this ticket's route: run P6-04c's
+  internal-label tests (`comments.test.tsx`) for a manager-only member there.
+
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
