@@ -211,6 +211,15 @@ Left open by the stub:
   - Added: a manager who is also the requester (multi-role) acting on their own request is not notified; a
     requester whose membership was suspended is not notified (criterion 6's "can no longer see").
 - Criteria loosened (with reason; also listed in the inbox):
+  - **Criterion 3, restated while building** (found writing its tests, after the frame commit): "exactly one wins"
+    holds for cancel vs start, but not for hold vs resolve or resolve vs reopen, because `ALLOWED` lets the second
+    move follow the first (`on_hold → resolved`, `resolved → in_progress`). Restated: of two concurrent moves on
+    one request, the second (blocked on the first's row lock) runs on the state the first committed: it is 409
+    `invalid_transition` and writes nothing if no move is allowed from there (start vs cancel either way; hold
+    after a resolve), and otherwise succeeds from that state, its event's `from_status` and audit naming the
+    state it actually left (resolve after a hold: from `on_hold`; reopen after a resolve, inside the window).
+    Making the second fail instead would need the client to send the status it saw (an `If-Match`-like
+    precondition), which no action endpoint has (CLAUDE.md rule 7's shape). Will be added to the inbox in step 6.
   - **The row-lock helper is `act_blocked_on_lock`, not a new `tests/helpers/locks.py::hold_row_lock`.** This
     ticket was drafted before WF-02b built `tests/helpers/lock_wait.py::act_blocked_on_lock`, which is the helper
     this criterion describes and more: it holds a lock in its own session, proves the action's own backend is
