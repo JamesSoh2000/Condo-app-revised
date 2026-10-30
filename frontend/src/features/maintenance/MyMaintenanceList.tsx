@@ -1,3 +1,6 @@
+import { Link } from 'react-router-dom';
+
+import { pagePath } from '@/app/pages';
 import { rateLimitMessage } from '@/features/auth/formErrors';
 import { useFocusedRetry } from '@/features/lists/useFocusedRetry';
 import { useLoadMore } from '@/features/lists/useLoadMore';
@@ -9,13 +12,15 @@ interface Props {
   time: Intl.DateTimeFormat | undefined;
   /** Where focus goes when "Load more" added no card (`useLoadMore`). */
   focusHeading: () => void;
+  /** A Details link was followed: the page returns focus to it when the view closes (P6-04c criterion 7a). */
+  onOpen: (link: HTMLAnchorElement) => void;
 }
 
 /**
  * The resident's requests (P6-04a): one card each, in the API's order, paged with "Load more". Every item the API
  * returns is shown: `visible_maintenance` already decided which are the caller's, a co-occupant's included.
  */
-export function MyMaintenanceList({ buildingId, time, focusHeading }: Props) {
+export function MyMaintenanceList({ buildingId, time, focusHeading, onOpen }: Props) {
   const query = useMaintenanceRequests(buildingId);
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   const more = useLoadMore(query, focusHeading);
@@ -40,7 +45,7 @@ export function MyMaintenanceList({ buildingId, time, focusHeading }: Props) {
     ) : (
       <ul ref={more.listRef} aria-label="Your maintenance requests" className="flex flex-col gap-3">
         {items.map((item) => (
-          <Card key={item.id} item={item} time={time} />
+          <Card key={item.id} item={item} time={time} onOpen={onOpen} />
         ))}
       </ul>
     ));
@@ -70,8 +75,15 @@ export function MyMaintenanceList({ buildingId, time, focusHeading }: Props) {
   );
 }
 
-function Card({ item, time }: { item: MaintenanceRequest; time: Intl.DateTimeFormat | undefined }) {
+interface CardProps {
+  item: MaintenanceRequest;
+  time: Intl.DateTimeFormat | undefined;
+  onOpen: (link: HTMLAnchorElement) => void;
+}
+
+function Card({ item, time, onOpen }: CardProps) {
   const photos = item.photo_file_ids.length;
+  const submitted = time?.format(new Date(item.submitted_at));
   return (
     <li tabIndex={-1} className="flex flex-col gap-1 rounded border bg-white p-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -81,9 +93,18 @@ function Card({ item, time }: { item: MaintenanceRequest; time: Intl.DateTimeFor
       <p className="text-sm text-slate-700">{requestLocation(item)}</p>
       <p className="text-sm">{firstLine(item.description)}</p>
       <p className="text-sm text-slate-700">
-        Submitted <time dateTime={item.submitted_at}>{time?.format(new Date(item.submitted_at))}</time>
+        Submitted <time dateTime={item.submitted_at}>{submitted}</time>
         {photos > 0 && ` · ${photos} ${photos === 1 ? 'photo' : 'photos'}`}
       </p>
+      <Link
+        to={`${pagePath('Maintenance')}/${item.id}`}
+        state={{ fromList: true }}
+        aria-label={`Details: ${CATEGORY_LABEL[item.category]}, submitted ${submitted ?? ''}`.trim()}
+        onClick={(event) => onOpen(event.currentTarget)}
+        className="inline-flex min-h-11 items-center self-start text-sm underline"
+      >
+        Details
+      </Link>
     </li>
   );
 }

@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { useBuilding, useBuildingContext, useBuildingDenied, useBuildingId } from '@/app/BuildingProvider';
+import { pagePath } from '@/app/pages';
 import { EmergencyNotice } from '@/features/maintenance/EmergencyNotice';
 import { MyMaintenanceList } from '@/features/maintenance/MyMaintenanceList';
+import { RequestDetailDialog } from '@/features/maintenance/RequestDetailDialog';
 import { SubmitRequestForm } from '@/features/maintenance/SubmitRequestForm';
 import type { MaintenanceRequest } from '@/features/maintenance/api';
 import { buildingTime } from '@/features/packages/time';
 
 /**
- * `/maintenance` (P6-04a), for residents: their maintenance requests and the "New request" panel (P6-04b). The route
- * also takes `/maintenance/<id>`, the notifications' link, so P6-04c's view of one request mounts on this page; until
- * then it shows the list. Keyed by building, so nothing of one building's list or form shows in another, and nothing
+ * `/maintenance` (P6-04a), for residents: their maintenance requests and the "New request" panel (P6-04b). At
+ * `/maintenance/<id>` (a card's Details link, the notifications' link) one request shows in a dialog over them (P6-04c),
+ * the page staying mounted between them. Keyed by building, so nothing of one building's list or form shows in another, and nothing
  * typed in one is sent to the other (P6-04b criterion 8).
  */
 export function MyMaintenancePage() {
@@ -19,6 +22,9 @@ export function MyMaintenancePage() {
 }
 
 function Maintenance({ buildingId }: { buildingId: string }) {
+  const { requestId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const newRef = useRef<HTMLButtonElement>(null);
   const outcomeRef = useRef<HTMLDivElement>(null);
@@ -48,6 +54,20 @@ function Maintenance({ buildingId }: { buildingId: string }) {
     focusNew.current = false;
     newRef.current?.focus();
   }, [formOpen]);
+
+  // As `MyPackagesPage`: focus goes back to the Details link that opened the view, or to the heading (a link from
+  // elsewhere, or a list that refreshed the link away); Close goes back to the list it came from, or, for a link from
+  // elsewhere, to the list in its place.
+  const opener = useRef<HTMLAnchorElement | null>(null);
+  const wasOpen = useRef(requestId !== undefined);
+  useEffect(() => {
+    if (wasOpen.current && requestId === undefined) (opener.current?.isConnected ? opener.current : headingRef.current)?.focus();
+    wasOpen.current = requestId !== undefined;
+  }, [requestId]);
+  const close = () => {
+    if ((location.state as { fromList?: boolean } | null)?.fromList) navigate(-1);
+    else navigate(pagePath('Maintenance'), { replace: true });
+  };
 
   function openForm() {
     setSubmitted(null);
@@ -114,7 +134,15 @@ function Maintenance({ buildingId }: { buildingId: string }) {
           </button>
         </div>
       )}
-      <MyMaintenanceList buildingId={buildingId} time={time} focusHeading={() => headingRef.current?.focus()} />
+      <MyMaintenanceList
+        buildingId={buildingId}
+        time={time}
+        focusHeading={() => headingRef.current?.focus()}
+        onOpen={(link) => {
+          opener.current = link;
+        }}
+      />
+      {requestId !== undefined && <RequestDetailDialog key={requestId} requestId={requestId} time={time} onClose={close} />}
     </section>
   );
 }
