@@ -7,7 +7,7 @@ it in a subquery, test `.exists()`), never on their own filter.
 
 from sqlalchemy import ColumnElement, Select, false, or_, select, true
 
-from app.maintenance.models import MaintenanceRequest
+from app.maintenance.models import MaintenanceComment, MaintenanceRequest
 from app.memberships.enums import Role
 from app.memberships.occupancy import occupancy_window_clause
 from app.tenancy.context import TenantContext
@@ -47,4 +47,28 @@ def _grant(ctx: TenantContext) -> ColumnElement[bool]:
 def sees_requester_names(ctx: TenantContext) -> bool:
     """True if the caller is shown who filed each request: staff only, as packages' recipients
     (P6-03b D8). A resident sees a co-occupant's request but not who filed it."""
+    return ctx.has_any(*_SEE_ALL)
+
+
+def visible_maintenance_comments(ctx: TenantContext) -> Select[MaintenanceComment]:
+    """The comments of `ctx.building_id` the caller may see (P6-03d): those of the requests
+    `visible_maintenance(ctx)` shows, all of them for security and property management, the public
+    ones for everyone else. Never a grant of its own: the internal filter only narrows.
+
+    Comments follow their request (D4): whoever sees the request sees its public comments, those
+    written after they moved out too.
+    """
+    requests = visible_maintenance(ctx).with_only_columns(MaintenanceRequest.id)
+    stmt = select(MaintenanceComment).where(
+        MaintenanceComment.building_id == ctx.building_id,
+        MaintenanceComment.request_id.in_(requests),
+    )
+    if not sees_internal_comments(ctx):
+        stmt = stmt.where(MaintenanceComment.is_internal.is_(False))
+    return stmt
+
+
+def sees_internal_comments(ctx: TenantContext) -> bool:
+    """True if the caller reads and writes internal comments: staff who see every request (D1).
+    Council alone sees no request, so no comment either."""
     return ctx.has_any(*_SEE_ALL)

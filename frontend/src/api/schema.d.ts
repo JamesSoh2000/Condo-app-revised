@@ -579,6 +579,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/buildings/{building_id}/maintenance-requests/{request_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Comments
+         * @description The comments you may see on a request, oldest first: residents get the public ones.
+         */
+        get: operations["maintenance_list_comments"];
+        put?: never;
+        /**
+         * Comment
+         * @description Comment on a request you may see, at any status.
+         *
+         *     A public comment by security or property management tells the requester (and emails them); a
+         *     resident's tells the managers. `internal: true` is for security and property management only
+         *     (403 `internal_comment_forbidden` for anyone else): no resident ever sees it, and it tells no
+         *     one.
+         */
+        post: operations["maintenance_comment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/buildings/{building_id}/members": {
         parameters: {
             query?: never;
@@ -1477,6 +1506,48 @@ export interface components {
          * @enum {string}
          */
         MaintenanceCategory: "plumbing" | "electrical" | "heating_cooling" | "appliance" | "doors_windows" | "pest_control" | "other" | "emergency";
+        /** MaintenanceCommentCreate */
+        MaintenanceCommentCreate: {
+            /** Body */
+            body: string;
+            /**
+             * Internal
+             * @default false
+             */
+            internal: boolean;
+        };
+        /** MaintenanceCommentOut */
+        MaintenanceCommentOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Body */
+            body: string;
+            /** Is Internal */
+            is_internal: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Author Name
+             * @description The author's current full name, for security, property management and the author only; null for every other caller.
+             */
+            author_name: string | null;
+            /**
+             * Author Is Staff
+             * @description Whether the author wrote as security or property management (show "Building management" when `author_name` is null).
+             */
+            author_is_staff: boolean;
+        };
         /**
          * MaintenanceLocation
          * @enum {string}
@@ -2039,6 +2110,13 @@ export interface components {
         Page_InvitationOut_: {
             /** Items */
             items: components["schemas"]["InvitationOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[MaintenanceCommentOut] */
+        Page_MaintenanceCommentOut_: {
+            /** Items */
+            items: components["schemas"]["MaintenanceCommentOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -3780,6 +3858,140 @@ export interface operations {
                 };
             };
             /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    maintenance_list_comments: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                request_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_MaintenanceCommentOut_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    maintenance_comment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+                building_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceCommentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenanceCommentOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -16,8 +16,8 @@ from tests.world import World
 pytestmark = pytest.mark.anyio
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-P6_03D_REVISION = "REVISION"
-P6_03D_DOWN_REVISION = "DOWN_REVISION"
+P6_03D_REVISION = "27ffbfae7d14"
+P6_03D_DOWN_REVISION = "2cb174aca098"
 
 
 def test_migration_downgrades_and_upgrades(scratch_database_url: str):
@@ -44,9 +44,7 @@ async def test_a_comment_on_another_buildings_request_is_refused(db: AsyncSessio
 
     await assert_integrity_error(
         db,
-        make_maintenance_comment(
-            db, b_request, world.a_manager.membership, building_id=world.a.id
-        ),
+        make_maintenance_comment(db, b_request, world.a_manager.membership, building_id=world.a.id),
         constraint="fk_maintenance_comments_building_id_request_id",
     )
 
@@ -72,9 +70,7 @@ async def test_a_blank_body_is_refused(db: AsyncSession, world: World, body: str
     )
 
 
-async def test_an_internal_comment_by_a_non_staff_author_is_refused(
-    db: AsyncSession, world: World
-):
+async def test_an_internal_comment_by_a_non_staff_author_is_refused(db: AsyncSession, world: World):
     request = await make_maintenance_request(db, world.a_resident1.membership, world.a_101)
 
     await assert_integrity_error(
@@ -91,8 +87,6 @@ async def test_a_comment_in_its_requests_building_by_staff_is_accepted(
 ):
     request = await make_maintenance_request(db, world.a_resident1.membership, world.a_101)
 
-    comment = await make_maintenance_comment(
-        db, request, world.a_manager.membership, internal=True
-    )
+    comment = await make_maintenance_comment(db, request, world.a_manager.membership, internal=True)
 
     assert (comment.is_internal, comment.author_is_staff) == (True, True)

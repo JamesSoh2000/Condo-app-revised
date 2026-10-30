@@ -8,7 +8,12 @@ from app.core.errors import problem_responses
 from app.core.pagination import CursorParams, Page
 from app.maintenance import service
 from app.maintenance.enums import MaintenanceStatus
-from app.maintenance.schemas import MaintenanceRequestCreate, MaintenanceRequestOut
+from app.maintenance.schemas import (
+    MaintenanceCommentCreate,
+    MaintenanceCommentOut,
+    MaintenanceRequestCreate,
+    MaintenanceRequestOut,
+)
 from app.memberships.enums import Role
 from app.tenancy.deps import Ctx, DbSession, require_feature, require_roles
 from app.tenancy.router import building_router
@@ -86,3 +91,34 @@ async def cancel(request_id: UUID, ctx: Ctx, db: DbSession) -> MaintenanceReques
     is `submitted`; of two at once, one wins.
     """
     return await service.cancel_request(db, ctx, request_id)
+
+
+@router.post(
+    "/maintenance-requests/{request_id}/comments",
+    status_code=201,
+    dependencies=[_FEATURE],
+    responses=problem_responses(401, 403, 404, 422),
+)
+async def comment(
+    request_id: UUID, ctx: Ctx, db: DbSession, body: MaintenanceCommentCreate
+) -> MaintenanceCommentOut:
+    """Comment on a request you may see, at any status.
+
+    A public comment by security or property management tells the requester (and emails them); a
+    resident's tells the managers. `internal: true` is for security and property management only
+    (403 `internal_comment_forbidden` for anyone else): no resident ever sees it, and it tells no
+    one.
+    """
+    return await service.add_comment(db, ctx, request_id, body)
+
+
+@router.get(
+    "/maintenance-requests/{request_id}/comments",
+    dependencies=[_FEATURE],
+    responses=problem_responses(400, 401, 403, 404),
+)
+async def list_comments(
+    request_id: UUID, ctx: Ctx, db: DbSession, params: Annotated[CursorParams, Depends()]
+) -> Page[MaintenanceCommentOut]:
+    """The comments you may see on a request, oldest first: residents get the public ones."""
+    return await service.list_comments(db, ctx, request_id, params)

@@ -50,9 +50,7 @@ async def _comment(
     as_user: Any, world: World, user: Any, request: MaintenanceRequest, **body: Any
 ) -> dict[str, Any]:
     client = await as_user(user)
-    response = await client.post(
-        comments_url(world, request.id), json={"body": LOCKBOX} | body
-    )
+    response = await client.post(comments_url(world, request.id), json={"body": LOCKBOX} | body)
     assert response.status_code == 201, response.text
     result: dict[str, Any] = response.json()
     return result

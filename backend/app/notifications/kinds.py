@@ -43,5 +43,17 @@ KINDS: dict[str, NotificationKind] = {
             "A resident filed an emergency maintenance request",
             "notification",
         ),
+        # A public comment (P6-03d D2): staff's tells the requester and emails, a resident's tells
+        # the managers in-app. An internal comment tells no one.
+        NotificationKind(
+            "maintenance.staff_commented",
+            "Staff replied on the user's maintenance request",
+            "notification",
+        ),
+        NotificationKind(
+            "maintenance.resident_commented",
+            "A resident commented on a maintenance request (managers)",
+            None,
+        ),
     )
 }

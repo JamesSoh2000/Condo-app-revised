@@ -2,6 +2,7 @@
 
 Lists are ordered `id DESC`; ids are uuid7, so that is newest first. The cursor is the last listed
 id, and the next page is `WHERE id < cursor`, so rows inserted between requests can't shift a page.
+A thread read oldest first (`descending=False`) pages `WHERE id > cursor` the same way.
 """
 
 import base64
@@ -65,15 +66,19 @@ async def paginate[M, T](
     id_col: InstrumentedAttribute[UUID],
     params: CursorParams,
     mapper: Callable[[M], T],
+    *,
+    descending: bool = True,
 ) -> Page[T]:
     """One page of `stmt`'s rows. Its filters are kept; its ORDER BY, OFFSET and LIMIT are replaced.
+    `descending=False` pages oldest first, the cursor then meaning "after this id" in that order.
 
     `stmt` selects one entity (`select(Package).where(...)`): rows are read with `db.scalars`, so
     only the first column of a multi-column select would reach `mapper`.
     """
-    stmt = stmt.order_by(None).order_by(id_col.desc()).offset(None).limit(params.limit + 1)
+    order = id_col.desc() if descending else id_col.asc()
+    stmt = stmt.order_by(None).order_by(order).offset(None).limit(params.limit + 1)
     if params.after_id is not None:
-        stmt = stmt.where(id_col < params.after_id)
+        stmt = stmt.where(id_col < params.after_id if descending else id_col > params.after_id)
     rows = list((await db.scalars(stmt)).all())
     # The extra row only says whether another page exists.
     has_more = len(rows) > params.limit

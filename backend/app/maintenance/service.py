@@ -1,5 +1,6 @@
 """Maintenance requests (P6-03b, P6-03e): a resident files one and may cancel it while it is
-`submitted`; every member reads what `visible_maintenance` lets them (CLAUDE.md rule 3).
+`submitted`; every member reads what `visible_maintenance` lets them (CLAUDE.md rule 3). Members who
+see a request comment on it (P6-03d); `visible_maintenance_comments` keeps internal ones to staff.
 
 `create_request` follows `app.packages.service.create_package`: the request, its photo claims and
 rows, the managers' notifications and the audit row commit together, once (CLAUDE.md rule 5).
@@ -10,6 +11,7 @@ concurrent writes one wins and nobody else's request is cancelled (CLAUDE.md rul
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -22,23 +24,33 @@ from app.buildings.enums import Feature
 from app.buildings.models import BuildingFeature
 from app.core.errors import Forbidden, NotFound, UnprocessableContent
 from app.core.pagination import CursorParams, Page, paginate
+from app.core.schemas import APIModel
 from app.files.models import FilePurpose
 from app.files.service import claim_file
 from app.maintenance.enums import MaintenanceCategory, MaintenanceStatus
 from app.maintenance.models import (
+    MAINTENANCE_COMMENT_ENTITY_TYPE,
     MAINTENANCE_REQUEST_ATTACHED_TYPE,
+    MaintenanceComment,
     MaintenanceRequest,
     MaintenanceRequestPhoto,
 )
-from app.maintenance.queries import sees_requester_names, visible_maintenance
+from app.maintenance.queries import (
+    sees_internal_comments,
+    sees_requester_names,
+    visible_maintenance,
+    visible_maintenance_comments,
+)
 from app.maintenance.schemas import (
+    MaintenanceCommentCreate,
+    MaintenanceCommentOut,
     MaintenanceRequestColumns,
     MaintenanceRequestCreate,
     MaintenanceRequestOut,
 )
 from app.maintenance.state import assert_transition, sources
 from app.memberships.enums import MembershipStatus, Role
-from app.memberships.models import BuildingMembership, UnitOccupancy
+from app.memberships.models import BuildingMembership, MembershipRole, UnitOccupancy
 from app.memberships.service import OccupancyChanged
 from app.notifications.service import notify, staff_user_ids
 from app.packages.service import (
@@ -78,6 +90,10 @@ class UnitNotOccupied(UnprocessableContent):
 
 class NotRequester(Forbidden):
     code = "not_requester"
+
+
+class InternalCommentForbidden(Forbidden):
+    code = "internal_comment_forbidden"
 
 
 @dataclass(frozen=True)
@@ -477,3 +493,159 @@ async def _for_cancel(db: AsyncSession, ctx: TenantContext, request_id: UUID) ->
         raise NotRequester(detail="Only the resident who filed this request can cancel it.")
     assert_transition(request.status, MaintenanceStatus.CANCELLED)
     return request
+
+
+class _CommentColumns(APIModel):
+    """A comment's row; `MaintenanceCommentOut` swaps the author's membership for what the caller
+    may see of them."""
+
+    id: UUID
+    request_id: UUID
+    author_membership_id: UUID
+    author_is_staff: bool
+    body: str
+    is_internal: bool
+    created_at: datetime
+
+
+async def add_comment(
+    db: AsyncSession, ctx: TenantContext, request_id: UUID, data: MaintenanceCommentCreate
+) -> MaintenanceCommentOut:
+    """Comment on a request the caller may see: 404 otherwise, 403 `internal_comment_forbidden`
+    for a non-staff `internal`. A public comment notifies (D2); the comment, its notifications
+    and the audit row commit together."""
+    request = await _visible(db, ctx, request_id)
+    staff = sees_internal_comments(ctx)
+    if data.internal and not staff:
+        raise InternalCommentForbidden(detail="Only building staff can write internal comments.")
+    comment = await db.scalar(
+        insert(MaintenanceComment)
+        .values(
+            building_id=ctx.building_id,
+            request_id=request.id,
+            author_membership_id=ctx.membership_id,
+            author_is_staff=staff,
+            body=data.body,
+            is_internal=data.internal,
+        )
+        .returning(MaintenanceComment)
+    )
+    assert comment is not None  # noqa: S101 (INSERT … RETURNING gives the row)
+    if not data.internal:
+        await _notify_comment(db, ctx, request, comment.id, staff=staff)
+    await record_audit(
+        db,
+        action=actions.MAINTENANCE_COMMENTED,
+        entity_type=MAINTENANCE_REQUEST_ATTACHED_TYPE,
+        entity_id=request.id,
+        building_id=ctx.building_id,
+        actor_user_id=ctx.user_id,
+        # Never the body (CLAUDE.md rule 10).
+        metadata={"comment_id": comment.id, "is_internal": comment.is_internal},
+    )
+    [out] = await _comment_outs(db, ctx, [_CommentColumns.model_validate(comment)])
+    await db.commit()
+    return out
+
+
+async def _notify_comment(
+    db: AsyncSession,
+    ctx: TenantContext,
+    request: MaintenanceRequest,
+    comment_id: UUID,
+    *,
+    staff: bool,
+) -> None:
+    """A staff author's comment tells the requester, if they still see the request; a resident's
+    tells the active managers. Never the author. Fixed words: no comment text reaches an email."""
+    category = _CATEGORY_NAMES[request.category]
+    if staff:
+        recipients = await _requester_who_sees(db, request)
+        kind, title = "maintenance.staff_commented", "New reply on your maintenance request"
+        body = f"Building management replied to your {category} request."
+    else:
+        recipients = await staff_user_ids(db, ctx.building_id, [Role.PROPERTY_MANAGEMENT])
+        kind, title = "maintenance.resident_commented", "New comment on a maintenance request"
+        body = f"A resident commented on a {category} request."
+    await notify(
+        db,
+        building_id=ctx.building_id,
+        recipient_user_ids=[user_id for user_id in recipients if user_id != ctx.user_id],
+        kind=kind,
+        title=title,
+        body=body,
+        link=f"/maintenance/{request.id}",
+        # The comment, not the request: each comment's email gets its own dedupe key (P6-03c 6a).
+        entity_type=MAINTENANCE_COMMENT_ENTITY_TYPE,
+        entity_id=comment_id,
+    )
+
+
+async def _requester_who_sees(db: AsyncSession, request: MaintenanceRequest) -> list[UUID]:
+    """The requester's user, if their membership is active and holds a role that sees their own
+    request (`visible_maintenance`: resident, security, property management); else none."""
+    user_id = await db.scalar(
+        select(BuildingMembership.user_id).where(
+            BuildingMembership.id == request.requester_membership_id,
+            BuildingMembership.building_id == request.building_id,
+            BuildingMembership.status == MembershipStatus.ACTIVE,
+            select(MembershipRole.membership_id)
+            .where(
+                MembershipRole.membership_id == BuildingMembership.id,
+                MembershipRole.role.in_([Role.RESIDENT, Role.SECURITY, Role.PROPERTY_MANAGEMENT]),
+            )
+            .exists(),
+        )
+    )
+    return [] if user_id is None else [user_id]
+
+
+async def list_comments(
+    db: AsyncSession, ctx: TenantContext, request_id: UUID, params: CursorParams
+) -> Page[MaintenanceCommentOut]:
+    """A request's comments the caller may see, oldest first; 404 for a request they can't see."""
+    await _visible(db, ctx, request_id)
+    stmt = visible_maintenance_comments(ctx).where(MaintenanceComment.request_id == request_id)
+    # The filter is in the query, so every page is full while more visible comments exist.
+    page = await paginate(
+        db, stmt, MaintenanceComment.id, params, _CommentColumns.model_validate, descending=False
+    )
+    return Page[MaintenanceCommentOut](
+        items=await _comment_outs(db, ctx, page.items), next_cursor=page.next_cursor
+    )
+
+
+async def _comment_outs(
+    db: AsyncSession, ctx: TenantContext, comments: Sequence[_CommentColumns]
+) -> list[MaintenanceCommentOut]:
+    """`comments` with their authors' current names where the caller may see them (D7): staff see
+    every author's, everyone else only their own. One statement at most."""
+    staff = sees_internal_comments(ctx)
+    wanted = {
+        c.author_membership_id
+        for c in comments
+        if staff or c.author_membership_id == ctx.membership_id
+    }
+    names: dict[UUID, str] = {}
+    if wanted:
+        rows = await db.execute(
+            select(BuildingMembership.id, User.full_name)
+            .join(User, User.id == BuildingMembership.user_id)
+            .where(
+                BuildingMembership.building_id == ctx.building_id,
+                BuildingMembership.id.in_(wanted),
+            )
+        )
+        names = {membership_id: full_name for membership_id, full_name in rows}
+    return [
+        MaintenanceCommentOut(
+            id=c.id,
+            request_id=c.request_id,
+            body=c.body,
+            is_internal=c.is_internal,
+            created_at=c.created_at,
+            author_name=names.get(c.author_membership_id),
+            author_is_staff=c.author_is_staff,
+        )
+        for c in comments
+    ]

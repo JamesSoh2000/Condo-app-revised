@@ -255,9 +255,9 @@ async def test_a_cursor_at_an_internal_comment_gives_the_next_public_one_only(
 ) -> None:
     # A staff cursor handed to a resident (or a guessed one) still shows public comments only.
     manager = world.a_manager.membership
-    first = await make_maintenance_comment(db, request_101, manager)
+    first = await make_maintenance_comment(db, request_101, manager, author_is_staff=True)
     hidden = await make_maintenance_comment(db, request_101, manager, internal=True)
-    last = await make_maintenance_comment(db, request_101, manager)
+    last = await make_maintenance_comment(db, request_101, manager, author_is_staff=True)
     staff = await as_user(world.a_manager.user)
     page = await staff.get(comments_url(world, request_101.id), params={"limit": 2})
     assert [item["id"] for item in page.json()["items"]] == [str(first.id), str(hidden.id)]

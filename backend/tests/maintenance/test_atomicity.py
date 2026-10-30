@@ -1,9 +1,8 @@
 """One commit per write (P6-03b criterion 10, P6-03e criterion 4, P6-03d criterion 8, CLAUDE.md
 rule 5): a failure before it leaves nothing, and the photos unattached again."""
 
-from typing import Any
-
 import uuid
+from typing import Any
 
 import pytest
 from sqlalchemy import select
