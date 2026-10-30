@@ -743,18 +743,17 @@ def test_a_cancel_blocked_by_a_start_gets_409(
     _run(scratch_database_url, body)
 
 
-def test_two_comments_at_once_both_land_in_id_order(scratch_database_url: str) -> None:
-    async def comment(sessions: Sessions, ctx: Any, request: MaintenanceRequest, text: str) -> str:
-        async with sessions() as db:
-            out = await service.add_comment(
-                db, ctx, request.id, MaintenanceCommentCreate(body=text)
-            )
-            return str(out.id)
+async def _comment(sessions: Sessions, ctx: Any, request: MaintenanceRequest, text: str) -> str:
+    async with sessions() as db:
+        out = await service.add_comment(db, ctx, request.id, MaintenanceCommentCreate(body=text))
+        return str(out.id)
 
+
+def test_two_comments_at_once_both_land_in_id_order(scratch_database_url: str) -> None:
     async def body(sessions: Sessions, world: World, request: MaintenanceRequest) -> None:
         ids = await asyncio.gather(
-            comment(sessions, persona_ctx(world, "a_resident1"), request, "first"),
-            comment(sessions, persona_ctx(world, "a_manager"), request, "second"),
+            _comment(sessions, persona_ctx(world, "a_resident1"), request, "first"),
+            _comment(sessions, persona_ctx(world, "a_manager"), request, "second"),
         )
 
         async with sessions() as db:
