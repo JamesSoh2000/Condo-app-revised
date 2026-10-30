@@ -10,8 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { components } from '@/api/schema';
 import { writeSelectedBuilding } from '@/app/buildingStorage';
 import { maintenanceBase } from '@/test/maintenance';
-import { REQUEST, comment, memberWorld, viewRoutes, viewState } from '@/test/maintenanceView';
-import { BIRCH, MAPLE, RESIDENT_ME, buildingOut, json, membership, openAccountMenu, renderApp, stubApi, type Handler } from '@/test/renderApp';
+import { REQUEST, comment, memberWorld, statusEvent, viewRoutes, viewState } from '@/test/maintenanceView';
+import { BIRCH, MAPLE, RESIDENT_ME, buildingOut, json, membership, openAccountMenu, problem, renderApp, stubApi, type Handler } from '@/test/renderApp';
 
 vi.mock('@/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/client')>();
@@ -159,5 +159,106 @@ describe('nothing of a staff thread cached in the tab shows to another caller (c
     await dialog();
     await settle();
     expect(screen.queryByText('Owner disputes the bill.')).toBeNull();
+  });
+});
+
+describe('review round 1 (Codex gpt-6.1-sol)', () => {
+  // Another resident's common-area request: only the staff role lets this member see it.
+  const OTHERS = { ...REQUEST, location: 'common_area' as const, unit_id: null, unit_tower: null, unit_label: null, common_area: 'Garage', requester_membership_id: '01929a4e-0000-7000-8000-0000000a9999', description: 'Someone else’s request', requester_name: 'Pat Doe' };
+
+  function losingStaff(answers: { request?: Handler; events?: Handler; comments?: Handler }) {
+    const state = { roles: STAFF_ROLES };
+    const routes = {
+      ...memberWorld(viewState({ request: OTHERS, events: [], comments: [PUBLIC, INTERNAL] }), STAFF_ROLES),
+      'GET /api/auth/me': () => json({ ...RESIDENT_ME, memberships: [membership(MAPLE, { roles: state.roles })] }),
+      [`GET /api/buildings/${MAPLE.id}`]: () => json(buildingOut(MAPLE, state.roles)),
+    };
+    const staff = () => state.roles.includes('property_management');
+    const wrap = (key: string, after?: Handler) => {
+      const before = routes[key];
+      routes[key] = (request: Request) => (staff() || !after ? before(request) : after(request));
+    };
+    wrap(`GET ${ONE}`, answers.request);
+    wrap(`GET ${ONE}/status-events`, answers.events);
+    wrap(`GET ${ONE}/comments`, answers.comments);
+    return { routes, demote: () => (state.roles = ['resident']), isStaff: staff };
+  }
+
+  it('F1: losing the staff role hides a request only staff could see, while the resident’s answer is out', async () => {
+    const world = losingStaff({ request: never });
+    stubApi(world.routes);
+    const app = renderApp([`/maintenance/${REQUEST.id}`]);
+    await within(await screen.findByRole('dialog', { name: 'Plumbing request' })).findByText('Someone else’s request');
+
+    world.demote();
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await settle();
+
+    // The list behind is the test's own stub (it lists the request whatever the role): only the view is checked.
+    const view = screen.getByRole('dialog');
+    expect(within(view).queryByText('Someone else’s request')).toBeNull();
+    expect(within(view).queryByText('Pat Doe')).toBeNull();
+    expect(within(view).queryByText('Garage')).toBeNull();
+  });
+
+  it('F1 neighbour: then the resident’s 404 shows "Request not found", and nothing of the staff answer', async () => {
+    const world = losingStaff({ request: () => problem(404, 'maintenance_request_not_found') });
+    stubApi(world.routes);
+    const app = renderApp([`/maintenance/${REQUEST.id}`]);
+    await within(await screen.findByRole('dialog', { name: 'Plumbing request' })).findByText('Someone else’s request');
+
+    world.demote();
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+
+    const view = await screen.findByRole('dialog', { name: 'Request not found' });
+    expect(within(view).queryByText('Someone else’s request')).toBeNull();
+  });
+
+  it('F1 neighbour: a failed resident answer shows the failure, not the staff answer', async () => {
+    const world = losingStaff({ request: () => problem(500, 'internal_error') });
+    stubApi(world.routes);
+    const app = renderApp([`/maintenance/${REQUEST.id}`]);
+    await within(await screen.findByRole('dialog', { name: 'Plumbing request' })).findByText('Someone else’s request');
+
+    world.demote();
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+
+    const view = await screen.findByRole('dialog', { name: 'Maintenance request' });
+    expect((await within(view).findByRole('alert')).textContent).toContain('Could not load the request.');
+    expect(within(view).queryByText('Someone else’s request')).toBeNull();
+  });
+
+  it('F1 neighbour: on a request the resident still sees, the staff-only requester name goes with the staff answer', async () => {
+    const own = { ...REQUEST, requester_name: 'Alex Martin' };
+    const world = losingStaff({ request: never });
+    stubApi({ ...world.routes, [`GET ${ONE}`]: () => json(own) });
+    const app = renderApp([`/maintenance/${REQUEST.id}`]);
+    expect(await within(await dialog()).findByText('Alex Martin')).toBeTruthy();
+
+    stubApi({ ...world.routes, [`GET ${ONE}`]: never });
+    world.demote();
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await settle();
+
+    expect(screen.queryByText('Alex Martin')).toBeNull();
+  });
+
+  it('F1 neighbour: the staff answer’s moves don’t show while the resident’s status events are out', async () => {
+    const world = losingStaff({ events: never });
+    const staffEvents = world.routes[`GET ${ONE}/status-events`];
+    stubApi({
+      ...world.routes,
+      [`GET ${ONE}`]: () => json(REQUEST),
+      [`GET ${ONE}/status-events`]: (request) =>
+        world.isStaff() ? json({ items: [statusEvent('2026-10-21T12:30:00Z', 'submitted', 'in_progress')], next_cursor: null }) : staffEvents(request),
+    });
+    const app = renderApp([`/maintenance/${REQUEST.id}`]);
+    expect(await within(await dialog()).findByText('Work started')).toBeTruthy();
+
+    world.demote();
+    await act(() => app.queryClient.invalidateQueries({ queryKey: ['me'] }));
+    await settle();
+
+    expect(within(screen.getByRole('dialog')).queryByText('Work started')).toBeNull();
   });
 });

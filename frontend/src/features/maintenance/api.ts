@@ -40,16 +40,21 @@ export function useMaintenanceRequests(buildingId: string, status: MaintenanceSt
   });
 }
 
-export const maintenanceRequestKey = (buildingId: string, requestId: string) =>
-  [...maintenanceKey(buildingId), 'request', requestId] as const;
+/**
+ * One request's queries, keyed by whether the caller reads as staff here (security or property management): staff see
+ * other residents' requests, the requester's name and internal comments, so a staff answer is never shown once `/me`
+ * says the caller is not (criterion 2a; review round 1 F1).
+ */
+export const maintenanceRequestKey = (buildingId: string, requestId: string, staff: boolean) =>
+  [...maintenanceKey(buildingId), 'request', requestId, staff ? 'staff' : 'member'] as const;
 
 /**
  * One request (P6-04c). Stale at once and dropped when the view closes (`gcTime: 0`), so reopening it never shows an
  * old status while a manager acts (criterion 6).
  */
-export function useMaintenanceRequest(buildingId: string, requestId: string, enabled: boolean) {
+export function useMaintenanceRequest(buildingId: string, requestId: string, staff: boolean, enabled: boolean) {
   return useQuery({
-    queryKey: maintenanceRequestKey(buildingId, requestId),
+    queryKey: maintenanceRequestKey(buildingId, requestId, staff),
     staleTime: 0,
     gcTime: 0,
     enabled,
@@ -61,14 +66,10 @@ export function useMaintenanceRequest(buildingId: string, requestId: string, ena
   });
 }
 
-/**
- * A request's comments the caller may see, oldest first, a page at a time. `staff` (the caller reads internal comments
- * in this building) is in the key, so an answer given to staff is never shown once `/me` says the caller is not
- * (criterion 2a); `gcTime: 0` drops it when the view closes.
- */
+/** A request's comments the caller may see, oldest first, a page at a time; `gcTime: 0` drops them when the view closes. */
 export function useMaintenanceComments(buildingId: string, requestId: string, staff: boolean, enabled: boolean) {
   return useInfiniteQuery({
-    queryKey: [...maintenanceRequestKey(buildingId, requestId), 'comments', staff ? 'staff' : 'member'],
+    queryKey: [...maintenanceRequestKey(buildingId, requestId, staff), 'comments'],
     staleTime: 0,
     gcTime: 0,
     enabled,
@@ -86,9 +87,9 @@ export function useMaintenanceComments(buildingId: string, requestId: string, st
 }
 
 /** A request's status changes (start, hold, resume, resolve, reopen), oldest first, a page at a time. */
-export function useMaintenanceStatusEvents(buildingId: string, requestId: string, enabled: boolean) {
+export function useMaintenanceStatusEvents(buildingId: string, requestId: string, staff: boolean, enabled: boolean) {
   return useInfiniteQuery({
-    queryKey: [...maintenanceRequestKey(buildingId, requestId), 'events'],
+    queryKey: [...maintenanceRequestKey(buildingId, requestId, staff), 'events'],
     staleTime: 0,
     gcTime: 0,
     enabled,

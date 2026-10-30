@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { expectFocusKept, expectFocusOn } from '@/test/focus';
 import { maintenanceBase, maintenanceRequest } from '@/test/maintenance';
-import { REQUEST, comment, memberWorld, statusEvent, viewState, type ViewState } from '@/test/maintenanceView';
+import { REQUEST, comment, memberWorld, statusEvent, viewState, type StatusEvent, type ViewState } from '@/test/maintenanceView';
 import { MAPLE, calls, json, problem, renderApp, stubApi } from '@/test/renderApp';
 
 vi.mock('@/api/client', async (importOriginal) => {
@@ -145,9 +145,9 @@ describe('paging the timeline (criterion 1b)', () => {
     renderApp([`/maintenance/${REQUEST.id}`]);
 
     const before = await rows();
-    // Submitted and comments 1–24; the 25th is at the horizon and the resolve after it, so both wait.
-    expect(before).toHaveLength(25);
-    expect(before.at(-1)).toContain('Note 24');
+    // Submitted and comments 1–25: the resolve comes after the 25th, and the comments' next page may hold one before it.
+    expect(before).toHaveLength(26);
+    expect(before.at(-1)).toContain('Note 25');
     expect(before.some((row) => row?.startsWith('Resolved'))).toBe(false);
 
     fireEvent.click(within(await dialog()).getByRole('button', { name: 'Load more' }));
@@ -220,7 +220,7 @@ describe('not found (criteria 5, 5a)', () => {
     expect(await within(view).findByText('On its way.')).toBeTruthy();
   });
 
-  it('turns into "Request not found" when the comments answer 404 (the request left while open)', async () => {
+  it('turns into "Request not found" when the status events answer 404 (the request left while open)', async () => {
     stubApi(memberWorld(viewState(), ['resident'], { [`GET ${ONE}/status-events`]: () => problem(404, 'maintenance_request_not_found') }));
     renderApp([`/maintenance/${REQUEST.id}`]);
 
@@ -337,7 +337,7 @@ describe('focus stays when a button removes itself (known failure cases)', () =>
     more.focus();
     await expectFocusOn(
       () => void fireEvent.click(more),
-      () => within(view).getByText('Note 25').closest('li'),
+      () => within(view).getByText('Note 26').closest('li'),
       { control: () => more, settle: async () => void (await within(view).findByText('Note 26')) },
     );
   });
@@ -375,5 +375,63 @@ describe('focus stays when a button removes itself (known failure cases)', () =>
       within: () => view,
       settle: async () => void (await timeline()),
     });
+  });
+});
+
+describe('review round 1 (Codex gpt-6.1-sol): the coverage it found missing', () => {
+  it('turns into "Request not found" when the comments answer 404', async () => {
+    stubApi(memberWorld(viewState(), ['resident'], { [`GET ${ONE}/comments`]: () => problem(404, 'maintenance_request_not_found') }));
+    renderApp([`/maintenance/${REQUEST.id}`]);
+    expect(await dialog('Request not found')).toBeTruthy();
+  });
+
+  it('shows a failed status-event read with Try again, the details still shown', async () => {
+    let fail = true;
+    const state = viewState({ events: [statusEvent('2026-10-21T12:00:00Z', 'submitted', 'in_progress')] });
+    stubApi(memberWorld(state, ['resident'], { [`GET ${ONE}/status-events`]: () => (fail ? problem(500, 'internal_error') : json({ items: state.events, next_cursor: null })) }));
+    renderApp([`/maintenance/${REQUEST.id}`]);
+
+    const view = await dialog();
+    expect((await within(view).findByRole('alert')).textContent).toContain('Could not load the timeline.');
+    expect(within(view).getByText('Kitchen tap drips')).toBeTruthy();
+    fail = false;
+    fireEvent.click(within(view).getByRole('button', { name: 'Try again' }));
+    expect(await within(view).findByText('Work started')).toBeTruthy();
+  });
+
+  it('pages both reads at once: each Load more only adds entries at the end, in time order', async () => {
+    // 30 events and 30 comments, alternating a minute apart: each read has a second page.
+    const at = (n: number) => new Date(Date.UTC(2026, 3, 1, 12, n)).toISOString();
+    const moves: [StatusEvent['from_status'], StatusEvent['status']][] = [['in_progress', 'on_hold'], ['on_hold', 'in_progress']];
+    const events = Array.from({ length: 30 }, (_, n) => statusEvent(at(2 * n + 1), ...moves[n % 2]));
+    const comments = Array.from({ length: 30 }, (_, n) => comment(at(2 * n + 2), { body: `Note ${n + 1}` }));
+    stubApi(memberWorld(viewState({ request: maintenanceRequest(1, { submitted_at: '2026-04-01T11:00:00Z' }), events, comments })));
+    renderApp([`/maintenance/${REQUEST.id}`]);
+
+    const before = await rows();
+    // Up to the 25th event (minute 49), the last of its page: the events' next page may hold one before Note 25.
+    expect(before).toHaveLength(1 + 25 + 24);
+    fireEvent.click(within(await dialog()).getByRole('button', { name: 'Load more' }));
+    await waitFor(async () => expect(await rows()).toHaveLength(61));
+    const after = await rows();
+    expect(after.slice(0, before.length)).toEqual(before);
+    expect(after.at(-1)).toContain('Note 30');
+  });
+
+  it('returns focus to the heading when the list refreshed the Details link away while the view was open', async () => {
+    const state = viewState();
+    stubApi(memberWorld(state, ['resident'], { [`GET ${BASE}`]: () => json({ items: state.request.status === 'cancelled' ? [] : [state.request], next_cursor: null }) }));
+    renderApp(['/maintenance']);
+
+    fireEvent.click(await screen.findByRole('link', { name: /^Details: Plumbing/ }));
+    await timeline();
+    state.request = { ...state.request, status: 'cancelled', cancelled_at: '2026-10-21T12:00:00Z' };
+    setVisibility('hidden');
+    setVisibility('visible');
+    await waitFor(() => expect(screen.queryByRole('link', { name: /^Details: Plumbing/ })).toBeNull());
+
+    fireEvent.click(within(await dialog()).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(location()).toBe('/maintenance'));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Maintenance requests' })));
   });
 });

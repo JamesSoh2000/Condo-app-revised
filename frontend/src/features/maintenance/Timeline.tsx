@@ -39,37 +39,60 @@ function author(comment: MaintenanceComment): string {
 }
 
 /**
- * The timeline (criteria 1a, 1b): the submit and cancel from the request's row, its status events and its comments,
- * in time order. Both reads are oldest first and paged, so while either has more, only entries older than the newest
- * time both have loaded show: an entry from a page not yet asked can't be older than that, so none ever shows out of
- * order, and each "Load more" only adds entries at the end.
+ * An instant to the microsecond, as a number (microseconds since 1970; exact below 2^53). `Date.parse` keeps
+ * milliseconds only, and Postgres times have microseconds (review round 1 F3).
  */
-export function buildTimeline(request: MaintenanceRequest, events: Pages<MaintenanceStatusEvent>, comments: Pages<MaintenanceComment>): Entry[] {
-  const loaded = <T,>(query: Pages<T>) => query.data?.pages.flatMap((page) => page.items) ?? [];
-  const eventItems = loaded(events);
-  const commentItems = loaded(comments);
-  const ends = [
-    events.hasNextPage && eventItems.at(-1)?.at,
-    comments.hasNextPage && commentItems.at(-1)?.created_at,
-  ].filter((at): at is string => typeof at === 'string');
-  const horizon = Math.min(...ends.map((at) => Date.parse(at)));
-
-  const entries: Entry[] = [
-    { id: `submitted-${request.id}`, at: request.submitted_at, rank: 0, title: 'Submitted' },
-    ...eventItems.map((event): Entry => ({ id: event.id, at: event.at, rank: 0, title: moveName(event.from_status, event.status) })),
-    ...commentItems.map(
-      (comment): Entry => ({ id: comment.id, at: comment.created_at, rank: 1, title: author(comment), internal: comment.is_internal, body: comment.body }),
-    ),
-  ];
-  if (request.cancelled_at) entries.push({ id: `cancelled-${request.id}`, at: request.cancelled_at, rank: 0, title: 'Cancelled' });
-  return entries
-    .filter((entry) => Date.parse(entry.at) < horizon)
-    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.rank - b.rank || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+function instant(at: string): number {
+  const micros = /\.\d{3}(\d{0,3})/.exec(at)?.[1] ?? '';
+  return Date.parse(at) * 1000 + Number(micros.padEnd(3, '0'));
 }
+
+function before(a: Entry, b: Entry): boolean {
+  return (instant(a.at) - instant(b.at) || a.rank - b.rank || (a.id < b.id ? -1 : 1)) < 0;
+}
+
+/** One read's loaded entries, in its own order, and whether it has another page. */
+export interface Read<T> {
+  items: T[];
+  more: boolean;
+}
+
+/**
+ * The timeline (criteria 1a, 1b): the submit and cancel from the request's row, its status events and its comments,
+ * merged in time order. Each read keeps the API's order (by id): a comment's time is its transaction's start, so one
+ * that waited can be older than the comment before it (review round 1 F2). The merge stops where a read with another
+ * page runs out, since that page may hold the next entry; so every "Load more" only adds entries at the end.
+ */
+export function buildTimeline(request: MaintenanceRequest, events: Read<MaintenanceStatusEvent>, comments: Read<MaintenanceComment>): Entry[] {
+  const row: Entry[] = [{ id: `submitted-${request.id}`, at: request.submitted_at, rank: 0, title: 'Submitted' }];
+  if (request.cancelled_at) row.push({ id: `cancelled-${request.id}`, at: request.cancelled_at, rank: 0, title: 'Cancelled' });
+  const reads: Read<Entry>[] = [
+    { items: row, more: false },
+    { more: events.more, items: events.items.map((event) => ({ id: event.id, at: event.at, rank: 0, title: moveName(event.from_status, event.status) })) },
+    {
+      more: comments.more,
+      items: comments.items.map((comment) => ({ id: comment.id, at: comment.created_at, rank: 1, title: author(comment), internal: comment.is_internal, body: comment.body })),
+    },
+  ];
+  const next = reads.map(() => 0);
+  const merged: Entry[] = [];
+  for (;;) {
+    let pick = -1;
+    for (const [i, read] of reads.entries()) {
+      if (next[i] === read.items.length) {
+        if (read.more) return merged;
+      } else if (pick === -1 || before(read.items[next[i]], reads[pick].items[next[pick]])) pick = i;
+    }
+    if (pick === -1) return merged;
+    merged.push(reads[pick].items[next[pick]++]);
+  }
+}
+
+const loaded = <T,>(query: Pages<T>): Read<T> => ({ items: query.data?.pages.flatMap((page) => page.items) ?? [], more: query.hasNextPage });
 
 interface Props {
   request: MaintenanceRequest;
-  /** The caller reads internal comments here: the comments' key (criterion 2a). */
+  /** The caller reads as staff here: the queries' key (criterion 2a). */
   staff: boolean;
   time: Intl.DateTimeFormat | undefined;
   /** Where focus goes when a press leaves nothing to hold it (the dialog). */
@@ -83,7 +106,7 @@ interface Props {
  */
 export function Timeline({ request, staff, time, focusDialog }: Props) {
   const buildingId = useBuildingId();
-  const events = useMaintenanceStatusEvents(buildingId, request.id, true);
+  const events = useMaintenanceStatusEvents(buildingId, request.id, staff, true);
   const comments = useMaintenanceComments(buildingId, request.id, staff, true);
   const reads = [events, comments];
   // Each read with another page is asked for it; the button counts as failed if either failed.
@@ -123,7 +146,7 @@ export function Timeline({ request, staff, time, focusDialog }: Props) {
   return (
     <div className="mt-2 flex min-w-0 flex-col gap-2">
       <ul ref={more.listRef} aria-label="Timeline" className="flex flex-col gap-2">
-        {buildTimeline(request, events, comments).map((entry) => (
+        {buildTimeline(request, loaded(events), loaded(comments)).map((entry) => (
           <li key={entry.id} tabIndex={-1} className="min-w-0 rounded border p-2 text-sm [overflow-wrap:anywhere]">
             <p className="flex flex-wrap items-baseline gap-x-2">
               <span className="font-medium">{entry.title}</span>

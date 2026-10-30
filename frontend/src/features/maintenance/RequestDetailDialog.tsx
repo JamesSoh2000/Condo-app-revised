@@ -34,12 +34,12 @@ interface Props {
 export function RequestDetailDialog({ requestId, time, onClose }: Props) {
   const buildingId = useBuildingId();
   const roles = useBuildingContext().active.find((one) => one.building.id === buildingId)?.roles ?? [];
-  // Who reads internal comments here (P6-03d `sees_internal_comments`); the server decides, this only keys the cache.
+  // Who reads as staff here (P6-03d `sees_internal_comments`); the server decides, this only keys the cache.
   const staff = roles.includes('security') || roles.includes('property_management');
   const valid = UUID.test(requestId);
-  const query = useMaintenanceRequest(buildingId, requestId, valid);
+  const query = useMaintenanceRequest(buildingId, requestId, staff, valid);
   // Read here for their 404 only; the timeline reads them again (the same queries) to show them.
-  const events = useMaintenanceStatusEvents(buildingId, requestId, query.isSuccess);
+  const events = useMaintenanceStatusEvents(buildingId, requestId, staff, query.isSuccess);
   const comments = useMaintenanceComments(buildingId, requestId, staff, query.isSuccess);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
