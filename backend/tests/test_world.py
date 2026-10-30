@@ -82,6 +82,7 @@ EXPECTED_ROW_COUNTS = {
     # P6-03a: nor files a maintenance request (tests make their own).
     "maintenance_requests": 0,
     "maintenance_request_photos": 0,
+    "maintenance_comments": 0,
 }
 
 

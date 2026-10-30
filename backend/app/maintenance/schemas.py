@@ -18,6 +18,8 @@ Description = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1, max_length=2000),
     BeforeValidator(multiline_before_strip),
 ]
+# `maintenance_comments.body` varchar(2000) (P6-03d D6): as a description.
+CommentBody = Description
 CommonArea = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=120),
@@ -91,5 +93,31 @@ class MaintenanceRequestOut(MaintenanceRequestColumns):
         description=(
             "The building's emergency phone on an `emergency` request; null for every other "
             "category, or if the building has none. Call it: the app alerts no one."
+        )
+    )
+
+
+class MaintenanceCommentCreate(InputModel):
+    body: CommentBody
+    # Staff only (D1); a resident's `true` is 403 `internal_comment_forbidden`, never made public.
+    internal: bool = False
+
+
+class MaintenanceCommentOut(APIModel):
+    id: UUID
+    request_id: UUID
+    body: str
+    is_internal: bool
+    created_at: datetime
+    author_name: str | None = Field(
+        description=(
+            "The author's current full name, for security, property management and the author "
+            "only; null for every other caller."
+        )
+    )
+    author_is_staff: bool = Field(
+        description=(
+            'Whether the author wrote as security or property management (show "Building '
+            'management" when `author_name` is null).'
         )
     )

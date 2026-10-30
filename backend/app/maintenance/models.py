@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -25,6 +26,9 @@ from app.models.types import database_enum
 # The `attached_type` of a request's photo (`app.files.service.claim_file`,
 # `app.maintenance.photos`).
 MAINTENANCE_REQUEST_ATTACHED_TYPE = "maintenance_request"
+# The `entity_type` of a comment's notifications. Comments take no photos (P6-03d D3): the photo
+# hook refuses any `attached_type` but the request's.
+MAINTENANCE_COMMENT_ENTITY_TYPE = "maintenance_comment"
 # Photos per request: `maintenance_request_photos.position` runs 0 to MAX_PHOTOS - 1 (P6-03a D5).
 MAX_PHOTOS = 5
 
@@ -185,3 +189,42 @@ class MaintenanceRequestPhoto(Base):
     position: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     building_id: Mapped[UUID] = mapped_column(ForeignKey("buildings.id", ondelete="RESTRICT"))
     file_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))
+
+
+class MaintenanceComment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A member's comment on a request (P6-03d). Read it through
+    `visible_maintenance_comments(ctx)`: an internal one is for staff only, and no comment is seen
+    without its request."""
+
+    __tablename__ = "maintenance_comments"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["building_id", "request_id"],
+            ["maintenance_requests.building_id", "maintenance_requests.id"],
+            ondelete="RESTRICT",
+            name="fk_maintenance_comments_building_id_request_id",
+        ),
+        ForeignKeyConstraint(
+            ["building_id", "author_membership_id"],
+            ["building_memberships.building_id", "building_memberships.id"],
+            ondelete="RESTRICT",
+            name="fk_maintenance_comments_building_id_author_membership_id",
+        ),
+        # As `description_not_blank`: the API strips, and a body keeps its newlines.
+        CheckConstraint("btrim(body, E' \\t\\n\\r') <> ''", name="body_not_blank"),
+        # Only staff write internal comments (D1); the service refuses a resident's with a 403.
+        CheckConstraint("NOT is_internal OR author_is_staff", name="internal_needs_staff"),
+        # A request's thread in order: `paginate` orders by id (uuid7, D8).
+        Index(
+            "ix_maintenance_comments_building_id_request_id_id", "building_id", "request_id", "id"
+        ),
+    )
+
+    building_id: Mapped[UUID] = mapped_column(ForeignKey("buildings.id", ondelete="RESTRICT"))
+    request_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))
+    author_membership_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))
+    # Whether the author held security or property management here when writing (D7), so the
+    # label shown to residents doesn't change with later role changes.
+    author_is_staff: Mapped[bool] = mapped_column(Boolean)
+    body: Mapped[str] = mapped_column(String(2000))
+    is_internal: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))

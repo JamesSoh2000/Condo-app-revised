@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-03b, P3-03 |
 | Replaces old | M8-T01 (notes part), M8-T04 (note-added part) |
-| Status | todo |
+| Status | done |
 
 Split from the P6-03 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); the schema is
 [P6-03a](./P6-03a-maintenance-schema-and-visibility.md), submit and read
@@ -154,7 +154,68 @@ Left open by the stub:
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
-- Criteria loosened (with reason; also listed in the inbox):
+  - 1: the 10-case rows decided: `a_council` (council + resident) comments on and lists their own request only;
+    a council-only context sees no request, so both endpoints give it 404 `maintenance_request_not_found`. The
+    comment-photo row of building B is **n/a**: comments take no photos (D3). Added: `multi_in_a` (resident in
+    A) comments as a resident; unknown request id and a B request's id under A's path give one body.
+  - 2: "any count a resident can read": there is no comment count in this ticket's API (`MaintenanceRequestOut`
+    has none); P6-05a's counts must build on `visible_maintenance_comments`. The photo half is **n/a** (D3); the
+    existing hook still refuses a `maintenance_comment` `attached_type` (test kept in `test_photos.py`).
+    Sharpened: "no gap in the cursor" means with `limit=1` the resident's pages are the public comments one per
+    page, and a cursor whose id is the internal comment's yields the next public comment only.
+  - 3: decided error 403 `internal_comment_forbidden`, no row, no notification, no audit. Added: the database
+    refuses `is_internal` on a comment whose author was not staff (check `internal_needs_staff`).
+  - 4: decided recipients (D2): a public comment by a **staff** author notifies the requester, if the
+    requester's membership is active and still holds a role that sees the request (resident, security or
+    property management); a public comment by a **resident** author notifies the building's active property
+    managers. The author is never notified. An internal comment notifies nobody. Titles fixed: "New reply on
+    your maintenance request" / "New comment on a maintenance request"; body names the category only; link
+    `/maintenance/<request id>`. The staff kind emails (`notification` template) and its dedupe key uses the
+    **comment** id, so two staff replies in a row queue two `email.send` jobs; the resident kind is in-app only.
+  - Added: a requester who is now council only (no resident or staff role) is not notified; a manager commenting
+    on their own request (as a resident in another unit, or multi-role) is not notified of it.
+  - 5: decided (D4): comments follow their request. Whoever sees the request sees all its public comments,
+    including those written after they moved out; only the requester is notified. The test pins comments at
+    `T1 - 1 day` and `T1 + 1 day` on a 101 request from a_former's time: a_former sees both; a_resident1 (101
+    from T2) sees neither.
+  - 6: decided (D5): every status takes comments, for every role (the test covers `resolved` and `cancelled`
+    for a resident and a manager).
+  - 7: the body is at most 2000 characters (D6), measured after the strip.
+  - 8: the audit row is `maintenance.commented` on entity `maintenance_request`/<request id>, metadata
+    `comment_id` and `is_internal`, actor `ctx.user_id`.
+- Criteria loosened (with reason; also listed in the inbox): none. The photo rows of 1 and 2 are the ticket's
+  own conditional ("if comments take photos"), decided no (D3).
 - Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
   also the alternatives considered and why they lost):
-- Split:
+  - **D1 Security reads and writes internal comments.** Basis: stub default "read and comment only" for
+    security; internal means staff-only, and security is staff (`_SEE_ALL`). Alternative: managers only for
+    internal; lost because the stub groups security with staff and P6-03a already shows security every request.
+    Council alone sees no request (P6-03a D8), so no comments.
+  - **D2 Notifications** as in criterion 4. Basis: stub "notify on status changes and public comments";
+    autonomous for the recipients. Alternatives: notifying every resident who sees the request (co-occupants
+    and former occupants) — lost: needs a per-person visibility query at write time, and P6-03c notifies the
+    requester only for status changes; notifying managers of security's comments — lost: staff talk in the
+    staff tools. The staff kind emails because a resident may not open the app for a reply (journey 6); the
+    resident kind is in-app like `maintenance.submitted`. Two kinds, not a flag: the kind fixes the email
+    (P6-01c D2).
+  - **D3 No comment photos.** Basis: simplest reversible; P6-04c renders them only "if P6-03d added them".
+    It removes the photo leak path for internal comments entirely. A follow-up can add a
+    `maintenance_comment_photos` table and a second `attached_type` in the hook.
+  - **D4 Comments follow their request** (no occupancy window per comment). Basis: autonomous; the request's
+    own status, which changes after a move-out, is already shown to whoever sees it (P6-03a: "history follows
+    the person"). Alternative: a comment visible to a former co-occupant only if written in their window
+    (`occupancy_window_clause` on `created_at`) — lost: comments have no `unit_id`, so the record fence
+    (ADR-0021) would need a join it can't register, and it would split one request's thread between viewers.
+  - **D5 Closed requests take comments.** Basis: simplest; a resident replying "still leaking" on a resolved
+    request is what reopen (P6-03c) answers, and a cancelled one may need a staff note. No error code.
+  - **D6 Body**: varchar(2000), the description's length, stripped, multiline (`multiline_before_strip`).
+  - **D7 The author** is stored as `author_membership_id` plus `author_is_staff` (whether the author held
+    security or property management in the building when writing), so the label doesn't change with later
+    role changes and the check `internal_needs_staff` can hold. A reader sees `author_name` (the current full
+    name) if they are staff or the author; otherwise null, and the frontend shows "Building management" or
+    "Resident" from `author_is_staff` (P6-03b D8: residents don't see co-occupants' names).
+  - **D8 Oldest first** needs `paginate` to page ascending: a `descending=False` option, the cursor meaning
+    "after this id" in that order. No partial index: a thread is small, and `(building_id, request_id, id)`
+    serves both reads.
+- Split: none. Estimate ~330 non-test lines (model 45, migration 50, queries 25, schemas 40, service 110,
+  router 40, kinds/actions 12, pagination 8).

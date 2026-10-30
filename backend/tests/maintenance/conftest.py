@@ -1,4 +1,5 @@
-"""Helpers for the maintenance tests: request and photo factories, and each status's columns."""
+"""Helpers for the maintenance tests: request, photo and comment factories, and each status's
+columns."""
 
 import uuid
 from datetime import datetime, timedelta
@@ -8,7 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.files.models import File, FilePurpose, FileStatus
 from app.maintenance.enums import MaintenanceCategory, MaintenanceLocation, MaintenanceStatus
-from app.maintenance.models import MaintenanceRequest, MaintenanceRequestPhoto
+from app.maintenance.models import (
+    MaintenanceComment,
+    MaintenanceRequest,
+    MaintenanceRequestPhoto,
+)
 from app.memberships.models import BuildingMembership
 from app.units.models import Unit
 
@@ -113,3 +118,29 @@ async def make_maintenance_photo(
     db.add(photo)
     await db.flush()
     return photo
+
+
+async def make_maintenance_comment(
+    db: AsyncSession,
+    request: MaintenanceRequest,
+    author: BuildingMembership,
+    *,
+    internal: bool = False,
+    author_is_staff: bool | None = None,
+    **overrides: Any,
+) -> MaintenanceComment:
+    """A comment by `author` on `request` (staff if `internal`, unless `author_is_staff` says);
+    flushed, never committed. Pass `created_at` (and its uuid7 `id` order) when times matter."""
+    values: dict[str, Any] = {
+        "building_id": request.building_id,
+        "request_id": request.id,
+        "author_membership_id": author.id,
+        "author_is_staff": internal if author_is_staff is None else author_is_staff,
+        "body": "Internal note." if internal else "On it this afternoon.",
+        "is_internal": internal,
+        **overrides,
+    }
+    comment = MaintenanceComment(**values)
+    db.add(comment)
+    await db.flush()
+    return comment
