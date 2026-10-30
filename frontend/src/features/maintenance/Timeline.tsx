@@ -1,9 +1,17 @@
 import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query';
 
+import { useBuildingId } from '@/app/BuildingProvider';
 import { rateLimitMessage } from '@/features/auth/formErrors';
 import { useFocusedRetry } from '@/features/lists/useFocusedRetry';
 import { useLoadMore } from '@/features/lists/useLoadMore';
-import type { MaintenanceComment, MaintenanceRequest, MaintenanceStatus, MaintenanceStatusEvent } from '@/features/maintenance/api';
+import {
+  useMaintenanceComments,
+  useMaintenanceStatusEvents,
+  type MaintenanceComment,
+  type MaintenanceRequest,
+  type MaintenanceStatus,
+  type MaintenanceStatusEvent,
+} from '@/features/maintenance/api';
 import { STATUS_LABEL } from '@/features/maintenance/labels';
 
 type Pages<T> = UseInfiniteQueryResult<InfiniteData<{ items: T[]; next_cursor: string | null }>>;
@@ -61,14 +69,22 @@ export function buildTimeline(request: MaintenanceRequest, events: Pages<Mainten
 
 interface Props {
   request: MaintenanceRequest;
-  events: Pages<MaintenanceStatusEvent>;
-  comments: Pages<MaintenanceComment>;
+  /** The caller reads internal comments here: the comments' key (criterion 2a). */
+  staff: boolean;
   time: Intl.DateTimeFormat | undefined;
   /** Where focus goes when a press leaves nothing to hold it (the dialog). */
   focusDialog: () => void;
 }
 
-export function Timeline({ request, events, comments, time, focusDialog }: Props) {
+/**
+ * Mounted once the request has loaded. It reads the two queries itself, as the dialog does (the same keys, so no other
+ * request): "Load more" moves focus once its page has landed, and only a component that reads the queries renders the
+ * new entries in that same update (as the lists do with `useLoadMore`).
+ */
+export function Timeline({ request, staff, time, focusDialog }: Props) {
+  const buildingId = useBuildingId();
+  const events = useMaintenanceStatusEvents(buildingId, request.id, true);
+  const comments = useMaintenanceComments(buildingId, request.id, staff, true);
   const reads = [events, comments];
   // Each read with another page is asked for it; the button counts as failed if either failed.
   const more = useLoadMore(

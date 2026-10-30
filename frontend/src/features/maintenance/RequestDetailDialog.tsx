@@ -38,6 +38,7 @@ export function RequestDetailDialog({ requestId, time, onClose }: Props) {
   const staff = roles.includes('security') || roles.includes('property_management');
   const valid = UUID.test(requestId);
   const query = useMaintenanceRequest(buildingId, requestId, valid);
+  // Read here for their 404 only; the timeline reads them again (the same queries) to show them.
   const events = useMaintenanceStatusEvents(buildingId, requestId, query.isSuccess);
   const comments = useMaintenanceComments(buildingId, requestId, staff, query.isSuccess);
   const titleId = useId();
@@ -58,14 +59,22 @@ export function RequestDetailDialog({ requestId, time, onClose }: Props) {
       <>
         <Detail item={item} time={time} />
         <h3 className="mt-4 font-semibold">Timeline</h3>
-        <Timeline request={item} events={events} comments={comments} time={time} focusDialog={() => dialogRef.current?.focus()} />
+        <Timeline request={item} staff={staff} time={time} focusDialog={() => dialogRef.current?.focus()} />
       </>
     );
   } else if (query.isError) {
     body = (
       <div role="alert" className="mt-2 text-sm text-red-700">
         {rateLimitMessage(query.error) ?? 'Could not load the request.'}{' '}
-        <button type="button" className="underline" onClick={() => void query.refetch()}>
+        <button
+          type="button"
+          className="underline"
+          onClick={() => {
+            // The button goes when the request loads: focus would drop to <body> (known failure cases).
+            dialogRef.current?.focus();
+            void query.refetch();
+          }}
+        >
           Try again
         </button>
       </div>

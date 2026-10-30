@@ -6,6 +6,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { expectFocusKept, expectFocusOn } from '@/test/focus';
 import { maintenanceBase, maintenanceRequest } from '@/test/maintenance';
 import { REQUEST, comment, memberWorld, statusEvent, viewState, type ViewState } from '@/test/maintenanceView';
 import { MAPLE, calls, json, problem, renderApp, stubApi } from '@/test/renderApp';
@@ -320,5 +321,59 @@ describe('Back, Forward and the card’s link (criteria 7, 7a)', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Maintenance requests' })));
     act(() => app.navigate()(-1));
     await waitFor(() => expect(location()).toBe('/'));
+  });
+});
+
+describe('focus stays when a button removes itself (known failure cases)', () => {
+  it('a pressed Load more that brings the last page moves focus to the first new entry, inside the dialog', async () => {
+    const day = (n: number) => new Date(Date.UTC(2026, 3, 1 + n, 12)).toISOString();
+    const comments = Array.from({ length: 26 }, (_, n) => comment(day(n), { body: `Note ${n + 1}` }));
+    stubApi(memberWorld(viewState({ request: maintenanceRequest(1, { submitted_at: '2026-03-31T12:00:00Z' }), comments })));
+    renderApp([`/maintenance/${REQUEST.id}`]);
+    await timeline();
+
+    const view = await dialog();
+    const more = within(view).getByRole('button', { name: 'Load more' });
+    more.focus();
+    await expectFocusOn(
+      () => void fireEvent.click(more),
+      () => within(view).getByText('Note 25').closest('li'),
+      { control: () => more, settle: async () => void (await within(view).findByText('Note 26')) },
+    );
+  });
+
+  it('a pressed timeline Try again that succeeds keeps focus in the dialog', async () => {
+    let fail = true;
+    const state = viewState({ comments: [comment('2026-10-21T12:00:00Z', { body: 'On its way.' })] });
+    stubApi(memberWorld(state, ['resident'], { [`GET ${ONE}/comments`]: () => (fail ? problem(500, 'internal_error') : json({ items: state.comments, next_cursor: null })) }));
+    renderApp([`/maintenance/${REQUEST.id}`]);
+
+    const view = await dialog();
+    await within(view).findByRole('alert');
+    const retry = within(view).getByRole('button', { name: 'Try again' });
+    retry.focus();
+    fail = false;
+    await expectFocusKept(() => void fireEvent.click(retry), {
+      control: () => retry,
+      within: () => view,
+      settle: async () => void (await within(view).findByText('On its way.')),
+    });
+  });
+
+  it('a pressed request Try again that succeeds keeps focus in the dialog', async () => {
+    let fail = true;
+    stubApi(memberWorld(viewState(), ['resident'], { [`GET ${ONE}`]: () => (fail ? problem(500, 'internal_error') : json(REQUEST)) }));
+    renderApp([`/maintenance/${REQUEST.id}`]);
+
+    const view = await dialog('Maintenance request');
+    await within(view).findByRole('alert');
+    const retry = within(view).getByRole('button', { name: 'Try again' });
+    retry.focus();
+    fail = false;
+    await expectFocusKept(() => void fireEvent.click(retry), {
+      control: () => retry,
+      within: () => view,
+      settle: async () => void (await timeline()),
+    });
   });
 });
