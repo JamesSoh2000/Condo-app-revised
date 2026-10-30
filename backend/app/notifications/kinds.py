@@ -55,5 +55,12 @@ KINDS: dict[str, NotificationKind] = {
             "A resident commented on a maintenance request (managers)",
             None,
         ),
+        # A manager's start, hold, resolve or reopen tells the requester (P6-03c): one kind, the
+        # title says which.
+        NotificationKind(
+            "maintenance.status_changed",
+            "A manager moved the user's maintenance request to a new status",
+            "notification",
+        ),
     )
 }

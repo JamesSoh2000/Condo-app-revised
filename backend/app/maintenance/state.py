@@ -6,6 +6,7 @@ are legal. P6-03b's cancel and P6-03c's actions check them, then write with a co
 """
 
 from collections.abc import Mapping
+from datetime import timedelta
 
 from app.core.errors import Conflict
 from app.maintenance.enums import MaintenanceStatus
@@ -20,6 +21,20 @@ ALLOWED: Mapping[MaintenanceStatus, frozenset[MaintenanceStatus]] = {
     S.ON_HOLD: frozenset({S.IN_PROGRESS, S.RESOLVED}),
     S.RESOLVED: frozenset({S.IN_PROGRESS}),
 }
+
+
+# Each manager action's target and the statuses it takes (P6-03c). `start` and `reopen` share the
+# target, so the verb, not `sources(to)`, decides: a `resolved` request is reopened, within its
+# window, never started. With cancel they cover `ALLOWED` exactly.
+MOVES: Mapping[str, tuple[MaintenanceStatus, tuple[MaintenanceStatus, ...]]] = {
+    "start": (S.IN_PROGRESS, (S.SUBMITTED, S.ON_HOLD)),  # from on_hold: the resume
+    "hold": (S.ON_HOLD, (S.IN_PROGRESS,)),
+    "resolve": (S.RESOLVED, (S.IN_PROGRESS, S.ON_HOLD)),
+    "reopen": (S.IN_PROGRESS, (S.RESOLVED,)),
+}
+
+# A resolved request may be reopened while its `resolved_at` is less than this old (ADR-0020).
+REOPEN_WINDOW = timedelta(days=14)
 
 
 class InvalidTransition(Conflict):

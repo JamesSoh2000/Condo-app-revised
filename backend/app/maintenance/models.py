@@ -29,6 +29,9 @@ MAINTENANCE_REQUEST_ATTACHED_TYPE = "maintenance_request"
 # The `entity_type` of a comment's notifications. Comments take no photos (P6-03d D3): the photo
 # hook refuses any `attached_type` but the request's.
 MAINTENANCE_COMMENT_ENTITY_TYPE = "maintenance_comment"
+# The `entity_type` of a status change's notifications (P6-03c): each change is its own entity, so
+# each gets its own email dedupe key (criterion 6a).
+MAINTENANCE_STATUS_EVENT_ENTITY_TYPE = "maintenance_status_event"
 # Photos per request: `maintenance_request_photos.position` runs 0 to MAX_PHOTOS - 1 (P6-03a D5).
 MAX_PHOTOS = 5
 
@@ -228,3 +231,48 @@ class MaintenanceComment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     author_is_staff: Mapped[bool] = mapped_column(Boolean)
     body: Mapped[str] = mapped_column(String(2000))
     is_internal: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+
+class MaintenanceStatusEvent(UUIDPrimaryKeyMixin, Base):
+    """One manager move of a request (P6-03c): start, hold, resolve or reopen, written in the
+    transaction of the `UPDATE` that made it. The request's history, for P6-04c's timeline
+    (ADR-0020): the row keeps only the current state. Submit and cancel happen once, so the row's
+    `submitted_at` and `cancelled_*` are their events."""
+
+    __tablename__ = "maintenance_status_events"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["building_id", "request_id"],
+            ["maintenance_requests.building_id", "maintenance_requests.id"],
+            ondelete="RESTRICT",
+            name="fk_maintenance_status_events_building_id_request_id",
+        ),
+        ForeignKeyConstraint(
+            ["building_id", "by_membership_id"],
+            ["building_memberships.building_id", "building_memberships.id"],
+            ondelete="RESTRICT",
+            name="fk_maintenance_status_events_building_id_by_membership_id",
+        ),
+        CheckConstraint("from_status <> status", name="status_changes"),
+        # A request's timeline in order: uuid7 ids follow the moves.
+        Index(
+            "ix_maintenance_status_events_building_id_request_id_id",
+            "building_id",
+            "request_id",
+            "id",
+        ),
+    )
+
+    building_id: Mapped[UUID] = mapped_column(ForeignKey("buildings.id", ondelete="RESTRICT"))
+    request_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))
+    # From it a timeline tells a first start, a resume and a reopen apart (all `in_progress`).
+    from_status: Mapped[MaintenanceStatus] = mapped_column(
+        # Its own name: the name is the CHECK constraint's, and `status` has the other.
+        database_enum(MaintenanceStatus, name="maintenance_from_status")
+    )
+    status: Mapped[MaintenanceStatus] = mapped_column(
+        database_enum(MaintenanceStatus, name="maintenance_status")
+    )
+    # The `UPDATE`'s clock: the row's new `*_at` for start, hold and resolve.
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    by_membership_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))

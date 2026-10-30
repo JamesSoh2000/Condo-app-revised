@@ -23,6 +23,8 @@ _FEATURE = Depends(require_feature(Feature.MAINTENANCE))
 # Residents file and cancel their own requests (P6-03b D2, D3); property management runs them
 # (P6-03c). Reads are open to every member; `visible_maintenance` decides what each one sees.
 _RESIDENT = [_FEATURE, Depends(require_roles(Role.RESIDENT))]
+# Security reads and comments only (P6-03c framing, the stub's default).
+_MANAGER = [_FEATURE, Depends(require_roles(Role.PROPERTY_MANAGEMENT))]
 
 
 @router.post(
@@ -91,6 +93,57 @@ async def cancel(request_id: UUID, ctx: Ctx, db: DbSession) -> MaintenanceReques
     is `submitted`; of two at once, one wins.
     """
     return await service.cancel_request(db, ctx, request_id)
+
+
+@router.post(
+    "/maintenance-requests/{request_id}/start",
+    dependencies=_MANAGER,
+    responses=problem_responses(401, 403, 404, 409),
+)
+async def start(request_id: UUID, ctx: Ctx, db: DbSession) -> MaintenanceRequestOut:
+    """Start work on a `submitted` request, or resume an `on_hold` one; tells the requester.
+
+    409 `invalid_transition` from any other status (a `resolved` request is reopened instead);
+    of two at once, one wins.
+    """
+    return await service.move_request(db, ctx, request_id, "start")
+
+
+@router.post(
+    "/maintenance-requests/{request_id}/hold",
+    dependencies=_MANAGER,
+    responses=problem_responses(401, 403, 404, 409),
+)
+async def hold(request_id: UUID, ctx: Ctx, db: DbSession) -> MaintenanceRequestOut:
+    """Put an `in_progress` request on hold; tells the requester. A reason goes in a public
+    comment. 409 `invalid_transition` from any other status."""
+    return await service.move_request(db, ctx, request_id, "hold")
+
+
+@router.post(
+    "/maintenance-requests/{request_id}/resolve",
+    dependencies=_MANAGER,
+    responses=problem_responses(401, 403, 404, 409),
+)
+async def resolve(request_id: UUID, ctx: Ctx, db: DbSession) -> MaintenanceRequestOut:
+    """Resolve an `in_progress` or `on_hold` request; tells the requester. 409
+    `invalid_transition` from any other status."""
+    return await service.move_request(db, ctx, request_id, "resolve")
+
+
+@router.post(
+    "/maintenance-requests/{request_id}/reopen",
+    dependencies=_MANAGER,
+    responses=problem_responses(401, 403, 404, 409),
+)
+async def reopen(request_id: UUID, ctx: Ctx, db: DbSession) -> MaintenanceRequestOut:
+    """Reopen a `resolved` request to `in_progress` while it was resolved less than 14 days ago;
+    tells the requester.
+
+    409 `reopen_window_closed` at 14 days and after; 409 `invalid_transition` from any other status
+    (a `cancelled` request is final).
+    """
+    return await service.move_request(db, ctx, request_id, "reopen")
 
 
 @router.post(
