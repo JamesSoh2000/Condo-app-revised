@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-03b, P6-03e, P3-03, P3-02 |
 | Replaces old | M8-T01 (management actions part), M8-T04 (status-change part) |
-| Status | todo |
+| Status | in progress |
 
 Split from the P6-03 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); the schema is
 [P6-03a](./P6-03a-maintenance-schema-and-visibility.md), submit and read
@@ -179,7 +179,61 @@ Left open by the stub:
 ## Frame notes (filled by the agent in step 1)
 
 - Criteria added or sharpened:
+  - **Which statuses each verb takes** (criterion 1's "pairs outside `ALLOWED`" made per action, since `start` and
+    `reopen` share the target `in_progress`): `start` from `submitted` or `on_hold` (from `on_hold` it is the
+    resume: `started_*` kept, `on_hold_*` cleared); `hold` from `in_progress`; `resolve` from `in_progress` or
+    `on_hold`; `reopen` from `resolved` only. Every other source is 409 `invalid_transition`, `start` on a
+    `resolved` request included (that is a reopen, with its window). The four together cover `ALLOWED` exactly,
+    minus cancel (a test).
+  - **Status events** (ADR-0020, carried in "Open decisions"): criterion **2a**. **Given** each allowed move,
+    **then** exactly one `maintenance_status_events` row (building, request, `from_status`, `status`, `at`, by
+    membership; composite FKs) is written in the same transaction, its `at` the same database clock value as the
+    `UPDATE`'s (so `at` equals the row's new `*_at` for start, hold and resolve); a losing or refused action writes
+    none; criterion 7 covers it too. `from_status` is added to the ADR's list so P6-04c can tell a resume and a
+    reopen from a first start without reading the audit log.
+  - **Lock first** (P6-03e carry): each action takes `SELECT … FOR UPDATE` on the request, then the conditional
+    `UPDATE`; the race criterion 3's tests prove each wait with `act_blocked_on_lock`.
+  - Criterion 4: reopen leads to `in_progress`, clears `resolved_*`, keeps `started_*` (ADR-0020); the window is
+    `resolved_at > statement_timestamp() - interval '14 days'`, so at exactly 14 days it is closed; 409
+    `reopen_window_closed`; a `cancelled` request is 409 `invalid_transition`.
+  - Criterion 5's statements, from the current code: the request's `FOR UPDATE` (before the `UPDATE`, whose
+    `WHERE` checks the window); after it, the status event `INSERT` (FKs: `KEY SHARE` on the building, the
+    request (already ours) and the actor's membership), the notifications `INSERT` (the building, each
+    recipient's membership), the `jobs` `INSERT` (its dedupe key is per event, so no other transaction can hold
+    it: no wait; stated in the PR), the audit `INSERT` (the building, the actor's user). The test is parametrized
+    over the request, the building, the actor's membership, the actor's user and the recipient's membership.
+  - Criterion 6 (recipients): the requester only, if their membership is active and holds a role that sees their
+    own request (`_requester_who_sees`, as P6-03d D2), never the actor. Co-occupants and other managers are not
+    told. One kind, `maintenance.status_changed`, emailing with the `notification` template; title and body are
+    fixed words per status and the category's name, link `/maintenance/<id>` (as P6-03b/d).
+  - Criterion 6a: the notification's entity is the status event (`maintenance_status_event`, its id), as P6-03d
+    made each comment its own entity: every change gets its own dedupe key; `notify` is unchanged.
+  - Added: a manager who is also the requester (multi-role) acting on their own request is not notified; a
+    requester whose membership was suspended is not notified (criterion 6's "can no longer see").
 - Criteria loosened (with reason; also listed in the inbox):
+  - **The row-lock helper is `act_blocked_on_lock`, not a new `tests/helpers/locks.py::hold_row_lock`.** This
+    ticket was drafted before WF-02b built `tests/helpers/lock_wait.py::act_blocked_on_lock`, which is the helper
+    this criterion describes and more: it holds a lock in its own session, proves the action's own backend is
+    blocked by the holder's (`pg_blocking_pids`, not a `before_cursor_execute` event and a sleep), runs a change
+    while it waits, and has 18 tests of its own (`tests/helpers/test_lock_wait.py`, including release on error
+    and cancellation). A second helper would be two ways to do one thing; P6-03e's carry already says to use
+    `act_blocked_on_lock`. What stays: the notices test
+    `test_a_notice_expiring_while_its_fan_out_waits_is_not_published` is rewritten on it as the ticket says,
+    asserting the same, and `tests/README.md` documents it. `tests/test_locks_helper.py` is dropped (the
+    existing helper tests cover it). Will be added to the inbox's "Decisions to audit" in step 6.
 - Decisions taken (with basis: ticket / ADR / convention / default / autonomous; for consequential ones,
   also the alternatives considered and why they lost):
-- Split:
+  - Security can't act: stub default (ticket "Open decisions").
+  - Reopen → `in_progress`, clears `resolved_*`, keeps `started_*`; `cancelled` final: ADR-0020.
+  - The window counts from `resolved_at` (ADR-0020: it reads `resolved_at`, which is the last transition into
+    `resolved`); "from the last transition" is the same instant for a resolved request.
+  - Window error 409 `reopen_window_closed`: the ticket's example; a state conflict like `invalid_transition`,
+    not a malformed request (422). Autonomous; recorded in the PR.
+  - `hold` takes no reason: the stub has none and a public comment carries it (P6-03d); no body on any verb.
+  - Recipients and kind as above (autonomous, following P6-03d D2 for who is told); lasting, so an inbox line in
+    step 6. Managers are **not** notified of a resident's cancel (P6-03e carry): they see it in the list, and no
+    manager is told of another manager's move either; a follow-up if James wants it.
+  - Clock: `statement_timestamp()` (criterion 2), read in the `UPDATE` after the lock statement, returned with the
+    row and reused for the event's `at`.
+- Split: none. Estimate ~380 non-test lines: service ~170, router ~60, model ~45, migration ~60, kinds, actions
+  and state ~25, schemas ~5, `tests/README.md` ~15.
