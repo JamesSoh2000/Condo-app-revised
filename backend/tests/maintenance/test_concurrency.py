@@ -25,8 +25,11 @@ from app.maintenance.enums import MaintenanceLocation, MaintenanceStatus
 from app.maintenance.models import MaintenanceComment, MaintenanceRequest, MaintenanceStatusEvent
 from app.maintenance.schemas import MaintenanceCommentCreate, MaintenanceRequestCreate
 from app.maintenance.state import MOVES, REOPEN_WINDOW
+from app.memberships.enums import Role
 from app.memberships.models import BuildingMembership
 from app.memberships.occupancy import end_occupancy
+from app.memberships.schemas import MemberRolesIn, MemberSuspendIn
+from app.memberships.service import change_roles, suspend_member
 from app.notifications.models import Notification
 from app.packages.service import IdempotencyKeyReused
 from app.users.models import User
@@ -1014,5 +1017,128 @@ def test_a_reopen_whose_window_closes_while_it_waits_is_refused(
             )
         assert status == S.RESOLVED
         assert await _written(sessions, request) == before
+
+    _run(scratch_database_url, body)
+
+
+# Review round 1 (Codex, Medium): the requester's eligibility was read without a lock, so a
+# suspension or role change committing while a later statement waited still notified and emailed
+# them. Every write that takes access away locks the building first
+# (`app.memberships.service._lock_building`); the recipient read now waits for it.
+
+
+async def _suspend(db: AsyncSession, world: World, member: str) -> None:
+    await suspend_member(
+        db,
+        persona_ctx(world, "a_manager"),
+        getattr(world, member).membership.id,
+        MemberSuspendIn(reason="Access removed"),
+    )
+
+
+def _held_back(write: Callable[[AsyncSession], Awaitable[None]]) -> Any:
+    """A `hold` for `act_blocked_on_lock`: `write` with its commit held back, so its locks stay held
+    until the helper commits the holder."""
+
+    async def hold(db: AsyncSession) -> None:
+        async def held() -> None:
+            await db.flush()
+
+        db.commit = held  # type: ignore[method-assign]
+        try:
+            await write(db)
+        finally:
+            del db.commit
+
+    return hold
+
+
+async def _status_told(sessions: Sessions) -> tuple[int, int]:
+    return (
+        await _count(sessions, Notification, Notification.kind == "maintenance.status_changed"),
+        await _count(sessions, Job, Job.dedupe_key.like("maintenance.status_changed:%")),
+    )
+
+
+@pytest.mark.parametrize("verb", list(MOVES))
+def test_a_requester_suspended_while_a_move_waits_is_not_told(
+    scratch_database_url: str, verb: str
+) -> None:
+    async def body(sessions: Sessions, world: World, request: MaintenanceRequest) -> None:
+        await _set_status(sessions, world, request, MOVES[verb][1][0])
+
+        outcome = await act_blocked_on_lock(
+            sessions,
+            hold=_held_back(lambda db: _suspend(db, world, "a_resident1")),
+            act=lambda db: _move(db, world, request, verb),
+            change=_nothing,
+        )
+
+        assert outcome == "200"
+        assert await _status_told(sessions) == (0, 0)
+        assert await _count(sessions, MaintenanceStatusEvent) == 1
+
+    _run(scratch_database_url, body)
+
+
+def test_a_requester_losing_the_resident_role_while_a_move_waits_is_not_told(
+    scratch_database_url: str,
+) -> None:
+    # a_council (council and resident) moved out and filed a common-area request; council alone
+    # sees no request (`visible_maintenance`).
+    async def body(sessions: Sessions, world: World, _request: MaintenanceRequest) -> None:
+        async with sessions() as db:
+            await end_occupancy(
+                db, building_id=world.a.id, membership_id=world.a_council.membership.id
+            )
+            request = await make_maintenance_request(db, world.a_council.membership, None)
+            await db.commit()
+
+        async def drop_resident(db: AsyncSession) -> None:
+            await change_roles(
+                db,
+                persona_ctx(world, "a_manager"),
+                world.a_council.membership.id,
+                MemberRolesIn(remove=[Role.RESIDENT]),
+            )
+
+        outcome = await act_blocked_on_lock(
+            sessions,
+            hold=_held_back(drop_resident),
+            act=lambda db: _move(db, world, request, "start"),
+            change=_nothing,
+        )
+
+        assert outcome == "200"
+        assert await _status_told(sessions) == (0, 0)
+
+    _run(scratch_database_url, body)
+
+
+def test_a_requester_suspended_while_a_staff_reply_waits_is_not_told(
+    scratch_database_url: str,
+) -> None:
+    # The same read serves P6-03d's staff reply.
+    async def body(sessions: Sessions, world: World, request: MaintenanceRequest) -> None:
+        async def reply(db: AsyncSession) -> str:
+            await service.add_comment(
+                db,
+                persona_ctx(world, "a_manager"),
+                request.id,
+                MaintenanceCommentCreate(body="We'll come Tuesday."),
+            )
+            return "201"
+
+        outcome = await act_blocked_on_lock(
+            sessions,
+            hold=_held_back(lambda db: _suspend(db, world, "a_resident1")),
+            act=reply,
+            change=_nothing,
+        )
+
+        assert outcome == "201"
+        staff_reply = Notification.kind == "maintenance.staff_commented"
+        assert await _count(sessions, Notification, staff_reply) == 0
+        assert await _count(sessions, MaintenanceComment) == 1
 
     _run(scratch_database_url, body)

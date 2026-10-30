@@ -24,7 +24,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 from app.audit import actions
 from app.audit.service import record_audit
 from app.buildings.enums import Feature
-from app.buildings.models import BuildingFeature
+from app.buildings.models import Building, BuildingFeature
 from app.core.errors import Conflict, Forbidden, NotFound, UnprocessableContent
 from app.core.pagination import CursorParams, Page, paginate
 from app.core.schemas import APIModel
@@ -734,7 +734,16 @@ async def _notify_comment(
 
 async def _requester_who_sees(db: AsyncSession, request: MaintenanceRequest) -> list[UUID]:
     """The requester's user, if their membership is active and holds a role that sees their own
-    request (`visible_maintenance`: resident, security, property management); else none."""
+    request (`visible_maintenance`: resident, security, property management); else none. Locks the
+    building FOR SHARE until commit."""
+    # Every write that takes a member's access away (suspend, deactivate, a role change) locks the
+    # building first (`app.memberships.service._lock_building`, NO KEY UPDATE). FOR SHARE waits for
+    # one in flight and holds off the next until this commits; the read below is a new statement,
+    # so it sees what that write committed (P6-03c review round 1: a suspension committed while a
+    # later INSERT waited was still told).
+    await db.execute(
+        select(Building.id).where(Building.id == request.building_id).with_for_update(read=True)
+    )
     user_id = await db.scalar(
         select(BuildingMembership.user_id).where(
             BuildingMembership.id == request.requester_membership_id,
