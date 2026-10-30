@@ -1,4 +1,5 @@
-"""Maintenance races (P6-03b criterion 1 row 9, criterion 2's move-out; P6-03e's cancel races).
+"""Maintenance races (P6-03b criterion 1 row 9, criterion 2's move-out; P6-03e's cancel races;
+P6-03d criterion 1's two comments at once).
 
 On real connections, as `tests/packages/test_concurrency.py`: a scratch database of its own,
 migrated here and dropped after the test, and one session per request.
@@ -14,10 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.audit.models import AuditEvent
 from app.core.errors import DomainError
+from app.core.pagination import CursorParams
 from app.maintenance import service
 from app.maintenance.enums import MaintenanceLocation, MaintenanceStatus
-from app.maintenance.models import MaintenanceRequest
-from app.maintenance.schemas import MaintenanceRequestCreate
+from app.maintenance.models import MaintenanceComment, MaintenanceRequest
+from app.maintenance.schemas import MaintenanceCommentCreate, MaintenanceRequestCreate
 from app.memberships.occupancy import end_occupancy
 from app.notifications.models import Notification
 from app.packages.service import IdempotencyKeyReused
@@ -737,5 +739,29 @@ def test_a_cancel_blocked_by_a_start_gets_409(
                 )
             assert cancelled_at is not None and cancelled_at > released_at
             assert await _count(sessions, AuditEvent, cancelled) == 1
+
+    _run(scratch_database_url, body)
+
+
+def test_two_comments_at_once_both_land_in_id_order(scratch_database_url: str) -> None:
+    async def comment(sessions: Sessions, ctx: Any, request: MaintenanceRequest, text: str) -> str:
+        async with sessions() as db:
+            out = await service.add_comment(
+                db, ctx, request.id, MaintenanceCommentCreate(body=text)
+            )
+            return str(out.id)
+
+    async def body(sessions: Sessions, world: World, request: MaintenanceRequest) -> None:
+        ids = await asyncio.gather(
+            comment(sessions, persona_ctx(world, "a_resident1"), request, "first"),
+            comment(sessions, persona_ctx(world, "a_manager"), request, "second"),
+        )
+
+        async with sessions() as db:
+            listed = await service.list_comments(
+                db, persona_ctx(world, "a_manager"), request.id, CursorParams()
+            )
+        assert sorted(ids) == [str(item.id) for item in listed.items]
+        assert await _count(sessions, MaintenanceComment) == 2
 
     _run(scratch_database_url, body)
