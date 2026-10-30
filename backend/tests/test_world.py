@@ -83,6 +83,7 @@ EXPECTED_ROW_COUNTS = {
     "maintenance_requests": 0,
     "maintenance_request_photos": 0,
     "maintenance_comments": 0,
+    "maintenance_status_events": 0,
 }
 
 
