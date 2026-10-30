@@ -6,7 +6,7 @@
 | Risk tier | 2 |
 | Depends on | P6-03b, P6-03e, P3-03, P3-02 |
 | Replaces old | M8-T01 (management actions part), M8-T04 (status-change part) |
-| Status | in progress |
+| Status | done |
 
 Split from the P6-03 stub ([P6-P7-backlog.md](./P6-P7-backlog.md)); the schema is
 [P6-03a](./P6-03a-maintenance-schema-and-visibility.md), submit and read
@@ -246,3 +246,12 @@ Left open by the stub:
     row and reused for the event's `at`.
 - Split: none. Estimate ~380 non-test lines: service ~170, router ~60, model ~45, migration ~60, kinds, actions
   and state ~25, schemas ~5, `tests/README.md` ~15.
+
+## Follow-ups (from PR #158)
+
+- **Managers as recipients read without the building lock:** `staff_user_ids` (on create, and on a resident's
+  comment) reads the managers before the notifications `INSERT`, unlocked, so a manager losing the role while one of
+  those waits could still be told. P6-03c fixed this for the requester (`_requester_who_sees` takes the building
+  `FOR SHARE`, PR #158 D5); the same fix fits `staff_user_ids`' callers. Inbox, 2026-10-30.
+- **No read of the status events yet:** P6-04c reads `maintenance_status_events` for its timeline (`from_status`
+  tells a first start, a resume and a reopen apart).

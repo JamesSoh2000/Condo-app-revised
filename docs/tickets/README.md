@@ -112,7 +112,7 @@ autonomous loop in [../AI_AGENT_PLAYBOOK.md](../AI_AGENT_PLAYBOOK.md).
 | [P6-03a](./P6-03a-maintenance-schema-and-visibility.md) | Maintenance request schema, state machine and visibility (split from P6-03) | A | 2 | P3-04b, P2-03, P1-03 | done | — |
 | [P6-03b](./P6-03b-maintenance-submit-and-read-api.md) | Maintenance submit and read API (split from P6-03) | A | 2 | P6-03a, P2-04, P3-03, P3-04b | done | — |
 | [P6-03e](./P6-03e-maintenance-cancel-and-emergency-phone.md) | Maintenance cancel and the emergency phone (split from P6-03b) | A | 2 | P6-03b | done | — |
-| [P6-03c](./P6-03c-maintenance-manager-actions.md) | Maintenance manager actions: start, hold, resolve, reopen (split from P6-03) | A | 2 | P6-03b, P6-03e, P3-03, P3-02 | in progress | — |
+| [P6-03c](./P6-03c-maintenance-manager-actions.md) | Maintenance manager actions: start, hold, resolve, reopen (split from P6-03) | A | 2 | P6-03b, P6-03e, P3-03, P3-02 | done | — |
 | [P6-03d](./P6-03d-maintenance-comments.md) | Maintenance comments: public and internal (split from P6-03) | A | 2 | P6-03b, P3-03 | done | — |
 | [P6-04a](./P6-04a-resident-maintenance-list.md) | Maintenance hooks and the resident's request list (split from P6-04) | A | 2 | P6-03b | done | — |
 | [P6-04b](./P6-04b-maintenance-submit-and-cancel.md) | Maintenance submit form and the emergency text (split from P6-04; photos and cancel split out to P6-04f, P6-04e) | A | 2 | P6-04a, P6-03b, P6-03e | done | — |
