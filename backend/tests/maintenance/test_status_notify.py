@@ -53,7 +53,7 @@ async def _emails(db: AsyncSession) -> list[Job]:
 
 
 async def _now(db: AsyncSession) -> datetime:
-    now = await db.scalar(select(func.clock_timestamp()))
+    now: datetime | None = await db.scalar(select(func.clock_timestamp()))
     assert now is not None
     return now
 

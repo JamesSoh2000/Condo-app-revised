@@ -71,7 +71,7 @@ async def _row(db: AsyncSession, request_id: uuid.UUID) -> MaintenanceRequest:
 
 
 async def _now(db: AsyncSession) -> datetime:
-    now = await db.scalar(select(func.clock_timestamp()))
+    now: datetime | None = await db.scalar(select(func.clock_timestamp()))
     assert now is not None
     return now
 
@@ -299,6 +299,7 @@ async def test_each_move_sets_exactly_its_columns_and_one_event(
         assert getattr(row, f"{new_column}_by_membership_id") == world.a_manager.membership.id
     body = response.json()
     assert body["status"] == target
+    assert row.started_at is not None
     assert body["started_at"] == row.started_at.isoformat().replace("+00:00", "Z")
 
 
