@@ -133,6 +133,32 @@ docker compose exec db psql -U postgres -Atc \
   | docker compose exec -T db psql -U postgres
 ```
 
+## A wait before a check (`act_blocked_on_lock`)
+
+A write that checks a time or a state and then runs a statement that can wait (a row lock, a file claim, an
+`INSERT` whose foreign key takes `KEY SHARE` on the row it names) must check again after the *last* such
+statement (CLAUDE.md "Lessons learned"). `tests/helpers/lock_wait.py::act_blocked_on_lock` makes that a test:
+
+```python
+outcome = await act_blocked_on_lock(
+    sessions,                      # an async_sessionmaker on a scratch database (real connections)
+    hold=lock_the_row,             # takes the lock in the holder's session
+    act=lambda db: run_the_write(db),  # the write under test, in the session it is given
+    change=let_the_deadline_pass,  # in the holder's transaction while the write waits
+)
+```
+
+It returns only after proving that the action's own backend was blocked by the holder's (`pg_blocking_pids`),
+so a test can't pass because the write never waited; otherwise it raises `AssertionError(NEVER_BLOCKED)`.
+`change` cannot touch a row the action already locked: to let a deadline pass, wait on the database clock
+(`SELECT pg_sleep(…)`). Lock each row a later statement takes, one parametrized case per statement:
+`tests/maintenance/test_concurrency.py::test_a_reopen_whose_window_closes_while_it_waits_is_refused` (the request,
+the building, the actor's membership and user, the recipient's membership) and
+`tests/notices/test_concurrency.py::test_a_notice_expiring_while_its_fan_out_waits_is_not_published`. To hold
+a whole write open as the holder (two identical moves at once), run it with its `commit` held back, as
+`tests/maintenance/test_concurrency.py::_uncommitted` does. The helper's own tests are
+`tests/helpers/test_lock_wait.py`.
+
 ## Migration tests
 
 Tests that run migrations up and down take the `scratch_database_url` fixture: an empty database named for
