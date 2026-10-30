@@ -88,13 +88,17 @@ and reopen while a manager acts).
    its body as text (line breaks kept) and its author: `author_name`, else "Building management" when
    `author_is_staff`, else "Resident". Ascending time; at the same instant a status change comes before a comment,
    then by id. Each time is shown in the building's timezone.
-1b. **Paging.** Both reads are oldest first. While either has a next page, the timeline shows only entries up to the
-   newest time both have loaded (the horizon), and one "Load more" asks the next page of each read that has one; so
-   nothing shows out of order, and a cancel or a comment newer than the horizon waits for it.
+1b. **Paging.** Both reads are oldest first (by id). The timeline merges them in time order, keeping each read in
+   its own order, and stops where a read with a next page runs out; one "Load more" asks the next page of each read
+   that has one. So every "Load more" only adds entries at the end, and an entry shown never moves. (Changed in review
+   round 1 F2 from a time horizon: a comment's `created_at` is its transaction's start, so a later page can hold an
+   older one. Times compare to the microsecond, F3.)
 1c. **Text only.** A description or comment holding HTML or Markdown shows as literal text.
 2a. **A role change while the view is open** (`/me` says the caller lost the staff role in the building): the
-   comments' key holds whether the caller reads internal comments, so the staff answer is never shown under the
-   resident's; and the request and comment queries drop their cache when the view closes (`gcTime: 0`).
+   request's keys (the request, its events and its comments) hold whether the caller reads as staff, so no staff
+   answer (another resident's request, the requester's name, an internal comment) is shown under the resident's
+   (the request's key added in review round 1 F1); and the view's queries drop their cache when it closes
+   (`gcTime: 0`).
 5a. **A failed read** (500) of the comments or status events shows "Could not load the timeline." with Try again,
    and the details still show; a 404 from either (the request left while open) shows "Request not found".
 5b. **The status-event read** (backend), the 10-case table rows that apply: the requester, a co-occupant and staff
