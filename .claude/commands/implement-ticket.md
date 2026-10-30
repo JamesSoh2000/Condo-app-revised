@@ -31,8 +31,8 @@ reviewer can check the code against it, and the explanation is later compared ag
 
 **Verify (step 4):**
 1. Run `make check`. Fix everything at its cause.
-2. Tier 1–2 with user-reachable behaviour: run the journey on `make up` or `make prodlike` and paste the
-   transcript (curl sequence or Playwright output) into the PR's evidence table.
+2. Tier 1–2 with user-reachable behaviour: run the journey on `make up` (then `make stack-guard`) or `make prodlike`
+   and paste the transcript (curl sequence or Playwright output) into the PR's evidence table.
 3. Rebase onto the latest `main` (`git fetch && git rebase origin/main`) and run `make check` again.
 4. Fill in the rest of `.github/pull_request_template.md`
    with real evidence. Write "Decisions and alternatives" for a reader who wasn't in this conversation: the
