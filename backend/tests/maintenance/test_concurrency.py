@@ -1099,7 +1099,7 @@ def test_a_requester_losing_the_resident_role_while_a_move_waits_is_not_told(
                 db,
                 persona_ctx(world, "a_manager"),
                 world.a_council.membership.id,
-                MemberRolesIn(remove=[Role.RESIDENT]),
+                MemberRolesIn(add=[], remove=[Role.RESIDENT]),
             )
 
         outcome = await act_blocked_on_lock(
