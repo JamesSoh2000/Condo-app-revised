@@ -4,7 +4,7 @@
 |---|---|
 | Phase / lane | P6 / B |
 | Risk tier | 2 |
-| Depends on | P6-04a, P6-04b, P6-04c, P6-04d, P6-07a |
+| Depends on | P6-04a, P6-04b, P6-04c, P6-04d, P6-04e, P6-04f, P6-04g, P6-07a |
 | Replaces old | M9-T05 (maintenance part) |
 | Status | todo |
 
