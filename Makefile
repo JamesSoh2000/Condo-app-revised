@@ -21,7 +21,7 @@ BACKEND := cd backend &&
 FRONTEND := cd frontend &&
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs ps migrate revision seed cli test lint fmt typecheck check gen-api e2e e2e-reset psql s3-smoke \
+.PHONY: help up down logs ps stack-guard migrate revision seed cli test lint fmt typecheck check gen-api e2e e2e-reset psql s3-smoke \
 	db-guard prodlike prodlike-smoke prodlike-down
 
 help: ## List the targets
@@ -46,6 +46,15 @@ db-guard:
 	  echo "db-guard: compose's db is not published on 127.0.0.1:$(DB_PORT). Run \`make up\` first, or, if"; \
 	  echo "another server holds the port, use a free one on every target: make up DB_PORT=55432"; exit 1; }
 
+# Fails unless app and worker mount this checkout's backend. The stack is shared by every worktree: one
+# `make up` elsewhere, or a worktree removed after merge, leaves the API serving other or deleted code.
+stack-guard: ## Check the running app and worker serve this worktree's backend (run after `make up`)
+	@for s in app worker; do \
+	  src=$$(docker inspect $$($(COMPOSE) ps -q $$s) --format '{{range .Mounts}}{{if eq .Destination "/app"}}{{.Source}}{{end}}{{end}}' 2>/dev/null); \
+	  [ "$$src" = "$(CURDIR)/backend" ] || { \
+	    echo "stack-guard: $$s mounts '$$src', not $(CURDIR)/backend. Run make up DB_PORT=$(DB_PORT) here."; exit 1; }; \
+	done
+
 migrate: db-guard ## alembic upgrade head on the dev database
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) uv run alembic upgrade head
 
@@ -53,10 +62,10 @@ revision: db-guard ## Autogenerate a migration: make revision m="add packages" (
 	@test -n "$(m)" || { echo 'usage: make revision m="what changed"'; exit 2; }
 	$(BACKEND) DATABASE_URL=$(DEV_DATABASE_URL) uv run alembic revision --autogenerate -m "$(m)"
 
-seed: ## Idempotent demo data (needs `make up` and `make migrate`); `make seed reset=1` wipes first (dev only)
+seed: stack-guard ## Idempotent demo data (needs `make up` and `make migrate`); `make seed reset=1` wipes first (dev only)
 	$(COMPOSE) exec app python -m app.cli seed $(if $(reset),--reset)
 
-cli: ## Run an operator command in the app container: make cli args="audit --since 1d"
+cli: stack-guard ## Run an operator command in the app container: make cli args="audit --since 1d"
 	@test -n "$(args)" || { echo 'usage: make cli args="audit --since 1d" (python -m app.cli --help lists them)'; exit 2; }
 	$(COMPOSE) exec app python -m app.cli $(args)
 

@@ -4,7 +4,7 @@
 # serves JSON captured from GitHub for PR #138 (head a2e19e6); each criterion edits a copy with `jedit`, so the
 # edited fields are visible below. The preflight runs in a temporary clone with a temporary bare `origin`.
 # Nothing here touches the network or this repository. One function per acceptance criterion of
-# docs/tickets/WF-01-ticket-loop-helpers.md.
+# docs/tickets/WF-01-ticket-loop-helpers.md, plus mutation_probe for scripts/mutation-probe.sh.
 # Usage: bash scripts/check-ticket-helpers.sh   (from anywhere in the repo; needs git and python3)
 set -uo pipefail
 
@@ -433,6 +433,49 @@ c16() {
   done
 }
 
+# ---- Mutation probe: a scratch repo holding a copy of the script, and a fake `make` on PATH that records the
+# pytest args as pytest splits PYTEST_ADDOPTS and answers from the code's state: $MUTATED_OUT and exit
+# ${MUTATED_RC:-2} when mutated.
+mutation_probe() {
+  local mp="$work/mp"
+  mkdir -p "$mp/repo/scripts" "$mp/bin"
+  cp "$root/scripts/mutation-probe.sh" "$mp/repo/scripts/"
+  printf 'ok\n' >"$mp/repo/code.py"
+  git -C "$mp/repo" init -q && git -C "$mp/repo" add -A && git -C "$mp/repo" commit -qm base
+  printf 'MUTATED\n' >"$mp/repo/code.py"
+  git -C "$mp/repo" diff >"$mp/mutation.patch"
+  git -C "$mp/repo" checkout -q code.py
+  cat >"$mp/bin/make" <<'SH'
+#!/usr/bin/env bash
+for a; do [[ $a == PYTEST_ADDOPTS=* ]] && python3 -I -c 'import shlex, sys; print(shlex.split(sys.argv[1]))' "${a#*=}" >>"$MP_ARGS"; done
+echo "SCROLLBACK-NOISE ${#}"
+if grep -q MUTATED code.py; then printf '%s\n' "$MUTATED_OUT"; exit "${MUTATED_RC:-2}"; fi
+echo "2 passed, 1 deselected in 0.1s"
+SH
+  chmod +x "$mp/bin/make"
+  export MP_ARGS="$mp/args"
+  probe() { : >"$MP_ARGS"; PATH="$mp/bin:$PATH" run "$mp/repo" bash scripts/mutation-probe.sh "$mp/mutation.patch" "$@"; }
+
+  label="probe caught"
+  MUTATED_OUT="FAILED tests/t.py::test_a - assert 1 == 2"$'\n'"1 failed, 1 passed in 0.1s" \
+    probe tests/t.py -k "identical or runs_on_the_state"
+  want "exit 0" code 0
+  want "-k keeps its expression as one argument, both runs" \
+    test "$(sort -u "$MP_ARGS")" = "['-q', 'tests/t.py', '-k', 'identical or runs_on_the_state']"
+  want "summary printed" has "1 failed, 1 passed"
+  want "full output left in the log" lacks "SCROLLBACK-NOISE"
+  want "log path printed" has "full output: "
+  want "code restored" grep -qx ok "$mp/repo/code.py"
+  label="probe not caught"
+  MUTATED_OUT="2 passed in 0.1s" MUTATED_RC=0 probe tests/t.py
+  want "exit 1" code 1
+  label="probe: pytest errors before any test fails"
+  MUTATED_OUT="ERROR: file or directory not found: or"$'\n'"no tests ran in 0.1s" probe tests/t.py
+  want "exit 1, never 0" code 1
+  want "the error printed" has "ERROR: file or directory not found: or"
+  want "code restored" grep -qx ok "$mp/repo/code.py"
+}
+
 # ---- Preflight: a bare origin, a seed clone that pushes to it, and the clone the script runs in.
 index_md() { # index_md <row>...: an index whose rows are "ID|deps|status[|tier]"
   printf '# Tickets\n\n| ID | Title | Lane | Tier | Depends on | Status | Learned |\n|---|---|---|---|---|---|---|\n'
@@ -666,6 +709,7 @@ c14
 c15
 c16
 c16_preflight
+mutation_probe
 
 if ((failures)); then
   echo "check-ticket-helpers: $failures failure(s)"

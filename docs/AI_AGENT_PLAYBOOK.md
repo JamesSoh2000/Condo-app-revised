@@ -94,9 +94,9 @@ tests, OpenAPI drift, the Base44 ratchet, `prodlike` smoke, E2E, `docs`. A failu
 failure unrelated to the ticket (flaky test, broken `main`) gets **two** retries; after that, fix it in its
 own small PR first if it is in the repo, or block if it is external.
 
-**Tier 1–2 tickets that change behaviour a user can reach** also run the journey on the stack (`make up` or
-`make prodlike`) and paste the transcript (curl sequence or Playwright output) in the PR. This replaces "the
-reviewer ran it locally".
+**Tier 1–2 tickets that change behaviour a user can reach** also run the journey on the stack (`make up` from the worktree,
+then `make stack-guard`; or `make prodlike`) and paste the transcript (curl sequence or Playwright output) in the
+PR. This replaces "the reviewer ran it locally".
 
 ### Step 5 — Independent review (fresh session; the merge path's only judge)
 
